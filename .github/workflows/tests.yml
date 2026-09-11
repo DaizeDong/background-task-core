@@ -64,12 +64,12 @@ jobs:
       # like a suite that passes. Raise this deliberately when tests are added; never lower it to
       # make a red build green.
       #
-      # PROVISIONAL at 400. The local Windows count on the day of extraction was 446, and this floor
-      # is set below it on purpose because no run on a GitHub runner has happened yet and a floor
-      # invented from a different machine's number is a guess wearing a threshold's clothes. Raise
-      # it to the observed count after the first green run.
+      # 447, the count the runner actually collected on the first green run (2026-09-11). The
+      # placeholder this replaces was set below the local number on purpose, because a floor
+      # invented from a different machine is a guess wearing a threshold's clothes; now it is an
+      # observation. Raise it when tests are added, never lower it to make a red build green.
       - name: The suite must not have evaporated
         run: |
           $n = (python -B -m pytest tests/ -q -p no:cacheprovider --collect-only 2>$null | Select-String '::' | Measure-Object).Count
           Write-Host "collected $n tests"
-          if ($n -lt 400) { Write-Error "only $n tests collected, expected at least 400 -- tests were removed or collection broke"; exit 1 }
+          if ($n -lt 447) { Write-Error "only $n tests collected, expected at least 447 -- tests were removed or collection broke"; exit 1 }
