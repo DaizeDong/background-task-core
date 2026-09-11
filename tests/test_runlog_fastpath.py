@@ -18,6 +18,7 @@
 import json
 import os
 import sys
+import warnings
 
 import pytest
 
@@ -219,9 +220,22 @@ def test_the_slow_reader_reports_the_same_completeness_keys():
         pytest.skip(f"通道不可读: {d.get('reason')}")
     missing = [k for k in COMPLETENESS if k not in d]
     assert not missing, f"慢路少了完整性字段: {missing}"
-    # 撞上限时 truncated 必须为真 —— 否则这个键存在但永远是假,等于没有。
-    assert d["truncated"] is True, (
+
+    # truncated 必须跟「撞没撞上限」严格对应。
+    #
+    # 这里原来断言的是 `truncated is True`,而那其实编码了一个**环境假设**:这台机器最近
+    # 一天至少有 5 条任务事件。那是关于机器的事实,不是关于代码的性质,所以它在一台刚
+    # 开通道、一条事件都没有的机器上会红,而红的理由跟被测的东西无关。
+    # 真正的不变量是这个键跟着 count 走,两个方向都要对 —— 恒为真和恒为假一样没用。
+    assert d["truncated"] is (d["count"] >= 5), (
         f"上限设成 5 而 count={d.get('count')},truncated 却是 {d.get('truncated')}")
+    if d["count"] < 5:
+        # 说出来:这一轮只走到了 False 那一侧。一个没走到 True 分支的绿,
+        # 和一个两侧都走到的绿,不该长得一样。
+        warnings.warn(
+            f"这台机器最近 1 天只有 {d['count']} 条事件,truncated 的 True 分支这轮没被走到;"
+            f"快路那一侧的完整性由 test_the_fast_reader_reports_completeness 覆盖。",
+            stacklevel=2)
     _ = _sys
 
 
@@ -270,3 +284,42 @@ def test_the_slow_reader_counts_every_event_it_skips():
     # 计数器要真的进入输出,否则记了也没人看得到。
     assert _re.search(r"dropped\s*=\s*\$dropped", src), \
         "dropped 计数器没有被写进输出对象"
+
+
+def test_the_slow_reader_keeps_the_keys_even_when_the_channel_is_empty():
+    """空通道那条早退分支也必须带全同一套键。
+
+    这条是 2026-09-11 迁移时 CI 抓出来的,而本机永远抓不到:一台有计划任务的机器
+    总是有事件,所以走不到那条分支;一个刚把通道打开几秒就去读的 runner 每次都走到。
+
+    缺陷形状是这个项目反复出现的那个 —— 完整性计数器当初是为主路加的,而两条
+    `enabled=true` 的早退分支保持了旧形状:**修了一条路,漏了另外两条**。
+    下游写的是 `raw.get("dropped") or 0`,于是「这个读取器根本没数」变成一个确定的 0;
+    `maxRecordId` 缺席变成 0,而那个值正好告诉摄入器「去重水位线在最开头」。
+    """
+    import subprocess
+    script = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+        "scripts", "task_console", "runlog.ps1")
+    # -Days 0 把时间窗收到「此刻」,是逼出空结果最便宜的办法。
+    r = subprocess.run(
+        ["powershell", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
+         "-File", script, "-Days", "0", "-MaxEvents", "5"],
+        capture_output=True, timeout=600, stdin=subprocess.DEVNULL)
+    out = r.stdout.decode("utf-8", "replace").strip()
+    if r.returncode != 0 or not out:
+        pytest.skip(f"这台机器上跑不了 runlog.ps1: {r.stderr[:200]!r}")
+    d = json.loads(out)
+    if not d.get("enabled"):
+        pytest.skip(f"通道不可读: {d.get('reason')}")
+    if d.get("count"):
+        pytest.skip(f"这个窗口里仍有 {d['count']} 条事件,没能走到空分支")
+
+    missing = [k for k in COMPLETENESS + ("count", "oldestRecordId", "recordCount", "maxRecordId")
+               if k not in d]
+    assert not missing, f"空通道分支少了这些键: {missing}"
+    assert d["partial"] is False, "查询跑完了只是没找到东西,那不是「读了一半」"
+    assert d["truncated"] is False
+    # 「问不出来」和「没这个概念」在下游是两件事,所以这两个要么是数字要么显式是 None。
+    for k in ("oldestRecordId", "recordCount"):
+        assert d[k] is None or isinstance(d[k], int), f"{k} 是 {d[k]!r}"

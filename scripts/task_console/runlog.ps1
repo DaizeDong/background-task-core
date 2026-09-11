@@ -60,14 +60,40 @@ try {
 } catch {
   # "No events were found" is a normal, expected state for a log enabled five minutes ago, and it
   # is NOT an error. Anything else is.
+  # BOTH early returns below carry the SAME key set as the normal one. They did not, and the
+  # counters a few lines above were added precisely because this reader used to emit none of them,
+  # yet these two exits kept the old shape: the fix went onto the path with events and stopped
+  # there. Nothing on this machine ever reached them, because a machine with scheduled tasks always
+  # has events; a GitHub runner that enables the channel seconds before reading it hits the first
+  # one every time, and that is how it surfaced.
+  #
+  # A consumer reading `raw.get("dropped") or 0` turns a MISSING count into a confident zero, and
+  # `maxRecordId` missing becomes 0, which is the value that tells the ingester its dedup watermark
+  # is at the very beginning. Missing must not be spendable as a value.
   if ($_.Exception.Message -match 'No events were found') {
-    [ordered]@{ enabled = $true; reason = $null; events = @();
-                oldest = $null; note = 'enabled but empty so far' } |
-      ConvertTo-Json -Depth 4 -Compress
+    [ordered]@{ enabled = $true; reason = $null
+                since   = $since.ToString('yyyy-MM-dd'); oldest = $null
+                count   = 0
+                dropped = 0
+                partial = $false        # the query completed; it found nothing, which is not the same thing
+                truncated = $false
+                oldestRecordId = [int64]$cfg.OldestRecordNumber
+                recordCount    = [int64]$cfg.RecordCount
+                maxRecordId    = 0
+                note    = 'enabled but empty so far'
+                events  = @() } | ConvertTo-Json -Depth 4 -Compress
     exit 0
   }
-  [ordered]@{ enabled = $true; reason = "read failed: $($_.Exception.Message)"; events = @() } |
-    ConvertTo-Json -Depth 4 -Compress
+  [ordered]@{ enabled = $true; reason = "read failed: $($_.Exception.Message)"
+              since   = $since.ToString('yyyy-MM-dd'); oldest = $null
+              count   = 0
+              dropped = 0
+              partial = $true           # the read did NOT complete, so no count here is trustworthy
+              truncated = $false
+              oldestRecordId = [int64]$cfg.OldestRecordNumber
+              recordCount    = [int64]$cfg.RecordCount
+              maxRecordId    = 0
+              events  = @() } | ConvertTo-Json -Depth 4 -Compress
   exit 0
 }
 
