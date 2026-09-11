@@ -39,6 +39,19 @@ jobs:
       - name: Install test dependencies
         run: python -m pip install --quiet pytest pywin32
 
+      # The Task Scheduler Operational channel is OFF by default on Windows, runners included.
+      #
+      # Two tests read it for real, and they are the POSITIVE CONTROL for the mocked ones around
+      # them: without a real read that succeeds, "enabled is False" could be hardcoded and the
+      # negative tests would still pass. Skipping them on CI would leave the mocks guarding
+      # themselves, so the environment they assert about has to be provided rather than the
+      # assertion weakened. Reading zero events is fine; the control is about `enabled` and
+      # `partial`, not about volume.
+      - name: Enable the channel those tests read
+        run: |
+          wevtutil sl Microsoft-Windows-TaskScheduler/Operational /e:true
+          wevtutil gl Microsoft-Windows-TaskScheduler/Operational | Select-String 'enabled'
+
       # -B disables bytecode caching. A stale .pyc can outlive the source it came from when mtime
       # seconds and size both happen to be unchanged, and a suite that certifies bytecode from a
       # reverted mutant is a suite that certifies nothing.
