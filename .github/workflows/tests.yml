@@ -31,8 +31,13 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Install pytest
-        run: python -m pip install --quiet pytest
+      # pywin32 is a real dependency, not a convenience. evtlog.py reads the Task Scheduler
+      # Operational channel through it, and without it those tests do not skip, they assert on the
+      # wrong sentence: the module reports "pywin32 unavailable" where the test expects the reason
+      # the test is actually about. A runner missing it produces failures that say nothing about the
+      # code, which is the same wasted red as running this suite on Linux.
+      - name: Install test dependencies
+        run: python -m pip install --quiet pytest pywin32
 
       # -B disables bytecode caching. A stale .pyc can outlive the source it came from when mtime
       # seconds and size both happen to be unchanged, and a suite that certifies bytecode from a
