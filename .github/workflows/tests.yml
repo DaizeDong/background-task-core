@@ -1,0 +1,57 @@
+name: tests
+
+# WINDOWS, not ubuntu, and that is the whole point of this file.
+#
+# The suite this repo carries was inherited from a repository whose test workflow runs on
+# ubuntu-latest, where it had been failing continuously since at least 2026-09-09: these tests drive
+# Windows Task Scheduler and PowerShell, so on Linux they do not fail for an interesting reason,
+# they fail for the only reason available. A red build nobody can act on is worse than no build,
+# because it trains everyone to stop reading the badge, and then the day a real failure lands it
+# looks exactly like the noise.
+#
+# The console only means anything on Windows -- server.py refuses to start on any other platform on
+# purpose -- so the honest runner is the one the tool actually targets.
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  suite:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive        # an empty guards/ is an UNGUARDED repo, not a clean one
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install pytest
+        run: python -m pip install --quiet pytest
+
+      # -B disables bytecode caching. A stale .pyc can outlive the source it came from when mtime
+      # seconds and size both happen to be unchanged, and a suite that certifies bytecode from a
+      # reverted mutant is a suite that certifies nothing.
+      - name: Acceptance suite
+        run: |
+          if (-not (Test-Path tests)) { Write-Error "the test suite is MISSING -- an absent suite is not a passing suite"; exit 1 }
+          python -B -m pytest tests/ -q -p no:cacheprovider
+
+      # Guards against the suite quietly shrinking to nothing, which would otherwise look exactly
+      # like a suite that passes. Raise this deliberately when tests are added; never lower it to
+      # make a red build green.
+      #
+      # PROVISIONAL at 400. The local Windows count on the day of extraction was 446, and this floor
+      # is set below it on purpose because no run on a GitHub runner has happened yet and a floor
+      # invented from a different machine's number is a guess wearing a threshold's clothes. Raise
+      # it to the observed count after the first green run.
+      - name: The suite must not have evaporated
+        run: |
+          $n = (python -B -m pytest tests/ -q -p no:cacheprovider --collect-only 2>$null | Select-String '::' | Measure-Object).Count
+          Write-Host "collected $n tests"
+          if ($n -lt 400) { Write-Error "only $n tests collected, expected at least 400 -- tests were removed or collection broke"; exit 1 }

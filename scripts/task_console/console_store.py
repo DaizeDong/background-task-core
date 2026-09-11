@@ -29,11 +29,19 @@ import sys
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-SKILL = "schedule-reminder"
+SKILL = "task-console"
 DB_NAME = "console.sqlite3"
 
 # The shared resolver ships in the guards submodule. Import it by path rather than assuming it is
 # importable, because its location moved on 2026-09-01 when the kit became a submodule.
+#
+# SEARCH UPWARDS, never a fixed number of levels. This used to be HERE.parents[3], which was the
+# repo root only because this file happened to sit four directories deep inside another project.
+# Extracting the console into its own repository put it two deep, parents[3] walked out past the
+# repo entirely, and the resolver came back NO_RESOLVER: no companion, no database, and a console
+# that silently fell back to reading the event log on every request. The comment directly above
+# already records that this location moved once before, so the fixed depth had failed once and was
+# repaired by changing the number rather than the assumption.
 _datadir = None
 
 
@@ -42,10 +50,11 @@ def _load_datadir():
     if _datadir is not None:
         return _datadir
     import importlib.util
-    for cand in (
-        HERE.parents[3] / "guards" / "tools" / "datadir.py",   # repo_root/guards/tools
-        HERE.parents[3] / "tools" / "datadir.py",              # pre-2026-09-01 vendored layout
-    ):
+    cands = []
+    for base in (HERE,) + tuple(HERE.parents):
+        cands.append(base / "guards" / "tools" / "datadir.py")   # repo_root/guards/tools
+        cands.append(base / "tools" / "datadir.py")              # pre-2026-09-01 vendored layout
+    for cand in cands:
         if cand.exists():
             spec = importlib.util.spec_from_file_location("sr_datadir", cand)
             mod = importlib.util.module_from_spec(spec)
