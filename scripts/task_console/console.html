@@ -360,10 +360,25 @@ td.ops .mini.danger:hover{border-color:var(--bad);color:var(--bad)}
    最后一次提交根本没有出口。面板因此只能回答「我有哪些仓」,回答不了「这个仓在哪、
    属于哪个账号、现在什么状态」。
    左列只放**找到它**需要的东西,右列有地方把话说完整。 */
-.rp-split{display:grid;grid-template-columns:minmax(220px,280px) 1fr;gap:1px;
-  background:var(--line2);max-height:max(240px, calc(100vh - 230px))}
-.rp-list{background:var(--panel);overflow:auto;min-width:0}
-.rp-detail{background:var(--panel);overflow:auto;min-width:0;padding:10px 12px}
+/* ⚠ min-height:0 和 overflow:hidden 这两行是承重的,不是排版偏好。
+   grid 子项的 min-height 默认是 auto,也就是「不许缩到内容以下」,于是两栏被拉成
+   内容高度(实测 clientHeight 和 scrollHeight 都是 1189),它们身上的 overflow:auto
+   从来没生效过 —— 真正在滚的是外面那层 .pad,两栏因此**一起滚**,
+   往下翻列表时详情会整块滑出视野。这正是被报上来的那个毛病。
+   外层加 overflow:hidden 是为了让它自己永远不滚:否则修好子项之后,
+   外层仍然可能成为第二个滚动容器,而那时「哪个在滚」取决于鼠标停在哪。 */
+/* 整块收在一个宽度里,而不是铺满。在宽屏上铺满的结果是详情栏有一千多像素是空的,
+   而空出来的那片读起来像「这里本该有东西没加载出来」。限宽之后右边的留白是页边距,
+   不是一块空面板 —— 同样是没有内容,前者看着是排版,后者看着是坏了。
+   列表列也加宽到 300:260 时 acme-widget-split-billing 这类正常长度的仓名会被截成
+   acme-widget-split-bil…,而截断的名字读起来跟另一个仓一模一样。
+   ⚠ 这个例子是编的。上一版这里写的是本机上一个真实仓名 —— 随手拿手边的东西当例子,
+   正是这套闸门存在的全部理由,而 pii_guard 在提交前就把它挡住了。 */
+.rp-split{display:grid;grid-template-columns:minmax(240px,300px) minmax(0,1fr);gap:1px;
+  background:var(--line2);height:max(240px, calc(100vh - 230px));overflow:hidden;
+  max-width:1080px}
+.rp-list{background:var(--panel);overflow:auto;min-width:0;min-height:0}
+.rp-detail{background:var(--panel);overflow:auto;min-width:0;min-height:0;padding:10px 12px}
 @media (max-width:760px){
   /* 窄屏下并排两栏会把两边都压到读不了。改成上下,列表限高,详情跟在后面。 */
   .rp-split{grid-template-columns:1fr;max-height:none}
@@ -406,15 +421,22 @@ td.ops .mini.danger:hover{border-color:var(--bad);color:var(--bad)}
    而「私有」读不清就会和「没有徽章」混在一起 —— 后者表示可见性未知,
    而未知在闸门那边是**按公开拦**的。这两个状态要采取的行动相反,不能长得一样。
    公开那一档仍然用 --warn 更醒目:危险的是公开,不是私有。 */
-.rp-r .vis{font-size:9.5px;padding:0 3px;border-radius:2px;border:1px solid var(--line);
-  color:var(--dim)}
-.rp-r .vis.pub{color:var(--warn);border-color:var(--warn)}
-/* 账号标记。只在列表里显示账号名,判定细节留给详情面板。
-   mismatch 是唯一会着色的那一档:它是事故形状,而 unchecked 不能长得像 ok。 */
-.rp-r .acc{font-size:9.5px;color:var(--faint);max-width:74px;overflow:hidden;
-  text-overflow:ellipsis;white-space:nowrap}
-.rp-r .acc.bad{color:var(--bad);font-weight:600}
-.rp-r .acc.unk{color:var(--faint);font-style:italic}
+/* 可见性:三种形状 + 三种颜色 + 三种悬停说明,而不是三段中文。
+   ⚠ 这里刻意不只用颜色,也刻意不合并任何两档:公开是实心方块(危险的是公开),
+   私有是空心方块,未知是问号。闸门对**未知** remote 是按公开拦的,所以未知和私有
+   要采取的行动相反,它们绝不能长得一样 —— 这条在换成图形之后必须仍然成立。 */
+.rp-r .vis{font-size:10px;line-height:1;width:12px;text-align:center;color:var(--dim);
+  font-family:var(--mono,inherit)}
+.rp-r .vis.pub{color:var(--warn)}
+.rp-r .vis.unk{color:var(--faint)}
+/* 账号用两字缩写,不写全名。47/48 行是同一个账号,把它逐行印出来是 48 遍几乎零信息的
+   墨水,而「这一行属于谁」用两个字母同样答得上来,全名在悬停和详情里。
+   mismatch 是唯一会着色的那一档:它是事故形状,而 unchecked 不能长得像 ok,
+   所以它用虚线框 —— 一个和「有答案」形状不同的框,不只是颜色不同。 */
+.rp-r .acc{font-size:9px;letter-spacing:.3px;color:var(--faint);
+  border:1px solid transparent;border-radius:2px;padding:0 2px;font-family:var(--mono,inherit)}
+.rp-r .acc.bad{color:var(--bad);border-color:var(--bad);font-weight:700}
+.rp-r .acc.unk{color:var(--faint);border-style:dashed;border-color:var(--line)}
 
 /* 详情面板。字段分三组:身份、位置、状态。 */
 .rp-d-h{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;margin-bottom:8px}
@@ -422,8 +444,39 @@ td.ops .mini.danger:hover{border-color:var(--bad);color:var(--bad)}
 .rp-d-h .k{font-size:10.5px;color:var(--dim)}
 .rp-grp{margin:10px 0 2px;font-size:10.5px;color:var(--dim);
   border-bottom:1px solid var(--line);padding-bottom:2px}
-.rp-f{display:grid;grid-template-columns:76px 1fr;gap:4px 10px;font-size:11.5px;
-  align-items:baseline;padding:2px 0}
+.rp-f{display:grid;grid-template-columns:64px 1fr;gap:3px 10px;font-size:11.5px;
+  align-items:baseline;padding:1px 0}
+/* 数字用小方块排成一行,不是三行「标签:数字」。三个数字各自一行时,一屏里
+   最占地方的是那三个标签,而它们每次都一样。 */
+.rp-chipsrow{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:4px 0 2px}
+.rp-chip{display:inline-flex;align-items:baseline;gap:3px;font-size:11px;
+  border:1px solid var(--line);border-radius:3px;padding:1px 5px;
+  font-variant-numeric:tabular-nums}
+.rp-chip .t{font-size:9.5px;color:var(--dim)}
+.rp-chip.hot{border-color:var(--bad);color:var(--bad)}
+.rp-chip.warn{border-color:var(--warn);color:var(--warn)}
+.rp-chip.zero{color:var(--faint)}
+.rp-chip.unk{border-style:dashed;color:var(--faint)}
+/* 分支关系画成一条线而不是写成 "master → origin/master" 一串文字。
+   没有 upstream 时线是断的 —— 那是这个面板最要紧的一个状态,
+   而「没有 upstream」和「和上游同步」在纯文字里差一个词,在图形里差一个形状。 */
+.rp-flow{display:flex;align-items:center;gap:6px;font-size:11.5px;
+  font-family:var(--mono,inherit);flex-wrap:wrap;margin:3px 0}
+.rp-flow .arr{color:var(--dim)}
+.rp-flow .arr.cut{color:var(--bad);font-weight:700}
+.rp-flow .up.none{color:var(--bad);font-family:inherit;font-size:11px}
+/* 一行一个事实,带一个复制角标。标签列去掉:"本地路径" 这四个字每次都一样,
+   而一条以 C:\ 开头的绝对路径不需要标签就认得出是什么。 */
+.rp-line{display:flex;align-items:center;gap:6px;margin:3px 0;min-width:0}
+.rp-line .ic{font-size:10px;color:var(--dim);width:12px;text-align:center;flex:none}
+.rp-line code{font-size:11px;font-family:var(--mono,inherit);word-break:break-all;min-width:0}
+/* 正文限宽。一条路径换行之后如果铺到 1700px,眼睛要横扫一整屏才能回到下一行开头。 */
+.rp-detail > *{max-width:700px}
+.rp-detail > .rp-out{max-width:none}
+.rp-line button{flex:none}
+.rp-rel{display:flex;gap:5px;flex-wrap:wrap;margin-top:4px}
+.rp-rel span{font-size:10.5px;color:var(--dim);border:1px solid var(--line);
+  border-radius:3px;padding:0 5px}
 .rp-f .lb{color:var(--dim)}
 .rp-f .vv{word-break:break-all;font-family:var(--mono,inherit);min-width:0}
 .rp-f .vv.warn{color:var(--warn)} .rp-f .vv.bad{color:var(--bad);font-weight:600}
@@ -1314,22 +1367,40 @@ function renderRepoList(){
   renderRepoDetail();
 }
 
+// 账号缩写:取名字里的字母数字,大写,最多两个字符。同名两个账号会撞,而撞了也不致命 ——
+// 缩写只负责「这一行和上一行是不是同一个账号」,全名在悬停和详情里。
+function rpMonogram(owner){
+  if(!owner) return "—";
+  const parts = String(owner).replace(/[^A-Za-z0-9]+/g," ").trim().split(/\s+/);
+  if(parts.length >= 2) return (parts[0][0]+parts[1][0]).toUpperCase();
+  const w = parts[0]||"";
+  // 驼峰(DaizeDong)取两个大写首字母;否则取前两个字符。
+  const caps = w.match(/[A-Z]/g);
+  return ((caps && caps.length>=2) ? caps[0]+caps[1] : w.slice(0,2)).toUpperCase();
+}
+
+const RP_VIS_GLYPH = {
+  pub:  {g:"■", cls:"pub", t:"公开。这个仓里不能有真实运行产出。"},
+  priv: {g:"□", cls:"",    t:"私有。"},
+  unk:  {g:"?", cls:"unk", t:"可见性未知。闸门对未知 remote 是**按公开拦**的,所以这和「私有」不是一回事,要做的事也相反。"},
+};
+
 function rpListRow(r, sub){
   // 伴生行只显示后缀:前缀逐字等于宿主名,完整名字仍在 title 里。
   const label = sub ? (r.name.slice((r.companionOf||"").length).replace(/^-/,"") || r.name) : r.name;
-  const visPub = /pub/i.test(r.visibility||"");
-  const vis = r.visibility
-    ? `<span class="vis ${visPub?"pub":""}" title="${esc(r.visibility)}">${visPub?"公开":"私有"}</span>`
-    : `<span class="vis" title="可见性未知。闸门对未知 remote 是按公开拦的,所以这和「私有」不是一回事">?</span>`;
+  const v = !r.visibility ? RP_VIS_GLYPH.unk
+          : (/pub/i.test(r.visibility) ? RP_VIS_GLYPH.pub : RP_VIS_GLYPH.priv);
   const id = r.identity||{};
   const cls = id.state==="mismatch" ? " bad" : (id.state==="unchecked" ? " unk" : "");
-  const accTxt = id.state==="unchecked" ? "未检查" : (r.owner || "—");
+  const mono = id.state==="unchecked" ? "??" : rpMonogram(r.owner);
+  const accTitle = (r.owner||"没有 owner")
+    + (id.state && id.state!=="ok" ? " · "+(RP_ID_LAB[id.state]||id.state) : "");
   return `<div class="rp-r${sub?" sub":""}${RP_SEL===r.name?" on":""}" data-rp="${esc(r.name)}"
       tabindex="0" role="button" title="${esc(r.path)}">
     <i class="dot d-${r.state}"></i>
     <span class="n">${esc(label)}</span>
-    <span class="acc${cls}">${esc(accTxt)}</span>
-    ${vis}</div>`;
+    <span class="acc${cls}" title="${esc(accTitle)}">${esc(mono)}</span>
+    <span class="vis ${v.cls}" title="${esc(v.t)}">${v.g}</span></div>`;
 }
 
 function rpField(label, value, cls, title){
@@ -1337,10 +1408,16 @@ function rpField(label, value, cls, title){
     + `<span class="vv ${cls||""}"${title?` title="${esc(title)}"`:""}>${value}</span></div>`;
 }
 
+function rpChip(n, label, tone, title){
+  const cls = (n===0||n==null) ? (tone==="unk" ? "unk" : "zero") : (tone||"");
+  const shown = (n==null) ? "?" : n;
+  return `<span class="rp-chip ${cls}" title="${esc(title||"")}">${shown}<span class="t">${esc(label)}</span></span>`;
+}
+
 function renderRepoDetail(){
   const box = $("rpdetail");
   if(!RP_SEL){
-    box.innerHTML = `<div class="rp-empty">左边选一个仓,这里显示它的全部信息和可做的操作。</div>`;
+    box.innerHTML = `<div class="rp-empty">左边选一个仓,这里显示它的信息和可做的操作。</div>`;
     return;
   }
   const r = REPOS.repos.find(x=>x.name===RP_SEL);
@@ -1348,56 +1425,71 @@ function renderRepoDetail(){
   const id = r.identity||{};
   const byHost = {};
   REPOS.repos.forEach(x=>{ if(x.kind==="companion" && x.companionOf) byHost[x.companionOf]=x; });
+  const v = !r.visibility ? RP_VIS_GLYPH.unk
+          : (/pub/i.test(r.visibility) ? RP_VIS_GLYPH.pub : RP_VIS_GLYPH.priv);
 
+  // 标题行:名字 + 类型 + 可见性形状 + 账号。判定不是 ok 时账号才带颜色和文字,
+  // 因为 ok 的那 47 个不需要每次都念一遍「匹配」。
+  const idCls = id.state==="mismatch" ? "bad" : (id.state==="ok" ? "" : "note");
+  const idTail = id.state==="ok" ? "" : ` <span class="${idCls}">${esc(RP_ID_LAB[id.state]||id.state||"")}</span>`;
   let h = `<div class="rp-d-h"><b>${esc(r.name)}</b>
     <span class="k">${esc(RP_KIND_LAB[r.kind]||r.kind||"")}</span>
-    <span class="k">${r.visibility?esc(r.visibility):"可见性未知"}</span>
+    <span class="vis ${v.cls}" title="${esc(v.t)}" style="font-family:var(--mono,inherit)">${v.g}</span>
+    <span class="k" title="${esc((r.owner||"没有 owner"))}">${esc(r.owner||"—")}${idTail}</span>
     ${r.nested?`<span class="k" title="这个仓的 .git 是文件,说明它是 submodule 或 worktree">嵌套</span>`:""}
   </div>`;
 
-  // ---- 身份
-  h += `<div class="rp-grp">账号</div>`;
-  h += rpField("owner", r.owner?esc(r.owner):`<span class="note">没有 remote</span>`);
-  const idCls = id.state==="mismatch" ? "bad" : (id.state==="ok" ? "" : "note");
-  h += rpField("匹配", esc(RP_ID_LAB[id.state]||id.state||"—")
-      + (id.expect && id.state!=="ok" ? ` <span class="note">期望 ${esc(id.expect)}</span>` : ""), idCls);
-  if(id.scope) h += rpField("身份来源",
-      id.scope==="local" ? "本仓显式配置" : `<span class="note">继承全局默认</span>`, "note");
-  if(id.why) h += rpField("说明", `<span class="note">${esc(id.why)}</span>`);
+  // 数字排成一行。没有 upstream 时未推送是 null 而不是 0 —— 画成 0 会让
+  // 「一个提交都没推出去」和「已同步」长得一模一样,而那正是这块面板存在的理由,
+  // 所以那一档画成 `?` 并且用虚线框。
+  h += `<div class="rp-chipsrow">`
+    + rpChip(r.unpushedKnown ? (r.ahead||0) : null, "未推", r.unpushedKnown ? "hot" : "unk",
+             r.unpushedKnown ? "本地有而上游没有的提交" : "没有 upstream 可比,所以不知道推没推出去")
+    + rpChip(r.behind||0, "落后", "", "上游有而本地没有的提交")
+    + rpChip(r.dirty||0, "未提交", "warn", "工作树里改过但没提交的文件数")
+    + `<span class="rp-chip ${r.ageDays==null?"unk":(r.ageDays>30?"warn":"zero")}"
+        title="最后一次提交距今">${r.ageDays==null?"—":(r.ageDays<1?"今天":r.ageDays.toFixed(0)+"d")}<span class="t">最后提交</span></span>`
+    + `</div>`;
 
-  // ---- 位置
-  h += `<div class="rp-grp">位置</div>`;
-  h += rpField("本地路径", esc(r.path||"—"));
-  h += rpField("remote", r.remote?esc(r.remote):`<span class="note">没有 remote</span>`);
-  h += rpField("分支", (r.branch?esc(r.branch):`<span class="note">游离 HEAD</span>`)
-      + (r.upstream ? ` → ${esc(r.upstream)}`
-                    : ` <span class="note">没有 upstream</span>`));
+  // 分支流向。没有 upstream 时箭头是断的 ⇥,并且照样把话说出来:
+  // 这是唯一一个「看漏了就会永久丢东西」的状态,不能只靠认出一个形状。
+  h += `<div class="rp-flow">`
+    + `<span>${r.branch?esc(r.branch):'<span class="up none">游离 HEAD</span>'}</span>`
+    + (r.upstream
+        ? `<span class="arr">──▸</span><span>${esc(r.upstream)}</span>`
+        : `<span class="arr cut">──✕</span><span class="up none">没有 upstream</span>`)
+    + `</div>`;
 
-  // ---- 状态
-  h += `<div class="rp-grp">状态</div>`;
-  // 没有 upstream 时 ahead 是 null 而不是 0。把它画成 0 会让「一个提交都没推出去」
-  // 和「已同步」长得一模一样,而这正是这块面板存在的理由。
-  h += rpField("未推送", r.unpushedKnown
-      ? (r.ahead ? `<span class="bad">${r.ahead}</span>` : "0")
-      : `<span class="note">不知道(没有 upstream 可比)</span>`);
-  h += rpField("落后", r.behind ? String(r.behind) : "0");
-  h += rpField("未提交", r.dirty ? `<span class="warn">${r.dirty}</span>` : "0");
-  h += rpField("最后提交", r.ageDays==null ? `<span class="note">没有提交</span>`
-      : (r.ageDays<1 ? "今天" : r.ageDays.toFixed(1)+" 天前"));
-  if(r.state==="error") h += rpField("扫不动", `<span class="bad">${esc(r.why||"")}</span>`);
+  // 两行事实。标签列去掉了:以盘符开头的绝对路径和以 git@ 开头的 URL 不需要人告诉它们是什么。
+  h += `<div class="rp-line"><span class="ic" title="本地路径">📁</span>`
+    + `<code>${esc(r.path||"—")}</code>`
+    + `<button class="mini" data-rpact="copy" title="复制绝对路径">复制</button></div>`;
+  h += `<div class="rp-line"><span class="ic" title="remote">☁</span>`
+    + `<code>${r.remote?esc(r.remote):"没有 remote"}</code></div>`;
+
+  // 账号判定不 ok 时把话说出来。ok 的时候一个字都不说 —— 47 个仓每个念一遍「匹配」
+  // 是纯噪音,而噪音会让真正该看的那一条也被跳过。
+  if(id.state && id.state!=="ok" && id.why){
+    h += `<div class="rp-f"><span class="lb">账号</span><span class="vv note ${idCls}">${esc(id.why)}</span></div>`;
+  }
+  if(r.state==="error"){
+    h += `<div class="rp-f"><span class="lb">扫不动</span><span class="vv bad">${esc(r.why||"")}</span></div>`;
+  }
+
+  // 关系做成小标签。三种关系以前各占一行「标签:值」。
+  const rel = [];
   const comp = byHost[r.name];
-  if(comp) h += rpField("伴生仓", esc(comp.name));
-  if(r.companionOf) h += rpField("宿主", esc(r.companionOf));
-  if(r.usedBy) h += rpField("被引用", `${r.usedBy} 个仓把它当 submodule`);
-  if(r.usesShared && r.usesShared.length) h += rpField("它引用", esc(r.usesShared.join(", ")));
+  if(comp) rel.push(`伴生 ${esc(comp.name)}`);
+  if(r.companionOf) rel.push(`宿主 ${esc(r.companionOf)}`);
+  if(r.usedBy) rel.push(`被 ${r.usedBy} 个仓引用`);
+  if(r.usesShared && r.usesShared.length) rel.push(`引用 ${esc(r.usesShared.join("、"))}`);
+  if(rel.length) h += `<div class="rp-rel">` + rel.map(x=>`<span>${x}</span>`).join("") + `</div>`;
 
-  // ---- 动作。只读的那几个;改东西的事不在这里做。
   h += `<div class="rp-acts">
-    <button class="mini" data-rpact="reveal" title="资源管理器定位到这个仓">打开目录</button>
-    <button class="mini" data-rpact="copy" title="把绝对路径复制到剪贴板">复制路径</button>`;
+    <button class="mini" data-rpact="reveal" title="资源管理器定位到这个仓">打开目录</button>`;
   h += r.webUrl
-    ? `<button class="mini" data-rpact="web" title="${esc(r.webUrl)}">GitHub</button>`
-    : `<button class="mini" disabled title="认不出这个 remote 对应的网页地址。本机的 remote 是 ssh alias 形态,而按「反正都是 GitHub」拼出来的链接会把人送到不存在的页面">GitHub</button>`;
+    ? `<button class="mini" data-rpact="web" title="${esc(r.webUrl)}">网页</button>`
+    : `<button class="mini" disabled title="认不出这个 remote 对应的网页地址。按「反正都是同一家」拼出来的链接会把人送到不存在的页面,而那比没有链接更糟">网页</button>`;
   h += `<button class="mini" data-rpact="status" title="git status,看具体是哪些文件">看改动</button>
     <button class="mini" data-mt="repo.fetch" data-name="${esc(r.name)}" title="git fetch,只取不合">fetch</button>
   </div><div class="rp-out" id="rpout"></div>`;
