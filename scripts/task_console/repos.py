@@ -221,6 +221,9 @@ def scan_one(repo: Path, vis_table: dict, now: float) -> dict:
                 # 形状事实。类型和关系在 scan() 里定,因为那需要看到全部仓;
                 # 这里只报「我这个目录长什么样」。
                 remoteName=_repo_name_from_url(remote),
+                # owner 一直被算出来,但从前只喂给可见性查表然后就丢了。面板要回答
+                # 「这个仓属于哪个账号」,而那个问题的答案就是它。
+                owner=(_owner_repo(remote) or "").split("/")[0] or None,
                 hasSkillManifest=_has_skill_manifest(repo),
                 usesShared=_submodule_parents(repo),
                 ahead=ahead, behind=behind, dirty=dirty, remote=remote,
@@ -307,6 +310,21 @@ def _vis_match_reason(rows: list[dict], table: dict) -> str | None:
             f"所有仓的公开/私有标记因此都不显示。")
 
 
+def _identity_counts(rows: list[dict]) -> dict:
+    """每种账号判定各有几个仓。
+
+    页面用它做过滤器的角标,也用它回答「有没有配错的」这个问题而不必逐行看。
+    刻意把四态都算出来,包括 unchecked:一个只数 mismatch 的计数器在没配身份表时是 0,
+    而 0 在那里读起来像「没有配错的」。
+    """
+    out: dict[str, int] = {}
+    for r in rows:
+        st = (r.get("identity") or {}).get("state")
+        if st:
+            out[st] = out.get(st, 0) + 1
+    return out
+
+
 def _group_counts(rows: list[dict]) -> dict:
     """每个组标题下实际显示多少个仓。伴生仓归到它宿主所在的组。
 
@@ -366,10 +384,16 @@ def scan(root: str | None = None, now: float | None = None, workers: int = 10) -
                             "kinds": {k: 0 for k in (KIND_SKILL, KIND_SHARED,
                                                      KIND_COMPANION, KIND_OTHER)},
                             "kindOrder": list(KIND_ORDER),
-                            "visibilityReason": None},
+                            "visibilityReason": None,
+                            "identityReason": None,
+                            "identityCounts": {}},
                 "note": "这个根目录下没有 git 仓"}
 
     vis, vis_reason = _load_visibility()
+    # 身份表和可见性表同一个形态:仓外文件、走环境变量、读不到时带着原因一起下发。
+    # 读不到绝不能静默:那会让每一行都显示「未检查」而页面说不出为什么。
+    import identity as _ident
+    idt, idt_reason = _ident.load_table()
     out = []
     with cf.ThreadPoolExecutor(max_workers=workers) as ex:
         futs = {ex.submit(scan_one, r, vis, now): r for r in repos}
@@ -381,6 +405,19 @@ def scan(root: str | None = None, now: float | None = None, workers: int = 10) -
                 # 扫不动的仓要出现在列表里并且是红的。悄悄跳过等于把它算成没问题。
                 out.append({"name": r.name, "path": str(r), "state": ERROR,
                             "why": f"{e.__class__.__name__}: {e}"})
+
+    # 账号归属。放在分类之后、排序之前,因为它按仓逐个跑 git,而扫描那一步已经并发过了;
+    # 这里再开一层并发只会和上面那批 git 抢同一批句柄。
+    for _r in out:
+        if _r.get("state") == ERROR:
+            continue
+        try:
+            _r["identity"] = _ident.judge(Path(_r["path"]), _r.get("owner"), idt, idt_reason)
+        except Exception as e:
+            # 判定不了要说出来,不能让这一栏空着 —— 空着和「对得上」在屏幕上一样。
+            _r["identity"] = {"state": _ident.UNCHECKED, "owner": _r.get("owner"),
+                              "expect": None, "scope": None,
+                              "why": "判定失败(%s)" % e.__class__.__name__}
 
     _classify(out)
     out.sort(key=lambda x: (-_SEV.get(x["state"], 0), x["name"]))
@@ -405,6 +442,9 @@ def scan(root: str | None = None, now: float | None = None, workers: int = 10) -
             # 「读到了但一条都没匹配上」同样要说 —— 那是匹配逻辑坏了,不是没登记,
             # 而这两件事在屏幕上原本长得一样(都是没有徽章、没有原因)。
             "visibilityReason": vis_reason or _vis_match_reason(out, vis),
+            # 和上面同一个道理:身份表读不出来时,页面要说得出为什么整栏是「未检查」。
+            "identityReason": idt_reason,
+            "identityCounts": _identity_counts(out),
             "unknownUpstream": sum(1 for x in out if x.get("unpushedKnown") is False),
             # 每组实际会显示多少个仓。页面用它画分组标题,而不是自己再数一遍 ——
             # 前端数一遍就是同一个事实的第二个来源。

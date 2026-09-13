@@ -65,6 +65,7 @@ names with your own tasks. Everything else is optional.
 | `TASK_CONSOLE_SESSIONS` | a session transcript directory | unset means that row reads NOT CHECKED |
 | `TASK_CONSOLE_CLAUDE` | the CLI used for plugin actions | falls back to PATH; not found means the plugin panel reads NOT CHECKED |
 | `TASK_CONSOLE_ALLOWED_HOSTS` | extra Host header values to accept | only the three loopback spellings are accepted |
+| `TASK_CONSOLE_IDENTITIES` | a table of `login\|display name\|commit email`, one per line, `#` for comments, saying which identity each repository owner should be committed under | unset means the account-match column reads NOT CHECKED for every repository, which is deliberately not the same as saying they match; no address from this file is ever rendered, only the account name and the verdict |
 | `TASK_CONSOLE_CONVO_CACHE` | where the conversation index caches its scan | unset means the first scan of every page load walks every transcript again; correctness is unaffected, the page is just slower |
 | `TASK_CONSOLE_DB` | the SQLite file the ingester writes and the page reads | falls back to the companion repo's `data/task-console/console.sqlite3`, and if no companion resolves it reports UNINITIALISED with setup instructions rather than falling back into this repo |
 | `TASK_CONSOLE_POWERSHELL` | the powershell.exe that task commands run through | falls back to the pinned `System32\WindowsPowerShell\v1.0\powershell.exe`, and only to a bare `powershell.exe` off PATH when that file is not there |
