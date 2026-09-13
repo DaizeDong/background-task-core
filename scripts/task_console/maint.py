@@ -32,7 +32,7 @@ SAFE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._@-]{0,79}$")
 
 # 动作表是闭合的。加一个动作必须改这里,而不是拼一个字符串就能多出一个动词。
 ACTIONS = ("skill.archive", "skill.restore", "plugin.enable", "plugin.disable",
-           "repo.fetch", "clean.tempgit",
+           "repo.fetch", "repo.reveal", "repo.status", "clean.tempgit",
            "memory.archive", "memory.restore",
            "task.retire")
 
@@ -285,6 +285,14 @@ def act(action: str, name: str, arg: str | None = None) -> dict:
         # 判定,而不是由调用方指定路径。一个接受路径的删除接口迟早会被喂进一条别的路径。
         import sysinfo
         return sysinfo.clean_temp_git()
+    if action == "repo.reveal":
+        # 只是把资源管理器开到那个目录。不改任何东西,所以点错了没有代价 ——
+        # 这正是它该在这张表里的理由:面板的价值一半是「把我带过去」。
+        import repos
+        return repos.reveal(name)
+    if action == "repo.status":
+        import repos
+        return repos.status(name)
     if action == "repo.fetch":
         # 只读的网络动作。push 永远不进这张表:它是对外动作,撤不回来,
         # 而一个能一键推送的按钮迟早会在没人看的时候被点到。

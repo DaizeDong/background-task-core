@@ -146,6 +146,26 @@ def _owner_repo(url: str | None) -> str | None:
     return (parts[-2] + "/" + parts[-1]).lower()
 
 
+def _web_url(remote: str | None, table: dict) -> str | None:
+    """浏览器里打开这个仓的地址,**只在能确定的时候才给**。
+
+    不能从 remote 直接猜。本机的 remote 是 `git@<ssh-alias>:owner/repo.git` 这种形态,
+    里面根本没有 `github.com` 这一段,而按「反正大家都用 GitHub」拼出来的链接在一个
+    自建 remote 上会把人送到一个不存在的页面 —— 一个指错地方的链接比没有链接更糟,
+    因为它看起来是工作的。
+
+    判据用可见性表:那张表是拿 `gh` 对着 GitHub 查出来的,所以一个 `owner/repo` 键
+    出现在里面,本身就是「这确实是 GitHub 上的仓」的证据,不是推测。查不到就返回 None,
+    页面据此把按钮整个隐掉并说明原因。
+    """
+    key = _owner_repo(remote)
+    if not key or not table:
+        return None
+    if key in table or any(isinstance(k, str) and k.lower() == key for k in table):
+        return "https://github.com/" + key
+    return None
+
+
 def _visibility(remote: str | None, table: dict) -> str | None:
     """这个仓是公开还是私有。查不到就是 None,页面显示「未知」而不是猜 PRIVATE。
 
@@ -230,6 +250,7 @@ def scan_one(repo: Path, vis_table: dict, now: float) -> dict:
                 lastCommit=last,
                 ageDays=round((now - last) / 86400.0, 1) if last else None,
                 visibility=_visibility(remote, vis_table),
+                webUrl=_web_url(remote, vis_table),
                 # 没有 upstream 时 ahead 是 None,不是 0。页面必须画成「未知」。
                 unpushedKnown=ahead is not None)
 
@@ -474,3 +495,52 @@ def fetch(name: str) -> dict:
     if rc != 0:
         raise Refused(f"fetch 退出 {rc}: {out.strip()[:200]}", "fetch_failed")
     return {"ok": True, "out": out.strip()[:400]}
+
+
+def reveal(name: str) -> dict:
+    """在资源管理器里定位到这个仓。
+
+    只接受**仓名**,路径由这里解析 —— 一个接受路径的接口迟早会被喂进另一条路径,
+    而这个接口会把参数交给外壳。复用 maint 那道参数闸,不另造一个。
+    """
+    from maint import Refused, SAFE_NAME, _child
+    raw = os.environ.get("TASK_CONSOLE_REPOS")
+    if not raw:
+        raise Refused("没有配 TASK_CONSOLE_REPOS", "no_config")
+    if not SAFE_NAME.match(name or ""):
+        raise Refused(f"仓名不合法: {name!r}", "bad_name")
+    repo = _child(Path(os.path.expanduser(raw)), name)
+    if not repo.is_dir():
+        raise Refused(f"目录不存在: {name}", "missing_src")
+    if os.name != "nt":
+        raise Refused("只在 Windows 上支持", "unsupported")
+    # 不经 shell。explorer 的参数是一个已经解析好的绝对路径,不是拼出来的命令行。
+    subprocess.Popen(["explorer", str(repo)], stdin=subprocess.DEVNULL,
+                     creationflags=_NO_WINDOW)
+    return {"ok": True, "opened": str(repo)}
+
+
+def status(name: str) -> dict:
+    """这个仓现在到底哪里脏了。
+
+    面板上那个 `~12` 只说得出「有 12 个」,说不出是哪 12 个,而「别的自动化正在里面干活」
+    和「我自己改了没提交」要靠文件名才分得开。只读。
+    """
+    from maint import Refused, SAFE_NAME, _child
+    raw = os.environ.get("TASK_CONSOLE_REPOS")
+    if not raw:
+        raise Refused("没有配 TASK_CONSOLE_REPOS", "no_config")
+    if not SAFE_NAME.match(name or ""):
+        raise Refused(f"仓名不合法: {name!r}", "bad_name")
+    repo = _child(Path(os.path.expanduser(raw)), name)
+    if not (repo / ".git").exists():
+        raise Refused(f"不是 git 仓: {name}", "missing_src")
+    rc, out = _git(repo, "status", "--porcelain=v1", "-b", timeout=30)
+    if rc != 0:
+        raise Refused(f"git status 退出 {rc}: {out.strip()[:200]}", "status_failed")
+    lines = [ln for ln in out.splitlines() if ln.strip()]
+    branchline = lines[0] if lines and lines[0].startswith("##") else None
+    files = [ln for ln in lines if not ln.startswith("##")]
+    # 条数单独给:前端截断显示时,「只显示了前 N 条」和「一共就这么多」必须分得开。
+    return {"ok": True, "branch": branchline, "count": len(files),
+            "files": files[:200], "truncated": len(files) > 200}

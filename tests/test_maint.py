@@ -65,14 +65,19 @@ def test_action_not_in_the_table_is_refused(dirs):
         assert e.value.code == "bad_action", a
 
 
-def test_action_table_is_exactly_these_nine(dirs):
+def test_action_table_is_exactly_these_eleven(dirs):
     """钉住集合本身:加动作是一个要有人明确改这行的动作,不是顺手就能滑进去的。
 
     repo.fetch 在这里,而 repo.push **不在**,这是刻意的:push 是对外动作,撤不回来,
     一个能一键推送的按钮迟早会在没人看的时候被点到。
+
+    2026-09-12 加了 repo.reveal 与 repo.status,两个都只读:一个把资源管理器开到那个目录,
+    一个把脏文件列出来。它们进来时这条断言必须被人明确改一次 —— 那正是这个用例的作用,
+    动作不该顺手滑进白名单。
     """
     assert set(M.ACTIONS) == {"skill.archive", "skill.restore",
-                              "plugin.enable", "plugin.disable", "repo.fetch",
+                              "plugin.enable", "plugin.disable",
+                              "repo.fetch", "repo.reveal", "repo.status",
                               "clean.tempgit", "memory.archive", "memory.restore",
                               "task.retire"}
     assert not any(a.endswith(".push") for a in M.ACTIONS)
