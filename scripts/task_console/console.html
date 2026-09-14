@@ -2023,10 +2023,19 @@ function renderConvos(){
 
   const groups=CONVOS.groups.filter(g=>!CV_HUMAN_ONLY||g.humanish);
 
-  // 体积条的基准。取对数是因为跨度有四个数量级(88K 到 3.7G):线性标度下
+  // 体积条的基准。取对数是因为跨度有四个数量级(几百字节到几个 G):线性标度下
   // 除了最大的两行,其余全部宽度归零,那等于把这一列画成空的。
-  const maxB=Math.max(1,...groups.map(g=>g.bytes||0));
-  const barW=b=>b<=0?0:Math.max(3,Math.round(100*Math.log10(1+b)/Math.log10(1+maxB)));
+  // ⚠ 但对数**从 0 起算**又走到另一个极端:实测最小的一行也有 56% 宽,
+  // 三十多行挤在 56%-100% 之间,肉眼分不出谁比谁大 —— 一根几乎人人等长的条,
+  // 和没有条一样没用。所以把 [最小, 最大] 整段铺开到 [3%, 100%]。
+  const vals=groups.map(g=>g.bytes||0).filter(b=>b>0);
+  const maxB=Math.max(1,...vals), minB=vals.length?Math.min(...vals):1;
+  const lo=Math.log10(1+minB), hi=Math.log10(1+maxB), span=hi-lo;
+  const barW=b=>{
+    if(b<=0) return 0;                       // 真的 0 走斜纹,不是一根 3% 的条
+    if(span<=0) return 100;                  // 只有一组,或全部一样大
+    return Math.max(3,Math.round(3+97*(Math.log10(1+b)-lo)/span));
+  };
 
   // 一次性无头运行留下的临时目录。它们占掉三分之一的行,而每行携带的信息
   // 只有「这里有过一次无头运行」。三个谓词缺一不可,而且**不许放宽成「凡 1 场的都折」**:
