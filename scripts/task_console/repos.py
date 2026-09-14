@@ -50,6 +50,12 @@ KIND_OTHER = "other"
 KIND_ORDER = (KIND_SKILL, KIND_SHARED, KIND_OTHER)
 
 
+# 远程跟踪引用多久之内算数。超过这个岁数,behind 一律画成「未知」而不是它缓存里那个数。
+# 24 小时:有每日任务在动的仓,一天之内的缓存基本跟得上;
+# 再久就说不准了,而说不准的时候必须说「不知道」,不能把缓存里的 0 当成结论。
+BEHIND_TRUST_HOURS = 24.0
+
+
 def _repo_name_from_url(url: str | None) -> str | None:
     """从 remote URL 取出裸仓名。
 
@@ -228,6 +234,33 @@ def scan_one(repo: Path, vis_table: dict, now: float) -> dict:
     rc3, out3 = _git(repo, "remote", "get-url", "origin")
     remote = out3.strip() if rc3 == 0 else None
 
+    # 远程跟踪引用上一次刷新是什么时候。
+    #
+    # ⚠ 这个字段存在的理由:上面那个 behind 来自 `# branch.ab`,而那一行比的是
+    # HEAD 和**本地缓存的那份 origin/xxx**,不是真正的远端。扫描过程不 fetch,
+    # 所以一个从没 fetch 过的仓,behind 恒为 0 —— 而屏幕上它和「真的已同步」
+    # 逐字一样。实测下来这不是边缘情况:一个只推不拉的仓永远不会写 FETCH_HEAD,
+    # 而那种仓在任何以推送为主的工作流里都占多数,于是「落后 0」大面积失真。
+    #
+    # 判据用 FETCH_HEAD 的 mtime:它是 fetch 真的跑过才会被写的那个文件。
+    # 不存在 = 从来没 fetch 过,那和「刚 fetch 过」是两件相反的事。
+    fetched_at = None
+    try:
+        fh = repo / ".git" / "FETCH_HEAD"
+        if not fh.exists():
+            # submodule / worktree 的 .git 是文件不是目录,真正的 git 目录在别处。
+            # 问 git 自己,不自己拼路径。
+            rc4, out4 = _git(repo, "rev-parse", "--git-dir")
+            if rc4 == 0 and out4.strip():
+                cand = Path(out4.strip())
+                if not cand.is_absolute():
+                    cand = repo / cand
+                fh = cand / "FETCH_HEAD"
+        if fh.is_file():
+            fetched_at = fh.stat().st_mtime
+    except OSError:
+        fetched_at = None
+
     if branch in (None, "(detached)"):
         state = DETACHED
     elif ahead:
@@ -247,6 +280,19 @@ def scan_one(repo: Path, vis_table: dict, now: float) -> dict:
                 hasSkillManifest=_has_skill_manifest(repo),
                 usesShared=_submodule_parents(repo),
                 ahead=ahead, behind=behind, dirty=dirty, remote=remote,
+                fetchedAt=fetched_at,
+                fetchAgeHours=(round((now - fetched_at) / 3600.0, 1)
+                               if fetched_at else None),
+                # behind 可不可信,由这里说了算,不让前端各自去推。
+                # ⚠ 没有 upstream 时 behind 本来就是 None(未知),那一档不受这条影响。
+                # ⚠ 两边都要是小时。第一版拿 `now - fetched_at`(秒)直接比
+                # BEHIND_TRUST_HOURS(24),于是任何超过 24 秒的缓存都被判成过期 ——
+                # 于是每一个仓都会显示「落后未知」。这个错的方向是「安全」的,
+                # 所以光读代码看不出来;而一个永远在喊的提示等于没有提示,
+                # 它还会顺带把真正该看的那几个一起淹掉。
+                # 抓到它的是那条负对照用例:刚 fetch 过就必须是可信的。
+                behindKnown=(behind is not None and fetched_at is not None
+                             and (now - fetched_at) / 3600.0 <= BEHIND_TRUST_HOURS),
                 lastCommit=last,
                 ageDays=round((now - last) / 86400.0, 1) if last else None,
                 visibility=_visibility(remote, vis_table),
@@ -401,6 +447,11 @@ def scan(root: str | None = None, now: float | None = None, workers: int = 10) -
         return {"available": True, "root": str(base), "repos": [],
                 "summary": {"total": 0, "counts": {}, "attention": 0,
                             "unknownUpstream": 0,
+                            # 没有仓时这三个都是 0,但键必须在 —— 见上面那段注释,
+                            # 缺一个键的后果是前端把 undefined 拼进副标题。
+                            "staleBehind": 0,
+                            "neverFetched": 0,
+                            "behindTrustHours": BEHIND_TRUST_HOURS,
                             "attentionStates": ["unpushed", "dirty", "error"],
                             "kinds": {k: 0 for k in (KIND_SKILL, KIND_SHARED,
                                                      KIND_COMPANION, KIND_OTHER)},
@@ -467,6 +518,15 @@ def scan(root: str | None = None, now: float | None = None, workers: int = 10) -
             "identityReason": idt_reason,
             "identityCounts": _identity_counts(out),
             "unknownUpstream": sum(1 for x in out if x.get("unpushedKnown") is False),
+            # 有多少个仓的「落后」其实不知道。这个数必须出现在汇总里,
+            # 因为它说的是**整块面板有多少内容不可信**,而那不是某一行自己的事。
+            # 从来没 fetch 过的单独数:它和「fetch 过但旧了」要做的事一样,
+            # 但严重程度不同,合并之后就看不出有一批仓从来没连过远端。
+            "staleBehind": sum(1 for x in out
+                               if x.get("behind") is not None
+                               and not x.get("behindKnown")),
+            "neverFetched": sum(1 for x in out if x.get("fetchedAt") is None),
+            "behindTrustHours": BEHIND_TRUST_HOURS,
             # 每组实际会显示多少个仓。页面用它画分组标题,而不是自己再数一遍 ——
             # 前端数一遍就是同一个事实的第二个来源。
             #

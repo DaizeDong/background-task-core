@@ -1649,6 +1649,13 @@ function renderRepos(){
         ><b>${c[k]}</b></i>`).join("")
     + `</span>`;
   if(S.unknownUpstream) head += `<span title="没有 upstream 的仓:它的提交一个都没推出去过,而这和「已同步」在 0/0 下长得一样">无上游 ${S.unknownUpstream}</span>`;
+  // 整块面板有多少内容不可信。这不是某一行自己的事,所以它必须出现在汇总里。
+  // ⚠ 「从来没 fetch 过」单独说:它和「fetch 过但旧了」要做的事一样,
+  // 但一批仓从来没连过远端是另一个量级的事实,合并之后就看不见了。
+  if(S.staleBehind) head += `<span style="color:var(--warn)"
+      title="这些仓的「落后」来自一份超过 ${S.behindTrustHours} 小时的本地缓存,不作数。先 fetch 再看。${
+        S.neverFetched?" 其中 "+S.neverFetched+" 个从来没 fetch 过。":""}"
+      >落后未知 ${S.staleBehind}${S.neverFetched?` (${S.neverFetched} 个没 fetch 过)`:""}</span>`;
   // 账号判定的计数。mismatch 单独拎出来,因为它是事故形状;unchecked 也要说,
   // 因为一个只数 mismatch 的计数器在没配身份表时是 0,而 0 读起来像「没有配错的」。
   const ic = S.identityCounts||{};
@@ -1851,8 +1858,23 @@ function renderRepoDetail(){
   h += `<div class="rp-chipsrow">`
     + rpChip(r.unpushedKnown ? (r.ahead||0) : null, "未推", r.unpushedKnown ? "hot" : "unk",
              r.unpushedKnown ? "本地有而上游没有的提交" : "没有 upstream 可比,所以不知道推没推出去")
-    + rpChip(r.behind||0, "落后", "", "上游有而本地没有的提交")
+    // ⚠ 落后这个数来自**本地缓存的**那份 origin/xxx(上次 fetch 时的样子),
+    // 扫描过程不 fetch。一个从没 fetch 过的仓 behind 恒为 0,而屏幕上它和
+    // 「真的已同步」逐字一样。所以缓存太旧或压根没有时,这一格画成未知,
+    // 不画那个 0 —— 后端已经算好 behindKnown,这里不再自己推一遍。
+    + (r.behindKnown
+        ? rpChip(r.behind||0, "落后", "", "上游有而本地没有的提交")
+        : rpChip(null, "落后", "unk",
+            r.fetchAgeHours==null
+              ? "这个仓从来没 fetch 过,所以「落后多少」根本不知道。0 是缓存里的值,不是结论。"
+              : `上次 fetch 在 ${r.fetchAgeHours >= 48
+                  ? (r.fetchAgeHours/24).toFixed(0)+" 天" : r.fetchAgeHours.toFixed(0)+" 小时"}前,`
+                + "缓存太旧,「落后多少」不作数。先 fetch 再看。"))
     + rpChip(r.dirty||0, "未提交", "warn", "工作树里改过但没提交的文件数")
+    + `<span class="rp-chip ${r.fetchAgeHours==null?"unk":(r.fetchAgeHours>24?"warn":"zero")}"
+        title="${r.fetchAgeHours==null?"从来没 fetch 过":"上次 fetch 距今"}"
+        >${r.fetchAgeHours==null?"—":(r.fetchAgeHours>=48?(r.fetchAgeHours/24).toFixed(0)+"d"
+          :r.fetchAgeHours.toFixed(0)+"h")}<span class="t">上次 fetch</span></span>`
     + `<span class="rp-chip ${r.ageDays==null?"unk":(r.ageDays>30?"warn":"zero")}"
         title="最后一次提交距今">${r.ageDays==null?"—":(r.ageDays<1?"今天":r.ageDays.toFixed(0)+"d")}<span class="t">最后提交</span></span>`
     + `</div>`;
@@ -3551,7 +3573,7 @@ loadCodex();
 $("scktog").addEventListener("click",()=>$("sckd").classList.toggle("on"));
 loadSelfcheck();
 $("rpreload").addEventListener("click",loadRepos);
-// 过滤只改看得见什么,不重新扫描 —— 扫 48 个仓要一秒多,而每敲一个字符重扫一次
+// 过滤只改看得见什么,不重新扫描 —— 扫一遍所有仓要一秒多,而每敲一个字符重扫一次
 // 既慢又会让选中的那个仓在脚下换位置。
 $("rpq").addEventListener("input", renderRepoList);
 $("rpacc").addEventListener("change", renderRepoList);

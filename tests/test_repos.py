@@ -489,3 +489,75 @@ def test_visibility_matches_when_the_table_key_is_not_lowercase(tmp_path, monkey
     row = {x["name"]: x for x in d["repos"]}["widget"]
     assert row["visibility"] == "PRIVATE", row
     assert d["summary"]["visibilityReason"] is None
+
+
+# ---------- 远程跟踪引用的新鲜度 ----------
+#
+# 这一组存在的理由:behind 来自 `git status --porcelain=v2 -b` 的 `# branch.ab`,
+# 而那一行比的是 HEAD 和**本地缓存的**那份 origin/xxx,不是真正的远端;
+# 扫描过程不 fetch。所以一个从没 fetch 过的仓 behind 恒为 0,
+# 而屏幕上它和「真的已同步」逐字一样。
+# 一个只推不拉的仓永远不会写 FETCH_HEAD,而那种仓在任何以推送为主的工作流里都占多数,
+# 于是「落后 0」大面积失真 —— 这不是边缘情况。
+
+def test_never_fetched_means_behind_is_not_trusted(tmp_path):
+    up = mkbare(tmp_path / "bare", "up")
+    d = mkrepo(tmp_path, "a")
+    git(d, "remote", "add", "origin", str(up))
+    git(d, "push", "-q", "-u", "origin", "HEAD")
+    # push 不写 FETCH_HEAD,所以这个仓有 upstream 但从来没 fetch 过 ——
+    # 正是那 13 个的形状。
+    assert not (d / ".git" / "FETCH_HEAD").exists()
+    out = R.scan(root=str(tmp_path), now=NOW)
+    r = [x for x in out["repos"] if x["name"] == "a"][0]
+    assert r["fetchedAt"] is None and r["fetchAgeHours"] is None
+    # behind 本身仍然是 0(缓存里就是这个值),但「这个 0 不作数」必须单独说出来。
+    assert r["behind"] == 0
+    assert r["behindKnown"] is False
+    assert out["summary"]["neverFetched"] == 1
+    assert out["summary"]["staleBehind"] == 1
+
+
+def test_fresh_fetch_means_behind_is_trusted(tmp_path):
+    """上一条的负对照。
+
+    没有它,一个「永远说不可信」的实现会让上面那条全绿 ——
+    而那样的面板等于把落后这一列整个废掉,那不是修好,是换一种方式不说话。
+    """
+    up = mkbare(tmp_path / "bare", "up")
+    d = mkrepo(tmp_path, "a")
+    git(d, "remote", "add", "origin", str(up))
+    git(d, "push", "-q", "-u", "origin", "HEAD")
+    git(d, "fetch", "-q", "origin")
+    fh = d / ".git" / "FETCH_HEAD"
+    assert fh.exists()
+    # ⚠ 时间戳要相对 NOW 设。这一组用的是注入的假时钟(NOW 是个固定的未来时刻),
+    # 而 FETCH_HEAD 的 mtime 是真实的现在 —— 两者一减是一百多天,
+    # 于是一次真的刚刚跑完的 fetch 会被判成过期。
+    # 这不是被测代码的问题(生产里 now 是真时钟),是这条用例自己要对齐时钟。
+    os.utime(fh, (NOW - 60, NOW - 60))
+    out = R.scan(root=str(tmp_path), now=NOW)
+    r = [x for x in out["repos"] if x["name"] == "a"][0]
+    assert r["fetchedAt"] is not None
+    assert r["behindKnown"] is True
+    assert out["summary"]["neverFetched"] == 0
+    assert out["summary"]["staleBehind"] == 0
+
+
+def test_stale_fetch_head_makes_behind_untrusted_again(tmp_path):
+    """fetch 过,但那是很久以前。和「从来没 fetch 过」要做的事一样,严重程度不同。"""
+    up = mkbare(tmp_path / "bare", "up")
+    d = mkrepo(tmp_path, "a")
+    git(d, "remote", "add", "origin", str(up))
+    git(d, "push", "-q", "-u", "origin", "HEAD")
+    git(d, "fetch", "-q", "origin")
+    fh = d / ".git" / "FETCH_HEAD"
+    old = NOW - (R.BEHIND_TRUST_HOURS + 5) * 3600
+    os.utime(fh, (old, old))
+    out = R.scan(root=str(tmp_path), now=NOW)
+    r = [x for x in out["repos"] if x["name"] == "a"][0]
+    assert r["behindKnown"] is False
+    assert r["fetchAgeHours"] > R.BEHIND_TRUST_HOURS
+    assert out["summary"]["staleBehind"] == 1
+    # 两档分得开:这个仓 fetch 过,不算「从来没 fetch 过」。
+    assert out["summary"]["neverFetched"] == 0
