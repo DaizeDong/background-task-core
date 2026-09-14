@@ -490,6 +490,11 @@ def _merge_decls(decls: list[dict]) -> dict:
             elif k not in out or out[k] in (None, ""):
                 out[k] = v
     out["declCount"] = len(decls)
+    # 原始那几条也留着。合并出来的这一份是给任务表用的(一个任务一行,取更严的一侧),
+    # 而产物新鲜度必须逐条评估 —— 一个任务把几件事折叠进来时,合并成一条就意味着
+    # 坏了哪一件在屏幕上说不出来,而这正是折叠本身带来的那个盲区。
+    # ⚠ 下划线开头:它不进页面载荷(下面那段是逐个字段取的),只给 build_freshness 用。
+    out["_decls"] = list(decls)
     # 产物全列出来:合并之后只显示一个,会让另外那些「监控器确实在盯」的文件
     # 从界面上整个消失。
     arts = [d.get("artifact") for d in decls if d.get("artifact")]
@@ -603,7 +608,13 @@ def build_freshness(tasks: dict, health: dict, health_reason: str | None = None)
             "next_run": _epoch(t.get("nextRun")),
             "missed_runs": t.get("missedRuns") or 0,
         }
-    return freshness.evaluate(list(health.values()), rows, time.time())
+    # 逐条评估,不是逐个任务名。同名多条在这里要展开回去:
+    # 合并那一份是任务表的口径(一行一个任务),而新鲜度问的是「每一件声明过的事
+    # 是不是都还在跑」,把折叠进一个任务的几件事合成一条,等于把盲区原样保留。
+    decls = []
+    for v in health.values():
+        decls.extend(v.get("_decls") or [v])
+    return freshness.evaluate(decls, rows, time.time())
 
 
 # 导出给页面的字段,以及**刻意不导出**的那些。两个集合加起来必须覆盖 hist / runs 里

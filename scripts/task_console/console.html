@@ -1436,8 +1436,11 @@ function renderFresh(){
   $("frboard").innerHTML=tsSorted.map(t=>{
     const why=(t.reasons||[]).join(" · ");
     // 加 tabindex 和 role:这一格是概览屏两个核心导航之一,原来只能用鼠标。
+    // 折叠进同一个任务的几件事在灯板上是各自一格。它们的 data-fr 都指向那个任务
+    // (点了跳过去是对的),但 title 必须说清是哪一件,否则同名的几格看起来像重复渲染。
+    const who = t.check ? `${t.name} · ${t.check}` : t.name;
     return `<i class="fr-c s-${t.state}" data-fr="${esc(t.name)}" tabindex="0" role="button" `
-      +`title="${esc(t.name)} : ${FR_LABEL[t.state]}${why?" : "+esc(why):""}"></i>`;
+      +`title="${esc(who)} : ${FR_LABEL[t.state]}${why?" : "+esc(why):""}"></i>`;
   }).join("");
 
   // 明细搬到了上面的「要人管的事」:那张清单列的就是这几条,一字不差。
@@ -2754,7 +2757,10 @@ function renderTodo(){
     // 状态集合来自后端 summary.attentionStates,不在这里再写一遍。
     // 两处各写一份的后果是它们会漂,而漂的时候两处都还在正常渲染。
     DATA.freshness.tasks.filter(r=>FR_ATT().indexOf(r.state) >= 0).forEach(r=>rows.push(
-      {v:"tasks", src:"产物", nm:r.name, task:r.name,
+      // ⚠ 名字要带上 check。一个任务可以把好几件不相干的事折叠进来,每件各写一条声明,
+      // 而它们在这里全叫同一个任务名 —— 光看名字只知道「这个任务有问题」,
+      // 说不出是它底下哪一件。折叠带来的盲区就是在这一行被补上的。
+      {v:"tasks", src:"产物", nm:r.check ? `${r.name} · ${r.check}` : r.name, task:r.name,
        why:(r.reasons && r.reasons[0]) ||
            (r.state==="never" ? "从未运行过" : r.state==="unknown" ? "查不成" : "产物过期"),
        sev:r.state==="down" ? 3 : 2}));

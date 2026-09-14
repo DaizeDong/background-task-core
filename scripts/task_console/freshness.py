@@ -212,6 +212,11 @@ def evaluate(decls, rows, now, mtime_of=None):
 
         out.append({
             "name": name,
+            # 同一个任务名可以有多条声明(一个任务把几件事折叠进来,每件各写一条)。
+            # check 是那几条之间唯一的区分,把它带出去,页面才说得出红的是哪一件 ——
+            # 否则几条挤在同一个名字下,人只知道「这个任务有问题」,
+            # 而那个任务底下可能装着好几件不相干的事。
+            "check": decl.get("check"),
             "label": decl.get("label") or name,
             "state": state,
             "reasons": reasons,

@@ -139,6 +139,39 @@ def test_repeated_names_merge_to_the_strictest_declaration(tmp_path, monkeypatch
     assert warn and "AcmeFolded" in warn, warn
 
 
+def test_build_freshness_evaluates_every_declaration_not_the_merged_one(tmp_path, monkeypatch):
+    """合并那一份是任务表的口径;产物新鲜度必须逐条评估。
+
+    ⚠ 这条走的是 build_freshness 这条**真实通路**,不是直接调 freshness.evaluate。
+    上一版只测了下面那一层,于是把 server 里那段展开改回 `list(health.values())`
+    (也就是退回合并成一条)时,整套 513 条用例一条都没红 ——
+    测到了能判对的那一层,没测到会坏掉的那一层。
+
+    折叠进一个任务的几件事共用一个任务名。合成一条之后,坏了哪一件
+    在屏幕上说不出来,而那正是折叠本身带来的盲区。
+    """
+    _manifest(tmp_path, monkeypatch, [
+        {"name": "AcmeFolded", "check": "alpha", "max_age_hours": 26,
+         "artifact": "~/a/alpha.md", "artifact_max_age_hours": 26},
+        {"name": "AcmeFolded", "check": "beta", "max_age_hours": 26,
+         "artifact": "~/a/beta.md", "artifact_max_age_hours": 26},
+        {"name": "AcmeSolo", "max_age_hours": 26},
+    ])
+    health, _ = S.load_health()
+    assert set(health) == {"AcmeFolded", "AcmeSolo"}, "任务表仍然是一个任务一行"
+
+    tasks = {"AcmeFolded": {"state": "Ready", "rcRaw": 0,
+                            "lastRun": None, "nextRun": None, "missedRuns": 0},
+             "AcmeSolo": {"state": "Ready", "rcRaw": 0,
+                          "lastRun": None, "nextRun": None, "missedRuns": 0}}
+    fr = S.build_freshness(tasks, health)
+    checks = sorted(t.get("check") for t in fr["tasks"] if t["name"] == "AcmeFolded")
+    assert checks == ["alpha", "beta"], f"折叠的两件事要各出一条结论,实际: {checks}"
+    assert fr["summary"]["total"] == 3, "两条折叠 + 一条独立 = 三条,不是两条"
+    # 负对照:没有多条声明的任务不能被这段展开弄成两条。
+    assert sum(1 for t in fr["tasks"] if t["name"] == "AcmeSolo") == 1
+
+
 def test_a_clean_manifest_produces_no_warning(tmp_path, monkeypatch):
     """负对照:清单干净时不许报警。见谁都叫的闸门会被无视。"""
     _manifest(tmp_path, monkeypatch, [

@@ -269,3 +269,80 @@ def test_a_normal_fresh_artifact_is_still_up():
     """再一条正对照:正常的新鲜产物不能被这次改动波及。"""
     r = ev(mk(artifact="~/a", artifact_max_age_hours=10), mtime=NOW - 1 * H)
     assert r["state"] == F.UP, r
+
+
+# ---------- 同一个任务名下的多条声明,各判各的 ----------
+#
+# 一个任务把几件不相干的事折叠进来,共用一个退出码和一个产物判据。
+# 于是其中任何一件停了,那一行照样绿:宿主的退出码讲的是宿主的事,
+# 而折叠进来的活失败时通常被设计成非致命的 —— 记一行,继续走,退 0。
+# 这种停摆可以持续很久没人发现,因为屏幕上没有任何一处在单独看它。
+#
+# 修法不是把它们拆成各自的计划任务:折叠往往有正当理由(比如其中一件必须排在另一件
+# 之后,顺序本身是正确性的一部分),拆开会把那个理由连带丢掉。
+# 改的是判定的粒度 —— 每件事各写一条声明、各判各的。
+# 下面这三条钉住的就是「各判各的」这件事本身。
+
+def _folded(check, artifact, **kw):
+    """一条折叠进宿主任务的杂务声明。
+
+    退出码不权威:宿主任务的退出码说的是宿主自己的事,而杂务失败是非致命的,
+    两个数字根本不在讲同一件事。产物只在成功路径上写,所以它有资格洗掉宿主的退出码。
+    """
+    d = mk(check=check, artifact=artifact, artifact_max_age_hours=26,
+           artifact_written_only_on_success=True,
+           exit_code_is_authoritative=False)
+    d.update(kw)
+    return d
+
+
+def test_each_declaration_gets_its_own_verdict(monkeypatch):
+    """三件杂务,只有一件的产物过期,那一件红,另外两件不受影响。"""
+    ages = {"a.md": NOW - 2 * H, "b.md": NOW - 200 * H, "c.md": NOW - 3 * H}
+
+    def fake(path):
+        return (ages[path], None)
+
+    decls = [_folded("chore-a", "a.md"), _folded("chore-b", "b.md"), _folded("chore-c", "c.md")]
+    out = F.evaluate(decls, rows(), NOW, mtime_of=fake)["tasks"]
+    by = {t["check"]: t for t in out}
+    assert len(out) == 3, "三条声明必须产出三条结论,不是合并成一条"
+    assert by["chore-b"]["state"] == F.DOWN
+    # 负对照:另外两件必须是好的。少了这两句,一个「整组一起判红」的实现照样过。
+    assert by["chore-a"]["state"] == F.UP
+    assert by["chore-c"]["state"] == F.UP
+
+
+def test_check_field_is_carried_out_so_the_page_can_name_the_culprit(monkeypatch):
+    """光有三条结论不够 —— 它们都叫同一个任务名。
+
+    没有 check,页面只能说「这个任务有问题」,而那个任务底下装着六件不相干的事。
+    这正是折叠带来的盲区,补上 check 才算真的补掉。
+    """
+    out = F.evaluate([_folded("memory-doctor", "r.md")], rows(), NOW,
+                     mtime_of=lambda p: (NOW - 300 * H, None))["tasks"][0]
+    assert out["check"] == "memory-doctor"
+    assert out["name"] == "T"
+
+
+def test_host_exit_code_does_not_redden_a_folded_chore_that_ran(monkeypatch):
+    """宿主任务红,而杂务自己跑完了 —— 杂务不该跟着红。
+
+    这是这套声明能不能用的关键:宿主的退出码讲的是宿主的事。如果它压着所有杂务,
+    每条杂务声明都只会复读宿主的红,一件自己的话都说不出来,那和合并成一条没有区别。
+    """
+    bad = rows(last_rc=1)
+    out = F.evaluate([_folded("chore-a", "a.md")], bad, NOW,
+                     mtime_of=lambda p: (NOW - 2 * H, None))["tasks"][0]
+    assert out["state"] == F.UP
+
+    # 负对照一:同样是宿主退出码 1,但杂务自己的产物过期了 -> 必须红。
+    stale = F.evaluate([_folded("chore-a", "a.md")], bad, NOW,
+                       mtime_of=lambda p: (NOW - 300 * H, None))["tasks"][0]
+    assert stale["state"] == F.DOWN
+
+    # 负对照二:宿主自己那条声明(没有 written_only_on_success)照样吃退出码,
+    # 否则这个改动会顺手把宿主的红也洗掉。
+    host = F.evaluate([mk(artifact="h.md", artifact_max_age_hours=26)], bad, NOW,
+                      mtime_of=lambda p: (NOW - 2 * H, None))["tasks"][0]
+    assert host["state"] == F.DOWN
