@@ -927,6 +927,13 @@ section[data-view][hidden]{display:none}
   cursor:pointer}
 #todo .chip:hover{color:var(--ink);border-color:var(--ink)}
 #todo .why b{color:var(--ink);font-variant-numeric:tabular-nums}
+/* 一键按钮。它和芯片(那些是导航)长得不一样:芯片是圆角描边的名字,
+   这个是有底色的动词 —— 「点了会跳过去」和「点了会动手」不能长得一样。 */
+#todo .fix{font-size:var(--fs-chip);line-height:16px;padding:0 7px;margin-left:8px;
+  border:1px solid var(--cyan);color:var(--cyan);background:transparent;
+  border-radius:3px;cursor:pointer;white-space:nowrap}
+#todo .fix:hover{background:var(--cyan);color:#fff}
+#todo .fix.all{margin-left:6px;font-weight:600}
 #todo .rw:last-child{border-bottom:0}
 #todo .rw:hover{background:var(--cur)}
 #todo .dot{width:6px;height:6px;border-radius:1px;align-self:center}
@@ -2124,6 +2131,48 @@ async function repoCommitPush(name){
   }catch(e){ say(head.join("\n")+"\n\n"+e.message); toast(`${name}: ${e.message}`,"bad"); }
 }
 
+// 一组仓一起提交并推送。逐个点十六次和「这一组我看过了,做吧」是两件事。
+//
+// ⚠ 它不是把十六个动作合成一个:每个仓仍然各自出计划、各自钉住自己的文件清单、
+// 各自过钩子。合并的只有那一次确认。
+// ⚠ 任何一个失败都停下来并把原文摊出来,不继续往下推 —— 一个「十六个里有三个悄悄没成」
+// 的批量操作,比没有这个按钮更糟:人会以为都做完了。
+async function repoCommitPushBatch(names){
+  const done=[], failed=[];
+  const msg=prompt(`${names.length} 个仓,共用一条提交信息(一行,不能有换行 / 反引号 / $)`,
+                   "例行数据同步");
+  if(msg===null) return;
+  if(!confirm(`这 ${names.length} 个仓会逐个提交并推送:\n\n${names.join("\n")}\n\n`
+              +`每个都会各自出计划、各自过钩子。任何一个被拦下就停在那里。继续?`)) return;
+  toast(`开始:${names.length} 个仓`);
+  for(const name of names){
+    let p;
+    try{ p=await api("/api/repo/plan",{method:"POST",body:JSON.stringify({name})}); }
+    catch(e){ failed.push([name,e.message]); break; }
+    if(p.error){ failed.push([name,p.error]); break; }
+    if(p.blocked&&p.blocked.length){ failed.push([name,p.blocked.join("; ")]); break; }
+    if(p.nothing){ done.push([name,"没什么要做"]); continue; }
+    try{
+      const r=await api("/api/maint/act",{method:"POST",body:JSON.stringify({
+        action:"repo.commitpush", name,
+        arg:JSON.stringify({message:msg, expect:p.files, push:true})})});
+      if(r.error){ failed.push([name,r.error]); break; }
+      done.push([name,`${r.fileCount} 个文件`]);
+    }catch(e){ failed.push([name,e.message]); break; }
+  }
+  // 结果两边都要说出来。只报成功的那几个,等于把失败藏进「没有消息就是好消息」。
+  const left = names.length - done.length - failed.length;
+  if(failed.length){
+    alert(`停在 ${failed[0][0]}:\n\n${failed[0][1]}\n\n`
+          +`已完成 ${done.length} 个:${done.map(d=>d[0]).join(", ")||"无"}\n`
+          +`还没轮到 ${left} 个。`);
+    toast(`停在 ${failed[0][0]},已完成 ${done.length} 个`,"bad");
+  } else {
+    toast(`${done.length} 个仓已处理`);
+  }
+  await loadRepos();
+}
+
 // 会话。1026 份转录只读头尾,首扫几秒、之后走缓存零点几秒。
 // 「真人」的判据是**打进去的字**(纯字符串)而不是内容块:不区分的话,每个无头运行
 // 都会因为加载的 skill 正文被判成一场多轮对话。
@@ -2331,6 +2380,28 @@ function updateBadges(){
 }
 
 document.addEventListener("click", e=>{
+  // ⚠ 这一段必须留在**这个**监听里,而且在最前面。
+  // 页面上有两个 document 级的 click 监听,先注册的先跑,而 stopPropagation
+  // 拦不住同一个元素上的另一个监听(那要 stopImmediatePropagation)。
+  // 这几个按钮长在带 data-task / data-goto 的行里:放进另一个监听时,
+  // 实测点「跑一次」会先被下面那条跳转接走 —— 任务确实跑了,但人被弹到了另一屏,
+  // 看起来像按钮点错了地方。
+  const fx = e.target.closest("[data-fix]");
+  if(fx){
+    const a = fx.dataset.arg;
+    if(fx.dataset.fix === "commitpush"){ showView("repos"); RP_SEL = a; renderRepoList();
+                                         repoCommitPush(a); }
+    // ⚠ act 的签名是 (names, verb),两个都是位置参数而且顺序反直觉。
+    // 写成 act("run", a) 会把动词当成任务名去跑,而那种调用不报错,只会静默什么都不做。
+    else if(fx.dataset.fix === "run"){ act([a], "run"); }
+    return;
+  }
+  const fa = e.target.closest("[data-fixall]");
+  if(fa){
+    const names = fa.dataset.args.split(String.fromCharCode(1)).filter(Boolean);
+    if(fa.dataset.fixall === "commitpush") repoCommitPushBatch(names);
+    return;
+  }
   const tk = e.target.closest("[data-task]");
   if(tk){ focusTask(tk.dataset.task); return; }
   const tl = e.target.closest("[data-goto]");
@@ -2469,6 +2540,19 @@ function INGEST_SEV(state){
        : 0;
 }
 
+// 「这一条能不能一键处理」。分成两档不是为了好看:
+// 一张清单里如果「你去看看」和「点一下就完了」混在一起,人只能逐条重新判断该干嘛,
+// 而那正是这张清单本来要替他省掉的事。
+// ⚠ 只有真的有通路的才给按钮。给一条其实没办法的行配一个按钮,
+// 比不给更糟 —— 它承诺了一个不存在的出口。
+const FIX_LAB = {commitpush:"提交并推送", run:"跑一次"};
+
+function fixBtn(fix, arg){
+  if(!fix) return "";
+  return `<button class="fix" data-fix="${fix}" data-arg="${esc(arg)}"
+    title="${esc(FIX_LAB[fix])}: ${esc(arg)}">${FIX_LAB[fix]}</button>`;
+}
+
 function renderTodo(){
   const box = $("todod"); if(!box) return;
   const rows = [];
@@ -2478,7 +2562,8 @@ function renderTodo(){
   // 看不出哪一份是对的。
   if(typeof DATA !== "undefined" && DATA && Array.isArray(DATA.groups))
     DATA.groups.flatMap(g=>g.rows||[]).filter(r=>r.sk==="bad").forEach(r=>rows.push(
-      {v:"tasks", src:"任务", nm:r.name, task:r.name, why:r.sl || "上次运行失败", sev:3}));
+      {v:"tasks", src:"任务", nm:r.name, task:r.name, why:r.sl || "上次运行失败", sev:3,
+       fix:"run"}));
 
   if(typeof DATA !== "undefined" && DATA && DATA.freshness && Array.isArray(DATA.freshness.tasks))
     // 状态集合来自后端 summary.attentionStates,不在这里再写一遍。
@@ -2491,7 +2576,11 @@ function renderTodo(){
 
   if(REPOS && REPOS.available && Array.isArray(REPOS.repos))
     REPOS.repos.filter(r=>RP_ATT().indexOf(r.state) >= 0).forEach(r=>rows.push(
-      {v:"repos", src:"仓库", nm:r.name, why:REPO_WHY[r.state] || r.state, sev:2}));
+      // fix 是「这一条能不能一键处理」。只有 dirty / unpushed 能:它们的处理方式
+      // 逐字相同,而且已经有一条带计划的两步通路。error(扫不动)不给 fix ——
+      // 那是要人去看的,给它一个按钮等于假装这里有个办法。
+      {v:"repos", src:"仓库", nm:r.name, why:REPO_WHY[r.state] || r.state, sev:2,
+       fix:(r.state==="dirty"||r.state==="unpushed") ? "commitpush" : null}));
 
   // 摄入器停摆。这一条要出现在清单上,而不是只在顶栏当一个灰色时间串:
   // 顶栏那行是给已经在看的人的,清单才是「今天有什么要管」的那份答案,
@@ -2549,7 +2638,9 @@ function renderTodo(){
   // 分隔符不能是空串：那样 ("A","1B") 和 ("A1","B") 会撞成同一个桶。
   const SEP = String.fromCharCode(1);
   const bucket = new Map();
-  rows.forEach(r=>{ const k = r.src+SEP+r.why+SEP+r.sev;
+  // ⚠ fix 也要进分桶键。少了它,一组里可能混进一条没有一键通路的行,
+  // 而整组那个按钮是按第一条的 fix 画的 —— 于是按钮会替一条它处理不了的行做出承诺。
+  rows.forEach(r=>{ const k = r.src+SEP+r.why+SEP+r.sev+SEP+(r.fix||"");
     if(!bucket.has(k)) bucket.set(k, []);
     bucket.get(k).push(r); });
   const out = [];
@@ -2566,7 +2657,13 @@ function renderTodo(){
         <span class="why">${esc(h.why)} <b>${g.length}</b></span>
         <span class="chips">${g.map(m=>`<button class="chip" ${m.task
             ? `data-task="${esc(m.task)}"` : `data-goto="${m.v}"`
-          }>${esc(m.nm)}</button>`).join("")}</span></div>`;
+          }>${esc(m.nm)}</button>`).join("")}${
+          // 整组一个按钮。逐个点十六次和「这一组我看过了,做吧」是两件事,
+          // 而后者才是这张清单该提供的。它仍然要过一次确认,并逐仓各自出计划。
+          h.fix ? `<button class="fix all" data-fixall="${h.fix}" data-args="${
+            esc(g.map(m=>m.task||m.nm).join(""))}"
+            title="${esc(FIX_LAB[h.fix])} 这 ${g.length} 个">${esc(FIX_LAB[h.fix])} ×${g.length}</button>` : ""
+        }</span></div>`;
     }
     const r = o;
     return `<div class="rw" ${r.task
@@ -2574,7 +2671,7 @@ function renderTodo(){
     <span class="dot" style="background:var(--${r.sev>=3?"bad":"warn"})"></span>
     <span class="src">${esc(r.src)}</span>
     <span class="nm" title="${esc(r.nm)}">${esc(r.nm)}</span>
-    <span class="why">${esc(r.why)}</span></div>`;
+    <span class="why">${esc(r.why)}${fixBtn(r.fix, r.task||r.nm)}</span></div>`;
   }).join("");
   // 条数返回给徽章。清单是这一屏唯一在回答「有哪些事」的东西,徽章只是它的投影 ——
   // 让徽章自己再数一遍,就是给同一个事实造第二个来源。
