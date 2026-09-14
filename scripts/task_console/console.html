@@ -2310,6 +2310,9 @@ async function repoCommitPushBatch(names){
 // 「真人」的判据是**打进去的字**(纯字符串)而不是内容块:不区分的话,每个无头运行
 // 都会因为加载的 skill 正文被判成一场多轮对话。
 let CONVOS=null, CV_HUMAN_ONLY=false, CV_OPEN={};
+// 排序维度。后端按最近活动发,这里只重排,不重扫 ——
+// 换个顺序而已,没有理由再走一遍上千份转录。
+let CV_SORT="new";
 // 临时目录折叠块的展开键。用一个不可能是路径的字符串,免得和真目录撞。
 const CV_EPH_KEY="::eph::";
 // 标题从哪来。改过名的单独一种颜色:那是唯一一个人明确说过「这场对话叫这个」的地方,
@@ -2337,7 +2340,12 @@ function renderConvos(){
   $("cvhead").innerHTML=`<span>共 <b>${S.files}</b> 场</span>`
     +`<span><b style="color:var(--cyan)">${S.humanish}</b> 场真人多轮</span>`
     +`<span>${S.groups} 个目录 · ${kb(S.bytes)}</span>`
-    +`<span style="color:var(--faint)">按最近活动排序</span>`
+    +`<label>排序 <select id="cvsort">
+        <option value="new"${CV_SORT==="new"?" selected":""}>最近活动</option>
+        <option value="size"${CV_SORT==="size"?" selected":""}>体积</option>
+        <option value="count"${CV_SORT==="count"?" selected":""}>场次</option>
+        <option value="old"${CV_SORT==="old"?" selected":""}>最旧在前</option>
+      </select></label>`
     +`<label><input type="checkbox" id="cvonly"${CV_HUMAN_ONLY?" checked":""}> 只看真人</label>`
     // 读不动的必须报出来:悄悄跳过会让「没有这些对话」和「我没读到」变成同一个数字。
     +(S.unreadable?`<span style="color:var(--bad)">读不动 ${S.unreadable}</span>`:"");
@@ -2365,6 +2373,14 @@ function renderConvos(){
   const EPH=/[\\/]Temp[\\/](astab|astra|ccstab|ccagentic)_[a-z0-9]+$/i;
   const isEph=g=>EPH.test(g.cwd)&&!g.humanish&&g.count<=2;
   const eph=groups.filter(isEph), rest=groups.filter(g=>!isEph(g));
+
+  // ⚠ 只排 rest。临时目录那一坨永远留在最后,不参与排序:
+  // 它们是被折起来的一整块,让它按体积浮到第一行会把「这是被折叠的噪音」
+  // 这个含义弄丢。
+  if(CV_SORT==="size") rest.sort((a,b)=>(b.bytes||0)-(a.bytes||0));
+  else if(CV_SORT==="count") rest.sort((a,b)=>(b.count||0)-(a.count||0));
+  else if(CV_SORT==="old") rest.sort((a,b)=>(a.newest||0)-(b.newest||0));
+  else rest.sort((a,b)=>(b.newest||0)-(a.newest||0));
 
   const cvGroup=g=>{
     const rows=g.shown.filter(r=>!CV_HUMAN_ONLY||r.humanSeen>=2);
@@ -3520,6 +3536,11 @@ document.addEventListener("keydown",e=>{
 })();
 $("mtreload").addEventListener("click",()=>{loadMaint();loadSys();loadCodex();});
 $("memreload").addEventListener("click",()=>{loadMem();});
+// 会话屏那个排序下拉是每次 renderConvos 重新生成的,所以不能直接挂在元素上 ——
+// 挂上去的监听会跟着上一版元素一起被丢掉。用一个 change 委托接住。
+document.addEventListener("change", e=>{
+  if(e.target.id==="cvsort"){ CV_SORT=e.target.value; renderConvos(); }
+});
 $("cxload").addEventListener("click",loadCxList);
 // 换库要重扫,换排序不用:排序是纯前端的事,重扫一遍几千个文件只为了换个顺序,
 // 会让这个下拉用起来像卡住了。
