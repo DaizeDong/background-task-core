@@ -173,6 +173,18 @@ main{padding:8px}
 .card-title .help{font-size:10.5px;color:var(--faint);border:1px solid var(--line);
   border-radius:8px;padding:0 6px;margin-left:6px;cursor:help}
 .card-title .help:hover{color:var(--ink);border-color:var(--ink)}
+/* 「体征」那一格里的微型分段条。三段 = 正常 / 失败 / 陈旧,分母是判过的条数,
+   所以差出来的那一段(判词认不出)留成背景色缺口,看得见。 */
+.vit{display:inline-flex;width:54px;height:8px;vertical-align:middle;margin-right:5px;
+  background:var(--line2);border-radius:1px;overflow:hidden}
+.vit i{display:block;height:100%}
+.vit i.k-ok{background:var(--ok)} .vit i.k-bad{background:var(--bad)}
+.vit i.k-st{background:var(--warn)}
+/* 没有观察记录:虚线空框。⚠ 不能画成一条 0 宽的条 —— 那会读成「全是坏的」,
+   方向正好和真相相反。 */
+.vit.unk{background:transparent;border:1px dashed var(--faint)}
+/* 样本不足:整条降饱和 + 虚线外框。和「量足够的 100%」形状不同,不只是颜色不同。 */
+.vit.thin{opacity:.45;outline:1px dashed var(--faint);outline-offset:-1px}
 /* 大类汇总只有十行六列,不需要 1900px。任务主表和热力图确实要宽(列多),
    但这张小表跟着它们一起铺满,会让四个百分比列各自相隔 280px ——
    而这张表的全部用途就是横着比这四列。 */
@@ -517,10 +529,14 @@ td.ops .mini.danger:hover{border-color:var(--bad);color:var(--bad)}
    ⚠ 这里刻意不只用颜色,也刻意不合并任何两档:公开是实心方块(危险的是公开),
    私有是空心方块,未知是问号。闸门对**未知** remote 是按公开拦的,所以未知和私有
    要采取的行动相反,它们绝不能长得一样 —— 这条在换成图形之后必须仍然成立。 */
-.rp-r .vis{font-size:10px;line-height:1;width:12px;text-align:center;color:var(--dim);
+/* 10px 的字形在 1920 屏上要放大才能分辨实心和空心,而这一列回答的是
+   「这个仓能不能装真实数据」。放到 13px。
+   未知那一档**不比私有淡**:闸门对未知 remote 是按公开拦的,
+   把它画成最不起眼的一个,正好和它的严重程度反着来。 */
+.rp-r .vis{font-size:13px;line-height:1;width:16px;text-align:center;color:var(--dim);
   font-family:var(--mono,inherit)}
-.rp-r .vis.pub{color:var(--warn)}
-.rp-r .vis.unk{color:var(--faint)}
+.rp-r .vis.pub{color:var(--bad)}
+.rp-r .vis.unk{color:var(--warn);font-weight:700}
 /* 账号用两字缩写,不写全名。47/48 行是同一个账号,把它逐行印出来是 48 遍几乎零信息的
    墨水,而「这一行属于谁」用两个字母同样答得上来,全名在悬停和详情里。
    mismatch 是唯一会着色的那一档:它是事故形状,而 unchecked 不能长得像 ok,
@@ -720,7 +736,12 @@ body{font-size:12px}
 #side .navbar-brand{font-size:13px;padding:6px 4px 4px;font-weight:600;margin-inline:0}
 #side .nav-link{padding:4px 8px 4px 10px;font-size:12.5px;border-radius:3px}
 #side .nav-link-icon{width:15px;text-align:center;opacity:.85;margin-right:6px}
-#side .nav-link .badge{font-size:10px;padding:1px 5px}
+/* 徽章原来贴在每一项的上沿,看起来像浮在两行之间的红块,而不是那一项的属性。
+   min-width 让一位数和两位数不再是两种宽度 —— 现在 6 那个明显窄一圈,
+   读起来像另一种东西。 */
+#side .nav-link{display:flex;align-items:center}
+#side .nav-link .badge{font-size:10px;padding:1px 5px;align-self:center;
+  line-height:1.45;min-width:20px;text-align:center}
 /* 这些小按钮一度是单字符图标,同一个 ⏸ 在三处分别表示归档移出、禁用、归档进冷层,
    而它长得像暂停,三个含义一个都不是;于是全部换成了文字。
    现在换回图标,但换的是**另一件东西**:一个含义一个图形,取自页内的 SVG sprite,
@@ -781,7 +802,14 @@ td.ops .mini:focus-visible{opacity:1}
   display:flex;align-items:center;gap:6px}
 #bar .seg:last-child{border-right:none}
 #bar .k{color:var(--faint)}
+/* 顶栏原来八段等重,「失败 6」和「总数 42」长得完全一样,扫一眼看不出今天有没有事。
+   给会变红的那两个上色,零态压成 faint 但**仍然显示**。
+   后面几段(数据时间、最后摄入、运行日志、库)属于「这页可不可信」那一层,
+   不是状态计数,整体降权而不是删掉。 */
 #bar b{font-variant-numeric:tabular-nums}
+#bar b.bad{color:var(--bad)} #bar b.warn{color:var(--warn)}
+#bar b.zero{color:var(--faint);font-weight:400}
+#bar #s-src{opacity:.75}
 
 .page-body{margin-top:0;padding:7px 0 18px}
 /* 阅读栏。1920 屏上原来每一行都横跨 1800px:会话那屏左端是路径、右端是「1 场 · 249K」,
@@ -1094,6 +1122,11 @@ table.g td[data-col="timeout"]{font-family:var(--mono)}
         <input id="rpq" type="search" placeholder="搜仓名 / 账号" aria-label="搜索仓库">
         <select id="rpacc" aria-label="按账号过滤"><option value="">全部账号</option></select>
         <select id="rpkind" aria-label="按类型过滤"><option value="">全部类型</option></select>
+        <!-- 可见性过滤。「哪几个仓可见性没问出来」原来只能肉眼扫 48 行 10px 的字形。
+             ⚠ 未知必须是单独一档,不能用「不是公开」兜底:未知和私有要做的事相反。 -->
+        <select id="rpvis" aria-label="按可见性过滤"><option value="">全部可见性</option>
+          <option value="pub">公开</option><option value="priv">私有</option>
+          <option value="unk">未知</option></select>
         <span class="hit" id="rphit"></span>
       </div>
       <div class="rp-split">
@@ -1564,6 +1597,14 @@ function renderRepos(){
   if(ic.unchecked) head += `<span title="没配身份表,或表读不出来。这不是「都匹配」">账号未检查 ${ic.unchecked}</span>`;
   if(S.identityReason) head += `<span style="color:var(--warn)">${esc(S.identityReason)}</span>`;
   if(S.visibilityReason) head += `<span style="color:var(--warn)">${esc(S.visibilityReason)}</span>`;
+  // 可见性三档的计数。⚠ 未知那一档即使是 0 也要打出来:
+  // 一个「没有未知」的舰队和一张压根没加载的可见性表,在「不显示这一段」下长得一样。
+  {
+    const vc={pub:0,priv:0,unk:0};
+    REPOS.repos.forEach(r=>{ vc[!r.visibility?"unk":(/pub/i.test(r.visibility)?"pub":"priv")]++; });
+    head += `<span title="可见性分档。闸门对未知 remote 是按公开拦的">可见性 ${vc.pub}公开 / ${
+      vc.priv}私有 / <b style="color:${vc.unk?"var(--warn)":"var(--faint)"}">${vc.unk}</b>未知</span>`;
+  }
   $("rphead").innerHTML = head;
 
   // 账号下拉的选项从数据里来,不写死。写死一张账号表就是把舰队地图钉进公开仓。
@@ -1595,10 +1636,16 @@ let RP_SEL = null;          // 选中的仓名
 let RP_STATE = "";          // 状态条上点中的那一段,空串=不按状态过滤
 let RP_AUTOSEL = false;     // 首屏自动选中只做一次,之后不再抢人的选择
 
-function rpMatches(r, q, acc, kind){
+function rpMatches(r, q, acc, kind, vis){
   if(RP_STATE && r.state !== RP_STATE) return false;
   if(acc && r.owner !== acc) return false;
   if(kind && r.kind !== kind) return false;
+  if(vis){
+    // 三档各自判,不写「不是公开就算私有」那种兜底 ——
+    // 可见性问不出来的仓会被那种写法归进私有,而闸门对它们是按公开拦的。
+    const vk = !r.visibility ? "unk" : (/pub/i.test(r.visibility) ? "pub" : "priv");
+    if(vk !== vis) return false;
+  }
   if(!q) return true;
   const hay = (r.name+" "+(r.owner||"")).toLowerCase();
   return hay.indexOf(q) >= 0;
@@ -1621,7 +1668,7 @@ function renderRepoList(){
   }
 
   const q = ($("rpq").value||"").trim().toLowerCase();
-  const acc = $("rpacc").value, kind = $("rpkind").value;
+  const acc = $("rpacc").value, kind = $("rpkind").value, vis = $("rpvis").value;
   const byHost = {};
   REPOS.repos.forEach(r=>{ if(r.kind==="companion" && r.companionOf) byHost[r.companionOf]=r; });
 
@@ -1631,25 +1678,37 @@ function renderRepoList(){
   const tops = REPOS.repos.filter(r=>r.kind!=="companion");
   tops.forEach(r=>{
     const comp = byHost[r.name];
-    if(rpMatches(r,q,acc,kind) || (comp && rpMatches(comp,q,acc,kind))) hostShown.add(r.name);
+    if(rpMatches(r,q,acc,kind,vis) || (comp && rpMatches(comp,q,acc,kind,vis))) hostShown.add(r.name);
   });
 
   const order = (REPOS.summary.kindOrder && REPOS.summary.kindOrder.length)
     ? REPOS.summary.kindOrder : ["skill","shared","other"];
-  let shown = 0, html = "";
+  // 命中数和显示数分开数。伴生跟着宿主走这条规则会把**不匹配**的行也带出来
+  // (筛「私有」时,一个私有伴生仓会把它的公开宿主一起拉进列表)。
+  // 只报显示数会让计数在旁边那句「25 私有」面前自相矛盾,而人会按计数下结论。
+  // 每一行的徽章仍然是它自己的真实值,所以列表没有说谎;说谎的只是一个合并的计数。
+  let shown = 0, matched = 0, html = "";
   order.forEach(k=>{
     const rows = tops.filter(r=>r.kind===k && hostShown.has(r.name));
     if(!rows.length) return;
     html += `<div class="rp-gh"><b>${esc(RP_KIND_LAB[k]||k)}</b><span class="n">${rows.length}</span></div>`;
     rows.forEach(r=>{
       html += rpListRow(r,false); shown++;
+      if(rpMatches(r,q,acc,kind,vis)) matched++;
       const comp = byHost[r.name];
-      if(comp){ html += rpListRow(comp,true); shown++; }
+      if(comp){ html += rpListRow(comp,true); shown++;
+                if(rpMatches(comp,q,acc,kind,vis)) matched++; }
     });
   });
   $("rplist").innerHTML = html || `<div class="rp-empty">没有仓匹配这个过滤条件。</div>`;
   const total = REPOS.summary.total;
-  $("rphit").textContent = (shown===total) ? `${total} 个` : `${shown} / ${total}`;
+  const hit = $("rphit");
+  if(shown===total){ hit.textContent = `${total} 个`; hit.title = ""; }
+  else if(matched===shown){ hit.textContent = `${shown} / ${total}`;
+    hit.title = `${shown} 个匹配当前过滤条件`; }
+  else { hit.textContent = `${matched} 命中 +${shown-matched} 关联 / ${total}`;
+    hit.title = "关联 = 自己不匹配,但它的伴生仓(或宿主)匹配,所以一起列出来保住从属关系。"
+              + "每一行的徽章仍然是它自己的真实值。"; }
 
   if(RP_SEL && !REPOS.repos.some(r=>r.name===RP_SEL)) RP_SEL=null;
   renderRepoDetail();
@@ -2156,6 +2215,10 @@ function setBadge(key, n, warn){
   // 一个「宽高为零但仍在文档流里」的徽章会在那里留下一个看不见的偏移。
   el.hidden = !n;
   el.className = "badge ms-auto " + (warn ? "bg-warning" : "bg-danger");
+  // 一个只有数字的红块说不出自己是什么。加可读名字之后它才是「这一区有 N 项要人管」,
+  // 而不是「这里有个红色的东西」。
+  el.title = `${n} 项要人管,点进去看`;
+  el.setAttribute("aria-label", el.title);
 }
 
 function updateBadges(){
@@ -2640,11 +2703,22 @@ const C=[
  // 健康% 旁边要能看出它是拿什么算出来的。判词表认不出来的那些进 other 桶,
  // 它只进分母不出现在任何地方:监控器换一种措辞之后,每一行会显示 0.0% 而
  // ok/bad/stale 全是 0,同一行里两个数字互相矛盾而没有任何字段说明观察去哪了。
- ["health","健康%",r=>{
+ // 一格顶原来的四格。原来「健康% / 实跑 / 失败 / 陈旧」各占一列,42 行乘 4 列
+ // 是 168 个数字,其中绝大多数是 100 / 0 / -,而真正要回答的问题只有一个:
+ // 这一行有没有事。于是健康率画成一条按 ok/失败/陈旧 分段的微型条,数字留在旁边;
+ // 失败、陈旧、实跑三列的精确值搬进展开行(见 detail 里的「观察」一条)。
+ //
+ // ⚠ 三种「不能长得一样」的状态在条上各有各的形状,不是各有各的颜色:
+ //   没有观察记录 -> 虚线空框(不是一条 0 宽的条,那会读成「全坏」)
+ //   样本不足     -> 整条降饱和 + 虚线外框
+ //   判词认不出   -> 分母里留一段**背景色缺口**,把原来只在 tooltip 里的那个缺陷画出来
+ ["health","体征",r=>{
    const h=r.hist||{}, v=h.health;
    const oth=h.other||0;
    const tip = v==null ? "没有观察记录"
-     : `${h.ok}/${h.judged} 条观察判为正常` + (oth ? ` · ${oth} 条判词认不出来,它们只进了分母` : "");
+     : `${h.ok}/${h.judged} 条观察判为正常`
+       + (h.bad?` · 失败 ${h.bad}`:"") + (h.stale?` · 陈旧 ${h.stale}`:"")
+       + (oth ? ` · ${oth} 条判词认不出来,它们只进了分母` : "");
    // 小样本降色。紧挨着的两处都做了这件事(实成功% 在 j<5 时降 faint,大类评分表在
    // healthN<n 时降色),唯独这一列没有:**一个 1 条观察的 100% 和一个 4000 条观察的
    // 100% 在屏幕上长得完全一样**,而分母只在 hover 的 tooltip 里。
@@ -2656,7 +2730,17 @@ const C=[
      :v>=95?"var(--ok)":v>=80?"var(--warn)":"var(--bad)";
    // 样本太少时把分母印出来。降色只说「别太当真」,印出 n 才说清为什么。
    const suffix = oth ? "*" : (thin && v != null ? `<span class="m"> n=${h.judged}</span>` : "");
-   return `<td class="num" title="${esc(tip)}" style="color:${col}">${v==null?"-":v}${suffix}</td>`;
+   if(v==null)
+     return `<td class="num" title="${esc(tip)}"><span class="vit unk"></span><span
+       class="u">-</span></td>`;
+   // 分母用 judged,不是 ok+bad+stale:差出来的那一段就是「判词认不出」的那些,
+   // 它们留成背景色的缺口 —— 那个缺陷原来只活在 tooltip 里。
+   const tot=Math.max(h.judged||1,1), w=n=>(100*(n||0)/tot).toFixed(1)+"%";
+   return `<td class="num" title="${esc(tip)}"><span class="vit${thin?" thin":""}"
+       ><i class="k-ok" style="width:${w(h.ok)}"></i
+       ><i class="k-bad" style="width:${w(h.bad)}"></i
+       ><i class="k-st" style="width:${w(h.stale)}"></i></span><span
+       style="color:${col}">${v}${suffix}</span></td>`;
  },r=>(r.hist&&r.hist.health!=null)?r.hist.health:-1],
  // 分母要说出来。judged 是动作返回码事件数,不是旁边那列的「实跑」(启动事件数):
  // 多动作任务每次运行写多条 201,分母大于实跑;rc 事件被日志滚动截断的任务分母小于实跑。
@@ -2669,9 +2753,8 @@ const C=[
    const col = v==null||thin ? "var(--faint)" : v>=95?"var(--ok)":"var(--bad)";
    return `<td class="num" title="${esc(tip)}" style="color:${col}">${v==null?"-":v}</td>`;
  },r=>(r.runs&&r.runs.successRate!=null)?r.runs.successRate:-1],
- ["realRuns","实跑",r=>`<td class="num" title="运行日志记录的启动次数">${r.runs?r.runs.starts:"-"}</td>`,r=>r.runs?r.runs.starts:-1],
- ["bad","失败",r=>`<td class="num" style="color:${(r.hist&&r.hist.bad)?"var(--bad)":"var(--faint)"}">${r.hist?r.hist.bad:"-"}</td>`,r=>r.hist?r.hist.bad:-1],
- ["stale","陈旧",r=>`<td class="num" style="color:${(r.hist&&r.hist.stale)?"var(--warn)":"var(--faint)"}">${r.hist?r.hist.stale:"-"}</td>`,r=>r.hist?r.hist.stale:-1],
+ // 实跑 / 失败 / 陈旧 三列已经并进「体征」那一格的分段条,精确值在展开行的「观察」一条。
+ // 它们留在表上时是三列几乎全 0 的数字,而三个标签每次都一样。
  ["triggers","触发",r=>`<td class="dim" title="${esc(r.triggers)}">${esc((r.triggers||"").slice(0,20))}</td>`,r=>r.triggers||""],
  // 84 个等宽时间戳(42 行两列),而读它们的目的基本只有「多久没跑了」「还有多久跑」。
  // 相对时间直接回答那个问题,绝对时刻进 title,一个都没丢。
@@ -2699,6 +2782,11 @@ function detail(r){
    ["退出码",`${esc(r.rcHex)||"-"}${r.okCodes?` <span class="faint">声明 ${esc(r.okCodes)} 也算正常</span>`:""}`],
    ["产物",r.artifact?`${esc(r.artifact)} · ${esc(r.artifactMax)}h`:"未声明"],
    ["电池",`${r.refuseOnBattery?"用电池时拒绝启动":"电池可启动"} · ${r.stopOnBattery?"拔电源会被杀":"拔电源不杀"}`],
+   // 「体征」那一格只画比例,精确值在这里。少了这一条,失败与陈旧的具体条数
+   // 就只剩 tooltip 一个出口 —— 而 tooltip 是发现不了的。
+   ["观察",r.hist?`正常 ${r.hist.ok} · 失败 ${r.hist.bad} · 陈旧 ${r.hist.stale}`
+     +(r.hist.other?` · 判词认不出 ${r.hist.other}`:"")
+     +` / 共 ${r.hist.judged} 条`:'<span class="u">没有观察记录</span>'],
    ["真实运行",r.runs?`启动 ${r.runs.starts} · 完成 ${r.runs.done} · 被杀 ${r.runs.killed} · 超时 ${r.runs.timedOut} · 启动失败 ${r.runs.failStart} · 返回码 ${rcs||"无"}${r.runs.okApplied?` (声明 ${r.runs.okApplied.join(",")} 也算成功)`:""}`:'<span class="u">运行日志里还没有记录</span>'],
   ].map(x=>`<dt>${x[0]}</dt><dd>${x[1]}</dd>`).join("");
   const iss=r.issues.length?`<ul class="iss">${r.issues.map(i=>`<li class="${i[0]}">${esc(i[1])}</li>`).join("")}</ul>`:"";
@@ -2712,10 +2800,12 @@ function detail(r){
 
 function render(){
   const S=DATA.summary;
+  // 零态改色而不是隐藏。「0 个失败」和「这一项没采到」必须保持可分辨 ——
+  // 藏起来之后它们都表现为「顶栏上没有这一段」。
   $("s-total").textContent=S.total;
-  $("s-bad").textContent=S.bad; $("s-bad").style.color=S.bad?"var(--bad)":"";
-  $("s-iss").textContent=S.issues; $("s-iss").style.color=S.issues?"var(--warn)":"";
-  $("s-off").textContent=S.disabled;
+  $("s-bad").textContent=S.bad; $("s-bad").className=S.bad?"bad":"zero";
+  $("s-iss").textContent=S.issues; $("s-iss").className=S.issues?"warn":"zero";
+  $("s-off").textContent=S.disabled; $("s-off").className=S.disabled?"":"zero";
   $("s-src").innerHTML=`<span class="k">数据</span>${esc(S.generated)}`
     +((DATA.history&&DATA.history.available)?` <span class="faint">观察${DATA.history.days.length}d</span>`:` <span class="faint">无观察</span>`)
     // 摄入器最后一次跑成没跑成,原来查出来了却在 server 里被丢掉:数据库存在但摄入器已经
@@ -3113,6 +3203,7 @@ $("rpreload").addEventListener("click",loadRepos);
 // 既慢又会让选中的那个仓在脚下换位置。
 $("rpq").addEventListener("input", renderRepoList);
 $("rpacc").addEventListener("change", renderRepoList);
+$("rpvis").addEventListener("change", renderRepoList);
 $("rpkind").addEventListener("change", renderRepoList);
 // 列表行既可点也可用键盘。给了 tabindex 却不接键,那是「看起来能聚焦却按不动」,
 // 比不可聚焦更让人困惑 —— 这条在别处已经栽过一次。
