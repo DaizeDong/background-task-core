@@ -141,6 +141,12 @@ main{padding:8px}
 .tlnow{position:absolute;top:0;bottom:0;width:1px;background:var(--bad);z-index:2}
 .tlevt{position:absolute;left:4px;top:0;font-size:10px;color:var(--faint);line-height:15px}
 .tlevt.warnish{color:var(--warn)}
+/* 六行几乎相同的长句压成六个徽章:一眼看出「这几行是同一类」。完整句子进 title。
+   ⚠ 实线框(事件驱动,正常)和虚线框 + 前缀 ?(触发器认不出,要人去查)在**形状**上不同,
+   不是只差一个字色 —— 后者绝不能被读成一个正常的事件驱动任务。 */
+.tlbadge{display:inline-block;padding:0 5px;border-radius:8px;font-size:9.5px;
+  line-height:13px;border:1px solid currentColor;font-weight:400;opacity:.85}
+.tlevt.warnish .tlbadge{border-style:dashed}
 /* 撞上展开上限的条带画成虚线:它的右端不是真的结束时刻,是我数到那里为止。 */
 .tlspan.trunc{background:repeating-linear-gradient(90deg,var(--amber) 0 3px,transparent 3px 6px)}
 .tlkey{font-size:10.5px;color:var(--faint);margin-top:5px;display:flex;gap:12px;flex-wrap:wrap}
@@ -161,6 +167,27 @@ main{padding:8px}
 .hm td{height:11px;padding:0;background:var(--h0)}
 .hm td.h1{background:var(--h1)}.hm td.h2{background:var(--h2)}
 .hm td.h3{background:var(--h3)}.hm td.h4{background:var(--h4)}.hm td.h5{background:var(--h5)}
+/* 卡头上的「说明」。通用说明读一次就够,常驻会把卡头顶成三行。
+   ⚠ 这里只放**说明**。真实状态(比如运行日志挂了)一律走 .warn-line 常驻,
+   折进悬停等于把告警藏起来 —— 那是「坏了却显示成正常」的另一种写法。 */
+.card-title .help{font-size:10.5px;color:var(--faint);border:1px solid var(--line);
+  border-radius:8px;padding:0 6px;margin-left:6px;cursor:help}
+.card-title .help:hover{color:var(--ink);border-color:var(--ink)}
+/* 大类汇总只有十行六列,不需要 1900px。任务主表和热力图确实要宽(列多),
+   但这张小表跟着它们一起铺满,会让四个百分比列各自相隔 280px ——
+   而这张表的全部用途就是横着比这四列。 */
+#scores{max-width:900px}
+/* 大类汇总里的百分比条。窄而矮:它是数字的第二重编码,不是主角。 */
+.pcb{display:inline-block;width:44px;height:5px;margin-right:6px;vertical-align:middle;
+  background:var(--line2);border-radius:1px;overflow:hidden}
+.pcb i{display:block;height:100%}
+/* 日期轴。标签横写会互相撞,所以只在首末与每月 1 号出现,其余格子留空但仍带 title。 */
+.hm th.hd{font-weight:400;font-size:9px;color:var(--faint);padding:0;height:12px;
+  white-space:nowrap;text-align:left;overflow:visible}
+/* 今天那一列画一条竖线。⚠ 只加线不改底色 —— 「无观察」用的是底色,
+   两个信号必须能叠加,否则今天恰好没观察时会有一个信号被另一个盖掉。 */
+.hm td.today,.hm th.hd.today{box-shadow:inset -1px 0 0 var(--cyan)}
+.hm th.hd.today{color:var(--cyan)}
 
 table.g{border-collapse:collapse;font-size:11.5px;white-space:nowrap;width:100%}
 /* pointer 只给真的能排序的那张表。#scores 的表头也是 table.g th,
@@ -178,12 +205,20 @@ table.g{border-collapse:collapse;font-size:11.5px;white-space:nowrap;width:100%}
 table.g th:hover{color:var(--ink)}
 table.g th.s::after{content:"\25BE";color:var(--cyan);margin-left:2px}
 table.g th.s.a::after{content:"\25B4"}
-table.g td{padding:1px 6px;border-bottom:1px solid var(--line2);height:20px}
+/* height 从 20px 的定值改成下限。任务名那一格现在是两行(名字 + 说明),
+   写死 20px 时内容照自己的高度排、溢出去盖住下一行,看起来像排版错乱不像高度被覆盖
+   —— 这个仓已经被同一条元素级高度规则坑过两次(指标格一次、时间轴按钮一次)。 */
+table.g td{padding:1px 6px;border-bottom:1px solid var(--line2);min-height:20px}
 table.g tbody tr{cursor:pointer}
 table.g tbody tr:hover{background:var(--cur)}
 table.g tbody tr.cur{background:var(--cur);box-shadow:inset 2px 0 0 var(--cyan)}
 table.g tbody tr.sel{background:var(--sel)}
-table.g td.nm{max-width:230px;overflow:hidden;text-overflow:ellipsis;font-weight:500}
+table.g td.nm{max-width:340px;overflow:hidden;text-overflow:ellipsis;font-weight:500;
+  white-space:normal;line-height:1.25}
+/* 说明是任务名下面的第二行。它自己不换行:一条被折成三行的说明会把整张表撑散,
+   而完整正文在 title 和展开行里都还在。 */
+table.g td.nm .ds2{display:block;font-weight:400;color:var(--dim);font-size:10.5px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-family:var(--sans,inherit)}
 /* 说明列。原来写的是 max-width:0 + width:100%,那是「吸收剩余宽度」的写法,
    但这张表 19 列的自然宽度合计已经超过容器,**没有剩余宽度可吸收**,于是 max-width:0
    赢,这一列被压成 34px、只显示一个字加省略号。一列只显示一个字比没有这一列更差:
@@ -243,7 +278,9 @@ tr.det>td{background:var(--panel2);white-space:normal;padding:6px 10px 8px;borde
    unknown 刻意既不像 up 也不像 paused:虚线空心格。「没查成」和「查过了没问题」
    在这块板子上必须一眼分得开,这是整个面板存在的理由。 */
 .fr-head{display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:8px 10px 0}
-.fr-stack{display:flex;height:16px;flex:1;min-width:180px;border-radius:2px;overflow:hidden;
+/* flex:1 是它吃掉整行的原因:右端那段「正常 29」自己就有 800px。
+   灯板才是主视图(每格可点、是导航),这条降级成一条缩略条。 */
+.fr-stack{display:flex;height:7px;flex:0 1 280px;min-width:160px;border-radius:3px;overflow:hidden;
   background:var(--line2)}
 .fr-stack i{height:100%;display:block}
 .fr-cov{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--dim);white-space:nowrap}
@@ -298,6 +335,11 @@ td.ops .mini.danger:hover{border-color:var(--bad);color:var(--bad)}
 .mt-t .sub{margin-left:auto}
 .mt-meter{height:7px;background:var(--line2);border-radius:2px;overflow:hidden;position:relative}
 .mt-meter i{display:block;height:100%}
+/* 爆表:整条描红 + 右端长出一截斜纹。「满」和「爆」不能是同一根满条。 */
+.mt-meter.over{outline:1px solid var(--bad);outline-offset:1px;overflow:visible}
+.mt-meter.over::after{content:"";position:absolute;top:0;bottom:0;left:100%;width:14px;
+  background:repeating-linear-gradient(45deg,var(--bad) 0 3px,transparent 3px 6px)}
+.mt-r .c.over{color:var(--bad);font-weight:700}
 /* 这里原来是 max-height:172px + 内部滚动。那是九块盒子堆在同一页时代的写法:
    每块必须自己收着,否则页面会长到五屏。
    分区改造之后每一屏独占整个视口,这个上限就只剩害处了 : 实测这一屏用掉不到 300px,
@@ -310,6 +352,52 @@ td.ops .mini.danger:hover{border-color:var(--bad);color:var(--bad)}
 .mt-rows{max-height:max(180px, calc(100vh - 340px));overflow:auto;display:flex;flex-direction:column;
   gap:1px;border-top:1px solid var(--line2);padding-top:4px}
 .mt-r{display:flex;align-items:center;gap:6px;font-size:12px;padding:1px 0}
+/* 只有 skill 那一栏排成栅格:名字弹、条定宽、数字右对齐定宽,对齐之后数字才能竖着比。
+   ⚠ 刻意用新类而不是改 .mt-r 本身 —— 另外十二处也在用 .mt-r,而它们只有两三格,
+   改默认值会让那些行的按钮掉到第五列、中间空出两格。 */
+.mt-r.bar{display:grid;grid-template-columns:1fr auto 54px 40px auto}
+.mt-r .ub{height:5px;background:var(--line2);border-radius:2px;overflow:hidden}
+.mt-r .ub i{display:block;height:100%;background:var(--dim)}
+.mt-r.bar .c{text-align:right}
+
+/* ---- 维护屏:记忆与索引主区 ------------------------------------------------------
+   这块以前是四栏里的一栏,260px 宽,只露得出三行「标签 : 数字」和四个最大的名字。
+   而后端一直在下发孤儿链接(连是从哪几条指过去的都有)、索引够不到的、索引指向空的、
+   完整排行。采到了却没有出口,等于没采。 */
+#membox .pad{padding:8px 12px 12px}
+.mem-top{display:flex;gap:20px;align-items:flex-start;flex-wrap:wrap;margin-bottom:8px}
+.mem-counts{display:flex;gap:14px}
+.mem-counts .kv{font-size:11px;color:var(--dim)}
+.mem-counts .kv b{font-size:18px;font-weight:600;color:var(--ink);margin-right:3px;
+  font-variant-numeric:tabular-nums}
+.mem-meters{flex:1 1 320px;max-width:460px;min-width:240px}
+.mem-grps{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));
+  gap:8px 16px;max-width:1100px;margin-bottom:10px}
+/* 零态也占一行。三类问题都可能合法地是空的,而空在这里是好消息 ——
+   但它必须是**数出来的空**。合并成一句「链接与索引一致」的代价是:
+   三项里某一项其实没查的时候,那句绿色照样打印。 */
+.mem-grp{border-left:2px solid var(--line);padding-left:8px}
+.mem-grp.hit{border-left-color:var(--warn)}
+.mem-gh{display:flex;align-items:baseline;gap:6px;font-size:11px;color:var(--dim)}
+.mem-gh b{font-size:14px;font-variant-numeric:tabular-nums;color:var(--faint)}
+.mem-gh b.warn{color:var(--warn)} .mem-gh b.ok{color:var(--ok)}
+.mem-gh .lb{cursor:help}
+.mem-gh .ex{font-size:10.5px;color:var(--faint)}
+.mem-chips{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px}
+.mem-chips .chip{font-family:var(--mono);font-size:10.5px;padding:0 5px;
+  border:1px solid var(--line);border-radius:9px;color:var(--dim);cursor:help}
+.mem-big{max-width:560px}
+.mem-big .mt-r.bar{grid-template-columns:1fr auto 120px 48px auto}
+
+/* ---- 维护屏:第二套 agent 那一栏 ------------------------------------------------ */
+.cx-r{display:grid;grid-template-columns:1fr 92px 54px;gap:6px;align-items:center;
+  font-size:12px;padding:1px 0}
+.cx-r .n{font-family:var(--mono);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cx-r .c{text-align:right;font-variant-numeric:tabular-nums;color:var(--dim)}
+.cx-r .m{text-align:right;font-size:10.5px;color:var(--faint)}
+/* 「不在」不是「读不了」。前者是正常状态,后者要人去看,所以不共用一种灰。 */
+.cx-r.absent .c{color:var(--faint);font-style:italic}
+.cx-r.unread .c{color:var(--bad);font-weight:600}
 .mt-r .n{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .mt-r .c{font-variant-numeric:tabular-nums;color:var(--faint);font-size:11px}
 .mt-r.off .n{color:var(--faint);text-decoration:line-through}
@@ -330,10 +418,14 @@ td.ops .mini.danger:hover{border-color:var(--bad);color:var(--bad)}
 #sck .lab{color:var(--faint);letter-spacing:.04em}
 #sck .dots{display:flex;gap:3px}
 #sck .d{width:8px;height:8px;border-radius:50%;border:1px solid transparent}
+/* 四个状态各有自己的形状,不只是自己的颜色。这一行是整页的信任前提 ——
+   它说的是「这些数字能不能信」,而四个只靠颜色区分的圆点在色觉受限下就是一种圆点。
+   ok=实心圆, stale=半填充圆, missing=实心方, unset=虚边空圆。逐点的 title 是第三重。 */
 #sck .d.ok{background:var(--ok)}
-#sck .d.stale{background:var(--warn)}
-#sck .d.missing{background:var(--bad)}
-#sck .d.unset{background:transparent;border-color:var(--faint)}
+#sck .d.stale{background:linear-gradient(135deg,var(--warn) 50%,transparent 50%);
+  border-color:var(--warn)}
+#sck .d.missing{background:var(--bad);border-radius:1px}
+#sck .d.unset{background:transparent;border-color:var(--faint);border-style:dashed}
 #sck .sum{font-variant-numeric:tabular-nums;color:var(--dim)}
 #sck .bad{color:var(--bad);font-weight:600}
 #sck button{font:inherit;font-size:11px;padding:1px 6px;margin-left:auto}
@@ -415,7 +507,7 @@ td.ops .mini.danger:hover{border-color:var(--bad);color:var(--bad)}
 .rp-gh:first-child{padding-top:2px}
 .rp-gh b{font-weight:600;color:var(--ink);font-size:11.5px}
 .rp-gh .n{color:var(--faint);font-variant-numeric:tabular-nums}
-.rp-r .dot{width:8px;height:8px;border-radius:2px}
+.rp-r .dot{width:9px;height:9px;border-radius:2px;box-sizing:border-box}
 .rp-r .n{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:var(--mono,inherit)}
 /* --dim 不是 --faint:实测 --faint 在这个字号下对比度 3.01,够不到 AA 的 4.5。
    而「私有」读不清就会和「没有徽章」混在一起 —— 后者表示可见性未知,
@@ -487,9 +579,37 @@ td.ops .mini.danger:hover{border-color:var(--bad);color:var(--bad)}
   max-height:200px;overflow:auto;color:var(--dim);font-family:var(--mono,inherit)}
 .rp-empty{color:var(--dim);font-size:12px;padding:14px 2px}
 
+/* 状态分段条。段宽按数量,数字印在段上,点一下按这一类过滤。
+   ⚠ 形状规则(.d-error 是空心圆、.d-detached 是菱形)在这里用不上 ——
+   段是矩形。所以段上必须有数字和 title,不能只靠段色;
+   而真正需要形状区分的地方(48 行列表、图例)仍然有。 */
+.rp-bar{display:flex;width:100%;max-width:520px;height:19px;border-radius:3px;
+  overflow:hidden;background:var(--line2);margin:2px 0}
+.rp-bar i{display:flex;align-items:center;justify-content:center;font-style:normal;
+  min-width:26px;font-size:10.5px;cursor:pointer;font-variant-numeric:tabular-nums;
+  border-radius:0}
+.rp-bar i b{color:#fff;font-weight:600;text-shadow:0 0 2px #0006}
+/* 把点用的形状规则在条里中和掉。不中和的话 .d-error 会变成一个透明的圆,
+   而 .d-detached 会把整段转 45 度 —— 两个都是实心矩形段里不成立的形状。 */
+.rp-bar i.d-error{background:var(--bad);border:0}
+.rp-bar i.d-detached{background:var(--idle);transform:none}
+.rp-bar i.sel{outline:2px solid var(--ink);outline-offset:-2px}
+.rp-bar i:hover{filter:brightness(1.15)}
+/* 图例里的状态点。尺寸写在类里而不是内联,因为内联的 border-radius 会赢过下面
+   .d-error 的圆角,让图例上的「扫不动」退回成一个方块 —— 图例和列表对不上,
+   比没有图例更糟。这条必须排在 .d-* 前面,好让形状规则后来居上。 */
+.dotk{width:8px;height:8px;border-radius:2px;box-sizing:border-box}
+/* 五个状态各有形状,不只有颜色。
+   ⚠ unpushed 和 error 以前都是 var(--bad) 的实心方块,在列表里逐字长得一样。
+   但它们是两类完全不同的东西:unpushed 是**查出来的结果**(有提交没推出去),
+   error 是**没查成**(这个仓扫不动)。把「没检查」画成一个检查结论,
+   正是这个项目最怕的那种失败。所以 error 改成空心圆 —— 里面没有东西,
+   因为里面确实没读到东西。
+   detached 转 45 度成菱形:游离 HEAD 是个结构异常,不是一档严重程度。 */
 .d-clean{background:var(--ok)} .d-dirty{background:var(--warn)}
-.d-unpushed{background:var(--bad)} .d-error{background:var(--bad)}
-.d-detached{background:var(--idle)}
+.d-unpushed{background:var(--bad)}
+.d-error{background:transparent;border:2px solid var(--bad);border-radius:50%}
+.d-detached{background:var(--idle);transform:rotate(45deg);border-radius:1px}
 
 /* ---- 会话(对话历史) ----------------------------------------------------------------------
    按对话创建时所在的目录分组。标题来自对话自己,而标题**从哪来**也画出来:
@@ -500,16 +620,30 @@ td.ops .mini.danger:hover{border-color:var(--bad);color:var(--bad)}
 .cv-head b{font-variant-numeric:tabular-nums;color:var(--ink);font-size:13px}
 .cv-head label{display:inline-flex;align-items:center;gap:4px;cursor:pointer}
 .cv-g{border-top:1px solid var(--line2)}
-.cv-gh{display:grid;grid-template-columns:10px 1fr auto auto;gap:8px;align-items:center;
-  padding:4px 0;cursor:pointer;font-size:12px}
+.cv-gh{display:grid;grid-template-columns:10px minmax(0,1fr) 88px 44px 46px 106px;
+  gap:8px;align-items:center;padding:4px 0;cursor:pointer;font-size:12px}
 .cv-gh:hover{background:var(--cur)}
 .cv-gh .caret{color:var(--faint);font-size:9px;transition:none}
-.cv-hm{font-variant-numeric:tabular-nums;color:var(--faint);white-space:nowrap}
-.cv-gh .dir{font-family:var(--mono,inherit);overflow:hidden;text-overflow:ellipsis;
-  white-space:nowrap;direction:rtl;text-align:left}
-.cv-gh .n{font-variant-numeric:tabular-nums;color:var(--faint);font-size:11px;white-space:nowrap}
-.cv-gh .hm{font-variant-numeric:tabular-nums;color:var(--cyan);font-size:11px;
+/* ⚠ 这条以前写成 `.cv-gh .hm`,而 JS 渲染出来的类名是 cv-hm,所以它一行都没生效过:
+   那一列既不是 cyan 也没有右对齐,宽度跟着内容抖。两条规则合并成一条。 */
+.cv-hm{font-variant-numeric:tabular-nums;color:var(--cyan);font-size:11px;
   white-space:nowrap;min-width:34px;text-align:right}
+/* 路径拆两段:前缀降成背景纹理,末段(真正区分这一行的那部分)留全色不截断。
+   刻意不只显示末段 —— `...\scripts` 这种末段在别处会撞名,那会丢掉定位能力。
+   前缀仍然逐字在 DOM 里,只是宽度不够时才省略;title 始终是完整绝对路径。 */
+.cv-gh .dir{display:flex;min-width:0;font-family:var(--mono,inherit);text-align:left}
+.cv-gh .dp{color:var(--faint);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:0 1 auto}
+.cv-gh .dn{color:var(--ink);font-weight:500;white-space:nowrap;flex:none}
+.cv-gh .n{font-variant-numeric:tabular-nums;color:var(--faint);font-size:11px;
+  white-space:nowrap;text-align:right}
+.cv-gh .ag{font-variant-numeric:tabular-nums;color:var(--dim);font-size:11px;
+  white-space:nowrap;text-align:right}
+/* 体积条。跨度是 88K 到 3.7G 四个数量级,线性条会让除最大两行外全部归零,所以取对数。
+   ⚠ 非零的最小值保底 3px,而真正的 0 走 .zero 的斜纹 ——
+   「小到看不见」和「没有」必须是两个不同的图形。 */
+.cv-bar{height:6px;background:var(--line2);border-radius:1px;position:relative;overflow:hidden}
+.cv-bar i{position:absolute;inset:0 auto 0 0;background:var(--cyan);opacity:.55;display:block}
+.cv-bar.zero{background:repeating-linear-gradient(45deg,var(--line2) 0 3px,transparent 3px 6px)}
 .cv-list{padding:0 0 4px 18px;display:none}
 .cv-g.open .cv-list{display:block}
 .cv-r{display:grid;grid-template-columns:1fr auto auto auto;gap:8px;align-items:baseline;
@@ -587,10 +721,40 @@ body{font-size:12px}
 #side .nav-link{padding:4px 8px 4px 10px;font-size:12.5px;border-radius:3px}
 #side .nav-link-icon{width:15px;text-align:center;opacity:.85;margin-right:6px}
 #side .nav-link .badge{font-size:10px;padding:1px 5px}
-/* 这些小按钮原来是单字符图标,同一个 ⏸ 在三处分别表示归档移出、禁用、归档进冷层,
-   而它长得像暂停,三个含义一个都不是。改成文字之后要给够宽度,
-   否则两个汉字会被压成一个半。 */
-button.mini{padding:0 5px;font-size:10.5px;white-space:nowrap}
+/* 这些小按钮一度是单字符图标,同一个 ⏸ 在三处分别表示归档移出、禁用、归档进冷层,
+   而它长得像暂停,三个含义一个都不是;于是全部换成了文字。
+   现在换回图标,但换的是**另一件东西**:一个含义一个图形,取自页内的 SVG sprite,
+   而且每个按钮都带 title 和 aria-label。当年的毛病不是「用了图标」,
+   是「拿一个图形去表示三件事」—— 那个毛病靠文字能治,靠画对图标也能治。
+   ⚠ 图标按钮必须有可读名字。一个没有 aria-label 的图标按钮,对读屏和对
+   「这个键是干嘛的」都是空白,那是把文字太多换成了什么都没有。 */
+button.mini{padding:0 5px;font-size:10.5px;white-space:nowrap;
+  min-height:22px;border-radius:3px}
+/* 纯图标按钮:方形、点击区 24px。24 不是随便取的 —— 之前 padding:0 5px 加 10.5px 字
+   实测高度只有 14px,比正文还小。 */
+button.mini.ib{padding:0;width:24px;min-height:24px;display:inline-flex;
+  align-items:center;justify-content:center}
+button.mini.ib .ic{width:15px;height:15px}
+/* 图标本身。stroke 用 currentColor,所以按钮的颜色规则一行都不用改。 */
+.ic{width:14px;height:14px;flex:none;vertical-align:-2px;
+  fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+/* 带文字的按钮里,图标和字之间留一点气 */
+button.mini .ic{margin-right:3px}
+button.mini.ib .ic{margin-right:0}
+/* 归档 / 禁用 / 停用都是可逆的,常态不该是全页最红的东西 —— 22 个红按钮排成一竖排
+   比它们旁边的数据还抢眼。危险感留到 hover:那时人已经瞄准了。
+   ⚠ 只降常态的视觉权重,不动 danger 这个类本身:确认流程和 title 一个字没改。 */
+.mt-r .mini.danger,.ops .mini.danger{color:var(--dim);border-color:var(--line);
+  background:transparent}
+.mt-r .mini.danger:hover,.mt-r .mini.danger:focus-visible,
+.ops .mini.danger:hover,.ops .mini.danger:focus-visible{color:var(--bad);border-color:var(--bad)}
+/* 168 个按钮(42 行 × 4)常驻是全表最大的视觉噪音,而实际点它们的次数接近 0。
+   不用 display:none —— 那会让列宽跳动而且键盘够不着。淡下去,鼠标扫过或 j/k
+   光标落上就实体化。 */
+td.ops .mini{opacity:.25;transition:opacity .08s}
+table.g tbody tr:hover td.ops .mini,
+table.g tbody tr.cur td.ops .mini,
+td.ops .mini:focus-visible{opacity:1}
 /* 徽章是「合并」这件事的安全带:分区把东西收了起来,徽章负责让要人管的东西不用点进去
    也看得见。所以折叠时它不能跟着藏,而是贴到图标角上 : 折叠恰恰是最需要它的时候。 */
 #side.navbar-folded .nav-link{position:relative}
@@ -620,8 +784,17 @@ button.mini{padding:0 5px;font-size:10.5px;white-space:nowrap}
 #bar b{font-variant-numeric:tabular-nums}
 
 .page-body{margin-top:0;padding:7px 0 18px}
+/* 阅读栏。1920 屏上原来每一行都横跨 1800px:会话那屏左端是路径、右端是「1 场 · 249K」,
+   中间 1500px 空白,眼睛要走完整屏才能把一行的两端连上。靠左不居中 ——
+   导航在左边,居中会把内容推离它。
+   ⚠ 任务表是刻意的例外:那张表列多,卡到 1500px 会开始横向滚,横滚比长行更难用。 */
 #view{padding:0 9px}
-section[data-view]{display:flex;flex-direction:column;gap:6px;scroll-margin-top:32px}
+section[data-view]{display:flex;flex-direction:column;gap:6px;scroll-margin-top:32px;
+  max-width:1500px}
+/* ⚠ 上限加在 section 上而不是 #view 上,因为任务表要能例外。加在 #view 上时
+   内层再写 max-width:none 也没用 —— 父容器已经窄了,子元素放不宽。
+   任务表列多,卡到 1500px 会开始横向滚,而横滚比长行更难用。 */
+section[data-view="tasks"]{max-width:none}
 section[data-view][hidden]{display:none}
 #view .card{margin-bottom:0}
 #view #tools{margin-bottom:0}
@@ -642,7 +815,10 @@ section[data-view][hidden]{display:none}
    分区之后概览只剩两块盒子,一屏填不满三分之一。空着不是「干净」,是**把已经算出来的
    东西藏进了别的分区**:每一格都是别处早就算好的数字,放在这里只是让人不用先点进去。
    每格可点,点了就跳到那一类,所以它同时是导航。 */
-.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:1px;
+/* 上限 220px 而不是 1fr:1fr 没有上限,六格会被拉到一格 285px 宽,里面只放一个两位数。
+   auto-fit 保留,所以窄屏照常换行。 */
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,220px));
+  justify-content:start;gap:1px;
   background:var(--line);border:1px solid var(--line)}
 .tile{background:var(--panel);padding:8px 10px 9px;display:flex;flex-direction:column;gap:2px;height:auto;
   cursor:pointer;border:0;text-align:left;font-family:inherit;min-width:0}
@@ -653,6 +829,16 @@ section[data-view][hidden]{display:none}
   white-space:nowrap}
 .tile .v.ok{color:var(--ok)} .tile .v.bad{color:var(--bad)}
 .tile .v.warn{color:var(--warn)} .tile .v.idle{color:var(--faint)}
+/* 比例条。只在这一格的数字真有分母时才出现;没有分母的格子(比如对话总数)不画轨道。 */
+.tile .tb{display:block;height:3px;border-radius:2px;background:var(--line);
+  overflow:hidden;margin:3px 0 1px;position:relative}
+.tile .tb i{display:block;height:100%;background:var(--dim)}
+.tile .tb i.ok{background:var(--ok)} .tile .tb i.bad{background:var(--bad)}
+.tile .tb i.warn{background:var(--warn)} .tile .tb i.idle{background:var(--faint)}
+/* 爆表:条的右端长出一截斜纹,并整条描红。满和爆不能是同一根满条。 */
+.tile .tb.over{outline:1px solid var(--bad);outline-offset:1px;overflow:visible}
+.tile .tb.over::after{content:"";position:absolute;top:0;bottom:0;left:100%;width:12px;
+  background:repeating-linear-gradient(45deg,var(--bad) 0 2px,transparent 2px 4px)}
 /* 上面 .tile 那处的 height:auto 现在是冗余的,留着无害(注释以前写「两处」,只剩一处了 ——
    一段替不存在的第二处背书的注释,会让读的人去找它)。
    本页曾给工具条写过 `button{height:22px}` 这条元素选择器,任何拿 <button> 当积木的
@@ -672,9 +858,30 @@ section[data-view][hidden]{display:none}
    尺寸是 0,.why 没有所以最小尺寸是 max-content —— 宽度不够时先被压到 0 的是任务名,
    留下的是「未推送」「产物过期」这种**没有主语的原因**,而这张清单存在的理由就是回答
    「是哪一个」。现在反过来:名字有下限,原因先收。 */
-#todo .rw{display:grid;grid-template-columns:6px 62px minmax(130px,1fr) minmax(0,auto);
+/* 再加一条:1920 屏上这张清单原来横跨 1740px,名字停在 x≈260、原因贴在 x≈1900,
+   中间 1600px 全空。限宽之后一次眼动就能读完「哪个 · 怎么了」。
+   820px 是最长的名字加最长的原因的自然宽度,不会截断。 */
+#todod{max-width:820px}
+#todo .rw{display:grid;grid-template-columns:6px 44px minmax(150px,max-content) minmax(0,1fr);
   gap:8px;align-items:baseline;
   padding:2px 0;border-bottom:1px solid var(--line2);cursor:pointer}
+/* 同一个原因重复多行时合并成一行 + 一排芯片。原来 31 行里有 19 行只说了两件事:
+   「有未提交改动」印了 15 遍、「有未推送提交」印了 4 遍。合并之后
+   「19 个仓库脏着」这个**规模**第一次变得可见 —— 以前它藏在「你自己去数有多少行」里。
+   ⚠ 分桶键必须带上 sev:少了它,一条 sev=3 会被并进一堆 sev=2 里,
+   色点只剩一个,那正是把两种状态合并成同一个视觉。 */
+#todo .rw.grp{grid-template-columns:6px 44px minmax(150px,max-content) minmax(0,1fr);
+  cursor:default}
+/* ⚠ 色点在 .rw 上是 align-self:center。芯片换行把一条分组行撑到 85px 高时,
+   点会垂直居中飘到第 40px 处 —— 屏幕上看起来是一个不属于任何一行的孤立色块,
+   而它本该贴着「有未提交改动 16」那一行。分组行里改成对齐第一行。 */
+#todo .rw.grp .dot{align-self:start;margin-top:5px}
+#todo .chips{display:flex;flex-wrap:wrap;gap:4px}
+#todo .chip{font-family:var(--mono);font-size:10.5px;padding:0 5px;min-height:17px;
+  border-radius:9px;border:1px solid var(--line);background:transparent;color:var(--dim);
+  cursor:pointer}
+#todo .chip:hover{color:var(--ink);border-color:var(--ink)}
+#todo .why b{color:var(--ink);font-variant-numeric:tabular-nums}
 #todo .rw:last-child{border-bottom:0}
 #todo .rw:hover{background:var(--cur)}
 #todo .dot{width:6px;height:6px;border-radius:1px;align-self:center}
@@ -742,6 +949,29 @@ table.g td[data-col="timeout"]{font-family:var(--mono)}
 </style>
 </head>
 <body>
+<!-- 图标表。刻意是页内 sprite,不吊 CDN 也不加字体文件:
+     这台控制台正是出事的时候要打开的,而出事的时候网络是最不该依赖的东西
+     (同一条理由已经让 tabler 随仓发)。而且 vendor 路由只认 .css/.js,
+     一个 .woff2 会被当 text/plain 发出去,浏览器直接拒收字体 ——
+     加图标字体等于顺带要改服务端的 MIME 表。
+     每个符号只表示一件事:当年 ⏸ 一个图形担三个含义才是那次回退的真正原因。 -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false"><defs>
+<symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h3l2 2h7a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></symbol>
+<symbol id="i-web" viewBox="0 0 24 24"><path d="M12 6H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6"/><path d="M11 13 20 4"/><path d="M15 4h5v5"/></symbol>
+<symbol id="i-diff" viewBox="0 0 24 24"><path d="M13 5h8M13 9h5M13 15h8M13 19h5"/><path d="M3 4h6v6H3zM3 14h6v6H3z"/></symbol>
+<symbol id="i-fetch" viewBox="0 0 24 24"><path d="M12 4v10"/><path d="m8 10 4 4 4-4"/><path d="M4 18h16"/></symbol>
+<symbol id="i-copy" viewBox="0 0 24 24"><path d="M9 9h10a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H9a1 1 0 0 1-1-1V10a1 1 0 0 1 1-1z"/><path d="M16 6V4a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h2"/></symbol>
+<symbol id="i-play" viewBox="0 0 24 24"><path d="M7 4v16l13-8z"/></symbol>
+<symbol id="i-stop" viewBox="0 0 24 24"><path d="M6 6h12v12H6z"/></symbol>
+<symbol id="i-pause" viewBox="0 0 24 24"><path d="M8 5h3v14H8zM13 5h3v14h-3z"/></symbol>
+<symbol id="i-retire" viewBox="0 0 24 24"><path d="M20 6H9l-5 6 5 6h11a1 1 0 0 0 1-1V7a1 1 0 0 0-1-1z"/><path d="m12 10 4 4M16 10l-4 4"/></symbol>
+<symbol id="i-archive" viewBox="0 0 24 24"><path d="M3 4h18v4H3z"/><path d="M5 8v11a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8"/><path d="M10 12h4"/></symbol>
+<symbol id="i-restore" viewBox="0 0 24 24"><path d="m9 13-4-4 4-4"/><path d="M5 9h11a4 4 0 0 1 0 8h-1"/></symbol>
+<symbol id="i-off" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="m9 9 6 6"/></symbol>
+<symbol id="i-on" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="m8.5 12 2.5 2.5 4.5-5"/></symbol>
+<symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16"/><path d="M10 11v6M14 11v6"/><path d="m5 7 1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2l1-12"/><path d="M9 7V4h6v3"/></symbol>
+<symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/></symbol>
+</defs></svg>
 
 <div class="page">
 
@@ -758,7 +988,7 @@ table.g td[data-col="timeout"]{font-family:var(--mono)}
         <li class="nav-item"><a class="nav-link nv" data-view="overview" href="#overview"><span class="nav-link-icon">◎</span><span class="nav-link-title">概览</span><span class="badge bg-danger ms-auto" id="bg-overview" hidden>0</span></a></li>
         <li class="nav-item"><a class="nav-link nv" data-view="tasks" href="#tasks"><span class="nav-link-icon">▤</span><span class="nav-link-title">任务</span><span class="badge bg-danger ms-auto" id="bg-tasks" hidden>0</span></a></li>
         <li class="nav-item"><a class="nav-link nv" data-view="repos" href="#repos"><span class="nav-link-icon">⑂</span><span class="nav-link-title">仓库</span><span class="badge bg-danger ms-auto" id="bg-repos" hidden>0</span></a></li>
-        <li class="nav-item"><a class="nav-link nv" data-view="storage" href="#storage"><span class="nav-link-icon">▢</span><span class="nav-link-title">配置</span><span class="badge bg-danger ms-auto" id="bg-storage" hidden>0</span></a></li>
+        <li class="nav-item"><a class="nav-link nv" data-view="storage" href="#storage"><span class="nav-link-icon">▢</span><span class="nav-link-title">维护</span><span class="badge bg-danger ms-auto" id="bg-storage" hidden>0</span></a></li>
         <li class="nav-item"><a class="nav-link nv" data-view="convos" href="#convos"><span class="nav-link-icon">☰</span><span class="nav-link-title">会话</span><span class="badge bg-danger ms-auto" id="bg-convos" hidden>0</span></a></li>
       </ul>
       <div class="mt-auto pb-2 px-3">
@@ -829,11 +1059,12 @@ table.g td[data-col="timeout"]{font-family:var(--mono)}
   </div>
 <div class="card" id="tlbox">
     <div class="card-header"><h3 class="card-title">今日时间轴
-      <span class="n" id="tlnote"></span></h3><div class="card-actions"><span class="faint" id="tlrange"></span>
+      <span class="n" id="tlnote"></span><span class="help" id="tlhelp"></span></h3><div class="card-actions"><span class="faint" id="tlrange"></span>
         <button id="tlout" title="缩小">-</button>
         <button id="tlin" title="放大">+</button>
         <button id="tlreset" title="回到整天">整天</button></div></div>
     <div class="pad">
+      <div class="warn-line" id="tlwarn" hidden></div>
       <div class="tl" id="tl"></div>
       <div class="tlkey">
         <span><i class="tlpt" style="position:static;width:5px;height:7px"></i>计划(未到)</span>
@@ -872,13 +1103,24 @@ table.g td[data-col="timeout"]{font-family:var(--mono)}
     </div>
   </div>
   </section>
-  <section id="storage" data-view="storage" data-label="配置" hidden>
+  <!-- 维护屏。记忆与索引是主区,不再是四栏里的一栏:后端早就在下发孤儿链接、
+       索引够不到、索引指向空、最大条目排行,而它们以前挤在 260px 里只露出三行摘要
+       和四个名字 —— 采到了却没有出口,等于没采。
+       下面一排把两套 agent 并排放:这台机器上它们是并排跑的,只量一半,
+       另一半涨到什么程度没有任何地方会说。 -->
+  <section id="storage" data-view="storage" data-label="维护" hidden>
+  <div class="card" id="membox">
+    <div class="card-header"><h3 class="card-title">记忆与索引<span class="n" id="memnote">读取中</span></h3>
+      <div class="card-actions"><button class="mini ib" id="memreload" title="重新读取记忆池"
+        aria-label="重新读取记忆池"><svg class="ic"><use href="#i-refresh"/></svg></button></div></div>
+    <div class="pad" id="mt-memory"></div>
+  </div>
 <div class="card" id="mtbox">
-    <div class="card-header"><h3 class="card-title">维护<span class="n" id="mtnote">读取中</span></h3><div class="card-actions"><button id="mtreload" title="重新读取">↻</button></div></div>
+    <div class="card-header"><h3 class="card-title">运行时<span class="n" id="mtnote">读取中</span></h3><div class="card-actions"><button class="mini ib" id="mtreload" title="重新读取" aria-label="重新读取"><svg class="ic"><use href="#i-refresh"/></svg></button></div></div>
     <div class="mt-grid">
       <div class="mt-col" id="mt-skills"></div>
-      <div class="mt-col" id="mt-memory"></div>
       <div class="mt-col" id="mt-plugins"></div>
+      <div class="mt-col" id="mt-codex"></div>
       <div class="mt-col" id="mt-sys"></div>
     </div>
   </div>
@@ -984,8 +1226,15 @@ function renderTL(){
   if(!T||!T.rows||!T.rows.length){ $("tlbox").hidden=true; return; }
   $("tlbox").hidden=false;
   const rlDown = !(DATA.runlog && DATA.runlog.available);
-  $("tlnote").textContent=`${T.date} 现在 ${T.now} · ${T.rows.length} 行 · ${T.note}`
-    + (rlDown ? " ⚠ 运行日志不可用,本图只有计划、没有实际:每行都没有实际运行标记不代表它们没跑。" : "");
+  // ⚠ 这里原来把三样东西拼成一个字符串:日期与行数(体征)、T.note(通用说明,
+  // 读一次就够)、以及「运行日志不可用」(**真实状态,必须有人看见**)。
+  // 一起折叠就等于把那条告警藏进灰字堆;所以先拆开,状态单独升成警告条。
+  $("tlnote").textContent=`${T.date} 现在 ${T.now} · ${T.rows.length} 行`;
+  const help=$("tlhelp");
+  if(help){ help.textContent="说明"; help.dataset.full=T.note||""; help.title=T.note||""; }
+  const w=$("tlwarn");
+  if(w){ w.hidden=!rlDown;
+    w.textContent="运行日志不可用,本图只有计划、没有实际:每行都没有实际运行标记不代表它们没跑。"; }
   const fmt=m=>`${String(Math.floor(m/60)).padStart(2,"0")}:${String(Math.round(m)%60).padStart(2,"0")}`;
   $("tlrange").textContent=`${fmt(tlFrom)}-${fmt(Math.min(tlTo,1439))}`;
   const nowM=mins(T.now);
@@ -1007,13 +1256,15 @@ function renderTL(){
     const acts=(r.actual||[]).filter(a=>vis(mins(a))).map(a=>
       `<i class="tlact" style="left:${tlPos(mins(a))}%" title="${esc(r.name)} 实际运行 ${a}"></i>`).join("");
     const evt=(r.eventDriven.length&&!r.points.length&&!r.spans.length)
-      ? `<span class="tlevt">${esc(r.eventDriven.join("/"))} 触发,无固定时刻</span>`:"";
+      ? `<span class="tlevt" title="${esc(r.eventDriven.join("/"))} 触发,无固定时刻"
+          ><b class="tlbadge">${esc(r.eventDriven.join("/"))}</b></span>`:"";
     // 认不出的触发器类型。后端一直在收集它,而这一行以前**整个不渲染**,
     // 连带那些只有认不出的触发器的任务在今日时间轴上一行都没有 ——
     // 屏幕表现与「这个任务今天本来就不该跑」逐像素相同。
     // 说「我不认识」比装作没有强:前者能被人去查,后者不能。
     const unk=(r.unknownTriggers&&r.unknownTriggers.length&&!r.points.length&&!r.spans.length)
-      ? `<span class="tlevt warnish">触发器类型 ${esc(r.unknownTriggers.join("/"))} 认不出,今日时刻算不出来</span>`:"";
+      ? `<span class="tlevt warnish" title="触发器类型 ${esc(r.unknownTriggers.join("/"))} 认不出,今日时刻算不出来"
+          ><b class="tlbadge">? ${esc(r.unknownTriggers.join("/"))}</b></span>`:"";
     const nowBar=vis(nowM)?`<i class="tlnow" style="left:${tlPos(nowM)}%"></i>`:"";
     // ⚠ 这里原来还拼了 `r.desc`,而 timeline.build 从不产出这个字段(它拼的 row 只有
     // name/cat/points/spans/eventDriven/unknownTriggers/actual/sk)。于是这个三元
@@ -1085,7 +1336,12 @@ function renderFresh(){
     `<span><i class="fr-c s-${k}" style="width:9px;height:9px"></i>${FR_LABEL[k]} ${counts[k]}</span>`
   ).join("");
 
-  $("frboard").innerHTML=ts.map(t=>{
+  // 按 FR_ORDER 排:坏的聚到左上角。乱序的灯板等于把「有 5 个红的」这个事实
+  // 摊平成「你自己去 40 格里数」,而这块板子存在的理由就是一眼看出坏了几个。
+  // 排序只改显示顺序,data-fr 仍是任务名,点击与 title 的路径一个字没动。
+  const tsSorted=ts.slice().sort((a,b)=>
+    FR_ORDER.indexOf(a.state)-FR_ORDER.indexOf(b.state) || a.name.localeCompare(b.name));
+  $("frboard").innerHTML=tsSorted.map(t=>{
     const why=(t.reasons||[]).join(" · ");
     // 加 tabindex 和 role:这一格是概览屏两个核心导航之一,原来只能用鼠标。
     return `<i class="fr-c s-${t.state}" data-fr="${esc(t.name)}" tabindex="0" role="button" `
@@ -1125,12 +1381,20 @@ function renderMaint(){
   const S=MAINT.skills, el=$("mt-skills");
   if(!S.available){ mtUnset(el,S.reason); }
   else{
-    const rows=S.skills.map(k=>`<div class="mt-r${k.archived?" off":""}">
+    // 每行一条微型条。22 个字符数原来只能逐行读,谁在吃预算看不出来。
+    // 归一化用当前最大值而不是 18600 的预算上限:单个 skill 从来到不了上限,
+    // 按上限归一会让 22 根条全部贴着左边,谁也分不出谁。
+    const maxC=Math.max(1,...S.skills.filter(k=>!k.archived).map(k=>k.chars||0));
+    const rows=S.skills.map(k=>`<div class="mt-r bar${k.archived?" off":""}">
       <span class="n" title="${esc(k.name)}">${esc(k.name)}</span>
       ${k.linked?`<span class="lk" title="junction,指向别处的仓库">↗</span>`:""}
+      <span class="ub" aria-hidden="true"><i style="width:${
+        k.archived?0:Math.round((k.chars||0)/maxC*100)}%"></i></span>
       <span class="c">${k.archived?"":k.chars}</span>
-      <button class="mini${k.archived?"":" danger"}" data-mt="${k.archived?"skill.restore":"skill.archive"}"
-        data-name="${esc(k.name)}" title="${k.archived?"从归档区还原回来":"移出到归档区,不再占描述预算"}">${k.archived?"还原":"归档"}</button>
+      ${k.archived
+        ? ibtn("i-restore","从归档区还原回来",`data-mt="skill.restore" data-name="${esc(k.name)}"`)
+        : ibtn("i-archive","移出到归档区,不再占描述预算",
+               `data-mt="skill.archive" data-name="${esc(k.name)}"`,"danger")}
     </div>`).join("");
     el.innerHTML=`<div class="mt-t">SKILL <b>${S.liveCount}</b>
         <span class="sub">${S.budgetChars} 字符${
@@ -1151,8 +1415,9 @@ function renderMaint(){
         const nm=p.name.split("@")[0];
         return `<div class="mt-r${p.enabled?"":" off"}">
           <span class="n" title="${esc(p.name)}">${esc(nm)}</span>
-          <button class="mini${p.enabled?" danger":""}" data-mt="${p.enabled?"plugin.disable":"plugin.enable"}"
-            data-name="${esc(p.name)}" title="${p.enabled?"禁用这个插件":"启用这个插件"}">${p.enabled?"禁用":"启用"}</button>
+          ${p.enabled
+            ? ibtn("i-off","禁用这个插件",`data-mt="plugin.disable" data-name="${esc(p.name)}"`,"danger")
+            : ibtn("i-on","启用这个插件",`data-mt="plugin.enable" data-name="${esc(p.name)}"`)}
         </div>`;}).join("")}</div>`;
   }
 }
@@ -1281,10 +1546,16 @@ function renderRepos(){
   // 「要人管 N」这一份删掉了:同一个数字已经在概览的指标格、侧栏徽章和要人管清单上
   // 各出现一次,连中文词都一样。徽章回答「有没有事」、清单回答「是哪几个」,是不同粒度;
   // 夹在中间的这一份信息增量为零,而每多一处就多一个会漂的地方。
+  // 四段状态原来是「■未推送 4 · ■有改动 14 · ■干净 30」这样的文字,每次变的只有数字,
+  // 而四个数字之间的比例完全靠读。换成一根按数量分段的条:比例是看出来的,
+  // 数字印在段上,段本身可以点来过滤。
+  const segs = RP_ORDER.filter(k=>c[k]);
   let head = `<span>共 <b>${S.total}</b></span>`
-    +`<span class="rp-chips">`+RP_ORDER.filter(k=>c[k]).map(k=>
-        `<span><i class="dot d-${k}" style="width:8px;height:8px;border-radius:2px"></i>${RP_LAB[k]} ${c[k]}</span>`).join("")
-    +`</span>`;
+    + `<span class="rp-bar" role="img" aria-label="${esc(segs.map(k=>RP_LAB[k]+" "+c[k]).join(","))}">`
+    + segs.map(k=>`<i class="d-${k}${RP_STATE===k?" sel":""}" data-rpstate="${k}"
+        style="flex:${c[k]}" title="${esc(RP_LAB[k])} ${c[k]} 个 · 点一下只看这一类"
+        ><b>${c[k]}</b></i>`).join("")
+    + `</span>`;
   if(S.unknownUpstream) head += `<span title="没有 upstream 的仓:它的提交一个都没推出去过,而这和「已同步」在 0/0 下长得一样">无上游 ${S.unknownUpstream}</span>`;
   // 账号判定的计数。mismatch 单独拎出来,因为它是事故形状;unchecked 也要说,
   // 因为一个只数 mismatch 的计数器在没配身份表时是 0,而 0 读起来像「没有配错的」。
@@ -1321,8 +1592,11 @@ const RP_KIND_WHY = {
 };
 const RP_ID_LAB = {ok:"匹配", mismatch:"不匹配", foreign:"第三方", unchecked:"未检查"};
 let RP_SEL = null;          // 选中的仓名
+let RP_STATE = "";          // 状态条上点中的那一段,空串=不按状态过滤
+let RP_AUTOSEL = false;     // 首屏自动选中只做一次,之后不再抢人的选择
 
 function rpMatches(r, q, acc, kind){
+  if(RP_STATE && r.state !== RP_STATE) return false;
   if(acc && r.owner !== acc) return false;
   if(kind && r.kind !== kind) return false;
   if(!q) return true;
@@ -1332,6 +1606,20 @@ function rpMatches(r, q, acc, kind){
 
 function renderRepoList(){
   if(!REPOS || !REPOS.available) return;
+
+  // 首屏自动选中第一个要人管的仓。原来右边 1000x750 默认全白,只有一句「左边选一个仓」,
+  // 而这一页自己的注释早就写过「空出来的那片读起来像坏了」。
+  // ⚠ 必须在拼列表 HTML **之前**做,否则选中的那一行不会带上 .on 高亮 ——
+  // 右边显示着某个仓,左边没有任何一行看起来被选中,那比不自动选更让人困惑。
+  // ⚠ 只做一次:否则人手动取消选择之后,下一次刷新又会把选中抢回去。
+  // 要人管的状态集合走 RP_ATT(),不在这里另写一份阈值。
+  if(!RP_SEL && !RP_AUTOSEL && Array.isArray(REPOS.repos)){
+    RP_AUTOSEL = true;
+    const att = RP_ATT();
+    const first = REPOS.repos.find(r=>att.indexOf(r.state) >= 0);
+    if(first) RP_SEL = first.name;
+  }
+
   const q = ($("rpq").value||"").trim().toLowerCase();
   const acc = $("rpacc").value, kind = $("rpkind").value;
   const byHost = {};
@@ -1397,7 +1685,7 @@ function rpListRow(r, sub){
     + (id.state && id.state!=="ok" ? " · "+(RP_ID_LAB[id.state]||id.state) : "");
   return `<div class="rp-r${sub?" sub":""}${RP_SEL===r.name?" on":""}" data-rp="${esc(r.name)}"
       tabindex="0" role="button" title="${esc(r.path)}">
-    <i class="dot d-${r.state}"></i>
+    <i class="dot d-${r.state}" title="${esc(RP_LAB[r.state]||r.state)}"></i>
     <span class="n">${esc(label)}</span>
     <span class="acc${cls}" title="${esc(accTitle)}">${esc(mono)}</span>
     <span class="vis ${v.cls}" title="${esc(v.t)}">${v.g}</span></div>`;
@@ -1463,7 +1751,7 @@ function renderRepoDetail(){
   // 两行事实。标签列去掉了:以盘符开头的绝对路径和以 git@ 开头的 URL 不需要人告诉它们是什么。
   h += `<div class="rp-line"><span class="ic" title="本地路径">📁</span>`
     + `<code>${esc(r.path||"—")}</code>`
-    + `<button class="mini" data-rpact="copy" title="复制绝对路径">复制</button></div>`;
+    + ibtn("i-copy","复制绝对路径",'data-rpact="copy"') + `</div>`;
   h += `<div class="rp-line"><span class="ic" title="remote">☁</span>`
     + `<code>${r.remote?esc(r.remote):"没有 remote"}</code></div>`;
 
@@ -1485,14 +1773,16 @@ function renderRepoDetail(){
   if(r.usesShared && r.usesShared.length) rel.push(`引用 ${esc(r.usesShared.join("、"))}`);
   if(rel.length) h += `<div class="rp-rel">` + rel.map(x=>`<span>${x}</span>`).join("") + `</div>`;
 
+  // 四个动作改成图标。每个都带 title 和 aria-label —— 图标按钮没有可读名字
+  // 就等于把「字太多」换成了「什么都没有」。
   h += `<div class="rp-acts">
-    <button class="mini" data-rpact="reveal" title="资源管理器定位到这个仓">打开目录</button>`;
+    ${ibtn("i-folder","打开目录",'data-rpact="reveal"')}`;
   h += r.webUrl
-    ? `<button class="mini" data-rpact="web" title="${esc(r.webUrl)}">网页</button>`
-    : `<button class="mini" disabled title="认不出这个 remote 对应的网页地址。按「反正都是同一家」拼出来的链接会把人送到不存在的页面,而那比没有链接更糟">网页</button>`;
-  h += `<button class="mini" data-rpact="status" title="git status,看具体是哪些文件">看改动</button>
-    <button class="mini" data-mt="repo.fetch" data-name="${esc(r.name)}" title="git fetch,只取不合">fetch</button>
-  </div><div class="rp-out" id="rpout"></div>`;
+    ? ibtn("i-web","在浏览器里打开 "+r.webUrl,'data-rpact="web"')
+    : ibtn("i-web","认不出这个 remote 对应的网页地址。按「反正都是同一家」拼出来的链接会把人送到不存在的页面,而那比没有链接更糟","disabled");
+  h += ibtn("i-diff","看改动:git status,具体是哪些文件",'data-rpact="status"')
+    + ibtn("i-fetch","fetch:只取不合",`data-mt="repo.fetch" data-name="${esc(r.name)}"`)
+    + `</div><div class="rp-out" id="rpout"></div>`;
   box.innerHTML = h;
 }
 
@@ -1523,7 +1813,9 @@ function renderSys(){
   h+=pc.available
     ? `<div class="mt-r"><span class="n">插件缓存</span><span class="c">${sz(pc)}</span>
        ${pc.deletableCount?`<button class="mini danger" data-mt="clean.tempgit" data-name="-"
-          title="删除 ${pc.deletableCount} 个废弃克隆暂存目录">🗑${pc.deletableCount}</button>`:""}</div>`
+          title="删除 ${pc.deletableCount} 个废弃克隆暂存目录"
+          aria-label="删除 ${pc.deletableCount} 个废弃克隆暂存目录"><svg class="ic"><use
+          href="#i-trash"/></svg>${pc.deletableCount}</button>`:""}</div>`
     : `<div class="mt-r"><span class="n">插件缓存</span><span class="c">${
         esc(pc.reason||"未检查")}</span></div>`;
   // partial 要说出来:一个数了一半却报确定数字的体积比不报还糟。
@@ -1545,6 +1837,56 @@ function renderSys(){
 
 // 记忆池那一栏。两条硬上限是护栏不是建议:超了尾部条目会在下一次会话里静默消失,
 // 不报错、不记日志,所以这里画成有刻度的条而不是一个数字。
+// 第二套 agent 的体征。单独一次 fetch:它要走一遍目录树,不该拖住别的面板。
+let CODEX=null;
+async function loadCodex(){
+  try{ CODEX=await api("/api/codex"); }catch(e){ CODEX={error:e.message}; }
+  renderCodex();
+}
+
+// 每一项自己说自己的话。一次 OSError 不能让整栏塌成「没数据」——
+// 「会话目录读不了」和「会话目录是空的」要采取的行动相反。
+const CX_LAB={"AGENTS.md":"指令文件","config.toml":"配置",
+  "sessions":"会话","archived_sessions":"归档会话",
+  "history.jsonl":"命令历史","log":"日志","cache":"缓存"};
+
+function renderCodex(){
+  const el=$("mt-codex"); if(!el) return;
+  if(!CODEX){ el.innerHTML=`<div class="mt-t">第二套 agent</div>
+    <div class="mt-note">读取中</div>`; return; }
+  if(CODEX.error){ el.innerHTML=`<div class="mt-t">第二套 agent</div>
+    <div class="warn-line">读取失败:${esc(CODEX.error)}</div>`; return; }
+  if(!CODEX.available){ el.innerHTML=`<div class="mt-t">第二套 agent</div>
+    <div class="mt-note">${esc(CODEX.reason)}</div>`; return; }
+
+  const rows=Object.keys(CX_LAB).map(k=>{
+    const it=CODEX.items[k]||{};
+    if(!it.available)
+      return `<div class="cx-r unread"><span class="n" title="${esc(k)}">${CX_LAB[k]}</span>
+        <span class="c" title="${esc(it.reason||"")}">读不了</span><span class="m"></span></div>`;
+    if(!it.exists)
+      return `<div class="cx-r absent"><span class="n" title="${esc(k)}">${CX_LAB[k]}</span>
+        <span class="c" title="这一项不在。不在是一个结论,不是一次失败">不在</span>
+        <span class="m"></span></div>`;
+    // 条数只有会话那两项有。没有条数的项这一格留空,不填 0 ——
+    // 一个 0 会被读成「有这个东西但里面是空的」。
+    const n = (it.count==null) ? (it.files!=null?it.files+" 个":"") : it.count+" 场";
+    const warn = it.errors ? ` · ${it.errors} 处扫不动,这个数偏小` : "";
+    return `<div class="cx-r${it.errors?" warnish":""}">
+      <span class="n" title="${esc(k)}">${CX_LAB[k]}</span>
+      <span class="c" title="${esc(kb(it.bytes)+warn)}">${kb(it.bytes)}${it.errors?"+":""}</span>
+      <span class="m">${esc(n)}</span></div>`;
+  }).join("");
+
+  const bad=[];
+  if(CODEX.incomplete.length) bad.push(`${CODEX.incomplete.length} 项没扫全,总量偏小`);
+  if(CODEX.unread.length) bad.push(`${CODEX.unread.length} 项读不了`);
+  el.innerHTML=`<div class="mt-t">第二套 agent <b>${kb(CODEX.bytes)}</b>
+      <span class="sub">${CODEX.incomplete.length||CODEX.unread.length?"":"全部数到"}</span></div>
+    ${bad.length?`<div class="warn-line">${esc(bad.join(" · "))}</div>`:""}
+    <div class="mt-rows">${rows}</div>`;
+}
+
 let MEM=null;
 async function loadMem(){
   try{ MEM=await api("/api/mem"); }catch(e){ MEM={error:e.message}; }
@@ -1553,34 +1895,72 @@ async function loadMem(){
 }
 function renderMem(){
   const el=$("mt-memory"); if(!el||!MEM) return;
-  if(MEM.error){ el.innerHTML=`<div class="mt-note">记忆池读取失败:${esc(MEM.error)}</div>`; return; }
-  if(!MEM.available){ el.innerHTML=`<div class="mt-note">${esc(MEM.reason)}</div>`; return; }
+  if(MEM.error){ memNote("读取失败");
+    el.innerHTML=`<div class="warn-line">记忆池读取失败:${esc(MEM.error)}</div>`; return; }
+  if(!MEM.available){ memNote("未检查");
+    el.innerHTML=`<div class="warn-line">${esc(MEM.reason)}</div>`; return; }
   const bar=(pct,cur,max,lab)=>{
     if(pct==null) return `<div class="mt-r"><span class="n">${lab}</span><span class="c">未读到</span></div>`;
-    return `<div class="mt-r"><span class="n">${lab}</span><span class="c">${cur}/${max}</span></div>
-      <div class="mt-meter"><i style="width:${Math.min(pct,100).toFixed(1)}%;background:${
+    // ⚠ Math.min 把 100% 和 130% 钳成同一个宽度,于是「刚好满」和「已经爆了」
+    // 画出来一模一样。而超硬上限的后果是尾部条目在下一次会话里静默消失、
+    // 不报错不记日志 —— 恰恰是最不该只靠一根满条去说的事。
+    // 所以超限时条右端长出一截斜纹、整条描红,并把超了多少个直接写出来。
+    const over = pct>100 ? (cur-max) : 0;
+    return `<div class="mt-r"><span class="n">${lab}</span><span class="c${over?" over":""}">${
+        cur}/${max}${over?` · 超 ${over}`:""}</span></div>
+      <div class="mt-meter${over?" over":""}"><i style="width:${Math.min(pct,100).toFixed(1)}%;background:${
         pct>=100?"var(--bad)":pct>=90?"var(--warn)":"var(--ok)"}"></i></div>`;
   };
-  const issues=[];
-  if(MEM.orphanLinks.length) issues.push(["孤儿链接",MEM.orphanLinks.map(o=>o.name)]);
-  if(MEM.unreachable.length) issues.push(["索引够不到",MEM.unreachable]);
-  if(MEM.danglingIndex.length) issues.push(["索引指向空",MEM.danglingIndex]);
-  el.innerHTML=`<div class="mt-t">记忆池 <b>${MEM.live}</b>
-      <span class="sub">冷层 ${MEM.cold}</span></div>
-    ${bar(MEM.linePct,MEM.indexLines,MEM.hardLines,"索引行数")}
-    ${bar(MEM.bytePct,MEM.indexBytes,MEM.hardBytes,"索引字节")}
-    <div class="mt-rows">`
-    + (issues.length
-        ? issues.map(([lab,names])=>`<div class="mt-r"><span class="n" style="color:var(--warn)">${lab}</span>
-            <span class="c" title="${esc(names.join(", "))}">${names.length}</span></div>`).join("")
-        : `<div class="mt-r"><span class="n" style="color:var(--ok)">链接与索引一致</span></div>`)
-    + MEM.biggest.slice(0,4).map(b=>`<div class="mt-r">
-        <span class="n" title="${esc(b.slug)}">${esc(b.slug)}</span>
+  // 三类问题各自摊开成一组可点的名字,而不是三行「标签 : 数字」。
+  // ⚠ 空要说成「数出来的空」。后端那三个列表都可能合法地是空的,而空在这里是好消息 ——
+  // 但它必须是数出来的空,不是没数。所以零态也各自出一行,不合并成一句「一致」:
+  // 一句笼统的绿色结论盖住的是「这三项里哪一项其实没查」。
+  const grp=(lab,names,tip,extra)=>{
+    const n=names.length;
+    return `<div class="mem-grp${n?" hit":""}">
+      <div class="mem-gh"><span class="lb" title="${esc(tip)}">${lab}</span>
+        <b class="${n?"warn":"ok"}">${n}</b>${extra?`<span class="ex">${extra}</span>`:""}</div>
+      ${n?`<div class="mem-chips">${names.map(s=>
+          `<span class="chip" title="${esc(s.tip||s.name)}">${esc(s.name)}</span>`).join("")}</div>`:""}
+    </div>`;
+  };
+  const orph=MEM.orphanLinks.map(o=>({name:o.name,
+    tip:`${o.name} 不在热层也不在冷层。指过去的是: ${(o.from||[]).join("、")}`}));
+  const unre=MEM.unreachable.map(s=>({name:s,tip:`${s} 在池子里,但索引里没有任何一行指向它`}));
+  const dang=MEM.danglingIndex.map(s=>({name:s,tip:`索引里有一行指向 ${s},而它既不在热层也不在冷层`}));
+
+  const maxB=Math.max(1,...MEM.biggest.map(b=>b.bytes||0));
+  el.innerHTML=`<div class="mem-top">
+      <div class="mem-counts">
+        <span class="kv"><b>${MEM.live}</b>热层</span>
+        <span class="kv"><b>${MEM.cold}</b>冷层</span>
+      </div>
+      <div class="mem-meters">
+        ${bar(MEM.linePct,MEM.indexLines,MEM.hardLines,"索引行数")}
+        ${bar(MEM.bytePct,MEM.indexBytes,MEM.hardBytes,"索引字节")}
+      </div>
+    </div>
+    ${MEM.indexReason?`<div class="warn-line">${esc(MEM.indexReason)}</div>`:""}
+    <div class="mem-grps">
+      ${grp("孤儿链接",orph,"某条记忆里的 [[链接]] 指向一个既不在热层也不在冷层的名字。悬停看是从哪几条指过去的")}
+      ${grp("索引够不到",unre,"文件在池子里,但 MEMORY.md 里没有任何一行指向它 —— 下次会话不会加载到")}
+      ${grp("索引指向空",dang,"索引里有一行,而它指的文件不在")}
+    </div>
+    <div class="mem-big"><div class="mem-gh"><span class="lb">最占地方的</span>
+      <b>${MEM.biggest.length}</b><span class="ex">条,按字节</span></div>`
+    + MEM.biggest.slice(0,10).map(b=>`<div class="mt-r bar">
+        <span class="n" title="${esc(b.slug)}">${esc(b.slug)}</span><span></span>
+        <span class="ub" aria-hidden="true"><i style="width:${
+          Math.round((b.bytes||0)/maxB*100)}%"></i></span>
         <span class="c">${kb(b.bytes)}</span>
-        ${MEM.archiverConfigured?`<button class="mini danger" data-mt="memory.archive"
-          data-name="${esc(b.slug)}" title="移进冷层,索引里只留一行指路">归档</button>`:""}</div>`).join("")
+        ${MEM.archiverConfigured?ibtn("i-archive","移进冷层,索引里只留一行指路",
+          `data-mt="memory.archive" data-name="${esc(b.slug)}"`,"danger"):""}</div>`).join("")
     + `</div>`;
+  memNote("");
 }
+
+// 卡头那行小字。读不到时它必须说出来 —— 卡片里那块空白自己不会解释自己。
+function memNote(t){ const n=$("memnote"); if(n) n.textContent=t; }
 
 // 退役。它同时改三处登记,所以流程是:先拉一次只读计划给人看,再问原因,最后才执行。
 // 顺序是刻意的 : 一个先问原因再告诉你要改什么的流程,等于让人在不知道后果时下决定。
@@ -1609,6 +1989,8 @@ async function retireTask(name){
 // 「真人」的判据是**打进去的字**(纯字符串)而不是内容块:不区分的话,每个无头运行
 // 都会因为加载的 skill 正文被判成一场多轮对话。
 let CONVOS=null, CV_HUMAN_ONLY=false, CV_OPEN={};
+// 临时目录折叠块的展开键。用一个不可能是路径的字符串,免得和真目录撞。
+const CV_EPH_KEY="::eph::";
 // 标题从哪来。改过名的单独一种颜色:那是唯一一个人明确说过「这场对话叫这个」的地方,
 // 别的都是推断出来的,看的人有权知道自己在看哪一种。
 const CV_TAG={rename:"名","ai-title":"AI",summary:"概","first-message":"首",slug:"代",id:"?"};
@@ -1634,12 +2016,27 @@ function renderConvos(){
   $("cvhead").innerHTML=`<span>共 <b>${S.files}</b> 场</span>`
     +`<span><b style="color:var(--cyan)">${S.humanish}</b> 场真人多轮</span>`
     +`<span>${S.groups} 个目录 · ${kb(S.bytes)}</span>`
+    +`<span style="color:var(--faint)">按最近活动排序</span>`
     +`<label><input type="checkbox" id="cvonly"${CV_HUMAN_ONLY?" checked":""}> 只看真人</label>`
     // 读不动的必须报出来:悄悄跳过会让「没有这些对话」和「我没读到」变成同一个数字。
     +(S.unreadable?`<span style="color:var(--bad)">读不动 ${S.unreadable}</span>`:"");
 
   const groups=CONVOS.groups.filter(g=>!CV_HUMAN_ONLY||g.humanish);
-  $("cvgroups").innerHTML=groups.map(g=>{
+
+  // 体积条的基准。取对数是因为跨度有四个数量级(88K 到 3.7G):线性标度下
+  // 除了最大的两行,其余全部宽度归零,那等于把这一列画成空的。
+  const maxB=Math.max(1,...groups.map(g=>g.bytes||0));
+  const barW=b=>b<=0?0:Math.max(3,Math.round(100*Math.log10(1+b)/Math.log10(1+maxB)));
+
+  // 一次性无头运行留下的临时目录。它们占掉三分之一的行,而每行携带的信息
+  // 只有「这里有过一次无头运行」。三个谓词缺一不可,而且**不许放宽成「凡 1 场的都折」**:
+  // humanish 保证折进去的没有真人多轮,count<=2 保证一个意外长起来的目录不会被藏掉,
+  // 名字正则保证只吃一次性目录。任一条不满足就留在外面单独成行。
+  const EPH=/[\\/]Temp[\\/](astab|astra|ccstab|ccagentic)_[a-z0-9]+$/i;
+  const isEph=g=>EPH.test(g.cwd)&&!g.humanish&&g.count<=2;
+  const eph=groups.filter(isEph), rest=groups.filter(g=>!isEph(g));
+
+  const cvGroup=g=>{
     const rows=g.shown.filter(r=>!CV_HUMAN_ONLY||r.humanSeen>=2);
     // 这一屏唯一告诉人「你没看全」的地方,以前在最需要它准确的那个模式下报旧口径的数。
     // 现在把三个来源分开数:被筛掉的、后端就没送来的、以及**送来的那批没经过筛**这件事。
@@ -1648,12 +2045,21 @@ function renderConvos(){
     const cut=g.shown.length-rows.length;
     const unlisted=g.count-g.shown.length;
     const open=CV_OPEN[g.cwd]?" open":"";
+    const cut2=g.cwd.search(/[\\/][^\\/]*$/);
+    const head=cut2>0?g.cwd.slice(0,cut2+1):"", tail=cut2>0?g.cwd.slice(cut2+1):g.cwd;
+    const b=g.bytes||0;
+    // 年龄这一列是排序说明书:后端按 newest 倒序发,而前端从来没把 newest 画出来,
+    // 于是一个有序列表看起来像乱序的。newest 是 epoch **秒**。
+    const ageH=g.newest?(Date.now()/1000-g.newest)/3600:null;
     return `<div class="cv-g${open}" data-cv="${esc(g.cwd)}">
       <div class="cv-gh">
         <span class="caret">${open?"▼":"▶"}</span>
-        <span class="dir" title="${esc(g.cwd)}">${esc(g.cwd)}</span>
+        <span class="dir" title="${esc(g.cwd)}"><span class="dp">${esc(head)}</span><span
+          class="dn">${esc(tail)}</span></span>
+        <span class="cv-bar${b?"":" zero"}" title="${kb(b)}"><i style="width:${barW(b)}%"></i></span>
         <span class="cv-hm">${g.humanish?"👤"+g.humanish:""}</span>
-        <span class="n">${CV_HUMAN_ONLY?rows.length+"/"+g.count:g.count} 场 · ${kb(g.bytes)}</span>
+        <span class="ag" title="最近一场的时间">${ageH==null?"–":cvAge(ageH)}</span>
+        <span class="n">${CV_HUMAN_ONLY?rows.length+"/"+g.count:g.count} 场 · ${kb(b)}</span>
       </div>
       <div class="cv-list">${rows.map(r=>`
         <div class="cv-r${r.humanSeen>=2?" human":""}" data-cvfile="${esc(r.file||"")}"
@@ -1669,7 +2075,25 @@ function renderConvos(){
         ${g.truncated?`<div class="cv-more">这个目录还有 ${unlisted} 场没列出${
           CV_HUMAN_ONLY?"(这批没经过「只看真人」筛,其中几场是真人对话不知道)":""}</div>`:""}
       </div></div>`;
-  }).join("");
+  };
+
+  // 折叠块本身要把总场数和总体积打在标题上:「这里有东西」不能因为收起来就消失,
+  // 消失的只是 23 份逐字相同的路径前缀。
+  const ephOpen=CV_OPEN[CV_EPH_KEY]?" open":"";
+  const ephN=eph.reduce((a,g)=>a+g.count,0), ephB=eph.reduce((a,g)=>a+(g.bytes||0),0);
+  const ephHtml=eph.length?`<div class="cv-g${ephOpen}" data-cv="${esc(CV_EPH_KEY)}">
+      <div class="cv-gh">
+        <span class="caret">${ephOpen?"▼":"▶"}</span>
+        <span class="dir" title="一次性无头运行留下的临时目录,每个至多 2 场且没有真人多轮"
+          ><span class="dn">临时会话目录 ${eph.length} 个</span></span>
+        <span class="cv-bar${ephB?"":" zero"}" title="${kb(ephB)}"><i
+          style="width:${barW(ephB)}%"></i></span>
+        <span class="cv-hm"></span><span class="ag"></span>
+        <span class="n">${ephN} 场 · ${kb(ephB)}</span>
+      </div>
+      <div class="cv-list">${eph.map(cvGroup).join("")}</div></div>`:"";
+
+  $("cvgroups").innerHTML=rest.map(cvGroup).join("")+ephHtml;
 }
 
 // ================= 外壳:分区切换与徽章 ==============================================
@@ -1830,11 +2254,32 @@ window.addEventListener("hashchange", ()=>showView(location.hash.slice(1), false
 // 点一下就跳过去看细节。所以它既是概览也是导航。
 // 拿不到的那一格显示「未检查」而不是零 : 一个还没读到的数字和一个真的是零的数字,
 // 在一块大字号的板子上长得一模一样,而这块板子正是给人扫一眼用的。
-function tile(view, key, val, sub, cls){
-  return `<button class="tile" data-goto="${view}" title="${esc(sub||"")}">
+// 纯图标按钮。title 同时当 aria-label,所以不可能造出一个没有可读名字的图标按钮 ——
+// 少写一个参数就少一个名字,这种事迟早会发生,于是干脆不给它发生的机会。
+// extra 里放 data-* 或 disabled。
+function ibtn(sym, label, extra, cls){
+  return `<button class="mini ib ${cls||""}" ${extra||""} title="${esc(label)}"
+    aria-label="${esc(label)}"><svg class="ic"><use href="#${sym}"/></svg></button>`;
+}
+
+// pct / pctWhat 给这一格加一条比例条。
+// ⚠ pct 传 null 时**不画轨道**,而不是画一条 0% 的空轨道:一条空轨道会被读成「0%」,
+// 那正是这一页到处在防的「没检查和零长得一样」。所以「未检查」那几档一律不传。
+// ⚠ 条的含义必须写进 pctWhat 并进 title:一条填充含义和大字不同的条,比没有条更糟。
+function tile(view, key, val, sub, cls, pct, pctWhat){
+  let bar = "";
+  if(pct != null && isFinite(pct)){
+    // 超过 100 时钳到 100,但加 over 类长出一截斜纹尾巴 ——
+    // 「刚好满」和「已经爆了」必须是两个形状,不能是同一根满条。
+    const over = pct > 100;
+    bar = `<span class="tb${over?" over":""}" title="${esc(pctWhat||"")}"
+      ><i class="${cls||""}" style="width:${Math.min(100,Math.max(0,pct)).toFixed(1)}%"></i></span>`;
+  }
+  const tip = (sub||"") + (pctWhat ? " · " + pctWhat : "");
+  return `<button class="tile" data-goto="${view}" title="${esc(tip)}">
     <span class="k">${esc(key)}</span>
     <span class="v ${cls||""}">${esc(String(val))}</span>
-    <span class="s">${esc(sub||"")}</span></button>`;
+    ${bar}<span class="s">${esc(sub||"")}</span></button>`;
 }
 
 // 要人管的事:把四个分区里判为「要人管」的行合到一处。
@@ -1946,12 +2391,39 @@ function renderTodo(){
   // 之前它们统一走 data-goto,而产物行的目标就是它自己所在的 overview,
   // 于是点了 hash 不变、什么也不发生 : 一个指向自己的跳转,和一个坏掉的跳转,
   // 在用的人那里是同一件事。
-  box.innerHTML = rows.map(r=>`<div class="rw" ${r.task
+  // 逐字相同的原因合并成一行。只按 (src, why, sev) 三元组逐字比,不做任何归类判断:
+  // 一旦开始判断「这两条算不算同一类」,就是在清单里第二次判定,而判定只能有一处
+  // —— 这块代码上面每一段注释讲的都是同一件事。
+  // 分隔符不能是空串：那样 ("A","1B") 和 ("A1","B") 会撞成同一个桶。
+  const SEP = String.fromCharCode(1);
+  const bucket = new Map();
+  rows.forEach(r=>{ const k = r.src+SEP+r.why+SEP+r.sev;
+    if(!bucket.has(k)) bucket.set(k, []);
+    bucket.get(k).push(r); });
+  const out = [];
+  bucket.forEach(g=>{ if(g.length>=3) out.push({grp:g}); else g.forEach(r=>out.push(r)); });
+  out.sort((a,b)=>{ const x=a.grp?a.grp[0]:a, y=b.grp?b.grp[0]:b;
+    return y.sev-x.sev || x.src.localeCompare(y.src); });
+
+  box.innerHTML = out.map(o=>{
+    if(o.grp){
+      const g = o.grp, h = g[0];
+      return `<div class="rw grp">
+        <span class="dot" style="background:var(--${h.sev>=3?"bad":"warn"})"></span>
+        <span class="src">${esc(h.src)}</span>
+        <span class="why">${esc(h.why)} <b>${g.length}</b></span>
+        <span class="chips">${g.map(m=>`<button class="chip" ${m.task
+            ? `data-task="${esc(m.task)}"` : `data-goto="${m.v}"`
+          }>${esc(m.nm)}</button>`).join("")}</span></div>`;
+    }
+    const r = o;
+    return `<div class="rw" ${r.task
       ? `data-task="${esc(r.task)}"` : `data-goto="${r.v}"`}>
     <span class="dot" style="background:var(--${r.sev>=3?"bad":"warn"})"></span>
     <span class="src">${esc(r.src)}</span>
     <span class="nm" title="${esc(r.nm)}">${esc(r.nm)}</span>
-    <span class="why">${esc(r.why)}</span></div>`).join("");
+    <span class="why">${esc(r.why)}</span></div>`;
+  }).join("");
   // 条数返回给徽章。清单是这一屏唯一在回答「有哪些事」的东西,徽章只是它的投影 ——
   // 让徽章自己再数一遍,就是给同一个事实造第二个来源。
   return rows.length;
@@ -1965,7 +2437,8 @@ function renderTiles(){
 
   if(typeof DATA !== "undefined" && DATA && DATA.summary){
     const S = DATA.summary;
-    out.push(tile("tasks","任务",S.total,`失败 ${S.bad} · 停用 ${S.disabled}`,S.bad?"bad":"ok"));
+    out.push(tile("tasks","任务",S.total,`失败 ${S.bad} · 停用 ${S.disabled}`,S.bad?"bad":"ok",
+      S.total?100*S.bad/S.total:null, S.total?`条里填的是失败占比 ${S.bad}/${S.total}`:null));
   } else out.push(tile("tasks","任务","-","未检查","idle"));
 
   // reason 要先判。没有健康清单时后端仍然返回一个 summary(total/bad 全是 0),
@@ -1982,7 +2455,8 @@ function renderTiles(){
     // 最该喊出来的那一类。bad 留给别处表示「判成坏的」。
     const fa = (F.attention != null) ? F.attention : F.bad;
     out.push(tile("#frbox","产物新鲜度",fa,
-      `覆盖 ${Math.round((F.coverage||0)*100)}% · 共 ${F.total}`, fa?"bad":"ok"));
+      `覆盖 ${Math.round((F.coverage||0)*100)}% · 共 ${F.total}`, fa?"bad":"ok",
+      F.total?100*fa/F.total:null, F.total?`条里填的是要人管的占比 ${fa}/${F.total}`:null));
   } else out.push(tile("#frbox","产物新鲜度","-","未检查","idle"));
 
   if(REPOS && REPOS.available && REPOS.summary){
@@ -1993,13 +2467,16 @@ function renderTiles(){
     // 比一个说不出来的空更糟,因为它看起来像一个值。
     const up = (R.unknownUpstream == null) ? "?" : R.unknownUpstream;
     out.push(tile("repos","仓库要人管",R.attention,
-      `共 ${R.total} · 无上游 ${up}`, R.attention?"bad":"ok"));
+      `共 ${R.total} · 无上游 ${up}`, R.attention?"bad":"ok",
+      R.total?100*R.attention/R.total:null,
+      R.total?`条里填的是要人管的占比 ${R.attention}/${R.total}`:null));
   } else out.push(tile("repos","仓库","-","未检查","idle"));
 
   if(SYS && SYS.disk && SYS.disk.usedPct != null){
     const d = SYS.disk;
     out.push(tile("storage","磁盘已用",d.usedPct+"%",
-      `剩 ${(d.free/1073741824).toFixed(0)}G`, d.usedPct>=95?"bad":d.usedPct>=85?"warn":"ok"));
+      `剩 ${(d.free/1073741824).toFixed(0)}G`, d.usedPct>=95?"bad":d.usedPct>=85?"warn":"ok",
+      d.usedPct, "条里填的就是大字那个百分比"));
   } else out.push(tile("storage","磁盘","-","未检查","idle"));
 
   // ⚠ available 只表示**记忆池目录**读到了。MEMORY.md 不在或读不了时,
@@ -2020,8 +2497,9 @@ function renderTiles(){
       ? `${kb(MEM.indexBytes)}/${kb(MEM.hardBytes)}`
       : `${MEM.indexLines}/${MEM.hardLines} 行`;
     out.push(tile("storage","记忆索引",p+"%",
-      `${pWhich}占比 · ${pFrac} · 冷层 ${MEM.cold}`,
-      p>=100?"bad":p>=90?"warn":"ok"));
+      `${pWhich} ${pFrac} · 冷 ${MEM.cold}`,
+      p>=100?"bad":p>=90?"warn":"ok",
+      p, "条里填的就是大字那个百分比,超过 100 时右端长出斜纹"));
   } else if(MEM && MEM.available){
     // 目录读到了、索引没读到 —— 这不是「未检查」,是「查了但查不成」。
     out.push(tile("storage","记忆索引","?",
@@ -2050,22 +2528,49 @@ function renderHeat(){
   $("hmnote").textContent=H.caveat||"";
   const days=H.days||[];
   const rows=ROWS.filter(r=>r.hist).sort((a,b)=>((a.hist.health==null?101:a.hist.health)-(b.hist.health==null?101:b.hist.health)));
-  $("heat").innerHTML=rows.map(r=>{
-    const cells=days.map(d=>{
+  const last=days.length-1;
+  const body=rows.map(r=>{
+    const cells=days.map((d,i)=>{
+      const td=i===last?"today":"";
       const c=r.hist.byDay[d];
-      if(!c||!c.n) return `<td title="${esc(r.name)} ${d} 无观察"></td>`;
+      if(!c||!c.n) return `<td class="${td}" title="${esc(r.name)} ${d} 无观察"></td>`;
       const j=c.n-c.neutral;
-      if(j<=0) return `<td title="${esc(r.name)} ${d} 仅中性观察"></td>`;
+      if(j<=0) return `<td class="${td}" title="${esc(r.name)} ${d} 仅中性观察"></td>`;
       const p=c.ok/j, k=p>=.99?"h2":p>=.9?"h1":p>=.6?"h3":p>=.25?"h4":"h5";
-      return `<td class="${k}" title="${esc(r.name)} ${d} 正常 ${c.ok}/${j}${c.bad?" 失败 "+c.bad:""}${c.stale?" 陈旧 "+c.stale:""}"></td>`;
+      return `<td class="${k} ${td}" title="${esc(r.name)} ${d} 正常 ${c.ok}/${j}${c.bad?" 失败 "+c.bad:""}${c.stale?" 陈旧 "+c.stale:""}"></td>`;
     }).join("");
     return `<tr><th class="tn" title="健康率 ${r.hist.health==null?"-":r.hist.health+"%"}">${esc(r.name)}</th>${cells}</tr>`;
   }).join("");
+  // 横轴。这块图原来**一个列标签都没有**,于是右边那片浅灰到底是「最近没数据」
+  // 还是「45 天前没数据」只能靠一格一格 hover 问出来 —— 而这两件事的严重程度天差地别,
+  // 且这块图正是判断「摄入器是不是停了」的唯一视图。
+  // 标签只在首、末和每月 1 号出现:45 个日期全印会糊成一条灰带。
+  const head=days.map((d,i)=>{
+    const lab=(i===0||i===last||d.slice(-2)==="01") ? d.slice(5) : "";
+    return `<th class="hd${i===last?" today":""}" title="${esc(d)}">${lab}</th>`;
+  }).join("");
+  $("heat").innerHTML=`<thead><tr><th class="tn"></th>${head}</tr></thead><tbody>${body}</tbody>`;
 }
 
-function pc(v){ if(v==null) return `<td class="num u">-</td>`;
+// 十行四列四十个百分比,而这张表的用途是横向比较哪一类拖后腿 —— 纯数字做不到
+// 「一眼看出谁最差」。加一条短横杠,数字原样留在旁边。
+// ⚠ null 分支**完全不画槽**,只给一个灰 `-` 加 title。空槽(未检查)和 0% 长度的条
+// (真的 0)在形状上必须不同:给 null 画一条空槽,就是把「没查」画成了「查了,是零」。
+// 绝对时刻 -> 相对。空串不接受:调用处先判空再进来,不靠返回值兜底 ——
+// 一个把空串变成「0分前」的函数,会把「从未跑过」画成「刚刚跑过」,方向正好反了。
+function relTime(s){
+  const t=new Date(String(s).replace(" ","T"));
+  if(isNaN(t)) return String(s).slice(5);   // 解析不了就照实回显原文,不编一个数出来
+  const d=(t-Date.now())/36e5, a=Math.abs(d);
+  const u=a<1?`${Math.round(a*60)}分`:a<48?`${a.toFixed(a<10?1:0)}小时`:`${(a/24).toFixed(0)}天`;
+  return d<0?u+"前":u+"后";
+}
+
+function pc(v){ if(v==null) return `<td class="num u" title="未检查">-</td>`;
   const c=v>=95?"var(--ok)":v>=80?"var(--warn)":"var(--bad)";
-  return `<td class="num" style="color:${c}">${v.toFixed(1)}</td>`; }
+  return `<td class="num"><span class="pcb"><i style="width:${
+    Math.min(100,Math.max(0,v))}%;background:${c}"></i></span><span
+    style="color:${c}">${v.toFixed(1)}</span></td>`; }
 function renderScores(){
   $("scores").innerHTML=`<thead><tr><th>大类</th><th class="num">数</th><th class="num">健康%</th>
     <th class="num">备份%</th><th class="num">监控%</th><th class="num" title="本类里「没有任何 warn 项」的任务占比。注意它和上面那个按钮说的
@@ -2101,17 +2606,28 @@ const C=[
    // 动作长在每一行上,而不是藏在展开态和键盘快捷键里。一个要先发现才能用的动作,
    // 对一个每天只瞥一眼的维护台来说等于不存在。
    const on=r.state!=="Disabled", run=r.state==="Running";
+   // 五个动作五个图形。停用和启用刻意不是「同一个图形换个颜色」:
+   // 它们是相反的操作,只靠颜色区分等于在最该分清的地方只留一条通道。
+   const nm=`data-name="${esc(r.name)}"`;
    return `<td class="ops">`
-     +`<button class="mini" data-act="run" data-name="${esc(r.name)}" title="立即运行">▶</button>`
-     +(run?`<button class="mini danger" data-act="stop" data-name="${esc(r.name)}" title="停止">■</button>`:"")
-     +`<button class="mini danger" data-retire="${esc(r.name)}" title="退役:停用 + 退出备份名单 + 退出健康清单">⌫</button>`
-     +(on?`<button class="mini danger" data-act="disable" data-name="${esc(r.name)}" title="停用">⏸</button>`
-         :`<button class="mini" data-act="enable" data-name="${esc(r.name)}" title="启用">⏵</button>`)
+     +ibtn("i-play","立即运行",`data-act="run" ${nm}`)
+     +(run?ibtn("i-stop","停止",`data-act="stop" ${nm}`,"danger"):"")
+     +ibtn("i-retire","退役:停用 + 退出备份名单 + 退出健康清单",
+           `data-retire="${esc(r.name)}"`,"danger")
+     +(on?ibtn("i-pause","停用",`data-act="disable" ${nm}`,"danger")
+         :ibtn("i-on","启用",`data-act="enable" ${nm}`))
      +`</td>`;
  },r=>r.state],
- ["name","任务",r=>`<td class="nm" title="${esc(r.name)}">${esc(r.name)}</td>`,r=>r.name],
+ // 说明折进任务名的第二行。它们本来就是一体的「这是什么」,而分成两列的代价是
+ // 说明只剩 280px、每行都被截成半句话(「每日 22:00 的配置备份总…」)。
+ // 合并之后说明可用宽度涨到 340px,而且不再和任务名争抢。
+ ["name","任务",r=>`<td class="nm" title="${esc(r.name)}">${esc(r.name)}`
+   +(r.desc?`<span class="ds2" title="${esc(r.desc)}">${esc(r.desc)}</span>`:"")
+   +`</td>`,r=>r.name],
  ["cat","大类",r=>`<td class="dim">${esc(r.cat)}</td>`,r=>r.cat],
- ["desc","说明",r=>`<td class="dim ds" title="${esc(r.desc||"")}">${esc(r.desc||"")}</td>`,r=>r.desc||""],
+ // 「说明」不再单独占一列 —— 它现在是任务名那一格的第二行。
+ // 按说明排序这个能力一并没了,而那个能力没有实际用途;搜索仍然能搜到说明
+ // (过滤框的 placeholder 写的就是「任务名 / 大类 / 说明」,那条路径没变)。
  // 健康% 旁边要能看出它是拿什么算出来的。判词表认不出来的那些进 other 桶,
  // 它只进分母不出现在任何地方:监控器换一种措辞之后,每一行会显示 0.0% 而
  // ok/bad/stale 全是 0,同一行里两个数字互相矛盾而没有任何字段说明观察去哪了。
@@ -2148,8 +2664,14 @@ const C=[
  ["bad","失败",r=>`<td class="num" style="color:${(r.hist&&r.hist.bad)?"var(--bad)":"var(--faint)"}">${r.hist?r.hist.bad:"-"}</td>`,r=>r.hist?r.hist.bad:-1],
  ["stale","陈旧",r=>`<td class="num" style="color:${(r.hist&&r.hist.stale)?"var(--warn)":"var(--faint)"}">${r.hist?r.hist.stale:"-"}</td>`,r=>r.hist?r.hist.stale:-1],
  ["triggers","触发",r=>`<td class="dim" title="${esc(r.triggers)}">${esc((r.triggers||"").slice(0,20))}</td>`,r=>r.triggers||""],
- ["lastRun","上次",r=>`<td class="dim" data-col="lastRun">${esc((r.lastRun||"从未").slice(5))}</td>`,r=>r.lastRun||""],
- ["nextRun","下次",r=>`<td class="dim" data-col="nextRun">${esc((r.nextRun||"-").slice(5))}</td>`,r=>r.nextRun||""],
+ // 84 个等宽时间戳(42 行两列),而读它们的目的基本只有「多久没跑了」「还有多久跑」。
+ // 相对时间直接回答那个问题,绝对时刻进 title,一个都没丢。
+ // ⚠ 「从未」和「-」保持两个不同的词:前者是确定没跑过,后者是没有下次计划。
+ // 排序键仍取原始字符串,排序结果与改之前逐行一致。
+ ["lastRun","上次",r=>`<td class="dim num" data-col="lastRun" title="${esc(r.lastRun||"从未")}">${
+    r.lastRun?esc(relTime(r.lastRun)):'<span class="u">从未</span>'}</td>`,r=>r.lastRun||""],
+ ["nextRun","下次",r=>`<td class="dim num" data-col="nextRun" title="${esc(r.nextRun||"没有下次计划")}">${
+    r.nextRun?esc(relTime(r.nextRun)):'<span class="u">-</span>'}</td>`,r=>r.nextRun||""],
  ["catchup","补跑",r=>`<td class="${r.catchup?"y":"n"}">${r.catchup?"Y":"N"}</td>`,r=>r.catchup?1:0],
  ["retries","重试",r=>`<td class="num">${r.retries}</td>`,r=>r.retries],
  ["timeout","超时",r=>{const i=(r.timeout==="PT72H"||r.timeout==="PT0S");return `<td data-col="timeout" style="color:${i?"var(--warn)":"var(--dim)"}">${esc(r.timeout)}</td>`},r=>r.timeout||""],
@@ -2386,6 +2908,13 @@ document.addEventListener("click",e=>{
   if(ra){ e.stopPropagation(); repoAct(ra.dataset.rpact); return; }
   // 选中一个仓。整行可点 —— 之前整块面板只有每行末尾一个 fetch 按钮可以点,
   // 而卡片本身看着像能点、实际不能,那种「看起来可点却不可点」比没有交互更糟。
+  // 状态条的一段。再点同一段是取消,所以这个过滤永远有路回到「全部」——
+  // 一个只能进不能出的过滤器,会让人以为仓库列表里的东西不见了。
+  // ⚠ 走 renderRepos() 而不是 renderRepoList():条本身是在 renderRepos() 里拼的,
+  // 只重画列表的话选中那一段的高亮永远不会出现 —— 过滤生效了但看不出在按什么过滤。
+  const rs=e.target.closest("[data-rpstate]");
+  if(rs){ RP_STATE = (RP_STATE===rs.dataset.rpstate) ? "" : rs.dataset.rpstate;
+          renderRepos(); return; }
   const rr=e.target.closest("[data-rp]");
   if(rr){ RP_SEL=rr.dataset.rp; renderRepoList(); return; }
   const b=e.target.closest("button[data-act]");
@@ -2564,8 +3093,10 @@ document.addEventListener("keydown",e=>{
   tl.addEventListener("pointercancel",endDrag);
   tl.addEventListener("dblclick",tlReset);
 })();
-$("mtreload").addEventListener("click",()=>{loadMaint();loadSys();loadMem();});
+$("mtreload").addEventListener("click",()=>{loadMaint();loadSys();loadCodex();});
+$("memreload").addEventListener("click",()=>{loadMem();});
 loadMaint();
+loadCodex();
 $("scktog").addEventListener("click",()=>$("sckd").classList.toggle("on"));
 loadSelfcheck();
 $("rpreload").addEventListener("click",loadRepos);
