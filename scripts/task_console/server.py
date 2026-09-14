@@ -59,6 +59,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse, unquote
 
 import allowlist
+import codexinfo
 import console_store
 import convos
 import evtlog
@@ -980,6 +981,13 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(403, {"error": "bad token"})
             try:
                 return self._json(200, memops.read())
+            except Exception as e:
+                return self._json(500, {"error": f"{type(e).__name__}: {e}"})
+        if path == "/api/codex":
+            if not self._authed():
+                return self._json(403, {"error": "bad token"})
+            try:
+                return self._json(200, codexinfo.read())
             except Exception as e:
                 return self._json(500, {"error": f"{type(e).__name__}: {e}"})
         if path == "/api/sys":

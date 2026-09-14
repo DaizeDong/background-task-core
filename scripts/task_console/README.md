@@ -61,6 +61,7 @@ names with your own tasks. Everything else is optional.
 | `TASK_CONSOLE_MEMORY_ARCHIVER` | the existing archiver script | unset means the archive button is not offered |
 | `TASK_CONSOLE_REPOS` | a directory holding git repos | unset means the repository panel reads NOT CHECKED |
 | `TASK_CONSOLE_VISIBILITY` | a JSON object keyed by `owner/repo` (lowercase), each value `PUBLIC` or `PRIVATE`, or an object with a `visibility` field | unset means every repo's visibility reads unknown and no badge is drawn, which is deliberately hard to tell apart from a repo the table has no row for, so the panel also reports the table it loaded and how many rows matched |
+| `TASK_CONSOLE_CODEX` | a second agent CLI's home directory, holding its instruction file, config, session store, logs and cache | no default; unset means that whole half of the maintenance view reads NOT CHECKED, which is deliberately not the same as reading zero bytes |
 | `TASK_CONSOLE_PLUGIN_CACHE` | a plugin cache directory | unset means the cache row reads NOT CHECKED and nothing can be deleted |
 | `TASK_CONSOLE_SESSIONS` | a session transcript directory | unset means that row reads NOT CHECKED |
 | `TASK_CONSOLE_CLAUDE` | the CLI used for plugin actions | falls back to PATH; not found means the plugin panel reads NOT CHECKED |

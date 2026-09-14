@@ -49,6 +49,10 @@ SOURCES = (
     ("plugin_cache", "插件缓存", "TASK_CONSOLE_PLUGIN_CACHE", "dir", None, False),
     ("sessions", "会话转录目录", "TASK_CONSOLE_SESSIONS", "dir", None, False),
     ("convo_cache", "对话索引缓存", "TASK_CONSOLE_CONVO_CACHE", "file", None, False),
+    # 第二套 agent 的家目录。算作面板来源而不是 OVERRIDES:维护屏有整整一半在读它,
+    # 没设时那半边是「未检查」,而这正是自检要说出来的那一类 ——
+    # 一个没被指向任何东西的半屏,和一个真的什么都没积压的半屏,打印出来一模一样。
+    ("codex", "第二套 agent 家目录", "TASK_CONSOLE_CODEX", "dir", None, False),
 )
 
 # 生产代码读得到、但**不算面板来源**的环境变量。每一条都要写明为什么不算。
