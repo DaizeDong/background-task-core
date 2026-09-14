@@ -136,3 +136,129 @@ def read() -> dict:
     unread = sorted(k for k, v in items.items() if not v.get("available"))
     return {"available": True, "root": str(root), "items": items,
             "bytes": total, "incomplete": incomplete, "unread": unread}
+
+
+# ---------------------------------------------------------------------------------------
+# 逐份转录的清单,给人自己挑着清。
+#
+# 刻意**不做自动归档**:归档只是把同一批字节挪到另一个目录,磁盘该满还是满,
+# 而且它会替人做出「这份还要不要」的判断 —— 那个判断没有任何自动化依据。
+# 这里只负责把「有哪些、多大、多旧」摆清楚,按哪一维排由看的人当场决定。
+
+# 一次最多交出多少条。2380 条大约 170KB JSON,本机自用扛得住;
+# 但上限必须存在,而且**截断了要说出来** —— 一个悄悄只给前 N 条的清单,
+# 会让人以为剩下的不存在,然后按一个不完整的总量去做清理决定。
+LIST_CAP = 3000
+
+
+def list_transcripts(which: str = "sessions") -> dict:
+    """把会话目录下每一份转录摊平成一条记录。只读。
+
+    返回的路径是**相对 root 的**,不是绝对路径。删除接口只收这种相对路径,
+    所以这里也只给这种 —— 一个交出绝对路径的列表接口,迟早会被配上一个
+    接受绝对路径的删除接口。
+    """
+    if which not in SESSION_DIRS:
+        return {"available": False, "reason": f"只支持 {' / '.join(SESSION_DIRS)}"}
+    root = _root()
+    if not root:
+        return {"available": False,
+                "reason": "没有设 TASK_CONSOLE_CODEX,这一栏是「未检查」。"}
+    base = root / which
+    if not base.is_dir():
+        return {"available": True, "exists": False, "items": [], "count": 0, "bytes": 0}
+
+    items: list[dict] = []
+    errors = 0
+    stack = [base]
+    while stack:
+        cur = stack.pop()
+        try:
+            entries = list(os.scandir(cur))
+        except OSError:
+            errors += 1
+            continue
+        for e in entries:
+            try:
+                if e.is_dir(follow_symlinks=False):
+                    stack.append(Path(e.path))
+                elif e.is_file(follow_symlinks=False) and e.name.endswith(TRANSCRIPT_SUFFIX):
+                    st = e.stat()
+                    items.append({"rel": str(Path(e.path).relative_to(root).as_posix()),
+                                  "name": e.name,
+                                  "bytes": st.st_size, "mtime": st.st_mtime})
+            except OSError:
+                errors += 1
+    # 默认按体积降序。前端还能按时间重排,但默认给的是「谁在占地方」——
+    # 这份清单存在的理由就是那个问题。
+    items.sort(key=lambda x: -x["bytes"])
+    total = sum(x["bytes"] for x in items)
+    cut = items[:LIST_CAP]
+    return {"available": True, "exists": True, "which": which,
+            "items": cut, "count": len(items), "bytes": total,
+            "truncated": len(items) > LIST_CAP,
+            "shownBytes": sum(x["bytes"] for x in cut),
+            "errors": errors}
+
+
+def delete_transcripts(rels: list[str]) -> dict:
+    """删掉点名的那几份。不可逆。
+
+    只收**相对 root 的路径**,并且逐条重新解析 + 归属检查:
+    一个接受路径的删除接口,唯一的控制就是那道归属检查,而它必须在碰文件系统之前开火。
+    三条硬规则:
+      - 必须落在会话目录里(SESSION_DIRS 之一),别的目录一律拒绝;
+      - 必须是转录后缀,不删别的文件;
+      - 必须是真实存在的普通文件,不跟符号链接。
+    任何一条不过就**拒绝整批**,不做「跳过这条继续删别的」——
+    部分成功的删除最难收拾:人不知道到底少了哪些。
+    """
+    from maint import Refused
+    root = _root()
+    if not root:
+        raise Refused("没有设 TASK_CONSOLE_CODEX", "no_config")
+    if not isinstance(rels, list) or not rels:
+        raise Refused("没有点名要删哪些", "bad_args")
+    if len(rels) > LIST_CAP:
+        raise Refused(f"一次最多 {LIST_CAP} 条", "bad_args")
+
+    root_r = root.resolve()
+    targets: list[Path] = []
+    for rel in rels:
+        if not isinstance(rel, str) or not rel or "\\" in rel or rel.startswith("/"):
+            raise Refused(f"路径形状不对: {rel!r}", "bad_path")
+        segs = rel.split("/")
+        if any(s in ("", ".", "..") or ":" in s for s in segs):
+            raise Refused(f"路径形状不对: {rel!r}", "bad_path")
+        if segs[0] not in SESSION_DIRS:
+            raise Refused(f"只允许删会话目录里的东西: {rel!r}", "bad_path")
+        if not rel.endswith(TRANSCRIPT_SUFFIX):
+            raise Refused(f"只删转录文件: {rel!r}", "bad_path")
+        p = (root.joinpath(*segs))
+        try:
+            rp = p.resolve()
+            rp.relative_to(root_r)
+        except (ValueError, OSError):
+            raise Refused(f"解析出来不在那棵树里: {rel!r}", "bad_path")
+        if not p.is_file() or p.is_symlink():
+            raise Refused(f"不是一个普通文件: {rel!r}", "bad_path")
+        targets.append(p)
+
+    freed = 0
+    gone: list[str] = []
+    for p, rel in zip(targets, rels):
+        try:
+            n = p.stat().st_size
+        except OSError:
+            n = 0
+        try:
+            p.unlink()
+        except OSError as e:
+            # 到这一步才失败的,前面已经删掉几条了。说清删了哪些、停在哪里,
+            # 不假装什么都没发生。
+            return {"ok": False, "deleted": len(gone), "freed": freed,
+                    "stoppedAt": rel, "error": f"{e.__class__.__name__}: {e}",
+                    "gone": gone[:50]}
+        freed += n
+        gone.append(rel)
+    return {"ok": True, "deleted": len(gone), "freed": freed, "gone": gone[:50]}

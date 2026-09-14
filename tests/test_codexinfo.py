@@ -174,3 +174,133 @@ def test_total_excludes_unread_items(codex_root):
     out = codexinfo.read()
     assert out["bytes"] == 2
     assert out["unread"] == ["cache"]
+
+
+# ---------- 逐份转录的清单与删除 ----------
+
+def _mk(root, rel, size=1):
+    p = root / rel
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text("x" * size, encoding="utf-8")
+    return p
+
+
+def test_list_is_sorted_by_size_desc(codex_root):
+    _mk(codex_root, "sessions/2026/01/01/small.jsonl", 10)
+    _mk(codex_root, "sessions/2026/01/02/big.jsonl", 900)
+    _mk(codex_root, "sessions/2026/01/02/mid.jsonl", 100)
+    out = codexinfo.list_transcripts("sessions")
+    assert [i["name"] for i in out["items"]] == ["big.jsonl", "mid.jsonl", "small.jsonl"]
+    assert out["count"] == 3
+    assert out["bytes"] == 1010
+    # 相对路径,不是绝对路径:一个交出绝对路径的列表接口,迟早会被配上一个
+    # 接受绝对路径的删除接口。
+    assert all(not os.path.isabs(i["rel"]) for i in out["items"])
+    assert out["items"][0]["rel"] == "sessions/2026/01/02/big.jsonl"
+
+
+def test_list_carries_mtime_so_it_can_be_sorted_by_time(codex_root):
+    p = _mk(codex_root, "sessions/2026/01/01/a.jsonl", 5)
+    os.utime(p, (1700000000, 1700000000))
+    out = codexinfo.list_transcripts("sessions")
+    assert out["items"][0]["mtime"] == pytest.approx(1700000000, abs=2)
+
+
+def test_list_ignores_non_transcripts(codex_root):
+    _mk(codex_root, "sessions/2026/01/01/a.jsonl", 5)
+    _mk(codex_root, "sessions/2026/01/01/notes.txt", 500)
+    out = codexinfo.list_transcripts("sessions")
+    assert [i["name"] for i in out["items"]] == ["a.jsonl"]
+    assert out["bytes"] == 5
+
+
+def test_list_of_missing_dir_is_empty_not_unavailable(codex_root):
+    """会话目录还没建出来 != 读不了。"""
+    out = codexinfo.list_transcripts("sessions")
+    assert out["available"] is True
+    assert out["exists"] is False
+    assert out["items"] == []
+
+
+def test_list_rejects_other_directories(codex_root):
+    out = codexinfo.list_transcripts("cache")
+    assert out["available"] is False
+
+
+def test_delete_removes_only_the_named_ones(codex_root):
+    _mk(codex_root, "sessions/2026/01/01/a.jsonl", 10)
+    keep = _mk(codex_root, "sessions/2026/01/01/b.jsonl", 20)
+    out = codexinfo.delete_transcripts(["sessions/2026/01/01/a.jsonl"])
+    assert out["ok"] is True
+    assert out["deleted"] == 1
+    assert out["freed"] == 10
+    assert keep.is_file(), "没点名的那份必须还在"
+
+
+@pytest.mark.parametrize("bad", [
+    "../outside.jsonl",
+    "sessions/../../escape.jsonl",
+    "sessions/2026/01/01/a.txt",          # 不是转录
+    "/abs/path.jsonl",
+    "sessions\2026\a.jsonl",            # 反斜杠
+    "sessions/./a.jsonl",
+])
+def test_delete_refuses_bad_paths(codex_root, bad):
+    _mk(codex_root, "sessions/2026/01/01/a.jsonl", 10)
+    with pytest.raises(Exception) as e:
+        codexinfo.delete_transcripts([bad])
+    assert getattr(e.value, "code", "") in ("bad_path", "bad_args"), bad
+    # 负对照:一条都不许删。没有这句,一个「先删再校验」的实现照样抛异常。
+    assert (codex_root / "sessions/2026/01/01/a.jsonl").is_file()
+
+
+def test_delete_refuses_an_existing_non_transcript_inside_the_session_dirs(codex_root):
+    """后缀闸同样要用一个**真实存在**的目标。
+
+    ⚠ 和上一条同一个病:参数化里那条 `a.txt` 指的文件根本不存在,于是它是被
+    「不是普通文件」拦下的,跟后缀毫无关系。实测:把后缀闸整个去掉,27 条照样全绿。
+    会话目录里除了转录还有别的东西,而这个删除接口只该动转录。
+    """
+    victim = _mk(codex_root, "sessions/2026/01/01/notes.txt", 10)
+    with pytest.raises(Exception) as e:
+        codexinfo.delete_transcripts(["sessions/2026/01/01/notes.txt"])
+    assert getattr(e.value, "code", "") == "bad_path"
+    assert victim.is_file(), "会话目录里不是转录的东西也不许删"
+
+
+def test_delete_refuses_an_existing_file_outside_the_session_dirs(codex_root):
+    """这一条必须用一个**真实存在**的目标。
+
+    ⚠ 它原来混在上面那组参数化里,写成 `cache/x.jsonl` —— 而那个文件根本不存在,
+    于是它是被最后那道「不是普通文件」拦下的,跟目录白名单毫无关系。
+    实测:把 `segs[0] not in SESSION_DIRS` 那道闸整个去掉,27 条用例照样全绿。
+    一条因为别的原因通过的用例,和一条根本不存在的用例,效果一样。
+    """
+    victim = _mk(codex_root, "cache/precious.jsonl", 10)
+    with pytest.raises(Exception) as e:
+        codexinfo.delete_transcripts(["cache/precious.jsonl"])
+    assert getattr(e.value, "code", "") == "bad_path"
+    assert victim.is_file(), "会话目录以外的文件一个都不许删"
+
+
+def test_delete_refuses_whole_batch_if_any_path_is_bad(codex_root):
+    """部分成功的删除最难收拾:人不知道到底少了哪些。"""
+    a = _mk(codex_root, "sessions/2026/01/01/a.jsonl", 10)
+    b = _mk(codex_root, "sessions/2026/01/01/b.jsonl", 10)
+    with pytest.raises(Exception) as e:
+        codexinfo.delete_transcripts(["sessions/2026/01/01/a.jsonl", "../evil.jsonl"])
+    assert getattr(e.value, "code", "") == "bad_path"
+    assert a.is_file() and b.is_file()
+
+
+def test_delete_refuses_empty_list(codex_root):
+    with pytest.raises(Exception) as e:
+        codexinfo.delete_transcripts([])
+    assert getattr(e.value, "code", "") == "bad_args"
+
+
+def test_delete_refuses_a_file_that_is_not_there(codex_root):
+    (codex_root / "sessions").mkdir()
+    with pytest.raises(Exception) as e:
+        codexinfo.delete_transcripts(["sessions/nope.jsonl"])
+    assert getattr(e.value, "code", "") == "bad_path"

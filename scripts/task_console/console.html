@@ -414,6 +414,27 @@ td.ops .mini.danger:hover{border-color:var(--bad);color:var(--bad)}
 .mem-big{max-width:560px}
 .mem-big .mt-r.bar{grid-template-columns:1fr auto 120px 48px auto}
 
+/* ---- 维护屏:占地方的那一张清单 ------------------------------------------------
+   刻意不做自动归档:归档只是把同一批字节挪到另一个目录,磁盘该满还是满,
+   而且它会替人做出「这份还要不要」的判断 —— 那个判断没有自动化依据。
+   这里只负责把「有哪些、多大、多旧」摆清楚,按哪一维排由看的人当场决定。 */
+#cxbox .pad{padding:8px 12px 12px}
+.cx-bar{display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap}
+.cx-bar .sel{font-size:var(--fs-meta);color:var(--dim);margin-left:4px}
+.cx-bar .sel b{color:var(--ink);font-variant-numeric:tabular-nums}
+.cx-list{max-height:min(60vh,520px);overflow:auto;border-top:1px solid var(--line2)}
+.cx-l{display:grid;grid-template-columns:16px minmax(0,1fr) 110px 62px 46px;
+  gap:8px;align-items:center;padding:2px 4px;font-size:var(--fs-meta);cursor:pointer;
+  border-bottom:1px solid var(--line2)}
+.cx-l:hover{background:var(--cur)}
+.cx-l.on{background:var(--sel)}
+.cx-l .p{font-family:var(--mono);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  direction:rtl;text-align:left}
+.cx-l .bar{height:5px;background:var(--line2);border-radius:1px;overflow:hidden}
+.cx-l .bar i{display:block;height:100%;background:var(--cyan);opacity:.55}
+.cx-l .sz,.cx-l .ag{text-align:right;font-variant-numeric:tabular-nums;color:var(--dim)}
+.cx-l input{pointer-events:none}
+
 /* ---- 维护屏:第二套 agent 那一栏 ------------------------------------------------ */
 .cx-r{display:grid;grid-template-columns:1fr 92px 54px;gap:6px;align-items:center;
   font-size:var(--fs-body);padding:1px 0}
@@ -1175,12 +1196,25 @@ table.g td[data-col="timeout"]{font-family:var(--mono)}
   </div>
 <div class="card" id="mtbox">
     <div class="card-header"><h3 class="card-title">运行时<span class="n" id="mtnote">读取中</span></h3><div class="card-actions"><button class="mini ib" id="mtreload" title="重新读取" aria-label="重新读取"><svg class="ic"><use href="#i-refresh"/></svg></button></div></div>
-    <div class="mt-grid">
+  <div class="mt-grid">
       <div class="mt-col" id="mt-skills"></div>
       <div class="mt-col" id="mt-plugins"></div>
       <div class="mt-col" id="mt-codex"></div>
       <div class="mt-col" id="mt-sys"></div>
     </div>
+  </div>
+  <div class="card" id="cxbox">
+    <div class="card-header"><h3 class="card-title">占地方的<span class="n" id="cxnote">未加载</span>
+      <span class="help" data-full="按大小或时间排,自己挑着删。刻意不做自动归档:归档只是把同一批字节挪到另一个目录,磁盘该满还是满,而且它会替你做出「这份还要不要」的判断。">说明</span></h3>
+      <div class="card-actions">
+        <select id="cxwhich" aria-label="选一个会话库">
+          <option value="sessions">会话</option><option value="archived_sessions">归档会话</option></select>
+        <select id="cxsort" aria-label="排序">
+          <option value="size">按大小</option><option value="old">最旧在前</option>
+          <option value="new">最新在前</option></select>
+        <button class="mini" id="cxload">加载</button>
+      </div></div>
+    <div class="pad" id="cxbody"><div class="mt-note">点「加载」把转录逐份列出来。默认不加载:这一扫要走几千个文件。</div></div>
   </div>
   </section>
   <section id="convos" data-view="convos" data-label="会话" hidden>
@@ -1979,6 +2013,105 @@ function renderCodex(){
     <div class="mt-rows">${rows}</div>`;
 }
 
+// 逐份转录的清单。默认不加载:这一扫要走几千个文件,而这一屏别的东西不该等它。
+let CXL=null, CXSEL=new Set();
+
+async function loadCxList(){
+  const which=$("cxwhich").value;
+  $("cxnote").textContent="扫描中";
+  try{ CXL=await api("/api/codex/list?which="+encodeURIComponent(which)); }
+  catch(e){ CXL={error:e.message}; }
+  CXSEL=new Set();
+  renderCxList();
+}
+
+function renderCxList(){
+  const el=$("cxbody"); if(!el) return;
+  if(!CXL){ el.innerHTML=`<div class="mt-note">还没加载。</div>`; return; }
+  if(CXL.error){ $("cxnote").textContent="失败";
+    el.innerHTML=`<div class="warn-line">${esc(CXL.error)}</div>`; return; }
+  if(!CXL.available){ $("cxnote").textContent="未检查";
+    el.innerHTML=`<div class="mt-note">${esc(CXL.reason||"")}</div>`; return; }
+  if(!CXL.exists){ $("cxnote").textContent="";
+    el.innerHTML=`<div class="mt-note">这个目录还不存在。</div>`; return; }
+
+  const items=CXL.items.slice();
+  const mode=$("cxsort").value;
+  if(mode==="old") items.sort((a,b)=>a.mtime-b.mtime);
+  else if(mode==="new") items.sort((a,b)=>b.mtime-a.mtime);
+  else items.sort((a,b)=>b.bytes-a.bytes);
+
+  // 截断必须说出来。一个悄悄只给前 N 条的清单,会让人以为剩下的不存在,
+  // 然后按一个不完整的总量去做清理决定。
+  $("cxnote").textContent = `${CXL.count} 份 · ${kb(CXL.bytes)}`
+    + (CXL.truncated ? ` · 只列出最大的 ${items.length} 份` : "")
+    + (CXL.errors ? ` · ${CXL.errors} 处扫不动,这个数偏小` : "");
+
+  // 体积条取对数并把 [最小, 最大] 整段铺开。线性标度下最大的一份 583M 把别的全压成
+  // 一两个像素 —— 一列几乎人人等长(或者人人等于零)的条,和没有这一列一样没用。
+  // 会话那一屏刚因为同一个原因改过一次,这里用同一套算法。
+  const vals=items.map(i=>i.bytes).filter(b=>b>0);
+  const maxB=Math.max(1,...vals), minB=vals.length?Math.min(...vals):1;
+  const lo=Math.log10(1+minB), span=Math.log10(1+maxB)-lo;
+  const barW=b=>b<=0?0:(span<=0?100:Math.max(3,Math.round(3+97*(Math.log10(1+b)-lo)/span)));
+  const now=Date.now()/1000;
+  const rows=items.map(i=>{
+    const on=CXSEL.has(i.rel);
+    return `<div class="cx-l${on?" on":""}" data-cxrel="${esc(i.rel)}">
+      <input type="checkbox" ${on?"checked":""} tabindex="-1" aria-label="选中 ${esc(i.name)}">
+      <span class="p" title="${esc(i.rel)}">${esc(i.rel)}</span>
+      <span class="bar"><i style="width:${barW(i.bytes)}%"></i></span>
+      <span class="sz">${kb(i.bytes)}</span>
+      <span class="ag" title="${esc(new Date(i.mtime*1000).toLocaleString())}">${
+        cvAge((now-i.mtime)/3600)}</span></div>`;
+  }).join("");
+
+  const selBytes=items.filter(i=>CXSEL.has(i.rel)).reduce((a,i)=>a+i.bytes,0);
+  el.innerHTML=`<div class="cx-bar">
+      <button class="mini" id="cxall">全选这一屏</button>
+      <button class="mini" id="cxnone">清空选择</button>
+      <span class="sel">选中 <b>${CXSEL.size}</b> 份 · ${kb(selBytes)}</span>
+      <button class="mini danger" id="cxdel"${CXSEL.size?"":" disabled"}
+        title="${CXSEL.size?"删掉选中的这些。不可逆":"先选几份"}">删掉选中的</button>
+    </div><div class="cx-list">${rows}</div>`;
+}
+
+// 只更新那一行统计,不碰列表本身。
+function cxSelSummary(){
+  const el=document.querySelector(".cx-bar .sel"); if(!el) return;
+  const byRel={}; ((CXL&&CXL.items)||[]).forEach(i=>byRel[i.rel]=i);
+  let b=0; CXSEL.forEach(r=>{ b += (byRel[r]||{}).bytes||0; });
+  el.innerHTML=`选中 <b>${CXSEL.size}</b> 份 · ${kb(b)}`;
+  const d=document.getElementById("cxdel");
+  if(d){ d.disabled=!CXSEL.size;
+         d.title=CXSEL.size?"删掉选中的这些。不可逆":"先选几份"; }
+}
+
+async function cxDelete(){
+  const rels=[...CXSEL];
+  if(!rels.length) return;
+  const byRel={}; (CXL.items||[]).forEach(i=>byRel[i.rel]=i);
+  const bytes=rels.reduce((a,r)=>a+((byRel[r]||{}).bytes||0),0);
+  // 删除不可逆,所以确认里要写清「多少份、多少字节」,并把前几条路径列出来 ——
+  // 一个只说「确定删除?」的弹窗,等于让人在不知道删什么的情况下下决定。
+  if(!confirm(`删掉 ${rels.length} 份转录,约 ${kb(bytes)}。\n\n`
+      +rels.slice(0,8).map(r=>"  "+r).join("\n")
+      +(rels.length>8?`\n  …还有 ${rels.length-8} 份`:"")
+      +`\n\n不可逆。继续?`)) return;
+  try{
+    const r=await api("/api/codex/delete",{method:"POST",body:JSON.stringify({rels})});
+    if(r.error){ toast(r.error,"bad"); return; }
+    if(!r.ok){
+      // 中途失败要说清停在哪里、已经删了几份 —— 不假装什么都没发生。
+      alert(`停在 ${r.stoppedAt}\n\n${r.error}\n\n已经删掉 ${r.deleted} 份,释放 ${kb(r.freed)}。`);
+    } else {
+      toast(`删掉 ${r.deleted} 份,释放 ${kb(r.freed)}`);
+    }
+    await loadCxList();
+    loadCodex(); loadSys();
+  }catch(e){ toast(e.message,"bad"); }
+}
+
 let MEM=null;
 async function loadMem(){
   try{ MEM=await api("/api/mem"); }catch(e){ MEM={error:e.message}; }
@@ -2396,6 +2529,20 @@ document.addEventListener("click", e=>{
     else if(fx.dataset.fix === "run"){ act([a], "run"); }
     return;
   }
+  if(e.target.id==="cxall"){
+    (CXL&&CXL.items||[]).forEach(i=>CXSEL.add(i.rel)); renderCxList(); return; }
+  if(e.target.id==="cxnone"){ CXSEL.clear(); renderCxList(); return; }
+  if(e.target.id==="cxdel"){ cxDelete(); return; }
+  const cx = e.target.closest("[data-cxrel]");
+  if(cx){ const k=cx.dataset.cxrel;
+    // ⚠ 只改这一行,不重画整张表。2382 行重画一次要几十毫秒,而且会把滚动位置
+    // 弹回顶部 —— 在一张两千行的清单上挑东西时,那等于每勾一个就把人送回开头。
+    // (实测还有一个更隐蔽的后果:重画会把已有的行节点全部换掉,
+    // 于是任何「先取一批节点再逐个点」的用法只有第一次生效。)
+    if(CXSEL.has(k)) CXSEL.delete(k); else CXSEL.add(k);
+    cx.classList.toggle("on", CXSEL.has(k));
+    const box=cx.querySelector("input"); if(box) box.checked=CXSEL.has(k);
+    cxSelSummary(); return; }
   const fa = e.target.closest("[data-fixall]");
   if(fa){
     const names = fa.dataset.args.split(String.fromCharCode(1)).filter(Boolean);
@@ -3373,6 +3520,11 @@ document.addEventListener("keydown",e=>{
 })();
 $("mtreload").addEventListener("click",()=>{loadMaint();loadSys();loadCodex();});
 $("memreload").addEventListener("click",()=>{loadMem();});
+$("cxload").addEventListener("click",loadCxList);
+// 换库要重扫,换排序不用:排序是纯前端的事,重扫一遍几千个文件只为了换个顺序,
+// 会让这个下拉用起来像卡住了。
+$("cxwhich").addEventListener("change",loadCxList);
+$("cxsort").addEventListener("change",()=>{ if(CXL) renderCxList(); });
 loadMaint();
 loadCodex();
 $("scktog").addEventListener("click",()=>$("sckd").classList.toggle("on"));

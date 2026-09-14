@@ -905,6 +905,28 @@ class Handler(BaseHTTPRequestHandler):
         except Exception as e:
             return self._json(500, {"error": f"{type(e).__name__}: {e}"})
 
+    def _codex_delete(self):
+        """点名删掉几份转录。不可逆。
+
+        不走 /api/maint/act 那张动作表是刻意的:那张表里每个动作只收一个名字,
+        而这个收的是一批路径。把一个收路径列表的动作塞进那张表,
+        等于让表里其余每一个动作也多出一条「其实可以传路径」的可能。
+        """
+        if not self._authed():
+            self._drain()
+            return self._json(403, {"error": "bad token"})
+        try:
+            n = int(self.headers.get("Content-Length") or 0)
+            body = json.loads(self.rfile.read(n) or b"{}")
+        except Exception as e:
+            return self._json(400, {"error": f"bad request: {e}"})
+        try:
+            return self._json(200, codexinfo.delete_transcripts(body.get("rels") or []))
+        except maint.Refused as e:
+            return self._json(400, {"error": str(e), "code": e.code})
+        except Exception as e:
+            return self._json(500, {"error": f"{type(e).__name__}: {e}"})
+
     def _maint_act(self):
         """维护动作。和 /api/act 分开是刻意的:两张动作表混在一起,加一个 skill 动作
         就等于同时扩大了任务动作的表面,而没有人会在评审时注意到这一点。"""
@@ -1012,6 +1034,15 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(200, codexinfo.read())
             except Exception as e:
                 return self._json(500, {"error": f"{type(e).__name__}: {e}"})
+        if path == "/api/codex/list":
+            if not self._authed():
+                return self._json(403, {"error": "bad token"})
+            q = parse_qs(urlparse(self.path).query)
+            which = (q.get("which") or ["sessions"])[0]
+            try:
+                return self._json(200, codexinfo.list_transcripts(which))
+            except Exception as e:
+                return self._json(500, {"error": f"{type(e).__name__}: {e}"})
         if path == "/api/sys":
             if not self._authed():
                 return self._json(403, {"error": "bad token"})
@@ -1103,6 +1134,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._retire_plan()
         if self.path.split("?", 1)[0] == "/api/repo/plan":
             return self._repo_plan()
+        if self.path.split("?", 1)[0] == "/api/codex/delete":
+            return self._codex_delete()
         if self.path.split("?", 1)[0] == "/api/maint/act":
             return self._maint_act()
         if self.path.split("?", 1)[0] != "/api/act":
