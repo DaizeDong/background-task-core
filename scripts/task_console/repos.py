@@ -544,3 +544,189 @@ def status(name: str) -> dict:
     # 条数单独给:前端截断显示时,「只显示了前 N 条」和「一共就这么多」必须分得开。
     return {"ok": True, "branch": branchline, "count": len(files),
             "files": files[:200], "truncated": len(files) > 200}
+
+
+# ---------------------------------------------------------------------------------------
+# 提交并推送。这是这块面板上**唯一一个把东西送出这台机器**的动作。
+#
+# ⚠ 这个文件上面写过「push 永远不进动作表:它是对外动作,撤不回来,而一个能一键推送的
+# 按钮迟早会在没人看的时候被点到」。那句话没有错,错的是把它读成「所以永远别做」。
+# 真正要防的是**一次误击就把东西发出去**,而不是「人明确决定之后还要手工敲六条命令」。
+# 所以它是两步的:先出一份只读计划,把要提交哪些文件、要推到哪个 ref、那个 remote 是
+# 公开还是私有全部摆出来;执行那一步必须带着计划里那份文件清单回来,清单对不上就整个拒绝。
+# 一次误击只会打开一份计划。
+#
+# 为什么值得做:伴生仓按设计天天在长数据,于是「有未提交改动」长期挂着十几条。
+# 那十几条每一条的处理方式逐字相同,而它们占着「要人管的事」清单里最大的一块 ——
+# 一张清单如果长期有一半是同一件琐事,人就会开始整张不看,连同真正要紧的那几条一起。
+
+# 提交信息的字符闸。换行会让 `-m` 之后的内容变成另一段,反引号和 $ 在任何一层
+# 被交给 shell 时都会求值 —— 这里不经 shell,但一个能塞进任意字节的提交信息
+# 迟早会被别处读出来再执行。
+_MSG_BAD = set('\r\n\x00`$')
+_MSG_MAX = 200
+
+
+def _repo_for(name: str):
+    """把仓名解析成路径,并过同一道参数闸。三个动作共用,不各写一份。"""
+    from maint import Refused, SAFE_NAME, _child
+    raw = os.environ.get("TASK_CONSOLE_REPOS")
+    if not raw:
+        raise Refused("没有配 TASK_CONSOLE_REPOS", "no_config")
+    if not SAFE_NAME.match(name or ""):
+        raise Refused(f"仓名不合法: {name!r}", "bad_name")
+    repo = _child(Path(os.path.expanduser(raw)), name)
+    if not (repo / ".git").exists():
+        raise Refused(f"不是 git 仓: {name}", "missing_src")
+    return repo
+
+
+def _porcelain_paths(repo: Path) -> tuple[list[str], list[str]]:
+    """返回 (可提交的路径, 跳过的原文行)。
+
+    用 `-z` 而不是按行切:文件名里可以有空格、引号、甚至换行,而按行切会把一个
+    带换行的文件名读成两条记录,然后把其中半条当成路径传给 `git add`。
+    """
+    rc, out = _git(repo, "status", "--porcelain=v1", "-z", "--untracked-files=all", timeout=60)
+    if rc != 0:
+        from maint import Refused
+        raise Refused(f"git status 退出 {rc}: {out.strip()[:200]}", "status_failed")
+    paths: list[str] = []
+    skipped: list[str] = []
+    parts = out.split("\x00")
+    i = 0
+    while i < len(parts):
+        rec = parts[i]
+        i += 1
+        if not rec:
+            continue
+        code, _, path = rec[:2], rec[2:3], rec[3:]
+        if not path:
+            continue
+        if code[0] == "R" or code[0] == "C":
+            # 重命名/复制在 -z 下多占一条记录(原名紧跟其后)。两个名字都要提交,
+            # 否则会留下一半的重命名。
+            if i < len(parts):
+                old = parts[i]
+                i += 1
+                if old:
+                    paths.append(old)
+        if code == "!!":
+            skipped.append(rec)
+            continue
+        paths.append(path)
+    return paths, skipped
+
+
+def commit_push_plan(name: str) -> dict:
+    """只读。把「点下去会发生什么」全部摆出来,一个字节都不写。"""
+    repo = _repo_for(name)
+    rc, br = _git(repo, "rev-parse", "--abbrev-ref", "HEAD", timeout=20)
+    branch = br.strip() if rc == 0 else None
+    rc, up = _git(repo, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}", timeout=20)
+    upstream = up.strip() if rc == 0 else None
+
+    paths, skipped = _porcelain_paths(repo)
+
+    ahead = []
+    if upstream:
+        rc, log = _git(repo, "log", "--oneline", "--no-decorate", f"{upstream}..HEAD", timeout=30)
+        if rc == 0:
+            ahead = [ln for ln in log.splitlines() if ln.strip()][:50]
+
+    rc, rem = _git(repo, "remote", "get-url", "origin", timeout=20)
+    remote = rem.strip() if rc == 0 else None
+    # ⚠ _visibility 收的是 remote URL,不是 slug —— 它自己再算 owner/repo。
+    # 传 slug 进去会让它二次解析、永远匹配不上,而那正是这个视图历史上
+    # 「从来没有工作过」的原因,症状是每一行都安静地显示「未知」。
+    vis = None
+    try:
+        vis = _visibility(remote, _load_visibility()[0]) if remote else None
+    except OSError:
+        vis = None
+
+    # 拦下来的理由各自单独说。合并成一句「不能推」会让人不知道该去修哪一个。
+    blocked = []
+    if not branch or branch == "HEAD":
+        blocked.append("现在是游离 HEAD,没有分支可推")
+    if not upstream:
+        blocked.append("没有 upstream。第一次推要人指定推到哪里,这个面板不替你选")
+    if not remote:
+        blocked.append("没有 origin")
+    # ⚠ 公开仓不在这里放行也不在这里拦死:拦死会让一个合法的公开仓改不动,
+    # 放行则等于替闸门做决定。把它摆出来,并说清接下来谁会检查。
+    warn = []
+    if vis and "pub" in str(vis).lower():
+        warn.append("这是一个**公开**仓。真实运行产出绝不能进公开仓;"
+                    "提交与推送都会过 pii_guard 与数据边界闸,由它们裁决。")
+    if vis is None:
+        warn.append("可见性问不出来。闸门对未知 remote 是按公开拦的,这里照样提醒。")
+    if skipped:
+        warn.append(f"{len(skipped)} 条被 .gitignore 忽略的路径不会提交。")
+
+    return {"ok": True, "repo": name, "branch": branch, "upstream": upstream,
+            "remote": remote, "visibility": vis,
+            "files": paths[:200], "fileCount": len(paths), "filesTruncated": len(paths) > 200,
+            "ahead": ahead, "aheadCount": len(ahead),
+            "blocked": blocked, "warn": warn,
+            "nothing": not paths and not ahead}
+
+
+def commit_push(name: str, message: str, expect: list[str] | None = None,
+                push: bool = True) -> dict:
+    """执行。必须带着计划里那份文件清单回来。
+
+    ⚠ 不用 `git add -A`。共享工作树里 -A 会捡走别的自动化做到一半的改动,
+    而那种提交事后没人分得清是谁的。只 add 计划里逐条列出来的路径。
+    ⚠ 不用 --no-verify,一次都不。钩子的输出原样回传 ——
+    一个把闸门输出吞掉的按钮,和一个绕过闸门的按钮,后果一样。
+    """
+    from maint import Refused
+    repo = _repo_for(name)
+    msg = (message or "").strip()
+    if not msg:
+        raise Refused("提交信息不能为空", "bad_message")
+    if len(msg) > _MSG_MAX:
+        raise Refused(f"提交信息太长(上限 {_MSG_MAX})", "bad_message")
+    if set(msg) & _MSG_BAD:
+        raise Refused("提交信息里有不允许的字符(换行 / 反引号 / $)", "bad_message")
+
+    plan_paths, _ = _porcelain_paths(repo)
+    out: list[str] = []
+
+    if plan_paths:
+        if expect is None:
+            raise Refused("没有带上计划里的文件清单,拒绝提交", "no_plan")
+        # 钉住读到的那一版。工作树在你看计划和点确认之间被别的自动化改过时,
+        # 这里必须整个拒绝而不是「顺手把新出现的也提交了」——
+        # 这个仓已经因为「长任务中途工作树被另一自动化改掉」出过一次事。
+        if sorted(expect) != sorted(plan_paths):
+            added = sorted(set(plan_paths) - set(expect))
+            gone = sorted(set(expect) - set(plan_paths))
+            raise Refused(
+                "工作树在你看计划之后变了,拒绝提交。重新出一份计划再确认。"
+                + (f" 新增: {', '.join(added[:5])}" if added else "")
+                + (f" 消失: {', '.join(gone[:5])}" if gone else ""),
+                "plan_stale")
+        rc, o = _git(repo, "add", "--", *plan_paths, timeout=120)
+        out.append(o)
+        if rc != 0:
+            raise Refused(f"git add 退出 {rc}: {o.strip()[:300]}", "add_failed")
+        rc, o = _git(repo, "commit", "-m", msg, timeout=300)
+        out.append(o)
+        if rc != 0:
+            # 钩子挡下来是**正常结果**,不是这个按钮坏了。原文回传,一个字不删。
+            raise Refused(f"git commit 退出 {rc}(钩子可能拦下了):\n{o.strip()[:2000]}",
+                          "commit_failed")
+
+    pushed = False
+    if push:
+        rc, o = _git(repo, "push", timeout=600)
+        out.append(o)
+        if rc != 0:
+            raise Refused(f"git push 退出 {rc}:\n{o.strip()[:2000]}", "push_failed")
+        pushed = True
+
+    return {"ok": True, "repo": name, "committed": bool(plan_paths),
+            "fileCount": len(plan_paths), "pushed": pushed,
+            "out": "\n".join(x for x in out if x).strip()[:4000]}

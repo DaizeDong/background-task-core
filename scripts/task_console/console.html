@@ -775,6 +775,10 @@ button.mini.ib .ic{width:15px;height:15px}
 /* 带文字的按钮里,图标和字之间留一点气 */
 button.mini .ic{margin-right:3px}
 button.mini.ib .ic{margin-right:0}
+/* 这一排里唯一会改东西、而且会把东西送出这台机器的那个。给它一点分量,
+   但**不是红色** —— 红留给「出事了」。它是一个要做的事,不是一个警报。 */
+button.mini.ib.go{border-color:var(--cyan);color:var(--cyan)}
+button.mini.ib.go:hover{background:var(--cyan);color:#fff}
 /* 归档 / 禁用 / 停用都是可逆的,常态不该是全页最红的东西 —— 22 个红按钮排成一竖排
    比它们旁边的数据还抢眼。危险感留到 hover:那时人已经瞄准了。
    ⚠ 只降常态的视觉权重,不动 danger 这个类本身:确认流程和 title 一个字没改。 */
@@ -1011,6 +1015,7 @@ table.g td[data-col="timeout"]{font-family:var(--mono)}
 <symbol id="i-off" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="m9 9 6 6"/></symbol>
 <symbol id="i-on" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="m8.5 12 2.5 2.5 4.5-5"/></symbol>
 <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16"/><path d="M10 11v6M14 11v6"/><path d="m5 7 1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2l1-12"/><path d="M9 7V4h6v3"/></symbol>
+<symbol id="i-push" viewBox="0 0 24 24"><path d="M12 20V8"/><path d="m8 12 4-4 4 4"/><path d="M4 4h16"/></symbol>
 <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/></symbol>
 </defs></svg>
 
@@ -1853,8 +1858,16 @@ function renderRepoDetail(){
     ? ibtn("i-web","在浏览器里打开 "+r.webUrl,'data-rpact="web"')
     : ibtn("i-web","认不出这个 remote 对应的网页地址。按「反正都是同一家」拼出来的链接会把人送到不存在的页面,而那比没有链接更糟","disabled");
   h += ibtn("i-diff","看改动:git status,具体是哪些文件",'data-rpact="status"')
-    + ibtn("i-fetch","fetch:只取不合",`data-mt="repo.fetch" data-name="${esc(r.name)}"`)
-    + `</div><div class="rp-out" id="rpout"></div>`;
+    + ibtn("i-fetch","fetch:只取不合",`data-mt="repo.fetch" data-name="${esc(r.name)}"`);
+  // 提交并推送。只在真有东西要做的时候出现 —— 一个永远亮着、点下去说「没什么要做」的
+  // 按钮,会让人停止相信这一排按钮的状态。
+  const needs = (r.dirty||0) > 0 || (r.unpushedKnown && (r.ahead||0) > 0);
+  h += needs
+    ? ibtn("i-push", `提交并推送:先出一份计划给你看,确认之后才动。`
+        + (r.dirty?` 有 ${r.dirty} 个改动`:"") + ((r.ahead||0)?` · ${r.ahead} 个提交没推`:""),
+        'data-rpact="commitpush"', "go")
+    : ibtn("i-push","没有未提交的改动,也没有未推送的提交","disabled");
+  h += `</div><div class="rp-out" id="rpout"></div>`;
   box.innerHTML = h;
 }
 
@@ -2055,6 +2068,60 @@ async function retireTask(name){
     toast(`${name} 已退役(${(r.done||[]).join("+")||"无需改动"})`);
     await load();
   }catch(e){ toast(`${name}: ${e.message}`,"bad"); }
+}
+
+// 提交并推送。两步:先拿一份只读计划摊开给人看,确认之后才带着那份清单去执行。
+//
+// 这是这个台子上唯一一个把东西送出这台机器的动作,所以它刻意**不是一键**:
+// 一次误击只会打开一份计划。但确认之后的那一串(add 逐条路径、commit、push、
+// 等钩子跑完、把钩子输出原样摊出来)全部由这里完成 —— 要省掉的是那串机械动作,
+// 不是那个决定。
+async function repoCommitPush(name){
+  const out=$("rpout");
+  const say=t=>{ if(out) out.textContent=t; };
+  say("正在出计划…");
+  let p;
+  try{ p=await api("/api/repo/plan",{method:"POST",body:JSON.stringify({name})}); }
+  catch(e){ say(`${name}: ${e.message}`); toast(`${name}: ${e.message}`,"bad"); return; }
+  if(p.error){ say(`${name}: ${p.error}`); toast(`${name}: ${p.error}`,"bad"); return; }
+  if(p.blocked&&p.blocked.length){
+    say(`不能推:\n- ${p.blocked.join("\n- ")}`);
+    toast(`${name}: ${p.blocked[0]}`,"bad"); return;
+  }
+  if(p.nothing){ say("没有要提交的改动,也没有未推送的提交。"); toast(`${name}: 没什么要做的`); return; }
+
+  // 计划原样摊在面板里,不只摊在 confirm 弹窗里:弹窗一关就没了,
+  // 而人往往是关掉之后才想起要再看一眼到底有哪些文件。
+  const head=[`${name}  ${p.branch} → ${p.upstream}`,
+              `可见性: ${p.visibility||"未知"}`,
+              p.fileCount?`要提交 ${p.fileCount} 个文件${p.filesTruncated?"(只列前 200)":""}:`:"没有未提交的改动",
+              ...p.files.map(f=>"  + "+f),
+              p.aheadCount?`还有 ${p.aheadCount} 个已提交但没推出去的:`:"",
+              ...p.ahead.map(c=>"  ^ "+c),
+              ...(p.warn||[]).map(w=>"⚠ "+w)].filter(Boolean);
+  say(head.join("\n"));
+
+  const msg=prompt(`${name}: 提交信息(一行,不能有换行 / 反引号 / $)`,
+                   p.fileCount?`更新 ${p.fileCount} 个文件`:"");
+  if(msg===null) { say(head.join("\n")+"\n\n(取消了,什么都没做)"); return; }
+  const warnTxt=(p.warn||[]).length?`\n\n${p.warn.join("\n")}`:"";
+  if(!confirm(`${name}\n${p.branch} → ${p.upstream}\n提交 ${p.fileCount} 个文件并推送。${warnTxt}\n\n钩子会跑,拦下来就不推。继续?`)){
+    say(head.join("\n")+"\n\n(取消了,什么都没做)"); return;
+  }
+  say(head.join("\n")+"\n\n执行中,等钩子跑完…");
+  try{
+    const r=await api("/api/maint/act",{method:"POST",body:JSON.stringify({
+      action:"repo.commitpush", name,
+      arg:JSON.stringify({message:msg, expect:p.files, push:true})})});
+    if(r.error){
+      // 钩子拦下来是正常结果,不是这个按钮坏了。原文摊出来,一个字不删。
+      say(head.join("\n")+"\n\n没有推出去:\n"+r.error);
+      toast(`${name}: 没推出去,原因在面板里`,"bad"); return;
+    }
+    say(`${name}: 已提交 ${r.fileCount} 个文件并推送。\n\n${r.out||""}`);
+    toast(`${name} 已推送`);
+    await loadRepos();
+  }catch(e){ say(head.join("\n")+"\n\n"+e.message); toast(`${name}: ${e.message}`,"bad"); }
 }
 
 // 会话。1026 份转录只读头尾,首扫几秒、之后走缓存零点几秒。
@@ -3017,7 +3084,9 @@ document.addEventListener("click",e=>{
   // 仓库详情里的动作。放在 data-mt 之后,因为 fetch 仍然走那条通用路;
   // 这三个各有各的回显,所以单独接。
   const ra=e.target.closest("button[data-rpact]");
-  if(ra){ e.stopPropagation(); repoAct(ra.dataset.rpact); return; }
+  if(ra){ e.stopPropagation();
+          if(ra.dataset.rpact==="commitpush"){ repoCommitPush(RP_SEL); return; }
+          repoAct(ra.dataset.rpact); return; }
   // 选中一个仓。整行可点 —— 之前整块面板只有每行末尾一个 fetch 按钮可以点,
   // 而卡片本身看着像能点、实际不能,那种「看起来可点却不可点」比没有交互更糟。
   // 状态条的一段。再点同一段是取消,所以这个过滤永远有路回到「全部」——

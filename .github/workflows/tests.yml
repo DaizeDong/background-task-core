@@ -68,6 +68,12 @@ jobs:
       # placeholder this replaces was set below the local number on purpose, because a floor
       # invented from a different machine is a guess wearing a threshold's clothes; now it is an
       # observation. Raise it when tests are added, never lower it to make a red build green.
+      #
+      # Still 447, deliberately, even though the local suite is now larger: the floor is the last
+      # count THIS RUNNER observed, not the count some other machine reports. Raising it to a
+      # locally measured number would make the gate assert something nobody has seen it produce,
+      # and the first divergence would read as "tests were removed" when it is really "the floor
+      # was a guess". Raise it from a green run's own output.
       - name: The suite must not have evaporated
         run: |
           $n = (python -B -m pytest tests/ -q -p no:cacheprovider --collect-only 2>$null | Select-String '::' | Measure-Object).Count

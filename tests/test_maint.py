@@ -7,6 +7,7 @@
 另一半是「未配置」契约:没配根目录时必须报 available=False 并说明原因,
 而不是返回一个空列表:空列表在页面上和「一个都没有问题」长得一模一样。
 """
+import json
 import os
 import sys
 
@@ -65,24 +66,58 @@ def test_action_not_in_the_table_is_refused(dirs):
         assert e.value.code == "bad_action", a
 
 
-def test_action_table_is_exactly_these_eleven(dirs):
+def test_action_table_is_exactly_these_twelve(dirs):
     """钉住集合本身:加动作是一个要有人明确改这行的动作,不是顺手就能滑进去的。
-
-    repo.fetch 在这里,而 repo.push **不在**,这是刻意的:push 是对外动作,撤不回来,
-    一个能一键推送的按钮迟早会在没人看的时候被点到。
 
     2026-09-12 加了 repo.reveal 与 repo.status,两个都只读:一个把资源管理器开到那个目录,
     一个把脏文件列出来。它们进来时这条断言必须被人明确改一次 —— 那正是这个用例的作用,
     动作不该顺手滑进白名单。
+
+    2026-09-14 加了 repo.commitpush,而这条用例原来明写着「repo.push 不在这里,
+    这是刻意的:push 是对外动作,撤不回来,一个能一键推送的按钮迟早会在没人看的时候
+    被点到」。那句判断没有被推翻,被推翻的是从它推出的结论。要防的是**一次误击就发出去**,
+    而不是「人明确决定之后还要手工敲六条命令」—— 后者让伴生仓长期挂着十几条一模一样的
+    「有未提交改动」,而一张长期有一半是同一件琐事的清单,人会开始整张不看。
+
+    所以进来的不是一个一键 push,而是一个**两步**动作:先出只读计划,执行时必须带着
+    计划里那份文件清单回来,对不上整个拒绝。下面几条断言钉的就是这个区别 ——
+    光把名字加进集合是过不了的。
     """
     assert set(M.ACTIONS) == {"skill.archive", "skill.restore",
                               "plugin.enable", "plugin.disable",
                               "repo.fetch", "repo.reveal", "repo.status",
+                              "repo.commitpush",
                               "clean.tempgit", "memory.archive", "memory.restore",
                               "task.retire"}
+    # 仍然没有一个裸的 push:能送出去的那一个必须是带计划的两步动作。
     assert not any(a.endswith(".push") for a in M.ACTIONS)
     # 只有一个删除动作,而且它不收路径参数:删哪些由模块自己按形状加年龄判定。
     assert [a for a in M.ACTIONS if a.startswith("clean.")] == ["clean.tempgit"]
+
+
+def test_commitpush_needs_a_plan_not_just_a_name(dirs, monkeypatch):
+    """把 commitpush 的「两步」钉死在动作表这一层。
+
+    没有这条,一个把 expect 改成可选的实现照样能过上面那个集合断言 ——
+    而那时它就退化成了一个一键 push,正是上面那段注释在防的东西。
+    """
+    import repos as R
+    seen = {}
+
+    def fake(name, message, expect, push):
+        seen.update(name=name, message=message, expect=expect, push=push)
+        return {"ok": True}
+
+    monkeypatch.setattr(R, "commit_push", fake)
+    M.act("repo.commitpush", "demo",
+          json.dumps({"message": "m", "expect": ["a.txt"], "push": True}))
+    assert seen["expect"] == ["a.txt"], "计划里的文件清单必须透传下去"
+    assert seen["message"] == "m"
+
+    # 负对照:参数不是 JSON 时整个拒绝,而不是当成「没有清单」继续。
+    with pytest.raises(M.Refused) as e:
+        M.act("repo.commitpush", "demo", "not json")
+    assert e.value.code == "bad_args"
 
 
 # ---------- 移动语义 ----------

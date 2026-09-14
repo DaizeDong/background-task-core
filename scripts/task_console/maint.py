@@ -32,7 +32,8 @@ SAFE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._@-]{0,79}$")
 
 # 动作表是闭合的。加一个动作必须改这里,而不是拼一个字符串就能多出一个动词。
 ACTIONS = ("skill.archive", "skill.restore", "plugin.enable", "plugin.disable",
-           "repo.fetch", "repo.reveal", "repo.status", "clean.tempgit",
+           "repo.fetch", "repo.reveal", "repo.status", "repo.commitpush",
+           "clean.tempgit",
            "memory.archive", "memory.restore",
            "task.retire")
 
@@ -294,10 +295,32 @@ def act(action: str, name: str, arg: str | None = None) -> dict:
         import repos
         return repos.status(name)
     if action == "repo.fetch":
-        # 只读的网络动作。push 永远不进这张表:它是对外动作,撤不回来,
-        # 而一个能一键推送的按钮迟早会在没人看的时候被点到。
+        # 只读的网络动作。
         import repos
         return repos.fetch(name)
+    if action == "repo.commitpush":
+        # 唯一一个把东西送出这台机器的动作。
+        #
+        # ⚠ 这里原来写着「push 永远不进这张表:它是对外动作,撤不回来,
+        # 而一个能一键推送的按钮迟早会在没人看的时候被点到」。那句判断没有错,
+        # 错的是把它读成「所以永远别做」。要防的是**一次误击就发出去**,
+        # 不是「人明确决定之后还要手工敲六条命令」—— 后者的代价是伴生仓
+        # 长期挂着十几条一模一样的「有未提交改动」,而一张长期有一半是同一件琐事的
+        # 清单,人会开始整张不看,连同真正要紧的那几条一起。
+        #
+        # 所以它和 task.retire 一样是**两步**的:先出只读计划(repo.commitpush.plan),
+        # 执行这一步必须带着计划里那份文件清单回来,对不上就整个拒绝。
+        # 一次误击只会打开一份计划。arg 是 JSON: {"message": ..., "expect": [...]}。
+        import repos
+        try:
+            payload = json.loads(arg or "{}")
+        except ValueError:
+            raise Refused("参数不是合法 JSON", "bad_args")
+        if not isinstance(payload, dict):
+            raise Refused("参数必须是对象", "bad_args")
+        return repos.commit_push(name, payload.get("message") or "",
+                                 payload.get("expect"),
+                                 bool(payload.get("push", True)))
     if action.startswith("skill."):
         root, arch = _root("TASK_CONSOLE_SKILLS"), _root("TASK_CONSOLE_SKILL_ARCHIVE")
         if not root or not arch:

@@ -883,6 +883,28 @@ class Handler(BaseHTTPRequestHandler):
         except Exception as e:
             return self._json(500, {"error": f"{type(e).__name__}: {e}"})
 
+    def _repo_plan(self):
+        """只读预览:这次提交推送会送出去什么。
+
+        和 /api/retire/plan 同一个形状,理由也同一个:写之前先让人看见要写什么。
+        这一个还多一层 —— 它是唯一会把东西送出这台机器的动作,
+        所以计划里除了文件清单,还要说清推到哪个 ref、那个 remote 是公开还是私有。
+        """
+        if not self._authed():
+            self._drain()
+            return self._json(403, {"error": "bad token"})
+        try:
+            n = int(self.headers.get("Content-Length") or 0)
+            body = json.loads(self.rfile.read(n) or b"{}")
+        except Exception as e:
+            return self._json(400, {"error": f"bad request: {e}"})
+        try:
+            return self._json(200, repos_mod.commit_push_plan(str(body.get("name") or "")))
+        except maint.Refused as e:
+            return self._json(400, {"error": str(e), "code": e.code})
+        except Exception as e:
+            return self._json(500, {"error": f"{type(e).__name__}: {e}"})
+
     def _maint_act(self):
         """维护动作。和 /api/act 分开是刻意的:两张动作表混在一起,加一个 skill 动作
         就等于同时扩大了任务动作的表面,而没有人会在评审时注意到这一点。"""
@@ -1079,6 +1101,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(400, {"error": "bad host"})
         if self.path.split("?", 1)[0] == "/api/retire/plan":
             return self._retire_plan()
+        if self.path.split("?", 1)[0] == "/api/repo/plan":
+            return self._repo_plan()
         if self.path.split("?", 1)[0] == "/api/maint/act":
             return self._maint_act()
         if self.path.split("?", 1)[0] != "/api/act":
