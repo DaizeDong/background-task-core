@@ -175,3 +175,91 @@ def test_isdigit_accepts_non_ascii_digits():
     """
     assert "٣".isdigit()
     assert int("٣") == 3
+
+
+# ── 每个对外返回都必须能上网线 ────────────────────────────────────────────────
+#
+# 真实事故 2026-09-15:`bodies_resolution()` 的 `dir` 是一个 `Path`,而 `Path` 不可
+# JSON 序列化。**这个 bug 在此之前不可能被发现**,因为伴生仓还没配好,那一档一直返回
+# `None`,而 `None` 序列化得好好的。它是在「把伴生仓配对」这个动作之后**才**出现的 ——
+# 也就是说,一个把配置修好的操作会让接口开始 500。
+#
+# 这种「配置好了反而坏了」的形状,靠逐个函数写用例是防不住的:防住的永远是想到的那几个。
+# 判据改成「这个模块的对外返回是给 HTTP 层用的,所以它必须能过 json.dumps」,
+# 一次覆盖全部,新加的函数自动进这道闸。
+
+def _json_safe(obj, path="返回值"):
+    """返回不可序列化的第一处路径,全都能序列化时返回 None。"""
+    try:
+        json.dumps(obj, ensure_ascii=False)
+        return None
+    except (TypeError, ValueError):
+        pass
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            if not isinstance(k, (str, int, float, bool, type(None))):
+                return f"{path} 的键 {k!r} 是 {type(k).__name__}"
+            bad = _json_safe(v, f"{path}[{k!r}]")
+            if bad:
+                return bad
+    elif isinstance(obj, (list, tuple)):
+        for i, v in enumerate(obj):
+            bad = _json_safe(v, f"{path}[{i}]")
+            if bad:
+                return bad
+    else:
+        return f"{path} 是 {type(obj).__name__}"
+    return f"{path} 整体不可序列化"
+
+
+def test_every_public_return_survives_json_dumps(ledger, monkeypatch, tmp_path):
+    """凡是会进 HTTP 响应的返回,都必须能过 json.dumps。
+
+    这里刻意把伴生仓**配置成存在的**再问一次 —— 那正是当初那个 bug 唯一会现形的状态。
+    只在「没配」的状态下测,这条用例会永远绿,和它要防的那个 bug 同时存在。
+    """
+    bodies = tmp_path / "companion" / "data" / "bodies"
+    bodies.mkdir(parents=True)
+    monkeypatch.setenv("LLMCALL_CONFIG", str(tmp_path / "companion"))
+    monkeypatch.delenv("TASK_CONSOLE_LLMCALL_BODIES", raising=False)
+    _write(ledger, [_rec(_at(2026, 3, 10, 9)), _rec(_at(2026, 3, 10, 10), ok=False, attempts=4)])
+
+    recs, meta = llmstats.read()
+    rows, _total = llmstats.page(recs)
+    chain = llmstats.chain_config(recs)
+    checks = {
+        "read.meta": meta,
+        "aggregate": llmstats.aggregate(recs),
+        "rungs": llmstats.rungs(recs, chain.get("effective") or []),
+        "verify_rungs": llmstats.verify_rungs(recs),
+        "runs": llmstats.runs(recs, min_len=1),
+        "callers": llmstats.callers(recs),
+        "page.rows": rows,
+        "chain_config": chain,
+        "bodies_resolution": llmstats.bodies_resolution(),
+        "body": llmstats.body(recs[0].get(llmstats.INDEX_KEY), recs),
+        "llm_overview": server.llm_overview(),
+    }
+    bad = {name: _json_safe(v, name) for name, v in checks.items() if _json_safe(v, name)}
+    assert not bad, "这些对外返回带着 json.dumps 处理不了的东西:\n  " + "\n  ".join(
+        f"{k}: {v}" for k, v in bad.items())
+
+    # 负对照:判据本身必须认得出一个不可序列化的东西,否则上面那条是在为所有输入打印绿色。
+    from pathlib import Path as _P
+    assert _json_safe({"dir": _P("/tmp/x")}, "探针") is not None
+    assert _json_safe({"ok": [1, "a", None, {"n": 2}]}, "探针") is None
+
+
+def test_the_companion_was_really_resolved_in_that_test(ledger, monkeypatch, tmp_path):
+    """前置状态的负对照:上面那条用例里,伴生仓必须真的被解析到了。
+
+    如果 `LLMCALL_CONFIG` 那一档没命中,`bodies_resolution()` 的 dir 会是 None,
+    而 None 天然可序列化 —— 上面那条会全绿,却完全没有覆盖到它要防的那个状态。
+    """
+    bodies = tmp_path / "companion" / "data" / "bodies"
+    bodies.mkdir(parents=True)
+    monkeypatch.setenv("LLMCALL_CONFIG", str(tmp_path / "companion"))
+    monkeypatch.delenv("TASK_CONSOLE_LLMCALL_BODIES", raising=False)
+    res = llmstats.bodies_resolution()
+    assert res["source"] == "LLMCALL_CONFIG", res
+    assert res["dir"] is not None and str(bodies) == res["dir"], res

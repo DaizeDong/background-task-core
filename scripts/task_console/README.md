@@ -54,6 +54,14 @@ Served, failed and skipped are three separate columns for one rung. A rung is sk
 call's chain did not contain it, which is neither a success nor a failure; before it was counted on
 its own it was indistinguishable from a rung that simply never got its turn.
 
+Everything this module returns ends up inside a JSON response, so none of it may hold a value
+`json.dumps` cannot take. That is asserted for every public return at once rather than function by
+function, because the one that got through was a `Path` on a resolution step that answered `None`
+until the day the companion repo was configured: a check written per function only ever covers the
+functions someone thought of, and this one was invisible on any machine where the thing worked out
+to nothing. The test deliberately configures the companion first, since that is the only state in
+which the bug exists.
+
 Who made the call is recorded as a bare script name, never a full path. The ledger sits outside
 every repository, but this page serves it over HTTP, and a full path carries a home directory for
 no gain in what it tells you. Three states stay separate: a name, "could not be inferred" (an
@@ -96,7 +104,7 @@ names with your own tasks. Everything else is optional.
 | `TASK_CONSOLE_DB` | the SQLite file the ingester writes and the page reads | falls back to the companion repo's `data/task-console/console.sqlite3`, and if no companion resolves it reports UNINITIALISED with setup instructions rather than falling back into this repo |
 | `TASK_CONSOLE_LLMCALL_LEDGER` | the append-only JSONL ledger the LLM-call primitive writes, one line per call | falls back to `~/.llmcall/ledger.jsonl`; a missing file makes the call view read NOT CHECKED, which is deliberately not the same as reading zero calls |
 | `TASK_CONSOLE_LLMCALL_CHAIN` | the file the call view writes a fallback-chain order into | falls back to `~/.llmcall/chain.txt`. This is the one path on this console that writes into another program's configuration, and it is shadowed by the `LLMCALL_CHAIN` environment variable: when that variable is set, the page says so in as many words instead of reporting a save that changes nothing |
-| `TASK_CONSOLE_LLMCALL_BODIES` | the directory holding recorded prompt and reply bodies, one file per day | falls back to the private companion repo the call primitive resolves (`LLMCALL_DATA_DIR`, then `LLMCALL_CONFIG/data`, then `~/.example-tool-config/data`, then `~/.llmcall-data`), each with a `bodies/` subdirectory. Body recording is off by default, and the three ways to have no bodies (never turned on, companion repo not initialised, entry past its retention) are reported as three different sentences rather than one empty box |
+| `TASK_CONSOLE_LLMCALL_BODIES` | the directory holding recorded prompt and reply bodies, one file per day | unset means the console mirrors whatever discovery order the call primitive itself uses to find its private companion directory, and adds a `bodies/` subdirectory to it. That order is defined by the primitive, not here, so it is not restated here either: two copies of an order drift, and the copy someone reads is not necessarily the copy that runs. The resolution steps actually walked, and their verdicts, are printed in the page when a body cannot be found. Body recording is off by default, and the three ways to have no bodies (never turned on, companion not initialised, entry past its retention) are reported as three different sentences rather than one empty box |
 | `TASK_CONSOLE_POWERSHELL` | the powershell.exe that task commands run through | falls back to the pinned `System32\WindowsPowerShell\v1.0\powershell.exe`, and only to a bare `powershell.exe` off PATH when that file is not there |
 
 The tool defaults only into its own namespace. Pointing it at whatever else a machine keeps its

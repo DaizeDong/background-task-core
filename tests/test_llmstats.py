@@ -1031,7 +1031,7 @@ def test_bodies_resolution_prefers_the_explicit_override(tmp_path, monkeypatch):
     (tmp_path / "dataroot" / "bodies").mkdir(parents=True)
     r = llmstats.bodies_resolution()
     assert r["source"] == llmstats.ENV_BODIES
-    assert r["dir"] == tmp_path / "nowhere"        # 没有滑到存在的那一级
+    assert r["dir"] == str(tmp_path / "nowhere")        # 没有滑到存在的那一级
 
 
 def test_bodies_resolution_uses_llmcall_data_dir(tmp_path, monkeypatch):
@@ -1039,20 +1039,20 @@ def test_bodies_resolution_uses_llmcall_data_dir(tmp_path, monkeypatch):
     monkeypatch.setenv(llmstats.ENV_LLMCALL_DATA, str(tmp_path / "dataroot"))
     r = llmstats.bodies_resolution()
     assert r["source"] == llmstats.ENV_LLMCALL_DATA
-    assert r["dir"] == tmp_path / "dataroot" / "bodies"
+    assert r["dir"] == str(tmp_path / "dataroot" / "bodies")
 
 
 def test_bodies_resolution_adds_data_under_llmcall_config(tmp_path, monkeypatch):
     (tmp_path / "cfg" / "data" / "bodies").mkdir(parents=True)
     monkeypatch.setenv(llmstats.ENV_LLMCALL_CONFIG, str(tmp_path / "cfg"))
-    assert llmstats.bodies_resolution()["dir"] == tmp_path / "cfg" / "data" / "bodies"
+    assert llmstats.bodies_resolution()["dir"] == str(tmp_path / "cfg" / "data" / "bodies")
 
 
 def test_bodies_resolution_does_not_double_the_data_segment(tmp_path, monkeypatch):
     """LLMCALL_CONFIG 已经指到 data 时不许再套一层,否则这一级永远解析不出东西。"""
     (tmp_path / "cfg" / "data" / "bodies").mkdir(parents=True)
     monkeypatch.setenv(llmstats.ENV_LLMCALL_CONFIG, str(tmp_path / "cfg" / "data"))
-    assert llmstats.bodies_resolution()["dir"] == tmp_path / "cfg" / "data" / "bodies"
+    assert llmstats.bodies_resolution()["dir"] == str(tmp_path / "cfg" / "data" / "bodies")
 
 
 def test_bodies_resolution_order_data_dir_beats_config(tmp_path, monkeypatch):
@@ -1079,11 +1079,48 @@ def test_bodies_resolution_returns_none_and_does_not_raise(monkeypatch):
 
     在这里抛会让一台没装 llmcall 的机器打开控制台就是一次 500。
     """
-    monkeypatch.setattr(llmstats.os.path, "expanduser",
-                        lambda p: p.replace("~", "/definitely/not/a/home"))
+    for name in (llmstats.ENV_BODIES, llmstats.ENV_LLMCALL_DATA, llmstats.ENV_LLMCALL_CONFIG):
+        monkeypatch.delenv(name, raising=False)
     r = llmstats.bodies_resolution()
     assert r["dir"] is None and r["source"] is None
-    assert len(r["tried"]) == 2          # 两条家目录候选都走过了
+    # 一个环境变量都没设时,一级都不该走 —— 这里刻意不去猜家目录下的约定路径,
+    # 理由见 _resolve_bodies 的 docstring。`tried` 为空本身就是那个决定的体征。
+    assert r["tried"] == [], r["tried"]
+
+
+def test_no_private_companion_name_is_hardcoded_anywhere(monkeypatch):
+    """这个公开仓的源码里,不许出现机主私有伴生仓的名字。
+
+    来历是一次真实拦截:PII 闸门在 `_resolve_bodies` 的一行上挡住了提交,判为跨仓链接。
+    最值得记的地方在于**那段源码在此之前是干净的** —— 同一份文字,在那个私有仓被创建
+    并登记进可见性表之后才成为泄漏。所以判据不是「这串字符看着敏不敏感」,
+    而是「它此刻指不指得到一个真实存在的私有东西」,而后者会变。
+
+    修法不是往 `.pii-allow` 里加豁免:那个文件顶上就写着机主自己的数据一条都不许进,
+    而私有仓名正是机主自己的东西。修法是把它从公开仓里拿掉,靠环境变量被指过去。
+
+    这条用例盯的是它被加回来 —— 加回来的形式一定是「顺手补一级默认路径,让它在我这台
+    机器上也能工作」,那个动机在任何时候都成立,所以需要一道机械的闸而不是一句约定。
+    """
+    import glob as _glob
+    import io as _io
+    import os as _os
+    import re as _re
+    root = _os.path.join(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))),
+                         "scripts", "task_console")
+    # 形状而非具体名字:`~/.<任意名>-config` 与 `~/.<任意名>-data` 都是伴生仓的命名约定。
+    pat = _re.compile(r"~/\.[A-Za-z0-9_-]+-(config|data)\b")
+    hits = []
+    for f in sorted(_glob.glob(_os.path.join(root, "*.py"))):
+        src = _io.open(f, encoding="utf-8", errors="replace").read()
+        for m in pat.finditer(src):
+            hits.append(f"{_os.path.basename(f)}: {m.group(0)}")
+    assert not hits, ("公开仓的源码里出现了伴生仓形状的家目录路径,"
+                      "它会把一个私有仓的存在写进公开代码:\n  " + "\n  ".join(hits))
+
+    # 负对照:这个判据必须认得出那个形状,否则它对任何源码都打印绿色。
+    assert pat.search("cands.append(('~/.llmtool-config', home))"), "判据认不出它要防的形状"
+    assert not pat.search("cands.append((ENV_LLMCALL_CONFIG, base / 'bodies'))")
 
 
 # --------------------------------------------------------------------------
