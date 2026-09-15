@@ -179,8 +179,8 @@ def _visibility(remote: str | None, table: dict) -> str | None:
     """这个仓是公开还是私有。查不到就是 None,页面显示「未知」而不是猜 PRIVATE。
 
     ⚠ 这个函数以前拿仓库的**文件系统路径**去比表里的键,而表的键是 `owner/repo`
-    (实测 150 条里 148 条是这个形状,含路径分隔符的 0 条)。
-    于是它把 `daizedong/schedule-reminder` 当成一个相对路径 expanduser + abspath,
+    (实测绝大多数是这个形状,含路径分隔符的一条都没有)。
+    于是它把 `owner/name` 这种键当成一个相对路径 expanduser + abspath,
     结果永远匹配不上 —— **整个公开/私有视图从来没有工作过**:
     每一行都不显示 PUB/PRI 徽章,而 visibilityReason 是 None,页面一句话都不说。
 
@@ -430,7 +430,7 @@ def _load_visibility() -> tuple[dict, str | None]:
 
 
 def scan(root: str | None = None, now: float | None = None, workers: int = 10) -> dict:
-    """扫一整片仓。串行扫 49 个仓要几十秒,所以并发;每个仓自己带超时,一个卡住的仓
+    """扫一整片仓。串行扫一整片仓要几十秒,所以并发;每个仓自己带超时,一个卡住的仓
     不能让整块面板转圈。"""
     now = time.time() if now is None else now
     raw = root if root is not None else os.environ.get("TASK_CONSOLE_REPOS")

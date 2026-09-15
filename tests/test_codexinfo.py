@@ -327,11 +327,21 @@ def test_delete_refuses_a_junction_that_escapes_the_tree(codex_root, tmp_path):
     victim.write_text("不在那棵树里", encoding="utf-8")
 
     (codex_root / "sessions").mkdir(exist_ok=True)
+    # ⚠ 「这个平台没有联接」和「这一次没建成」必须分开。
+    # 第一版无条件 skip,实测在一次全量里静默跳过了一次、重跑又过 ——
+    # 一个偶尔跳过的用例比一个失败的更糟:它不报错地把覆盖降下来,
+    # 而这条用例守的是一个不可逆删除接口唯一独当一面的闸。
+    # 非 Windows 才是真的做不到;在 Windows 上 mklink /J 不需要管理员,
+    # 失败就是出了别的事,要带着原文喊出来。
+    if os.name != "nt":
+        pytest.skip("目录联接是 Windows 的东西")
     made = subprocess.run(["cmd", "/c", "mklink", "/J",
                            str(codex_root / "sessions" / "junc"), str(outside)],
                           capture_output=True, text=True)
-    if made.returncode != 0:
-        pytest.skip("这台机器上建不出目录联接")
+    assert made.returncode == 0, (
+        "建目录联接失败,而这条用例是那道归属闸唯一的覆盖 —— "
+        "不要把它改回 skip,先看这里的原文:"
+        + (made.stdout or "") + (made.stderr or ""))
 
     target = codex_root / "sessions" / "junc" / "precious.jsonl"
     # 先证明它确实穿过了其余每一道闸,否则这条用例又会变成「被别的原因拦下」。

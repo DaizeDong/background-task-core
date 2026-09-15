@@ -1632,7 +1632,7 @@ function renderSelfcheck(){
       : esc(r.state)}</span></div>`).join("");
 }
 
-// 仓库面板。46 个仓 1.3 秒扫完(并发 + 每仓两次 git 调用),所以可以随手重扫。
+// 仓库面板。整片仓一秒多扫完(并发 + 每仓两次 git 调用),所以可以随手重扫。
 let REPOS=null;
 const RP_LAB={clean:"干净",dirty:"有改动",unpushed:"未推送",detached:"游离头",error:"扫不动"};
 const RP_ORDER=["unpushed","error","dirty","detached","clean"];
@@ -1912,7 +1912,7 @@ function renderRepoDetail(){
   h += `<div class="rp-line"><span class="ic" title="remote">☁</span>`
     + `<code>${r.remote?esc(r.remote):"没有 remote"}</code></div>`;
 
-  // 账号判定不 ok 时把话说出来。ok 的时候一个字都不说 —— 47 个仓每个念一遍「匹配」
+  // 账号判定不 ok 时把话说出来。ok 的时候一个字都不说 —— 每个仓都念一遍「匹配」
   // 是纯噪音,而噪音会让真正该看的那一条也被跳过。
   if(id.state && id.state!=="ok" && id.why){
     h += `<div class="rp-f"><span class="lb">账号</span><span class="vv note ${idCls}">${esc(id.why)}</span></div>`;
