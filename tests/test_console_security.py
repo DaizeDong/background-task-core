@@ -12,6 +12,7 @@ Host 白名单是新加的。绑 127.0.0.1 挡得住网段,挡不住 DNS rebindi
 import http.client
 import json
 import os
+import re
 import sys
 import threading
 import time
@@ -680,3 +681,89 @@ def test_the_server_still_answers_after_an_exception(srv, monkeypatch):
     # 同上:恢复之后打一个便宜的端点。要证明的是「连接还能用」,不是「任务枚举还能跑」。
     st, _ = call(srv, "GET", "/api/selfcheck", token=TOKEN)
     assert st == 200, "出过一次异常之后服务器不再正常回话"
+
+
+# ---------- 每一条 /api/ 路由都必须自己查令牌 ----------
+#
+# 上面那几条 403 用例是**逐端点手写**的,于是新加一条路由、忘了写 `_authed()`,
+# 整个套件不会有任何东西变红 —— 这个仓最近一次加面板就新增了四条路由,
+# 它们碰巧都写了,但那靠的是记性,不是控制。
+#
+# 令牌是这个服务器仅有的三道控制之一,而它挡的正是「你开着的任意一个网页 POST 到
+# 这个端口」。一条漏检的路由不会以任何方式显形:它照常返回正确的数据。
+#
+# 所以判据从「这几个端点会 403」改成「**源码里每一条 /api/ 分支都查了令牌**」,
+# 新路由自动进闸。这是静态判据,不是跑一遍 —— 跑一遍只能覆盖想得起来的那几条。
+
+# 路由分支的四种写法都要认。漏掉任何一种,那些路由就静悄悄地不受这道闸管 ——
+# 而第一版正则正是这么漏的:它只认 `path ==`,于是 POST 那几条(写成
+# `self.path.split("?", 1)[0] != "/api/act"`,既有 `self.` 前缀又是 `!=`)整类没进扫描,
+# 包括这个服务器上唯一能改机器状态的那条。**一个漏掉一半输入的扫描器,
+# 和一个真的全都合规的服务器,打印一样的绿色。**
+_ROUTE_RE = re.compile(
+    r'(?:self\.)?path(?:\.split\("\?",\s*1\)\[0\])?\s*'
+    r'(?:==|!=|\.startswith\(|\s+in\s+\()\s*"(/api/[^"]*)"')
+
+
+def _api_route_literals():
+    """server.py 里每一条 /api/ 路由的字面量,按它在 do_GET / do_POST 里出现的顺序。"""
+    src = open(S.__file__.replace(".pyc", ".py"), encoding="utf-8").read()
+    return src, _ROUTE_RE.findall(src)
+
+
+def test_the_route_scanner_finds_the_routes():
+    """负对照:扫不到路由的扫描器,和一个真的每条都合规的服务器打印同样的绿色。"""
+    _src, routes = _api_route_literals()
+    assert len(routes) >= 10, f"只扫到 {len(routes)} 条 /api/ 路由,扫描器大概没在工作"
+    assert "/api/tasks" in routes and "/api/act" in routes
+
+
+def test_every_api_branch_checks_the_token():
+    """每一条 /api/ 分支,从它自己那行往下到下一条分支之前,必须出现 `_authed()`。
+
+    窗口取到「下一条路由分支」而不是固定行数:固定行数会在某条处理逻辑变长时
+    悄悄开始漏检,而那正好是最容易出事的那条。
+    """
+    src, routes = _api_route_literals()
+    lines = src.splitlines()
+    # 每条路由字面量出现的行号(取第一次,分支判断就在那里)
+    marks = []
+    for r in routes:
+        for i, ln in enumerate(lines):
+            if f'"{r}"' in ln and _ROUTE_RE.search(ln):
+                marks.append((i, r))
+                break
+    marks.sort()
+    bad = []
+    for n, (i, r) in enumerate(marks):
+        end = marks[n + 1][0] if n + 1 < len(marks) else len(lines)
+        window = "\n".join(lines[i:end])
+        # 委托给一个 _xxx() 处理器的分支,鉴权在那个处理器里 —— 跟进去看。
+        m = re.search(r"return self\.(_[a-z_]+)\(\)", window)
+        if m:
+            fn = m.group(1)
+            body = re.search(rf"def {fn}\(self\):(.*?)(?=\n    def |\Z)", src, re.S)
+            window += body.group(1) if body else ""
+        if "_authed()" not in window:
+            bad.append(f"{r}  (第 {i + 1} 行起)")
+    assert not bad, ("这些 /api/ 路由没有查令牌,任何一个已打开的网页都能调到它们:\n  "
+                     + "\n  ".join(bad))
+
+
+def test_the_token_check_scanner_can_actually_fire():
+    """投毒:把一条分支的 `_authed()` 拿掉,上面那条必须点名它。
+
+    判据是在源码文本上跑的,所以投毒也在文本上做,不碰真文件。
+    """
+    src, _ = _api_route_literals()
+    poisoned = src.replace(
+        '        if path == "/api/sys":\n            if not self._authed():\n'
+        '                return self._json(403, {"error": "bad token"})\n',
+        '        if path == "/api/sys":\n', 1)
+    assert poisoned != src, "投毒没有命中,这条负对照什么都没证明"
+    assert "/api/sys" in poisoned
+    lines = poisoned.splitlines()
+    i = next(n for n, ln in enumerate(lines) if '"/api/sys"' in ln and _ROUTE_RE.search(ln))
+    nxt = next((n for n in range(i + 1, len(lines))
+                if _ROUTE_RE.search(lines[n])), len(lines))
+    assert "_authed()" not in "\n".join(lines[i:nxt]), "投毒之后那段窗口里还有 _authed(),判据测不到它"

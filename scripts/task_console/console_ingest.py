@@ -1,8 +1,14 @@
 """Fill the task-console database. THE ONLY WRITER.
 
-Runs from the hourly health monitor, not from the web request. That split is most of the point:
-reading the Windows Operational event log costs 109 seconds end to end and was on the request path,
-so every page load paid for it. Here it is paid once an hour by something nobody is waiting on.
+Runs out of band, not from the web request. That split is most of the point: reading the Windows
+Operational event log costs 109 seconds end to end and was on the request path, so every page load
+paid for it. Here nobody is waiting on it.
+
+How often it actually runs belongs to the machine, not to this repo, and this file has twice
+carried a wrong claim about it. What is worth knowing here is the shape: the health half and the
+run-event half are driven separately, because folding them together made an inner budget of 900
+seconds sit under an outer execution limit of 600, so the outer guillotine fired first, every run,
+for dozens of consecutive runs. `--skip-runlog` is what the high-frequency caller passes.
 
 WHY INGESTION IS NOT OPTIONAL. The Operational log is a circular buffer. Measured on this machine:
 635 events an hour, 64 MB capacity, so roughly FIVE DAYS before the oldest records are overwritten.

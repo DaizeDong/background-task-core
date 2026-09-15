@@ -57,6 +57,14 @@ python -m pytest tests/ -q
 They target Windows, because the thing under test is Windows. Gates in this repo are expected to be
 poisoned before they are trusted: a check that has never been shown to fail is not evidence.
 
+## Changing it
+
+`docs/changing-this.md` is the one to read first. It carries no list of routes, modules or
+capabilities, deliberately: a list like that drifts, and once drifted it is indistinguishable from
+an accurate one. What it carries instead is the set of invariants a change must not break, and the
+traps this repo has already fallen into, with the symptom each one presents as. Both survive the
+next panel being added; a list does not.
+
 ## Licence
 
 MIT. See `LICENSE`.

@@ -1,44 +1,30 @@
-"""task-console: a local, read-and-operate view of this machine's scheduled tasks.
+"""The HTTP layer: routing, auth, the host allowlist, and the write endpoints.
 
-WHAT IT IS. A tiny stdlib-only HTTP server that renders every self-installed Windows scheduled
-task, grouped into categories you define, and lets you enable, disable, run or stop one from the
-page. It is the operable counterpart to a static report: a report tells you a task is dead, this
-lets you restart it without going and finding the name yourself.
+What the console is and how to configure it: `README.md` next to this file. What the whole repo
+refuses to do and why: the root `README.md`. Before changing anything here: `docs/changing-this.md`.
 
-WHY IT IS LOCAL-ONLY AND TOKENED. It can change system state. Three controls, all of them
-load-bearing rather than decorative:
+This docstring keeps only what belongs beside this code, because everything else it used to carry
+had drifted: it described the tool as a view of scheduled tasks after four other kinds of source
+were added, it listed four verbs after the action table had grown well past four, and it repeated
+four environment variables out of the twenty the code actually reads. **A second copy of a list is
+not documentation, it is a promise that ages without telling anyone.** The lists live in one place
+each, and the environment table is the only one with a reconciliation test, because its second copy
+is a launcher outside this repo and cannot be deleted.
+
+Three controls make the write endpoints safe to have at all. Each is load-bearing, none is
+decorative, and all three are implemented in this file:
 
   1. It binds 127.0.0.1. Not 0.0.0.0, not a hostname. Nothing off this machine can reach it.
   2. Every /api/ call must carry a token minted fresh at startup and never written to disk. Without
-     it, ANY web page you had open could POST to http://127.0.0.1:<port>/api/act and disable your
-     backup task, because the browser would happily attach no credentials and the server would
-     happily accept. That is the whole CSRF shape, and localhost does not protect against it.
-  3. The verb list is closed (enable/disable/run/stop) and the task name is passed to PowerShell
-     through an ENVIRONMENT VARIABLE, never interpolated into a command string. See act.ps1.
-
-WHAT IT DELIBERATELY DOES NOT DO. It cannot create, delete or reconfigure a task. Creating one has
-a specification with six steps and three registries (see the task-creation spec); a button that
-skipped them would manufacture exactly the untracked task the spec exists to prevent.
-
-DATA BOUNDARY. This file ships in a public repo. It reads real state at runtime and holds none of
-it: no snapshot is cached to disk, the category map is read from a path OUTSIDE this repo, and the
-example config that ships here contains only synthetic names.
+     it, ANY web page you had open could POST to this port and disable a backup task: the browser
+     would attach no credentials and the server would accept. That is the CSRF shape, and being on
+     localhost does not protect against it.
+  3. Names that arrive over HTTP have no standing. A task name is re-enumerated against the live
+     system before any verb runs, and it reaches PowerShell through an ENVIRONMENT VARIABLE, never
+     interpolated into a command string (see `act.ps1`).
 
 Usage:
     python server.py [--port 8787] [--no-browser]
-
-Environment (all optional, all with defaults that are conventions rather than real data):
-    TASK_CONSOLE_CATEGORIES   category map        default ~/.task-console/categories.json
-    TASK_CONSOLE_HEALTH       health watch list   no default. Unset means the health-coverage
-                                                  column reads NOT CHECKED.
-    TASK_CONSOLE_ALLOWLIST    backup allow-list   no default. Unset means the backup-coverage
-                                                  check reads NOT CHECKED, never a pass.
-    TASK_CONSOLE_HISTORY      a health monitor's  no default. Unset means no heatmap and no rates,
-                              log file            and the page says so rather than showing zeros.
-
-    The tool defaults only into its OWN namespace. Wiring it to whatever else a given machine
-    keeps its watch-list and allow-list in is the launcher's job, and the launcher lives on that
-    machine rather than in this repo.
 """
 from __future__ import annotations
 
@@ -288,10 +274,21 @@ def load_from_db():
     end to end and used to sit on the request path, so every page load paid it. The ingester pays
     it out of band instead, and this reads the result in single-digit milliseconds.
 
-    ⚠ 这句以前写的是「摄入器每小时付一次」。2026-09-08 核实:**没有任何计划任务在跑
-    console_ingest.py** —— 任务计划、健康清单、备份白名单三处都查过,一处都没有。
-    数据库里有东西,只是因为有人手动跑过。一句断言了不存在的排班的注释,会让下一个人
-    把「数据停在三天前」读成「摄入器坏了」,而真相是它从来没被排过班。
+    ⚠ 排班这件事这里记错过两次,方向相反,所以现在只写形状、不写数字,
+    具体排班归机器侧、不归这个仓:
+
+    第一次写的是「每小时付一次」,而运行事件那一半当时根本没在推进。
+    第二次(2026-09-08 核实后)改成「没有任何计划任务在跑 console_ingest.py」,
+    **那次核实的方法有盲区**:它按名字去任务计划里找,而每小时那条路径是被另一个任务
+    在内部调用的,按名字永远查不到。于是一条「我核实过,没有」的注释,
+    比原来那句错得更有底气 —— 而它还经 `/api` 下发到了页面上。
+
+    真实形状是两条路径,拆开是有代价换来的:一条高频、跳过运行日志,
+    另一条低频、补上那一半。它们合在一起过,而那会因为内外两层超时限制打架
+    把任务连杀几十次(内层预算够不着,外层铡刀每次先落)。
+
+    **要知道此刻有没有在跑,看数据本身的新鲜度,不要读这段注释。**
+    摄入新鲜度由 `ingest_verdict` 判定并下发,那才是活的。
 
     Returns (hist, runs, note) shaped EXACTLY like the file-parsing versions, because console.html
     reads seventeen keys off them and a reshape here is a silently blank page there.
@@ -384,13 +381,12 @@ def load_from_db():
         "count": cov["runs"]["rows"], "tasks": rtot,
         # 数据库那条路的 count 是全表行数,不限日期,和上面回落路径那条不是一个量。
         "windowDays": None, "countScope": "库里全部",
-        # ⚠ 这句以前写「每小时由摄入器写进数据库」,而同一个文件 90 行之外的
-        # load_from_db 里已经写明:**没有任何计划任务在跑 console_ingest.py**。
-        # 两句互相矛盾的排班断言在同一个文件里,而这一句还在 RUNLOG_OUT 的导出白名单里,
-        # 会真的经 /api 到达页面 —— 一个错的事实被下发成了对外契约的一部分。
+        # ⚠ 这句里**不要再写排班**。它写错过两次、方向相反,理由见 load_from_db 的
+        # docstring;而这一句在 RUNLOG_OUT 的导出白名单里,会真的经 /api 到达页面 ——
+        # 一个关于机器配置的断言从这里下发出去,就成了对外契约的一部分,
+        # 而这个仓看不见那台机器的排班。摄入到底新不新鲜由 ingest_verdict 当场判,
+        # 那个判据读的是数据自己的时间,不读任何人写下的承诺。
         "note": ("真实运行记录,来自 Windows 任务计划的运行日志,由摄入器写进数据库。"
-                 "⚠ 摄入器目前没有排班(任务计划、健康清单、备份白名单三处都没有),"
-                 "所以这些数字只更新到最后一次手动运行为止。"
                  "⚠️ 那个日志是滚动缓冲,实测约 5 天就会覆盖,所以没被摄入的历史是永久丢失的。"),
     }
     for name, r in rtot.items():

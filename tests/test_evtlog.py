@@ -185,14 +185,21 @@ def test_no_more_items_is_a_normal_end_not_a_failure():
             return "The data area passed to a system call is too small. (259)"
     assert E._is_no_more(MsgOnly()) is True, "只有消息、没有 winerror 的那条分支没生效"
 
-    # 负对照:这才是这条判据真正的代价 —— 一个不相干的错误因为消息里有 259 被放过。
-    # 钉住它不是为了让它变绿,是为了**下次有人收紧这条判据时能看到它在保护什么**。
+    # 这一条以前断言的是 True,并注明「记录一个已知的过宽判据,收紧之后该改用例」。
+    # 2026-09-15 收紧了,所以按它自己说的改。
+    #
+    # 值得留一句的是**当初那个写法为什么不够好**:它把一个会造成本模块存在理由的行为
+    # 钉成了期望值。这个模块开头就写着「一条空的运行日志和一段读不到的运行日志
+    # 在界面上长得一模一样」,而子串匹配 259 恰好制造那件事 ——
+    # 一个无关错误被判成正常读完,于是 enabled=True、dropped=0、条数偏小但看起来确定。
+    # **一个防 X 的判据不该把 X 写进期望**:那让下一个人以为它是设计,而不是欠债。
+    # 要记录一个已知的洞,写进 docstring,别写进断言。
     class Unrelated(Exception):
         def __str__(self):
             return "Access is denied while reading record 12590 of the channel"
-    assert E._is_no_more(Unrelated()) is True, (
-        "这条断言记录的是一个**已知的过宽判据**:消息里含 259 的连续数字也会命中。"
-        "改成按词边界匹配之后它会红,那时该改的是这条用例,不是把判据改回去。")
+    assert E._is_no_more(Unrelated()) is False, (
+        "消息里含 12590 的无关错误被当成了正常读完 —— 那正是这个模块要防的那件事:"
+        "读到一半失败被报成读完了。判据必须按词边界匹配 259。")
 
     # 完全不相干、也不含 259 的,必须判假 —— 否则上面那条说明不了任何事。
     class Clean(Exception):

@@ -14,6 +14,7 @@
 from __future__ import annotations
 
 import datetime as _dt
+import re
 import xml.etree.ElementTree as ET
 
 # TaskScheduler 的 Operational 日志。100=开始 102=完成 111=被杀 201=动作返回码
@@ -35,8 +36,21 @@ def available() -> tuple[bool, str | None]:
 def _is_no_more(e) -> bool:
     """EvtNext 读完时也会抛(ERROR_NO_MORE_ITEMS = 259),那是正常结束不是失败。
     不区分的话,每一次正常读完都会被报成「读到一半失败」,而一个天天误报的提示
-    很快就会被无视。"""
-    return getattr(e, "winerror", None) == 259 or "259" in str(e)
+    很快就会被无视。
+
+    消息那条分支存在,是因为有些 pywin32 版本不带 `winerror`,只有文本。
+
+    ⚠ 它以前写的是 `"259" in str(e)`,而那是**子串**匹配:一个消息里含
+    `record 12590` 的无关错误会被判成「正常读完」,于是一段读到一半失败的日志
+    被报成读完了 —— `enabled=True`、`dropped=0`、条数是一个偏小但看起来确定的数字。
+    **那正是这个模块存在要防的那一件事**,被它自己的判据造了出来;
+    当时的用例还把这个行为断言成了期望值,理由是「记录一个已知的过宽」。
+    一个防 X 的判据不该把 X 钉成期望:那会让下一个人以为它是设计。
+
+    现在按词边界匹配,`12590` 里的 259 不再命中,`(259)` 仍然命中。"""
+    if getattr(e, "winerror", None) == 259:
+        return True
+    return re.search(r"(?<!\d)259(?!\d)", str(e)) is not None
 
 
 def channel_enabled() -> tuple[bool | None, str | None]:

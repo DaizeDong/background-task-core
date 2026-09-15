@@ -1,8 +1,8 @@
 # task-console
 
 A local, operable maintenance console for one machine. Scheduled tasks, artifact freshness, git
-repositories, skills, the memory pool, plugins, and disk, on one screen, with a button on every
-row that needs one.
+repositories, skills, the memory pool, plugins, disk, saved conversations, and the ledger of a
+headless judgment primitive, on one screen, with a button on every row that needs one.
 
 It exists because a report that only tells you something is dead makes you go and find it
 yourself. This lets you act on what you just read.
@@ -76,6 +76,38 @@ same rung.
 A fresh artifact does **not** clear a bad exit code by default. Log-shaped artifacts are usually
 written on the crash path too, so a task can fail for days while its artifact stays fresh. Only an
 artifact declared `artifact_written_only_on_success` earns that power.
+
+## Feed the history first
+
+The run-history panels read a database that nothing fills on its own. Until `console_ingest.py`
+has run, those panels are empty, and they say so rather than drawing a flat line.
+
+```
+python console_ingest.py --days 60      # first time: pull in what the log still holds
+python console_ingest.py --skip-runlog  # the cheap half: health observations only
+python console_ingest.py                # the full pass, including run events
+```
+
+**Running it on a schedule is not tuning, it is the whole point.** The Windows Operational log is
+a circular buffer: measured here at roughly 635 events an hour against 64 MB, which is about five
+days before the oldest records are overwritten. Anything not ingested inside that window is gone,
+not late, and no later run can recover it.
+
+Drive the two halves separately. Folding them into one caller has been tried and it killed that
+caller on every run for dozens of consecutive runs: the full pass hands `runlog.ps1` a 900 second
+budget, so any caller whose own execution limit is lower than that will be cut off before the inner
+budget is ever reachable, forever, without either number looking wrong on its own.
+
+How often to run each half is a property of the machine and is deliberately not stated here: this
+file has carried a wrong claim about it twice, in opposite directions. To find out whether ingest
+is currently keeping up, read the ingest freshness the page computes from the data's own
+timestamps, not a sentence anyone wrote down.
+
+Reading that log costs around 109 seconds end to end, which is why it is paid once an hour by
+something nobody is waiting on rather than on a page load. The ingester is the only writer, takes
+`BEGIN IMMEDIATE`, and on a source it cannot read it records a failed run and exits non-zero
+instead of writing a partial pass: a half-finished ingest and a successful one would otherwise
+produce the same empty-looking chart weeks later.
 
 ## Configure it
 
@@ -220,3 +252,17 @@ that route, so it is tested directly, including percent-encoded traversal.
 This directory ships in a public repo and holds no real state. No snapshot is cached to disk, the
 category map is read from a path outside the repo, and `categories.example.json` contains only
 synthetic names. Real task names are real-run data and belong in the private machine config.
+
+The same rule covers identifiers, not just data. The name of a private repository, or a
+conventional path under the operator's home that would reveal one, must not appear in this
+directory either: that is a cross-repo link, and the PII gate blocks a commit carrying one. Note
+that the verdict is not fixed by the text itself. The same line can be clean for months and become
+a leak the day the private thing it names starts existing, so the question is never whether a
+string looks sensitive, but whether it currently points at something real and private.
+
+## Changing it
+
+Read `../../docs/changing-this.md` before editing anything here. It is the invariants a change
+must not break and the traps this repo has already fallen into, with the symptom each presents as.
+There is no list of routes or modules in it on purpose: a list drifts, and a drifted list reads
+exactly like an accurate one.
