@@ -68,6 +68,40 @@ def test_two_names_on_one_line_are_both_read():
     assert names == {"AcmeOne", "AcmeTwo"}
 
 
+def test_the_inline_one_line_form_is_read(tmp_path):
+    """单行写法 `$TaskNames = @( 'A', 'B' )` 必须读得出来。
+
+    ⚠ 这条是 self-evolve 跑出来的,而它当时被判成「测试看不见这个改动」并转了人审 ——
+    因为**没有任何一条用例喂过单行写法**,所以补丁既没弄红也没弄绿任何东西。
+    那个判断是对的:测试看不见,就不能算改进。缺的那条用例就是这一条。
+
+    bug 是真的:改之前 `parse_names` 对单行写法返回 (None, 「找不到那个块」),
+    于是整列备份覆盖显示成「未检查」—— 而**一个真的漏了备份的任务会被显示成未检查**,
+    正是这个模块存在的理由所反对的那种输出。
+    更难堪的是,这个文件第一行的文档示例写的就是单行写法。
+    """
+    txt = "$TaskNames = @( %sAcmeAlpha%s, %sAcmeBeta%s )%s" % (Q, Q, Q, Q, chr(10))
+    names, why = AL.parse_names(txt)
+    assert names == {"AcmeAlpha", "AcmeBeta"}, why
+
+
+def test_the_inline_pattern_does_not_swallow_later_lines():
+    """单行模式不许吞到后面去。
+
+    负对照,钉的是两个模式的**顺序**:跨行那个模式的 `.*?` 遇到单行写法时,
+    会一路吞到文件后面某个恰好独占一行的 `)`,把中间所有带引号的字符串一并当成任务名。
+    一个匹配过宽的解析器,和一个真的读对了的解析器,输出长得一模一样。
+    """
+    txt = ("$TaskNames = @( %sAcmeAlpha%s )%s"
+           "%s"
+           "$Other = @(%s"
+           "  %sNotATaskName%s%s"
+           ")%s") % (Q, Q, chr(10), chr(10), chr(10), Q, Q, chr(10), chr(10))
+    names, why = AL.parse_names(txt)
+    assert names == {"AcmeAlpha"}, why
+    assert "NotATaskName" not in (names or set())
+
+
 def test_a_missing_block_is_not_an_empty_set():
     """找不到块要返回 None 而不是空集合。
 
