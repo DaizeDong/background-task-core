@@ -37,17 +37,27 @@
   --mono:"Cascadia Mono",Consolas,NSimSun,"Courier New",monospace;
   --bg:#EEF1F2;
   /* 同一个颜色的第二份手写副本。Tabler 的组件按 rgb 三元组算半透明底色,拿不到十六进制,
-     所以这四个必须和下面的 --bad / --ok / --warn / --cyan 逐位一致。
-     两份都不说自己是权威,所以对账交给 tests/test_palette_reconcile.py:
-     改了这里或改了下面而只改一处,那个测试会红。**改颜色时两处一起改。** */
+     ⚠ 这里以前是**两份**手写的同一个颜色:rgb 三元组给 Tabler,十六进制给自己的组件,
+     两份都不声称自己是权威,于是配了一个对账测试盯着它们相等。
+     现在只有一份:三元组是来源,十六进制由 `rgb(var(--x-rgb))` 派生出来。
+     漂移不再是「会被测出来」,而是**不可能发生** —— 那个对账测试也就一起删了。
+     一个对账闸的存在本身就是承认这里有两份;能变成一份的时候,闸门是次优解。
+
+     ⚠ 被删的那个测试里记着一条否决:「不改成运行时算,因为要等 JS 跑完,首屏会闪一下颜色」。
+     那条否决针对的是**用 JS 算**,依然成立。这里走的是纯 CSS 的 `rgb(var(--x-rgb))`,
+     由样式引擎在首屏之前解析,没有 JS 也没有闪色 —— 实测七个颜色改前改后逐位相同。
+     记在这里是因为那条否决本身是对的,不该让下一个人以为它被无视了。 */
   --tblr-danger-rgb:171,49,35; --tblr-success-rgb:44,122,85;
   --tblr-warning-rgb:140,98,16; --tblr-primary-rgb:14,107,117;
  --panel:#FFFFFF; --panel2:#F6F8F9; --line:#D3DBDF; --line2:#E4EAED;
   --ink:#141C22; --dim:#5C6B75; --faint:#8797A1;
   --sel:#0E6B7522; --cur:#0E6B7514;
-  --amber:#9A6B0F; --cyan:#0E6B75;
-  --ok:#2C7A55; --bad:#AB3123; --warn:#8C6210; --idle:#6A757E;
-  --okb:#2C7A5518; --badb:#AB312318; --warnb:#8C621018; --idleb:#6A757E18;
+  --amber:#9A6B0F; --cyan:rgb(var(--tblr-primary-rgb));
+  --ok:rgb(var(--tblr-success-rgb)); --bad:rgb(var(--tblr-danger-rgb));
+  --warn:rgb(var(--tblr-warning-rgb)); --idle:#6A757E;
+  /* 半透明底色同样由三元组派生。0x18 = 24/255 = .094,逐位等价于原来那串十六进制。 */
+  --okb:rgba(var(--tblr-success-rgb),.094); --badb:rgba(var(--tblr-danger-rgb),.094);
+  --warnb:rgba(var(--tblr-warning-rgb),.094); --idleb:#6A757E18;
   --h0:#E4EAED; --h1:#B5DEC8; --h2:#77C39F; --h3:#E6CB86; --h4:#DB9C71; --h5:#C56E5F;
   /* 字号四档。原来散着 12 种字号、94 处声明,其中 11px 用了 30 次、11.5px 用了 14 次 ——
      这两档肉眼分不出,却在不同部件里承担不同角色。也就是说「大小不同」不携带任何意义,
@@ -63,24 +73,28 @@
   --bg:#0B0F12; --panel:#11171B; --panel2:#151D22; --line:#212C33; --line2:#1A242A;
   --ink:#C7D3DB; --dim:#7E8E99; --faint:#5C6B75;
   --sel:#3FA9B433; --cur:#3FA9B41A;
-  --amber:#D9A441; --cyan:#4FB0BD;
-  --ok:#5FAF7F; --bad:#D2685E; --warn:#D0A047; --idle:#7E8E99;
   --tblr-danger-rgb:210,104,94; --tblr-success-rgb:95,175,127;
   --tblr-warning-rgb:208,160,71; --tblr-primary-rgb:79,176,189;
+  --amber:#D9A441; --cyan:rgb(var(--tblr-primary-rgb));
+  --ok:rgb(var(--tblr-success-rgb)); --bad:rgb(var(--tblr-danger-rgb));
+  --warn:rgb(var(--tblr-warning-rgb)); --idle:#7E8E99;
 
-  --okb:#5FAF7F1E; --badb:#D2685E1E; --warnb:#D0A0471E; --idleb:#7E8E991E;
+  --okb:rgba(var(--tblr-success-rgb),.118); --badb:rgba(var(--tblr-danger-rgb),.118);
+  --warnb:rgba(var(--tblr-warning-rgb),.118); --idleb:#7E8E991E;
   --h0:#1A242A; --h1:#2A5744; --h2:#3C8663; --h3:#87692E; --h4:#985B3B; --h5:#A54A3F;
 }}
 :root[data-theme="dark"]{
   --bg:#0B0F12; --panel:#11171B; --panel2:#151D22; --line:#212C33; --line2:#1A242A;
   --ink:#C7D3DB; --dim:#7E8E99; --faint:#5C6B75;
   --sel:#3FA9B433; --cur:#3FA9B41A;
-  --amber:#D9A441; --cyan:#4FB0BD;
-  --ok:#5FAF7F; --bad:#D2685E; --warn:#D0A047; --idle:#7E8E99;
   --tblr-danger-rgb:210,104,94; --tblr-success-rgb:95,175,127;
   --tblr-warning-rgb:208,160,71; --tblr-primary-rgb:79,176,189;
+  --amber:#D9A441; --cyan:rgb(var(--tblr-primary-rgb));
+  --ok:rgb(var(--tblr-success-rgb)); --bad:rgb(var(--tblr-danger-rgb));
+  --warn:rgb(var(--tblr-warning-rgb)); --idle:#7E8E99;
 
-  --okb:#5FAF7F1E; --badb:#D2685E1E; --warnb:#D0A0471E; --idleb:#7E8E991E;
+  --okb:rgba(var(--tblr-success-rgb),.118); --badb:rgba(var(--tblr-danger-rgb),.118);
+  --warnb:rgba(var(--tblr-warning-rgb),.118); --idleb:#7E8E991E;
   --h0:#1A242A; --h1:#2A5744; --h2:#3C8663; --h3:#87692E; --h4:#985B3B; --h5:#A54A3F;
 }
 *{box-sizing:border-box}

@@ -541,11 +541,7 @@ def status_of(t: dict) -> tuple[str, str]:
         return "running", "常驻中"
     if rc == NOT_RUN:
         return "pending", "尚未首跑"
-    ok = {0}
-    for x in str(t.get("okCodes") or "").split(","):
-        if x.strip():
-            ok.add(int(x))
-    return ("ok", "正常") if rc in ok else ("bad", "失败 " + (t.get("rcHex") or "?"))
+    return ("ok", "正常") if rc in _okset(t) else ("bad", "失败 " + (t.get("rcHex") or "?"))
 
 
 def issues_of(t: dict, allow: set[str] | None) -> list[list[str]]:
@@ -582,6 +578,20 @@ def _epoch(stamp: str | None) -> float | None:
         return datetime.strptime(stamp, "%Y-%m-%d %H:%M").timestamp()
     except (TypeError, ValueError):
         return None
+
+
+def _okset(t: dict) -> set[int]:
+    """把 t["okCodes"] 那个逗号串解回集合。**整个文件只有这一处解。**
+
+    ⚠ 这里原来有两份手写的解析(status_of 里一份、真实运行率那段一份),
+    而且各自 hand-add 一次 {0}。也就是说「0 永远算成功」这条规则有三个副本:
+    freshness 一份,这里两份。三份手写的同一条规则,没有任何东西对账 ——
+    而它决定的是一个任务算不算失败。
+    现在只剩这一处解,{0} 那条规则借自 freshness,不再自己写:
+    两边不可能给出不同答案,因为根本没有两边了。
+    """
+    codes = [int(x) for x in str(t.get("okCodes") or "").split(",") if x.strip()]
+    return freshness._ok_codes({"ok_codes": codes})
 
 
 def build_freshness(tasks: dict, health: dict, health_reason: str | None = None) -> dict:
@@ -727,10 +737,7 @@ def build_payload() -> dict:
             rr = dict(rr)
             # Apply the task's own declared ok_codes, the same set the health monitor honours. A run
             # whose exit code is a declared verdict counts as a run that did its job.
-            okset = {0}
-            for x in str(t.get("okCodes") or "").split(","):
-                if x.strip():
-                    okset.add(int(x))
+            okset = _okset(t)
             total = sum(rr["rcs"].values())
             good = sum(v for k, v in rr["rcs"].items()
                        if (lambda z: z is not None and z in okset)(norm_rc(k)))

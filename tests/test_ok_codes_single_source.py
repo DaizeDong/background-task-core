@@ -15,6 +15,7 @@
   1. 键名表只有一份(`freshness.OK_CODE_KEYS`),没有第二处硬编码;
   2. 两条通路对同一份声明给出同一个答案,两种拼写都是。
 """
+import io
 import os
 import re
 import sys
@@ -43,22 +44,46 @@ def test_declared_ok_codes_reads_both_spellings(decl, want):
 
 
 @pytest.mark.parametrize("key", ["ok_codes", "ok_exit_codes"])
-@pytest.mark.parametrize("rc,ok", [(3, True), (4, False)])
+# ⚠ 声明里**刻意不含 0**,而 rc=0 那一行刻意期望 True。
+# 第一版参数是 [0, 3],于是「0 永远算成功」这条规则在每个输入上都不起作用 ——
+# 把 server 侧那句 `freshness._ok_codes(...)` 换成裸 `set(codes)`,12 条用例照样全绿。
+# 一条规则要被测到,输入必须是「只有这条规则能给出正确答案」的那种。
+@pytest.mark.parametrize("rc,ok", [(0, True), (3, True), (4, False)])
 def test_both_readers_agree_on_the_same_declaration(key, rc, ok):
     """渲染通路和新鲜度通路必须对同一份声明给出同一个答案。
 
-    这一条才是真正的回归:上面那个函数是我刚写的,只测它等于测我自己。
-    这里测的是**两个独立的消费者**是不是被同一份表喂的。
+    ⚠ 这条用例的第一版**根本没跑到 server**:它自己用 `",".join(...)` 再解回来
+    模拟了一遍渲染侧的逻辑,两边其实都在调 freshness。
+    也就是说它宣称在对账「两个独立的消费者」,而被对账的那一侧是测试自己写的。
+    server.py 那两份手写解析(各自还 hand-add 一次 {0})从来没有被这条用例覆盖过。
+
+    现在渲染侧真的走 `server._okset`。而顺带一提:server 已经改成借用
+    `freshness._ok_codes`,所以这条用例现在证明的是「那条借用还在」,
+    而不是「两份手写的实现碰巧相等」—— 后者才需要天天对账,前者一眼看得出来。
     """
-    decl = {key: [0, 3]}
-    # 新鲜度那条
+    import server as S
+    decl = {key: [3]}          # 不含 0:让「0 永远算成功」那条规则成为唯一解释
     fresh_ok = rc in F._ok_codes(decl)
-    # 渲染那条:server 把它拼成字符串给 status_of / 成功率用
-    rendered = ",".join(str(x) for x in F.declared_ok_codes(decl))
-    render_ok = rc in {int(x) for x in rendered.split(",") if x} | {0}
+    # 渲染侧:server 把声明拼成字符串挂在行上,再由 _okset 解回集合。
+    row = {"okCodes": ",".join(str(x) for x in F.declared_ok_codes(decl))}
+    render_ok = rc in S._okset(row)
     assert fresh_ok is ok, f"新鲜度侧对 {key}={decl[key]} rc={rc} 判错"
     assert render_ok is ok, f"渲染侧对 {key}={decl[key]} rc={rc} 判错"
     assert fresh_ok == render_ok
+
+
+def test_server_has_exactly_one_place_that_parses_the_ok_codes_string():
+    """解析点只许有一处。
+
+    原来有两处,各自 hand-add {0} —— 一条规则三个副本(freshness 一份、server 两份),
+    而它决定的是一个任务算不算失败。合并成一处之后,这条用例防的是它再分裂。
+    判据是「有几处在把那个逗号串拆开」,不是「有没有写 {0}」:
+    后者在注释里也会出现,而注释不参与执行。
+    """
+    src = io.open(os.path.join(_SCR, "server.py"), encoding="utf-8").read()
+    splits = [ln.strip() for ln in src.splitlines()
+              if 'okCodes' in ln and '.split(' in ln and not ln.lstrip().startswith("#")]
+    assert len(splits) == 1, "把 okCodes 串拆开的地方不止一处: " + " | ".join(splits)
 
 
 def test_no_second_hardcoded_copy_of_the_key_names():
