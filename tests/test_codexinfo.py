@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 import os
+import subprocess
 import sys
 from pathlib import Path
 
@@ -304,3 +305,75 @@ def test_delete_refuses_a_file_that_is_not_there(codex_root):
     with pytest.raises(Exception) as e:
         codexinfo.delete_transcripts(["sessions/nope.jsonl"])
     assert getattr(e.value, "code", "") == "bad_path"
+
+
+def test_delete_refuses_a_junction_that_escapes_the_tree(codex_root, tmp_path):
+    """归属闸(resolve 之后 relative_to)唯一真正独当一面的那种输入。
+
+    ⚠ 这条用例的形状是量出来的,不是想出来的。先把六道闸逐个投毒,发现**所有**
+    现成用例的输入都被多道闸同时拦住 —— 去掉任何一道都不会红。一个每道闸都可以
+    被单独删掉而不报警的套件,挡不住纵深被一层层磨掉。
+
+    Windows 的目录联接正好穿过其余每一道:路径里没有 `..`、没有反斜杠、没有冒号,
+    不是绝对路径,首段是 sessions,后缀是 .jsonl,`p.is_file()` 为真,
+    而且 **`p.is_symlink()` 为假**(联接在 Python 眼里不是符号链接)。
+    只有 resolve() 之后的归属检查看得见它落在树外。
+
+    这不是假想形状:这套东西本来就用联接部署目录。
+    """
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    victim = outside / "precious.jsonl"
+    victim.write_text("不在那棵树里", encoding="utf-8")
+
+    (codex_root / "sessions").mkdir(exist_ok=True)
+    made = subprocess.run(["cmd", "/c", "mklink", "/J",
+                           str(codex_root / "sessions" / "junc"), str(outside)],
+                          capture_output=True, text=True)
+    if made.returncode != 0:
+        pytest.skip("这台机器上建不出目录联接")
+
+    target = codex_root / "sessions" / "junc" / "precious.jsonl"
+    # 先证明它确实穿过了其余每一道闸,否则这条用例又会变成「被别的原因拦下」。
+    assert target.is_file() and not target.is_symlink()
+
+    with pytest.raises(Exception) as e:
+        codexinfo.delete_transcripts(["sessions/junc/precious.jsonl"])
+    assert getattr(e.value, "code", "") == "bad_path"
+    assert victim.is_file(), "树外的文件必须原封不动"
+
+
+def test_delete_refuses_an_absolute_path_to_a_real_transcript(codex_root):
+    """绝对路径闸同样要指向一个真实存在的目标,否则它也是被「文件不存在」拦下的。
+
+    ⚠ 这一条**不是**单闸用例:Windows 的绝对路径同时带反斜杠和冒号,
+    形状闸与段闸都会拦它。留着它是因为它是真实的误用形状,
+    但别把它当成「绝对路径闸有覆盖」的证据 —— 那道闸没有独当一面的用例。
+    """
+    real = _mk(codex_root, "sessions/2026/01/01/a.jsonl", 10)
+    with pytest.raises(Exception) as e:
+        codexinfo.delete_transcripts([str(real)])
+    assert getattr(e.value, "code", "") == "bad_path"
+    assert real.is_file()
+
+
+def test_delete_refuses_more_than_the_cap_without_deleting_any(codex_root):
+    """上限闸:超过一条就整批拒绝,而且一条都不许先删掉。"""
+    made = [_mk(codex_root, f"sessions/2026/01/01/f{i}.jsonl", 1)
+            for i in range(3)]
+    rels = [f"sessions/2026/01/01/f{i}.jsonl" for i in range(3)]
+    # 真实路径凑到上限之上;重复同一条即可,闸在长度上,不在内容上。
+    over = rels * (codexinfo.LIST_CAP // 3 + 2)
+    assert len(over) > codexinfo.LIST_CAP
+    with pytest.raises(Exception) as e:
+        codexinfo.delete_transcripts(over)
+    assert getattr(e.value, "code", "") == "bad_args"
+    assert all(p.is_file() for p in made), "拒绝整批时一条都不许删"
+
+
+def test_delete_without_config_refuses(monkeypatch):
+    """没配根目录时拒绝。这条分支原来一点覆盖都没有。"""
+    monkeypatch.delenv("TASK_CONSOLE_CODEX", raising=False)
+    with pytest.raises(Exception) as e:
+        codexinfo.delete_transcripts(["sessions/a.jsonl"])
+    assert getattr(e.value, "code", "") == "no_config"
