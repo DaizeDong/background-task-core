@@ -36,17 +36,28 @@ def dirs(tmp_path, monkeypatch):
 
 # ---------- 名字闸 ----------
 
+# 每条都钉死**实测到的那一个** code,不给二选一。
+# ⚠ 上面那段注释一直是对的,而落到代码里只走了一半:断言原本写的是
+# `code in ("bad_name", "not_child")`。实测投毒(把名字闸换成 pass)之后,
+# 14 条里只有 6 条变红 —— 另外 8 条被子项闸接住,照常绿。
+# 也就是说这一整排里有 8 条**根本没在测名字闸**,而它们的名字说自己在测。
+# 又实测未投毒时每一条的真实 code:14 条全部是 bad_name,not_child 一次都没出现,
+# 那半边松弛在正常状态下毫无用处,只在闸门失效时生效 —— 一个专门在出事时放行的断言。
 @pytest.mark.parametrize("bad", [
     "../escape", "..", ".", "a/b", "a\\b", "", "  ", ".hidden",
     "C:/Windows", "/etc/passwd", "a" * 200, "na;me", "na me", "na&me",
 ])
-def test_unsafe_names_are_refused(dirs, bad):
-    # 断言的是**哪一道闸**挡下来的,不是「有没有抛异常」。多道闸互相兜底时,
-    # 只断言抛异常的用例在投毒下会照样全绿:实测放开名字闸之后子项闸仍然挡住,
-    # 于是这一整排在「名字闸形同虚设」的版本上全部通过。
+def test_unsafe_names_are_refused_by_the_name_gate(dirs, bad):
+    """每一个不安全的名字都必须**被名字闸**挡下来。
+
+    验收是重放那次投毒:把 maint.py 的 SAFE_NAME 闸换成 pass,这 14 条必须全红,
+    而不是 6 条。
+    """
     with pytest.raises(M.Refused) as e:
         M.act("skill.archive", bad)
-    assert e.value.code in ("bad_name", "not_child")
+    assert e.value.code == "bad_name", (
+        f"{bad!r} 不是被名字闸挡下的,而是 {e.value.code} —— "
+        "说明这条用例在测的不是它名字说的那道闸")
 
 
 def test_a_safe_name_is_not_refused_by_the_name_gate(dirs):

@@ -88,18 +88,54 @@ def test_every_task_cmdlet_in_retire_pins_the_root_path():
     assert checked >= 4, f"只扫到 {checked} 处 cmdlet,扫描器大概没扫到东西"
 
 
-@pytest.mark.skipif(os.name != "nt", reason="要问真机的任务计划")
-def test_a_vendor_task_outside_the_root_path_is_out_of_reach():
-    """真机判据:一个只存在于 \\Microsoft\\Windows\\** 底下的任务必须够不到。
+ROOT_SCOPE = "-TaskPath '\\' "          # 范围闸本身。投毒时把它换成空串。
 
-    静态闸只能证明字符串里有那个参数;这一条证明它真的挡住了东西。
-    用 SilentCleanup 是因为它在任何一台 Windows 上都存在于
-    `\\Microsoft\\Windows\\DiskCleanup\\` 底下,而且**这条用例只读状态,不动它**。
+
+def _ps_find(name, scoped):
+    """问一次调度器:这个名字找得到吗。scoped=True 时钉根路径。"""
+    import subprocess
+    from winps import powershell
+    q = ("Get-ScheduledTask " + (ROOT_SCOPE if scoped else "")
+         + "-TaskName '%s' -ErrorAction SilentlyContinue" % name)
+    r = subprocess.run([powershell(), "-NoProfile", "-Command",
+                        "$t = " + q + "; if ($t) { 'FOUND' } else { 'MISSING' }"],
+                       capture_output=True, text=True, timeout=60,
+                       stdin=subprocess.DEVNULL)
+    return "FOUND" in (r.stdout or "")
+
+
+@pytest.mark.skipif(os.name != "nt", reason="要问真机的任务计划")
+def test_the_root_path_scope_is_what_puts_a_vendor_task_out_of_reach():
+    """真机判据:**同一个名字**在两种范围下必须给出不同的答案。
+
+    ⚠ 这条用例原来断言的是 `_task_state("SilentCleanup")` 抛
+    `state_unreadable` 或 `not_found`。实测:一个**任何路径下都不存在的编造名字**
+    抛的是一模一样的东西。也就是说它对「厂商任务」和「随手打错的名字」完全无法区分,
+    它真正证明的只是「这个名字不在根路径下」—— 而那对任何字符串都成立。
+    更糟的是 state_unreadable 的语义是「调度器读不出来」:一台任务计划服务坏掉的机器上,
+    它照样打印绿色,而那道范围闸还在不在,一个字都没证明。
+    (附带:原断言里那个 "not_found" 的 code 全仓 0 命中,是一条永不触发的松弛。)
+
+    现在的判据不看抛了什么,看**范围本身有没有起作用**:
+    不钉根路径能找到(正对照:证明这个任务此刻确实存在且可读),钉了就找不到。
+    两句缺一条,这条用例就退回成「对任何字符串都成立」。
     """
-    from maint import Refused
-    with pytest.raises(Refused) as ei:
-        R._task_state("SilentCleanup")
-    assert ei.value.code in ("state_unreadable", "not_found"), ei.value.code
+    assert _ps_find("SilentCleanup", scoped=False), (
+        "不限范围都找不到 SilentCleanup —— 这台机器的调度器读不出来,"
+        "此时下面那句「钉了范围就找不到」什么也证明不了")
+    assert not _ps_find("SilentCleanup", scoped=True), (
+        "钉了根路径还能找到 \\Microsoft\\Windows\\** 底下的任务,范围闸没起作用")
+
+
+@pytest.mark.skipif(os.name != "nt", reason="要问真机的任务计划")
+def test_a_made_up_name_is_missing_under_both_scopes():
+    """负对照:一个编造的名字在两种范围下都找不到。
+
+    没有这一条,上面那句「钉了范围就找不到」在一个**什么都找不到**的实现下
+    照样成立 —— 而那正是原来那条用例的病。
+    """
+    assert not _ps_find("NoSuchTaskAcme12345", scoped=False)
+    assert not _ps_find("NoSuchTaskAcme12345", scoped=True)
 
 
 @pytest.mark.skipif(os.name != "nt", reason="要问真机的任务计划")

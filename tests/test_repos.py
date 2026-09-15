@@ -218,12 +218,20 @@ def test_nested_marker_distinguishes_submodules(tmp_path):
 # ---------- fetch 的参数闸 ----------
 
 def test_fetch_refuses_unsafe_names(tmp_path, monkeypatch):
+    """钉死**哪一道闸**挡的,不给二选一。
+
+    ⚠ 这里原来是 `code in ("bad_name", "not_child")`。同款写法在 test_maint.py 里
+    实测过:放开名字闸之后,14 条参数化只有 6 条变红,另外 8 条被子项闸接住照常绿 ——
+    那 8 条的名字说自己在测名字闸,而它们没有。
+    一个在闸门失效时才生效的松弛,是专门在出事那天放行的断言。
+    """
     from maint import Refused
     monkeypatch.setenv("TASK_CONSOLE_REPOS", str(tmp_path))
     for bad in ("../x", "a/b", "", "x;y"):
         with pytest.raises(Refused) as e:
             R.fetch(bad)
-        assert e.value.code in ("bad_name", "not_child")
+        assert e.value.code == "bad_name", (
+            f"{bad!r} 是被 {e.value.code} 挡的,不是名字闸")
 
 
 def test_fetch_refuses_a_non_repo(tmp_path, monkeypatch):

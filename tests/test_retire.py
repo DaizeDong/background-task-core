@@ -200,9 +200,38 @@ def test_unreadable_state_is_refused_not_treated_as_absent(monkeypatch):
 
 def test_a_genuinely_absent_task_still_returns_none(monkeypatch):
     """正对照:rc=0 且没有输出,才是「确认它没注册」。
-    没有这一条,把 _task_state 改成「永远抛」也能让上面那条通过。"""
+    没有这一条,把 _task_state 改成「永远抛」也能让上面那条通过。
+
+    ⚠ 这个载荷(rc=0 + 空输出)**真机不产生**,见下面那条用例量到的东西。
+    它留在这里是为了钉住「rc=0 + 空输出」这条契约本身 —— 一旦哪天
+    PowerShell 或 cmdlet 的行为变了、rc 真的变成 0,这条分支要还在。
+    但它不能算作「not-found 这条路有覆盖」的证据。
+    """
     monkeypatch.setattr(R.subprocess, "run", lambda *a, **k: _FakeRun(0, "", ""))
     assert R._task_state("Alpha") is None
+
+
+def test_on_this_machine_an_absent_task_raises_rather_than_returning_none(monkeypatch):
+    """真机实测:一个根本不存在的任务,rc 是 1,不是 0。
+
+    `-ErrorAction SilentlyContinue` 压掉了错误输出,但没有改掉 `$?`,
+    于是 powershell.exe 照最后一条命令失败退出。实测 rc=1、stdout 空、stderr 空。
+
+    后果:`_task_state` 在生产里**永远返回不了 None**,于是 plan() 里
+    `if state is None: disable_state = "not-found"` 那条分支够不到。
+    而**这是安全的那一侧**:模块自己的注释写着「查不到就抛,不返回」,
+    因为「确认不存在」和「我查不到」在退役里导向相反的动作 ——
+    把后者当成前者,会让一个还注册着、还在跑的任务被摘出备份和健康监控,
+    而返回值是 ok:True。
+
+    所以这条用例钉的不是「应该返回 None」,是**真机会走哪条路**。
+    上面那条用例原来独自给 not-found 背书,而它喂的载荷真机不产生 ——
+    一条给够不到的分支背书的用例,读起来像那条分支有覆盖。
+    """
+    monkeypatch.setattr(R.subprocess, "run", lambda *a, **k: _FakeRun(1, "", ""))
+    with pytest.raises(Refused) as e:
+        R._task_state("Alpha")
+    assert e.value.code == "state_unreadable"
 
 
 def test_a_present_task_returns_its_state(monkeypatch):

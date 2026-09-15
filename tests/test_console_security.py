@@ -302,6 +302,7 @@ def test_retire_with_a_bad_name_is_refused_for_a_different_reason(srv):
     assert b"bad_name" in body, body[:300]
 
 
+
 def test_an_uninitialised_handler_refuses_everything(srv):
     """令牌没被设过时,鉴权必须拒绝,而不是放行。
 
@@ -327,7 +328,15 @@ def test_an_uninitialised_handler_refuses_everything(srv):
     finally:
         S.Handler.token = saved
     # 正对照:恢复之后正常的令牌仍然能用,证明上面拒的不是「服务器本来就坏了」。
-    st, _ = call(srv, "GET", "/api/tasks", token=TOKEN)
+    # ⚠ 打 /api/selfcheck 而不是 /api/tasks。后者会真的枚举整台机器的计划任务
+    # (实测 3 秒,服务端给 90 秒),而这个客户端的 socket 超时只有 10 秒 ——
+    # 机器上任务多一点、或者同时有别的 PowerShell 在跑,这条就红。
+    # 实测同一份代码连跑两轮,一轮两条红(各卡满 10 秒)、一轮全过。
+    # 这两条守的东西很重要,而它们原来用一个**跟被测控制毫无关系**的真机开销决定成败:
+    # 那正是「训练所有人忽略红灯」的那种红 —— 跟改动无关,复跑一次就好,
+    # 于是下一次真的红也会被当成同一回事。
+    # 这里要证明的只是「带对令牌能拿到 200」,任何一个要鉴权的端点都够。
+    st, _ = call(srv, "GET", "/api/selfcheck", token=TOKEN)
     assert st == 200
 
 
@@ -668,5 +677,6 @@ def test_the_server_still_answers_after_an_exception(srv, monkeypatch):
     monkeypatch.setattr(S, "build_payload", boom)
     call(srv, "GET", "/api/tasks", token=TOKEN)
     monkeypatch.undo()
-    st, _ = call(srv, "GET", "/api/tasks", token=TOKEN)
+    # 同上:恢复之后打一个便宜的端点。要证明的是「连接还能用」,不是「任务枚举还能跑」。
+    st, _ = call(srv, "GET", "/api/selfcheck", token=TOKEN)
     assert st == 200, "出过一次异常之后服务器不再正常回话"
