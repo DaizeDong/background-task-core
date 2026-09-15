@@ -94,9 +94,14 @@ allow-list, drop it from the health manifest. All three, or none. A task that is
 worse than one that was never touched, because an exported task definition does not record the
 disabled state: a backup that still lists it will faithfully reinstall it, enabled.
 
-There is no push button anywhere. `fetch` is offered because it only reads; pushing is an outward
-action that cannot be taken back, and a one-click version of it would eventually be clicked while
-nobody was looking.
+Pushing is the one thing here that leaves the machine, so it is deliberately **not** one click.
+It is two steps: a read-only plan first (which files, which ref, whether that remote is public or
+private), and the confirm step must hand back the very file list the plan showed, or the whole
+thing is refused. A stray click opens a plan and nothing else. It never uses `--no-verify`, it
+never stages with `git add -A`, and whatever the hooks say comes back verbatim.
+
+The full list of what this page can do is the action table in `maint.py`; that table is the
+authority and this file does not keep a second copy of it.
 
 ## Why it is locked down
 

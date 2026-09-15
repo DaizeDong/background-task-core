@@ -15,10 +15,16 @@ out of band, so page loads do not; that log is a circular buffer of roughly five
 not ingested inside that window is gone rather than late, and the console says so rather than
 showing a confident number that stopped moving.
 
-The page can act, within a closed verb list: enable, disable, run, stop, fetch. It deliberately
-**cannot create, delete or reconfigure a task**, because creating one correctly takes several steps
-in several places and a button that skips them produces exactly the unregistered task those steps
-exist to prevent.
+The page can act, and every verb it has is listed in one closed table in `maint.py`. **That table
+is the authority; this file does not keep a second copy of it**, because a prose list of
+capabilities drifts the moment a verb is added and the drift is silent — the reader trusts the
+list, and the list is where the promise lives.
+
+The shape of the constraint, which does not drift: it cannot **create** a task, because creating
+one correctly means registering it in several places and a button that skipped them would
+manufacture exactly the untracked task that procedure exists to prevent. It can retire one, which
+is the opposite operation and safe to automate precisely because it is subtractive. Anything that
+leaves the machine is two steps, never one.
 
 ## Running it
 
