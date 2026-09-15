@@ -110,15 +110,8 @@ def cfg_path(env: str, *default: str) -> Path | None:
     return _home(*default) if default else None
 
 
-def powershell() -> str:
-    for c in (
-        os.environ.get("TASK_CONSOLE_POWERSHELL"),
-        r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe",
-        "powershell.exe",
-    ):
-        if c and (os.path.isabs(c) and os.path.exists(c) or not os.path.isabs(c)):
-            return c
-    return "powershell.exe"
+# 解释器解析只有一份,在 winps.py。这里原来是三份手写中的一份。
+from winps import powershell  # noqa: E402
 
 
 def run_ps(script: Path, env_extra: dict[str, str] | None = None, timeout: int = 90,

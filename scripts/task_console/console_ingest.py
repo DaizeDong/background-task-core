@@ -44,6 +44,14 @@ _NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 HERE = Path(__file__).resolve().parent
 SCHEMA = HERE / "schema.sql"
 RUNLOG = HERE / "runlog.ps1"
+
+# 一次摄入最多读多少条事件。**两条读取路径共用这一个数**(快路的 evtlog 和回落的
+# PowerShell),否则走哪条路会决定这次摄入能看到多少事件,而调用方不知道走的是哪条。
+#
+# 它比页面那边(server.RUNLOG_MAX_EVENTS)大,这是刻意的、不是漂移:
+# 页面是一次点击要等的东西,摄入是后台补历史的东西,两者能承受的时间不一样。
+# 两个数各自有主,各自在自己的两条路径上保持一致 —— 这和「同一个数写了两遍」不是一回事。
+MAX_EVENTS = 500000
 COLLECT = HERE / "collect.ps1"
 
 
@@ -51,9 +59,11 @@ def now() -> str:
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 
-def powershell() -> str:
-    c = r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe"
-    return c if os.path.exists(c) else "powershell.exe"
+# 解释器解析只有一份,在 winps.py。
+# ⚠ 这里原来自己写了一份,而且**不认 TASK_CONSOLE_POWERSHELL** ——
+# README 的变量表里写着它生效。于是一台设了这个变量的机器上,摄入器安静地用另一个
+# 解释器跑,而页面上没有任何一处显示这个差别。
+from winps import powershell  # noqa: E402
 
 
 def run_ps(script: Path, args=None, timeout=600):
@@ -198,10 +208,16 @@ def _read_runlog(days: int) -> tuple[dict, str]:
         import evtlog
         ok, _why = evtlog.available()
         if ok:
-            return evtlog.read(days=days, max_events=500000), "evtlog"
+            return evtlog.read(days=days, max_events=MAX_EVENTS), "evtlog"
     except Exception:
         pass
-    rc, out, err = run_ps(RUNLOG, ["-Days", str(days)], timeout=900)
+    # ⚠ 上限必须显式传给回落路径。这里原来只传 -Days,于是回落时吃的是脚本自己的默认
+    # (两万),而快路给的是五十万 —— 同一次摄入,走哪条路决定了它能看到多少事件,
+    # 相差二十五倍,而没有任何一处会说出走的是哪条路、上限是多少。
+    # 这条禁令在 server.py 的同名调用处就写着,而它没有落到这一侧:
+    # **一个只修在一处的规则,和一条没有的规则,区别只是它看起来已经修过了。**
+    rc, out, err = run_ps(RUNLOG, ["-Days", str(days),
+                                   "-MaxEvents", str(MAX_EVENTS)], timeout=900)
     if rc != 0 or not out:
         return {"enabled": False, "reason": f"读运行日志失败: {err or out}"}, "powershell"
     try:

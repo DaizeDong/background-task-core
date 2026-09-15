@@ -223,3 +223,107 @@ def test_the_enter_space_handler_only_lists_selectors_that_can_be_focused():
     assert not bad, ("Enter/空格处理器列了聚焦不到的选择器:\n  " + "\n  ".join(bad))
     assert listed, "选择器列表是空的,这条检查什么都没在查"
     _ = focusable_attrs
+
+
+# ---------- 死 CSS:规则有没有对象 ----------
+#
+# 这一组是补一个**没有任何闸门在问的问题**:一条 CSS 规则,页面上有没有东西会匹配它。
+# 之前修过一条 `.cv-gh .hm` —— 选择器和 JS 渲染出来的类名对不上,一行都没生效过,
+# 而它是靠人读出来的。机械扫一遍立刻又找出六条。
+# **一个靠人眼发现的缺陷类别,复发率是 100%。**
+#
+# 并进这个文件而不是新开一个,是因为 CSS 解析器和「负对照」这两样这里已经有了。
+# 多一个测试文件不会让缺陷少一类,只会让下一个人多一个地方要读。
+
+# 由模板拼出来的类名。每一条都要注明拼接点,否则这张豁免表会变成一个静默的免检名单。
+_CSS_ALLOW = {
+    "d-": "状态点 / 分段条,由 `d-${k}` 拼(rpListRow、rp-bar、图例)",
+    "s-": "产物新鲜度灯板,由 `s-${t.state}` 拼(renderFresh)",
+    "h1": "热力图色阶,由 `class=\"${k}\"` 拼(renderHeat)",
+    "h2": "热力图色阶,同上",
+    "h3": "热力图色阶,同上",
+    "h4": "热力图色阶,同上",
+    "h5": "热力图色阶,同上",
+    "k-": "体征分段条,由 `k-ok` / `k-bad` / `k-st` 字面量拼在模板里",
+    "info": "自检状态,由后端下发的状态字符串(selfcheck)决定",
+    "pending": "任务状态,由后端 status_of 下发",
+    "missing": "自检状态,由后端下发",
+}
+
+
+def _class_names_in_css(css):
+    """CSS 里出现过的类名。只取选择器部分,不碰声明块。"""
+    names = set()
+    for chunk in _re.split(r"\}", css):
+        sel = chunk.rsplit("{", 1)[0] if "{" in chunk else ""
+        if "@" in sel:                       # @media / @supports 的条件里没有类名
+            sel = _re.sub(r"@[^{]*", "", sel)
+        names.update(_re.findall(r"\.(-?[_a-zA-Z][\w-]*)", sel))
+    return names
+
+
+def _page_without_style():
+    """页面去掉 <style> 之后剩下的东西:HTML 加 JS。类名要在这里面找得到。"""
+    html = open(PAGE, encoding="utf-8").read()
+    return _re.sub(r"<style>.*?</style>", "", html, flags=_re.S)
+
+
+def _dead_class_names():
+    css = _page_style()
+    body = _page_without_style()
+    dead = []
+    for name in sorted(_class_names_in_css(css)):
+        if any(name.startswith(p) or name == p for p in _CSS_ALLOW):
+            continue
+        if _re.search(r"(?<![-\w])" + _re.escape(name) + r"(?![-\w])", body):
+            continue
+        dead.append(name)
+    return dead
+
+
+def test_no_css_rule_is_written_for_a_class_nothing_renders():
+    """每条类选择器都要有对象。
+
+    ⚠ 这道闸有一个**漏报面**,必须知道:类名同时又是常用词时(warn / bad / ok / note),
+    词边界搜索会在别的上下文里命中它,于是判它「用到了」。也就是说绿色的含义是
+    「没有明显死掉的类」,**不是**「没有死 CSS」。
+    量过之后,漏报面比误报面大。写在这里是因为下一个人一定会把绿色读成后者。
+    """
+    dead = _dead_class_names()
+    assert not dead, ("这些类只有 CSS 规则,页面上没有任何东西会匹配它们:\n  "
+                      + "\n  ".join(dead))
+
+
+def test_the_dead_css_check_can_actually_fire():
+    """负对照。
+
+    没有这条,一个抽不到任何规则的解析器和一个真的全绿的检查器输出一模一样 ——
+    而这正是这个仓反复在修的那类缺陷,这道闸自己也不能例外。
+    """
+    css = _page_style() + chr(10) + ".definitely-not-used-anywhere{color:red}"
+    body = _page_without_style()
+    names = _class_names_in_css(css)
+    assert "definitely-not-used-anywhere" in names, "解析器没抽到注入的那条规则"
+    assert not _re.search(r"(?<![-\w])definitely-not-used-anywhere(?![-\w])", body)
+
+
+def test_the_allowlist_only_covers_names_that_are_really_templated():
+    """豁免表里的每一条都必须真的是拼出来的。
+
+    一张没人核对的豁免表,和一个关掉的检查区别不大:它会慢慢变成
+    「加进去就不用管了」的地方。判据是那个前缀在 JS 里确实出现在模板拼接里。
+    """
+    import glob as _glob
+    import os as _os
+    # ⚠ 依据可能在两处:页面自己拼的(`d-${k}`),或者后端下发的状态字符串 ——
+    # info / pending / missing 就是后一种,它们在页面里一次都不出现。
+    # 这条用例的第一版只搜页面,于是把三条**正当的**豁免判成没依据。
+    # 一个只看了一半来源的检查器,报出来的「没依据」和真的没依据长得一样。
+    hay = _page_without_style()
+    scr = _os.path.join(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))),
+                        "scripts", "task_console")
+    for f in _glob.glob(_os.path.join(scr, "*.py")):
+        hay += open(f, encoding="utf-8").read()
+    unjustified = [p for p in _CSS_ALLOW if not _re.search(_re.escape(p), hay)]
+    assert not unjustified, ("豁免表里这些前缀在页面和后端里都找不到,豁免没有依据: "
+                             + " | ".join(unjustified))

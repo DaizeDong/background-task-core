@@ -99,7 +99,15 @@ def test_falls_back_to_powershell(monkeypatch, no_ps, evt):
         monkeypatch.setitem(sys.modules, "evtlog", evt)
     raw, via = CI._read_runlog(60)
     assert via == "powershell"
-    assert len(no_ps) == 1 and no_ps[0][0] == ["-Days", "60"]
+    # ⚠ 断言的是**性质**,不是整串参数相等。
+    # 原来写的是 `== ["-Days", "60"]`,而那顺带把「不传 -MaxEvents」这个 bug 一起钉住了:
+    # 回落路径因此吃脚本自己的默认上限(两万),比快路小二十五倍,
+    # 而这条用例会在有人去修它的时候变红 —— 一条钉住了错误行为的用例,
+    # 会让修复看起来像回归。
+    assert len(no_ps) == 1
+    args = no_ps[0][0]
+    assert args[args.index("-Days") + 1] == "60"
+    assert "-MaxEvents" in args, f"回落路径没传上限,会吃脚本默认值: {args}"
     assert raw["events"][0]["rid"] == 4242
 
 

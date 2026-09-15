@@ -49,14 +49,10 @@ def _env_path(var: str) -> Path | None:
 # 可执行文件就能顶替它,而这个模块正是**会改系统状态和改文件**的那一条路。
 # server.py 那边一直是钉路径的;两份实现在同一台机器上可能解析到不同的可执行文件,
 # 而没钉的偏偏是危险的这一份。
-_PS_PINNED = r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe"
 
 
-def _powershell() -> str:
-    v = os.environ.get("TASK_CONSOLE_POWERSHELL")
-    if v:
-        return v
-    return _PS_PINNED if os.path.isfile(_PS_PINNED) else "powershell.exe"
+# 解释器解析只有一份,在 winps.py。这里原来是三份手写中的一份。
+from winps import powershell as _powershell  # noqa: E402
 
 
 def _task_state(name: str) -> str | None:

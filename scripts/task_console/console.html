@@ -257,7 +257,7 @@ table.g td.nm{max-width:340px;overflow:hidden;text-overflow:ellipsis;font-weight
 /* 说明是任务名下面的第二行。它自己不换行:一条被折成三行的说明会把整张表撑散,
    而完整正文在 title 和展开行里都还在。 */
 table.g td.nm .ds2{display:block;font-weight:400;color:var(--dim);font-size:var(--fs-chip);
-  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-family:var(--sans,inherit)}
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-family:var(--ui)}
 /* 说明列。原来写的是 max-width:0 + width:100%,那是「吸收剩余宽度」的写法,
    但这张表 19 列的自然宽度合计已经超过容器,**没有剩余宽度可吸收**,于是 max-width:0
    赢,这一列被压成 34px、只显示一个字加省略号。一列只显示一个字比没有这一列更差:
@@ -278,7 +278,6 @@ table.g tr[data-scat]:hover{background:var(--cur)}
 #tbl tr.det>td>.det{position:sticky;left:0;width:var(--padw,100%);max-width:100%;
   box-sizing:border-box;padding:6px 10px 8px}
 #tbl tr.det:hover{background:transparent}
-table.g td.ds{min-width:170px;max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .st{display:inline-block;min-width:50px;text-align:center;padding:0 4px;font-size:var(--fs-chip)}
 .st.ok{color:var(--ok);background:var(--okb)}
 .st.bad{color:var(--bad);background:var(--badb)}
@@ -504,8 +503,6 @@ td.ops .mini.danger:hover{border-color:var(--bad);color:var(--bad)}
 .rp-head{display:flex;align-items:center;gap:12px;flex-wrap:wrap;font-size:var(--fs-meta);
   color:var(--dim);margin-bottom:6px}
 .rp-head b{font-variant-numeric:tabular-nums;color:var(--ink);font-size:var(--fs-lead)}
-.rp-chips{display:flex;gap:9px;flex-wrap:wrap}
-.rp-chips span{display:inline-flex;align-items:center;gap:4px}
 /* 两栏:左边找,右边看。
    原来是 auto-fill 的卡片网格,它回答的是「整片仓里有没有出事」,而代价是每一行只剩
    一个状态点和一个名字 —— path 和 branch 被塞进 title 悬停提示,remote、upstream、
@@ -598,8 +595,6 @@ td.ops .mini.danger:hover{border-color:var(--bad);color:var(--bad)}
 .rp-d-h{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;margin-bottom:8px}
 .rp-d-h b{font-size:var(--fs-lead);font-family:var(--mono,inherit)}
 .rp-d-h .k{font-size:var(--fs-chip);color:var(--dim)}
-.rp-grp{margin:10px 0 2px;font-size:var(--fs-chip);color:var(--dim);
-  border-bottom:1px solid var(--line);padding-bottom:2px}
 .rp-f{display:grid;grid-template-columns:64px 1fr;gap:3px 10px;font-size:var(--fs-meta);
   align-items:baseline;padding:1px 0}
 /* 数字用小方块排成一行,不是三行「标签:数字」。三个数字各自一行时,一屏里
@@ -662,7 +657,6 @@ td.ops .mini.danger:hover{border-color:var(--bad);color:var(--bad)}
 /* 图例里的状态点。尺寸写在类里而不是内联,因为内联的 border-radius 会赢过下面
    .d-error 的圆角,让图例上的「扫不动」退回成一个方块 —— 图例和列表对不上,
    比没有图例更糟。这条必须排在 .d-* 前面,好让形状规则后来居上。 */
-.dotk{width:8px;height:8px;border-radius:2px;box-sizing:border-box}
 /* 五个状态各有形状,不只有颜色。
    ⚠ unpushed 和 error 以前都是 var(--bad) 的实心方块,在列表里逐字长得一样。
    但它们是两类完全不同的东西:unpushed 是**查出来的结果**(有提交没推出去),
@@ -1005,8 +999,6 @@ table.g td[data-col="timeout"]{font-family:var(--mono)}
    改成真的间隙 + 各自边框:同样是分隔,但读起来是几张卡片而不是一个表格区域。 */
 .tiles{gap:6px;background:none;border:0}
 .tile{border:1px solid var(--line);border-radius:3px}
-.rp-grid{gap:5px;background:none;align-items:start}
-.rp-card{border:1px solid var(--line);border-radius:3px;overflow:hidden}
 /* 组标题不是卡片,别给它边框 —— 它是标尺不是内容。 */
 .rp-gh{border:0}
 .mt-grid{gap:8px;background:none}
