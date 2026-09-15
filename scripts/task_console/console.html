@@ -1025,6 +1025,125 @@ table.g td[data-col="timeout"]{font-family:var(--mono)}
 /* 卡头原来只是一条灰带。给它一点上下呼吸和一个更实的底线,
    让「这里是一块的开头」不需要靠颜色去猜。 */
 
+/* ── 调用屏 ────────────────────────────────────────────────────────────────
+   这一屏要同时显示两种量:有时间戳的近期调用,和十一万条没有时间戳的历史。
+   配色上刻意让后者用虚线 + 降透明度(.l-unk),因为「没量过」和「量出来是零」
+   在这一屏出现的频率很高,而它们长得一样就是这整个台子存在的理由。 */
+.lc-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:3px;max-width:420px}
+.lc-list li{display:flex;align-items:center;gap:6px;padding:4px 6px;border:1px solid var(--line2);
+  border-radius:3px;background:var(--panel2);font-size:var(--fs-body);cursor:grab}
+.lc-list li.drag{opacity:.4;border-style:dashed}
+.lc-list li.over{border-color:var(--cyan)}
+.lc-list li .ord{color:var(--faint);font-size:var(--fs-chip);min-width:14px;
+  font-variant-numeric:tabular-nums}
+.lc-list li .nm{flex:1;color:var(--ink);font-family:var(--mono,inherit)}
+.lc-list li .mv{display:flex;gap:2px}
+.lc-list li .mv button{padding:0 5px;min-height:20px;font-size:var(--fs-chip);line-height:1}
+.lc-foot{display:flex;align-items:center;gap:8px;margin-top:8px;flex-wrap:wrap}
+.lc-foot .faint{font-size:var(--fs-chip);font-family:var(--mono,inherit)}
+/* env 覆盖的告示。它不是装饰 : 没有它,在这一屏上排好的顺序会被一个看不见的
+   环境变量压掉,而页面会显示成保存成功 —— 一个能点、点了看起来生效、实际没有的按钮。 */
+.lc-warn{border:1px solid var(--bad);background:var(--badb);color:var(--bad);
+  padding:5px 8px;border-radius:3px;font-size:var(--fs-meta);margin-bottom:8px}
+.lc-warn b{font-family:var(--mono,inherit)}
+.lc-src{font-size:var(--fs-chip);padding:1px 6px;border-radius:9px;border:1px solid var(--line);
+  color:var(--dim);margin-left:6px}
+.lc-src.env{border-color:var(--warn);color:var(--warn)}
+.lc-src.file{border-color:var(--cyan);color:var(--cyan)}
+.lc-src.observed{border-color:var(--ok);color:var(--ok)}
+/* builtin 刻意画成灰的:它是控制台自己存的一份拷贝,权威在另一个仓里,
+   只有一台从没调用过的机器才会看到它。一个权威的样子会让人信错东西。 */
+.lc-src.builtin{border-style:dashed;color:var(--faint)}
+
+.l-wins{display:flex;gap:10px;flex-wrap:wrap}
+.l-win{flex:1 1 200px;min-width:190px;border:1px solid var(--line2);border-radius:3px;padding:7px 9px}
+.l-win h4{margin:0 0 5px;font-size:var(--fs-meta);color:var(--dim);font-weight:500;
+  letter-spacing:.04em}
+.l-win .big{font-size:18px;font-weight:600;color:var(--ink);font-variant-numeric:tabular-nums;
+  line-height:1.1}
+.l-win .sub{font-size:var(--fs-chip);color:var(--faint);margin-top:3px;
+  font-variant-numeric:tabular-nums}
+.l-win .sub .bad{color:var(--bad)} .l-win .sub .ok{color:var(--ok)}
+.l-win.l-unk{border-style:dashed;opacity:.62}
+.l-win.l-unk .big{color:var(--faint)}
+/* 无时间戳的历史。单独一条,措辞刻意不说「0」也不说「无数据」:
+   它有十一万条,只是问不出「今天」。 */
+.l-led{margin-top:8px;font-size:var(--fs-chip);color:var(--faint);
+  font-variant-numeric:tabular-nums;border-top:1px dashed var(--line2);padding-top:6px}
+
+.l-rung{border-collapse:collapse;font-size:var(--fs-body);width:auto;min-width:360px}
+.l-rung th{text-align:right;font-weight:500;color:var(--dim);font-size:var(--fs-meta);
+  padding:2px 10px 4px;border-bottom:1px solid var(--line2)}
+.l-rung th:first-child{text-align:left}
+.l-rung td{padding:3px 10px;font-variant-numeric:tabular-nums;text-align:right;
+  border-bottom:1px solid var(--line2)}
+.l-rung td:first-child{text-align:left;font-family:var(--mono,inherit);color:var(--ink)}
+.l-rung td.z{color:var(--faint)}
+.l-rung td.f{color:var(--bad)}
+.l-hint{margin:8px 0 0;font-size:var(--fs-chip);max-width:60ch;line-height:1.5}
+.l-verify{margin-top:6px;font-size:var(--fs-chip);color:var(--faint)}
+.l-verify.bad{color:var(--bad);border:1px solid var(--bad);background:var(--badb);
+  padding:4px 7px;border-radius:3px}
+.l-sub{font-size:var(--fs-meta);color:var(--dim);margin:6px 0 2px}
+.l-sub:first-child{margin-top:0}
+.l-sub b{color:var(--ink)}
+.l-more{font-size:var(--fs-chip);padding:3px 0 0}
+
+.l-run{display:flex;align-items:center;gap:8px;padding:3px 0;font-size:var(--fs-meta);
+  border-bottom:1px solid var(--line2)}
+.l-run .who{font-family:var(--mono,inherit);color:var(--ink);min-width:66px}
+.l-run .who.none{color:var(--bad);font-family:inherit}
+.l-run.jump{cursor:pointer}
+.l-run.jump:hover{background:var(--cur)}
+.l-run.jump:focus-visible{outline:2px solid var(--cyan);outline-offset:-2px}
+.l-run .faint{font-size:var(--fs-chip);overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap;max-width:200px}
+.l-run .barw{flex:1;min-width:60px;height:9px;background:var(--line2);border-radius:2px;overflow:hidden}
+.l-run .bar{height:100%;background:var(--warn)}
+/* 两张表共用同一条长度基准,所以整链失败那几段的条不一定最长 —— 靠颜色而不是长度
+   说明它更严重。用长度去表达严重程度正是上一版把 23 连全失败排到第九位的那个错。 */
+.l-run .bar.dead{background:var(--bad)}
+.l-run .len{font-variant-numeric:tabular-nums;color:var(--ink);min-width:52px;text-align:right}
+.l-run .when{color:var(--faint);font-size:var(--fs-chip);min-width:112px;text-align:right}
+.l-run .when.unk{font-style:italic}
+
+.l-scroll{overflow-x:auto}
+.l-calls{border-collapse:collapse;width:100%;font-size:var(--fs-meta)}
+.l-calls th{text-align:left;font-weight:500;color:var(--dim);padding:2px 8px 4px;
+  border-bottom:1px solid var(--line);white-space:nowrap}
+.l-calls th.r,.l-calls td.r{text-align:right}
+.l-calls td{padding:2px 8px;border-bottom:1px solid var(--line2);
+  font-variant-numeric:tabular-nums;white-space:nowrap}
+.l-calls tr.lrow:hover{background:var(--cur);cursor:pointer}
+.l-calls tr.open{background:var(--sel)}
+.l-calls td.who{font-family:var(--mono,inherit);color:var(--ink)}
+.l-calls td.who.none{color:var(--bad)}
+.l-calls td.unk{color:var(--faint);font-style:italic}
+.l-calls td.sk{color:var(--faint);font-family:var(--mono,inherit)}
+.l-calls td.det{white-space:normal;background:var(--panel2);padding:7px 10px}
+.l-calls td.det dl{display:grid;grid-template-columns:auto 1fr;gap:2px 10px;margin:0;
+  font-size:var(--fs-chip)}
+.l-calls td.det dt{color:var(--dim)} .l-calls td.det dd{margin:0;color:var(--ink);
+  font-family:var(--mono,inherit);word-break:break-all}
+.l-calls td.det pre{margin:6px 0 0;padding:6px 8px;background:var(--panel);
+  border:1px solid var(--line2);border-radius:3px;max-height:340px;overflow:auto;
+  font-size:var(--fs-chip);white-space:pre-wrap;word-break:break-word}
+.l-att{border-collapse:collapse;margin:6px 0 0;font-size:var(--fs-chip);width:100%}
+.l-att td{padding:1px 8px 1px 0;border-bottom:1px solid var(--line2);
+  font-family:var(--mono,inherit);color:var(--dim)}
+.l-att td:first-child{color:var(--ink)}
+.l-att td.y{color:var(--ok)} .l-att td.n{color:var(--bad)}
+.l-att td.r{text-align:right;font-variant-numeric:tabular-nums}
+.l-page{display:flex;align-items:center;gap:8px;margin-top:8px;font-size:var(--fs-meta);
+  color:var(--dim);font-variant-numeric:tabular-nums}
+.l-sel{font-size:var(--fs-meta);padding:1px 4px}
+.l-q{font-size:var(--fs-meta);padding:1px 6px;width:150px;min-width:0;max-width:100%}
+/* 明细卡头那排筛选件(两个下拉 + 一个输入框)在窄窗口下会把整页撑出横向滚动条,
+   而横滚的是**页面**不是那张表 —— 于是左边的卡片也跟着一起漂。
+   让它们换行:筛选件少一行比整页错位强。表格自己的横滚在 .l-scroll 上,不受影响。 */
+#lcalls .card-actions{flex-wrap:wrap;gap:4px;min-width:0}
+#lcalls .card-actions select,#lcalls .card-actions input{max-width:100%}
+
 </style>
 </head>
 <body>
@@ -1070,6 +1189,7 @@ table.g td[data-col="timeout"]{font-family:var(--mono)}
         <li class="nav-item"><a class="nav-link nv" data-view="repos" href="#repos"><span class="nav-link-icon">⑂</span><span class="nav-link-title">仓库</span><span class="badge bg-danger ms-auto" id="bg-repos" hidden>0</span></a></li>
         <li class="nav-item"><a class="nav-link nv" data-view="storage" href="#storage"><span class="nav-link-icon">▢</span><span class="nav-link-title">维护</span><span class="badge bg-danger ms-auto" id="bg-storage" hidden>0</span></a></li>
         <li class="nav-item"><a class="nav-link nv" data-view="convos" href="#convos"><span class="nav-link-icon">☰</span><span class="nav-link-title">会话</span><span class="badge bg-danger ms-auto" id="bg-convos" hidden>0</span></a></li>
+        <li class="nav-item"><a class="nav-link nv" data-view="llm" href="#llm"><span class="nav-link-icon">◈</span><span class="nav-link-title">调用</span><span class="badge bg-danger ms-auto" id="bg-llm" hidden>0</span></a></li>
       </ul>
       <div class="mt-auto pb-2 px-3">
         <button class="btn btn-sm w-100" id="sidetoggle" title="收起侧栏">&laquo; 收起</button>
@@ -1231,6 +1351,68 @@ table.g td[data-col="timeout"]{font-family:var(--mono)}
       <div id="cvgroups"></div>
     </div>
   </div>
+  </section>
+
+  <!-- 调用屏。llmcall 是这台机器上全 fleet 的判断基元,但它的账本在 ~/.llmcall/ 下,
+       在此之前唯一的读法是一条打印终生均值的命令行。这一屏要回答的是四个问题:
+       今天用了多少、都有哪些调用、单条调用长什么样、以及降级链的顺序归谁管。 -->
+  <section id="llm" data-view="llm" data-label="调用" hidden>
+
+  <div class="card" id="lchain">
+    <div class="card-header"><h3 class="card-title">调用链<span class="n" id="lcnote">读取中</span></h3>
+      <div class="card-actions"><button id="lcreload" title="重新读取">↻</button></div></div>
+    <div class="pad">
+      <div id="lcwarn"></div>
+      <div id="lcdrift"></div>
+      <ol class="lc-list" id="lclist"></ol>
+      <div class="lc-foot">
+        <button class="mini" id="lcsave" disabled>保存顺序</button>
+        <button class="mini" id="lcreset" disabled>还原</button>
+        <span class="faint" id="lcpath"></span>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" id="luse">
+    <div class="card-header"><h3 class="card-title">用量<span class="n" id="lunote"></span></h3></div>
+    <div class="pad"><div class="l-wins" id="lwins"></div><div id="lledger" class="l-led"></div></div>
+  </div>
+
+  <div class="card" id="lrungs">
+    <div class="card-header"><h3 class="card-title">每一级<span class="n" id="lrnote"></span></h3></div>
+    <div class="pad"><table class="l-rung" id="lrtab"></table>
+      <div id="lrverify"></div>
+      <p class="faint l-hint">应答 / 失败 / 没轮到 / 没上场 是四件不同的事。「没上场」指那次调用的链里
+        根本没有这一级;「没轮到」指它在链里、但前面某一级先答上了。两者都不是失败,
+        而在把它们分开数之前,它们和「这一级从来没成功过」长得一模一样。</p></div>
+  </div>
+
+  <div class="card" id="lruns">
+    <div class="card-header"><h3 class="card-title">连续降级段<span class="n" id="lsnote"></span></h3></div>
+    <div class="pad"><div id="lstab"></div>
+      <p class="faint l-hint">降级是聚集的,不是均匀的。日均值会把一段连续失败摊平成一个
+        看起来无害的小数,所以这里画的是「连着多少次落到了同一级」。</p></div>
+  </div>
+
+  <div class="card" id="lcalls">
+    <div class="card-header"><h3 class="card-title">明细<span class="n" id="lmnote"></span></h3>
+      <div class="card-actions">
+        <select id="lmprov" class="l-sel" title="按应答的那一级筛"><option value="">全部级</option></select>
+        <select id="lmcaller" class="l-sel" title="按发起调用的脚本筛"><option value="">全部调用方</option></select>
+        <input type="text" id="lmq" class="l-q" placeholder="搜错误文本" title="在错误文本里搜,留空为不筛">
+        <select id="lmok" class="l-sel" title="按成败筛">
+          <option value="">成败不限</option><option value="1">只看成功</option><option value="0">只看失败</option>
+        </select>
+      </div></div>
+    <div class="pad">
+      <!-- 明细十列,每列都 nowrap。窗口一窄就会把卡片撑破,而撑破的表现是
+           右边几列被裁掉且没有任何提示 —— 「耗时」和「尝试」正好在最右边。
+           给它自己的横向滚动容器,卡片本身不参与横向滚动。 -->
+      <div class="l-scroll"><table class="l-calls" id="lmtab"></table></div>
+      <div class="l-page" id="lmpage"></div>
+    </div>
+  </div>
+
   </section>
 </div>
 </div>
@@ -2474,9 +2656,449 @@ function renderConvos(){
 }
 
 // ================= 外壳:分区切换与徽章 ==============================================
-// 路由就是 location.hash,没有路由库。五个分区、一个哈希,引一个库只会多一份要维护的东西。
+// ── 调用屏 ──────────────────────────────────────────────────────────────────
+// llmcall 的账本在 ~/.llmcall/ 下,十一万条,二十兆。在这一屏之前唯一的读法是一条
+// 打印**终生均值**的命令行 —— 于是「今天降级了八十二次」和「这一年平均很健康」
+// 会打印出同一个绿色数字。这一屏存在的理由就是把那两件事分开。
+let LLM=null, LCDRAFT=null, LMROWS=null, LMTOTAL=0, LMOPEN=null, LMBODY={};
+const LMQ = {offset:0, limit:50, provider:"", ok:"", q:"", caller:""};
+
+const lnum = n => n==null ? "—" : Number(n).toLocaleString("en-US");
+// 没量到 / 量到零 / 有值,三种要长得不一样。这个函数只负责前两种的区分。
+const lpct = f => f==null ? '<span class="faint">未计</span>' : (f*100).toFixed(0)+"%";
+function lts(t){
+  if(t==null) return null;
+  const d = new Date(t*1000);
+  const p = n => String(n).padStart(2,"0");
+  return d.getFullYear()+"-"+p(d.getMonth()+1)+"-"+p(d.getDate())+" "+p(d.getHours())+":"+p(d.getMinutes());
+}
+
+async function loadLLM(){
+  try{ LLM = await api("/api/llmcall"); $("lcnote").textContent=""; }
+  catch(e){ LLM = {error: e.message}; }
+  LCDRAFT = null;
+  renderLLM();
+  loadCalls();
+}
+
+function renderLLM(){
+  if(!LLM) return;
+  if(LLM.error){
+    $("lcnote").textContent = LLM.error;
+    $("lclist").innerHTML = "";
+    $("lwins").innerHTML = '<div class="l-win l-unk"><h4>用量</h4><div class="big">读不到</div>'
+      + '<div class="sub">'+esc(LLM.error)+'</div></div>';
+    $("lrtab").innerHTML = ""; $("lstab").innerHTML = "";
+    return;
+  }
+  renderChain(); renderWins(); renderRungs(); renderRuns(); llmBadge();
+}
+
+// 侧栏徽章。这一屏平时不需要人盯着,所以徽章要只在**有事**的时候亮,
+// 而「有事」在这里有两种,数的是同一个徽章但理由不同:
+//   近 7 日里有整链失败(四级全挂,那次调用没有答案);
+//   或者链的顺序被一个看不见的环境变量压着,页面上的设置不作数。
+// 第二种不加进计数而是单独把徽章标红:它不是「几件事」,是「这一屏在骗你」。
+function llmBadge(){
+  const w = (LLM.windows || [])[1] || {};
+  const c = LLM.chain || {};
+  const bad = (LLM.ledger || {}).malformed || 0;
+  const n = (w.failed || 0) + bad;
+  setBadge("llm", c.shadowed_by_env ? Math.max(n, 1) : n, true);
+}
+
+// ── 链顺序 ──
+function renderChain(){
+  const c = LLM.chain || {};
+  const eff = LCDRAFT || (c.effective || []);
+  const src = c.source || "builtin";
+  // 四种来源各说各的话。`observed` 那一句刻意点出行号:这个顺序不是一份配置,
+  // 是**从真实调用里观测到的**,而观测是可以被指认的 —— 点得到那一行。
+  // 早先这里只有「内置默认」一个说法,而那份内置常量是控制台自己存的一份拷贝,
+  // 和 llmcall 真正的默认已经漂开过一次,徽章却显得很权威。
+  const label = {env: "来自环境变量", file: "来自配置文件",
+                 observed: "最近一次真实调用" + (c.observed_i != null ? "(第 " + lnum(c.observed_i) + " 行)" : ""),
+                 builtin: "控制台内置的一份拷贝"}[src] || src;
+  $("lcnote").innerHTML = '<span class="lc-src '+esc(src)+'">'+esc(label)+'</span>';
+  // 配置写着一个顺序,而最近一次真实调用走的是另一个 —— 这句话只有在 observed
+  // 恒填时才说得出来,而它正是「我改了顺序但没生效」最直接的证据。
+  const drift = (src === "env" || src === "file") && c.observed
+    && JSON.stringify(c.observed) !== JSON.stringify(c.effective);
+  $("lcdrift").innerHTML = drift
+    ? '<div class="lc-warn">配置里是 <b>' + esc((c.effective || []).join(" → "))
+      + "</b>,但最近一次真实调用(第 " + lnum(c.observed_i) + " 行)走的是 <b>"
+      + esc(c.observed.join(" → ")) + "</b>。要么那次调用自己指定了链,"
+      + "要么这份配置还没被任何进程读到 —— 长期运行的调用方是在启动时读的。</div>"
+    : "";
+
+  // 这条告示是这一屏最重要的一行。LLMCALL_CHAIN 一旦存在就压过文件里的一切,
+  // 而它在页面上是看不见的:少了这条,用户在这里排好顺序、按下保存、看到成功提示,
+  // 然后所有调用照旧走那个被环境变量钉死的顺序。
+  $("lcwarn").innerHTML = c.shadowed_by_env
+    ? '<div class="lc-warn">环境变量 <b>LLMCALL_CHAIN=' + esc(c.env_value || "")
+      + '</b> 正压着这里的设置。你在这一屏改的顺序会写进文件,但<b>当前不会生效</b>,'
+      + '直到那个环境变量被清掉。</div>'
+    : (src === "env"
+       ? '<div class="lc-warn">当前顺序来自环境变量 <b>LLMCALL_CHAIN</b>,不是这里的配置文件。'
+         + '在这一屏保存会建立文件配置,但只有清掉那个环境变量之后才会轮到它。</div>'
+       : "");
+
+  $("lclist").innerHTML = eff.map((p,i)=>
+    '<li draggable="true" data-i="'+i+'"><span class="ord">'+(i+1)+'</span>'
+    + '<span class="nm">'+esc(p)+'</span>'
+    + '<span class="mv"><button data-mv="up" data-i="'+i+'" title="上移"'+(i===0?" disabled":"")+'>↑</button>'
+    + '<button data-mv="dn" data-i="'+i+'" title="下移"'+(i===eff.length-1?" disabled":"")+'>↓</button></span></li>'
+  ).join("");
+  const dirty = LCDRAFT && JSON.stringify(LCDRAFT) !== JSON.stringify(c.effective || []);
+  $("lcsave").disabled = !dirty || busy;
+  $("lcreset").disabled = !LCDRAFT;
+  $("lcpath").textContent = c.file_path || "";
+}
+
+function lcMove(i, d){
+  const c = LLM.chain || {};
+  const a = (LCDRAFT || (c.effective || [])).slice();
+  const j = i + d;
+  if(j < 0 || j >= a.length) return;
+  const t = a[i]; a[i] = a[j]; a[j] = t;
+  LCDRAFT = a;
+  renderChain();
+}
+
+async function lcSave(){
+  if(!LCDRAFT || busy) return;
+  busy = true; $("lcsave").disabled = true;
+  try{
+    const r = await api("/api/llmcall/chain", {method:"POST", body: JSON.stringify({chain: LCDRAFT})});
+    LLM.chain = r;
+    LCDRAFT = null;
+    // 成功提示里必须带上「是否生效」。一个只说「已保存」的提示,在被环境变量压着的时候
+    // 说的是真话,但传达的是假消息。
+    toast(r.shadowed_by_env
+      ? "顺序已写入文件,但被 LLMCALL_CHAIN 压着,当前不生效"
+      : "顺序已保存:" + (r.effective || []).join(" → "),
+      r.shadowed_by_env ? "bad" : "");
+    renderChain();
+  }catch(e){ toast("保存失败:" + e.message, "bad"); }
+  finally{ busy = false; renderChain(); }
+}
+
+// ── 用量窗口 ──
+function renderWins(){
+  const L0 = LLM.ledger || {};
+  // 账本文件根本不在,和账本在、里面今天没有调用,是两件事。
+  // 后者是「今天很闲」,前者是「这一屏什么都没看」—— 而把前者画成一排 0,
+  // 正是这台台子从头到尾在反对的那种绿色。
+  if(!L0.exists){
+    $("lwins").innerHTML = '<div class="l-win l-unk"><h4>账本</h4>'
+      + '<div class="big">未检查</div><div class="sub">'
+      + esc(L0.path || "路径未知") + " 不存在。这不是「今天没有调用」,"
+      + "是这一屏没有读到任何东西。</div></div>";
+    $("lledger").innerHTML = "设 <code>TASK_CONSOLE_LLMCALL_LEDGER</code> 指向账本,"
+      + "或确认调用基元真的在写它。";
+    $("lunote").textContent = "账本不在";
+    return;
+  }
+  const wins = LLM.windows || [];
+  $("lwins").innerHTML = wins.map(w=>{
+    // 窗口里一条都没有,但账本里明明有十一万条 —— 这不是「没调用」,是「问不出来」。
+    const blind = (w.calls === 0 && (w.unstamped_excluded || 0) > 0);
+    const cls = blind ? "l-win l-unk" : "l-win";
+    const big = blind ? "无从得知" : lnum(w.calls) + " 次";
+    const sub = blind
+      ? (lnum(w.unstamped_excluded) + " 条历史记录没有时间戳,无法归入这个窗口")
+      : ('<span class="ok">' + lnum(w.ok) + " 成</span> · "
+         + (w.failed ? '<span class="bad">' + lnum(w.failed) + " 败</span>" : "0 败")
+         + " · 廉价级 " + lpct(w.cheap_share)
+         + (w.avg_ms != null ? " · 均 " + lnum(w.avg_ms) + "ms" : "")
+         + (w.unstamped_excluded ? " · 另有 " + lnum(w.unstamped_excluded) + " 条无时间戳未计入" : ""));
+    return '<div class="' + cls + '"><h4>' + esc(w.label) + "</h4>"
+      + '<div class="big">' + esc(big) + "</div>"
+      + '<div class="sub">' + sub + "</div></div>";
+  }).join("");
+
+  const L = LLM.ledger || {};
+  $("lledger").innerHTML = "账本 " + esc(L.path || "?") + " · " + kb(L.bytes)
+    + " · " + lnum(L.parsed) + " 条可解析"
+    + (L.malformed ? ' · <span class="bad">' + lnum(L.malformed) + " 条坏行</span>" : "")
+    + " · 带时间戳 " + lnum(L.stamped) + " 条 / 无时间戳 " + lnum(L.unstamped) + " 条"
+    // 读侧承诺 parsed + malformed + blank == lines。这里当场验算,不是装饰:
+    // 一个漏读了一段文件的解析器,报出来的每个数都自洽、都好看,
+    // 只是全都偏小 —— 而偏小的统计和真实的低用量在屏幕上是同一个数字。
+    + ((L.exists && L.lines != null
+        && (L.parsed || 0) + (L.malformed || 0) + (L.blank || 0) !== L.lines)
+       ? ' · <span class="bad">对不上:' + lnum(L.parsed) + "+" + lnum(L.malformed)
+         + "+" + lnum(L.blank) + " ≠ " + lnum(L.lines) + " 行,解析器漏了东西</span>"
+       : "");
+  $("lunote").textContent = "";
+}
+
+// ── 每一级 ──
+function renderRungs(){
+  const rs = LLM.rungs || [];
+  $("lrtab").innerHTML =
+    "<tr><th>级</th><th>应答</th><th>失败</th><th>没轮到</th><th>没上场</th></tr>"
+    + rs.map(r=>"<tr><td>" + esc(r.name)
+      // 链里出现了配置之外的 provider 时它照样进这张表 —— 丢掉它等于让一个
+      // 没人登记过的调用路径在统计上不存在。标出来,别藏。
+      // 「表外」= 这一级出现在某次调用的链里,但不在当前配置的链里。
+      // ⚠ 这一列在账本干净的时候是空的,看起来像个没用的字段 —— 别因此删掉它。
+      // 它的价值只在「有人跑出了一条没人登记过的链」那一刻兑现,而那种时候
+      // 页面上没有别的东西会说话:那条链的调用会安安静静地被算进总数里。
+      + (r.in_known_chain === false ? ' <span class="faint">(表外)</span>' : "") + "</td>"
+      + '<td class="' + (r.served ? "" : "z") + '">' + lnum(r.served) + "</td>"
+      + '<td class="' + (r.failed ? "f" : "z") + '">' + lnum(r.failed) + "</td>"
+      + '<td class="' + (r.not_reached ? "" : "z") + '">' + lnum(r.not_reached) + "</td>"
+      + '<td class="' + (r.skipped ? "" : "z") + '">' + lnum(r.skipped) + "</td></tr>").join("");
+  $("lrnote").textContent = rs.length ? "" : "无记录";
+
+  // 上面那张表的每一个数,都建在「chain[attempts-1] 就是应答那一级」这条判据上。
+  // 判据一旦不成立,表照样画得很漂亮 —— 所以这里必须能看见反例数不是零。
+  // 两种坏法不是一回事,措辞也不能混。**自相矛盾**是判据被证伪了,上表整个不可信;
+  // **无法判定**只是那几条记录本身缺字段,剩下的数照样成立。
+  // 早先这里把两者合成一句「这几列的数不能当真」,于是 0 条矛盾 + 35 条缺字段
+  // 被报成了一条红色警报 —— 一个会为无害情况尖叫的指示灯,和一个坏掉的指示灯,
+  // 在被忽略这件事上是一样的。
+  const v = LLM.verify || {};
+  const bad = v.contradictions || 0;
+  const meh = v.unusable || 0;
+  $("lrverify").innerHTML = v.checked == null ? "" :
+    '<div class="l-verify' + (bad ? " bad" : "") + '">'
+    + (bad
+       ? "判据在 " + lnum(v.checked) + " 条里有 " + lnum(bad)
+         + " 条自相矛盾(应答的那一级不等于链上该轮到的那一级)—— 上表的数不能当真。"
+       : "判据核过 " + lnum(v.checked) + " 条,零反例。")
+    + (meh ? '<span class="faint"> 另有 ' + lnum(meh)
+             + " 条字段不全、无法参与核对,已排除在外。</span>" : "")
+    + "</div>";
+}
+
+// ── 连续降级段 ──
+function renderRuns(){
+  const rs = LLM.runs || [];
+  if(!rs.length){
+    $("lstab").innerHTML = '<p class="faint" style="margin:0">没有达到阈值的连续段。</p>';
+    $("lsnote").textContent = "";
+    return;
+  }
+  // 整链失败和「只是降了一档」是两类事,不混排。
+  // 混在一起按长度排,最狠的那种(一连串调用压根没有答案)会被更长、但没那么致命的
+  // 降级段压到下面去 —— 实测账本里最长的降级段是 82 连,而 23 连的整链失败排第九。
+  const dead = rs.filter(r=>r.total_failure).sort((a,b)=>b.length-a.length);
+  const down = rs.filter(r=>!r.total_failure).sort((a,b)=>b.length-a.length);
+  const max = Math.max.apply(null, rs.map(r=>r.length));
+  $("lsnote").textContent = rs.length + " 段 · 最长 " + max + " 次"
+    + (dead.length ? " · 其中 " + dead.length + " 段整链失败" : "");
+  // 实测这个账本上有两千多段。全画出来这一屏会长到没人往下翻,而真正要看的
+  // 永远是最长的那几段。所以每类只画前 LRUN_TOP 段,并且**把没画的那些数出来** ——
+  // 一张悄悄截断的表和一张本来就这么短的表,看起来一模一样。
+  $("lstab").innerHTML =
+    (dead.length ? '<div class="l-sub"><b>整链失败</b>:这些调用没有拿到任何答案</div>'
+                   + runRows(dead.slice(0, LRUN_TOP), max) + more(dead) : "")
+    + (down.length ? '<div class="l-sub"><b>降级</b>:答上了,但落到了更靠后的一级</div>'
+                     + runRows(down.slice(0, LRUN_TOP), max) + more(down) : "");
+}
+
+const LRUN_TOP = 12;
+function more(list){
+  const n = list.length - LRUN_TOP;
+  if(n <= 0) return "";
+  const covered = list.slice(LRUN_TOP).reduce((s, r)=>s + r.length, 0);
+  return '<div class="faint l-more">另有 ' + lnum(n) + " 段较短的没画出来,合计 "
+    + lnum(covered) + " 次调用。</div>";
+}
+
+function runRows(rs, max){
+  return rs.map(r=>{
+    const when = r.start_ts != null
+      ? '<span class="when">' + esc(lts(r.start_ts)) + "</span>"
+      : '<span class="when unk">无时间戳</span>';
+    // 整链失败的那一段里没有任何一级给出答案。判据只认后端给的布尔,不认 provider
+    // 的值:整链失败在账本里是 null,而读侧为了让它能进计数器把它写成字符串 "NONE",
+    // 于是页面上一度原样印出了四个字母 NONE —— 一个内部占位符漏到了人眼前。
+    const dead = !!r.total_failure;
+    const who = dead ? "整链失败" : r.provider;
+    // 看见一段「连着 82 次降级」之后,人接下来一定想问「那 82 次长什么样」。
+    // 在这之前那是个死路:得自己记下行号,滚到下面那张表,再一页页翻过去。
+    // 整段可点,点了把明细直接翻到那一段的第一行。
+    // data-jump 收的是**列表下标**(能直接喂给分页),而 title 里给人看的是
+    // **物理行号**(和明细表 # 列同一套)。账本里有空行,两者会差几位,
+    // 所以这两个数必须各取各的字段,不能图省事用同一个。
+    return '<div class="l-run jump" role="button" tabindex="0" data-jump="' + r.start_offset + '" title="看这一段的明细 · 起自第 ' + r.start_i + ' 行">'
+      + '<span class="who' + (dead ? " none" : "") + '">'
+      + esc(who) + "</span>"
+      + (r.error ? '<span class="faint" title="' + esc(r.error) + '">' + esc(r.error.slice(0, 40)) + "</span>" : "")
+      + '<span class="barw"><span class="bar' + (r.total_failure ? " dead" : "")
+      + '" style="width:' + (r.length / max * 100).toFixed(1) + '%"></span></span>'
+      + '<span class="len">' + r.length + " 连</span>" + when + "</div>";
+  }).join("");
+}
+
+// ── 明细 ──
+async function loadCalls(){
+  const q = "?offset=" + LMQ.offset + "&limit=" + LMQ.limit
+    + (LMQ.provider ? "&provider=" + encodeURIComponent(LMQ.provider) : "")
+    + (LMQ.ok !== "" ? "&ok=" + LMQ.ok : "")
+    + (LMQ.q ? "&q=" + encodeURIComponent(LMQ.q) : "")
+    + (LMQ.caller ? "&caller=" + encodeURIComponent(LMQ.caller) : "");
+  try{
+    const r = await api("/api/llmcall/calls" + q);
+    LMROWS = r.rows || []; LMTOTAL = r.total || 0;
+    $("lmnote").textContent = "";
+  }catch(e){ LMROWS = []; LMTOTAL = 0; $("lmnote").textContent = e.message; }
+  renderCalls();
+}
+
+function renderCalls(){
+  if(!LMROWS) return;
+  const sel = $("lmprov");
+  if(sel.options.length <= 1 && LLM && LLM.rungs){
+    sel.insertAdjacentHTML("beforeend",
+      LLM.rungs.map(r=>'<option value="' + esc(r.name) + '">' + esc(r.name) + "</option>").join("")
+      + '<option value="NONE">整链失败</option>');
+    sel.value = LMQ.provider;
+  }
+  // 调用方清单来自后端对整个账本的统计,不是当前这 50 行 ——
+  // 从一页记录里凑出来的下拉框,会让「这个调用方今天没出现」变成「这个调用方不存在」。
+  const cs = $("lmcaller");
+  if(cs.options.length <= 1 && LLM && LLM.callers && LLM.callers.length){
+    cs.insertAdjacentHTML("beforeend",
+      LLM.callers.map(c=>'<option value="' + esc(c.name) + '">' + esc(c.name)
+        + " (" + lnum(c.calls) + ")</option>").join(""));
+    cs.value = LMQ.caller;
+  }
+  const rows = LMROWS.map(r=>{
+    const open = LMOPEN === r.i;
+    const who = r.provider == null
+      ? '<td class="who none">整链失败</td>'
+      : '<td class="who">' + esc(r.provider) + "</td>";
+    // 三种「不知道是谁调的」要分开:字段不存在 = 这条记录早于 caller 功能;
+    // 字段是 null = 推断失败(嵌入式调用、REPL);有值就是有值。
+    // 把前两种都写成「未知」,就把「还没开始记」和「记了但推断不出来」焊死了。
+    const caller = !("caller" in r) ? '<td class="unk">—</td>'
+      : r.caller == null ? '<td class="unk">推断不出</td>'
+      : '<td class="who">' + esc(r.caller) + "</td>";
+    const when = r.ts != null
+      ? "<td>" + esc(lts(r.ts)) + "</td>"
+      : '<td class="unk">无时间戳</td>';
+    let tr = '<tr class="lrow' + (open ? " open" : "") + '" data-i="' + r.i + '">'
+      + "<td>" + r.i + "</td>" + when + caller + who
+      + '<td class="sk">' + (r.skipped && r.skipped.length ? esc(r.skipped.join(",")) : "—") + "</td>"
+      + "<td>" + esc(r.mode || "") + "</td>"
+      + '<td class="r">' + lnum(r.prompt_chars) + "</td>"
+      + '<td class="r">' + lnum(r.reply_chars) + "</td>"
+      + '<td class="r">' + (r.ms == null ? '<span class="faint">—</span>' : lnum(r.ms)) + "</td>"
+      + '<td class="r">' + r.attempts + "</td></tr>";
+    if(open) tr += '<tr><td class="det" colspan="10">' + detailHTML(r) + "</td></tr>";
+    return tr;
+  }).join("");
+  $("lmtab").innerHTML =
+    '<tr><th>#</th><th>时间</th><th>调用方</th><th>应答</th><th>没上场</th><th>模式</th>'
+    + '<th class="r">提示字数</th><th class="r">回复字数</th><th class="r">耗时</th><th class="r">尝试</th></tr>'
+    // 空结果必须说出**为什么**空。「搜错误文本」+「只看成功」是一个天然的空集:
+    // 成功的调用根本没有错误文本。不说破的话,一个用对了工具的人会以为工具坏了,
+    // 而这和工具真的坏了在屏幕上是同一句话。
+    + (rows || '<tr><td colspan="10" class="faint">'
+       + (LMQ.q && LMQ.ok === "1"
+          ? "这个组合必然为空:搜的是错误文本,而成功的调用没有错误文本。"
+            + "把「只看成功」改回不限,或者清掉搜索框。"
+          : LMQ.q ? "没有哪条调用的错误文本里含「" + esc(LMQ.q) + "」。"
+                  : "没有符合条件的记录。")
+       + "</td></tr>");
+
+  const from = LMTOTAL ? LMQ.offset + 1 : 0;
+  const to = Math.min(LMQ.offset + LMQ.limit, LMTOTAL);
+  $("lmpage").innerHTML =
+    '<button class="mini" id="lmprev"' + (LMQ.offset <= 0 ? " disabled" : "") + ">← 更新</button>"
+    + '<button class="mini" id="lmnext"' + (to >= LMTOTAL ? " disabled" : "") + ">更旧 →</button>"
+    + "<span>" + lnum(from) + "–" + lnum(to) + " / 共 " + lnum(LMTOTAL) + " 条</span>";
+}
+
+function detailHTML(r){
+  const b = LMBODY[r.i];
+  let s = "<dl>"
+    + "<dt>链</dt><dd>" + esc((r.chain || []).join(" → ")) + "</dd>"
+    + "<dt>联网</dt><dd>" + (r.web ? "是" : "否") + "</dd>"
+    + "<dt>结果</dt><dd>" + (r.ok ? "成功" : "失败") + "</dd>"
+    + (r.error ? "<dt>错误</dt><dd>" + esc(r.error) + "</dd>" : "")
+    + (r.id ? "<dt>正文 id</dt><dd>" + esc(r.id) + "</dd>" : "")
+    + "</dl>";
+  // 逐级明细。顶层那个 error 记的是**最后一级**的失败原因,而最后一级往往正是
+  // 因为预算被前面烧光才没真的试过 —— 于是一整段故障的唯一一句话,说的是那个
+  // 什么都没做的那一级。这张小表就是为了把真正的病因摆出来。
+  if(r.attempts_detail && r.attempts_detail.length){
+    s += '<table class="l-att">'
+      + r.attempts_detail.map(a=>
+          "<tr><td>" + esc(a.name) + "</td>"
+          + '<td class="' + (a.ok ? "y" : "n") + '">' + (a.ok ? "成" : "败") + "</td>"
+          + '<td class="r">' + (a.ms == null ? "—" : lnum(a.ms) + "ms") + "</td>"
+          + "<td>" + esc(a.error || "") + "</td></tr>").join("")
+      + "</table>";
+  } else if(!r.ok){
+    s += '<p class="faint" style="margin:6px 0 0">这条记录早于逐级明细,只留下了最后一级的原因。</p>';
+  }
+  if(b === undefined) s += '<p class="faint" style="margin:6px 0 0">正在取正文…</p>';
+  else if(b === null || !b.available){
+    // 「没开正文记录」「伴生仓没配」「过了保留期」「文件读不动」是四件不同的事,
+    // 后端分成六种 reason_code 说明是哪一种。把它们合成一句「没有正文」,
+    // 等于让一次配置错误看起来像一次正常的空。
+    s += '<p class="faint" style="margin:6px 0 0">' + esc((b && b.reason) || "正文未记录。") + "</p>";
+    // 「找不到」不说自己找过哪里,人只能靠猜。把走过的每一级和结论都摊开。
+    // 「找不到」还要说「怎么办」。这个 fleet 的伴生仓约定是兄弟目录,
+    // 而解析链只认家目录下那两个位置,所以一个建在别处的伴生仓必须靠一个环境变量被指到。
+    // 不写这句的话,人会去重建一个已经建好的仓。
+    if(b && b.reason_code === "uninitialised")
+      s += '<p class="faint" style="margin:4px 0 0">伴生仓若建在别处,设 '
+         + "<code>LLMCALL_CONFIG</code> 指向它(正文会落到它下面的 "
+         + "<code>data/bodies/</code>),或者用 <code>TASK_CONSOLE_LLMCALL_BODIES</code> "
+         + "直接指定正文目录。正文记录本身还要 <code>LLMCALL_RECORD_BODIES=1</code> 才会开。</p>";
+    if(b && b.tried && b.tried.length)
+      s += '<table class="l-att">' + b.tried.map(t=>
+        "<tr><td>" + esc(t.source || "") + "</td><td>" + esc(t.path || "") + "</td>"
+        + '<td class="' + (t.is_dir ? "y" : "n") + '">' + (t.is_dir ? "在" : "不在") + "</td></tr>"
+      ).join("") + "</table>";
+  }
+  else s += "<pre>" + esc(b.prompt || "") + "</pre>"
+    + (b.reply ? "<pre>" + esc(b.reply) + "</pre>" : "")
+    // 一段被悄悄砍掉一半的 prompt,和一段本来就那么长的 prompt,在页面上长得一样。
+    + (b.truncated ? '<p class="faint" style="margin:4px 0 0">已截断显示 · 原始长度 '
+        + lnum(b.prompt_chars) + " / " + lnum(b.reply_chars) + " 字符</p>" : "");
+  return s;
+}
+
+// 从一段连续降级跳到它的明细。
+// 偏移必须先把筛选清掉:`offset` 是**筛选之后**的序号,而段的起点是**绝对行号**。
+// 带着筛选去翻页会落在一个看起来很像、其实完全不相干的位置上,而且不会报错。
+// 参数是**列表下标**(后端的 start_offset),不是行号 —— 直接就是 page 的 offset,
+// 不许再减一。这里原来写着 `startIndex - 1`,是当初以为传进来的是 1 基行号时留下的,
+// 于是每次跳转都稳定地落在段首的前一条上。差一条看起来非常像「对的」:
+// 落点仍在那段附近,屏幕上第一行甚至常常长得和段内的记录一样。
+function jumpToCalls(startOffset){
+  const had = LMQ.provider || LMQ.ok !== "" || LMQ.q || LMQ.caller;
+  LMQ.provider = ""; LMQ.ok = ""; LMQ.q = ""; LMQ.caller = "";
+  $("lmprov").value = ""; $("lmok").value = ""; $("lmq").value = ""; $("lmcaller").value = "";
+  LMQ.offset = Math.max(0, startOffset);
+  LMOPEN = null;
+  loadCalls().then(()=>{
+    $("lcalls").scrollIntoView({block: "start"});
+    if(had) toast("已清掉明细的筛选条件,否则跳过去的位置对不上");
+  });
+}
+
+async function openCall(i){
+  LMOPEN = (LMOPEN === i) ? null : i;
+  renderCalls();
+  if(LMOPEN == null || LMBODY[i] !== undefined) return;
+  try{ LMBODY[i] = await api("/api/llmcall/call/" + i); }
+  catch(e){ LMBODY[i] = {available:false, reason:"取正文失败:" + e.message}; }
+  if(LMOPEN === i) renderCalls();
+}
+
+// 路由就是 location.hash,没有路由库。一把分区、一个哈希,引一个库只会多一份要维护的东西。
+// (这里原来写着「五个分区」。分区数是会变的,而散文里的数字不会跟着变 : 上一次加分区时
+//  它就已经过期了。真值永远只有下面那个 VIEWS 数组,别在注释里复写它的长度。)
 // hash 还顺带给了两个白送的好处:刷新回到原来那一屏,以及可以把某一屏发给自己。
-const VIEWS = ["overview", "tasks", "repos", "storage", "convos"];
+const VIEWS = ["overview", "tasks", "repos", "storage", "convos", "llm"];
 let CURVIEW = null;
 
 function showView(key, push){
@@ -2503,7 +3125,7 @@ function showView(key, push){
   // 摊开态下「切分区」本来没有可见效果:所有分区都显示着,写 hidden 被 !important 压掉,
   // 于是点侧栏只剩滚动归零,看起来像坏了。
   // 试过三种滚到那一段的做法,没有一种稳:scrollIntoView 差 538px;自己算绝对位置
-  // 五个分区里只有两个落点对;交回浏览器原生锚点又和 .nv 上的 preventDefault 打架。
+  // 当时五个分区里只有两个落点对;交回浏览器原生锚点又和 .nv 上的 preventDefault 打架。
   // 所以不滚了,直接收回摊开 : 点侧栏的本意就是「我要看这一类」,而摊开是「我暂时全都要看」。
   // Ctrl+F 需要摊开时随时再按 Shift+A,那条路径没有被拿走。
   $("view").classList.remove("all");
@@ -2590,6 +3212,17 @@ document.addEventListener("click", e=>{
     cx.classList.toggle("on", CXSEL.has(k));
     const box=cx.querySelector("input"); if(box) box.checked=CXSEL.has(k);
     cxSelSummary(); return; }
+  // 调用屏。和上面那几段同理,这些挂点必须留在**先注册的**这个监听里:
+  // 明细表的行同时是可点开的,而下面那个监听里有若干 closest 会先把点击接走。
+  const mv = e.target.closest("[data-mv]");
+  if(mv){ lcMove(Number(mv.dataset.i), mv.dataset.mv === "up" ? -1 : 1); return; }
+  if(e.target.id === "lmprev"){ LMQ.offset = Math.max(0, LMQ.offset - LMQ.limit); loadCalls(); return; }
+  if(e.target.id === "lmnext"){ LMQ.offset += LMQ.limit; loadCalls(); return; }
+  const lr = e.target.closest(".l-calls tr.lrow");
+  if(lr){ openCall(Number(lr.dataset.i)); return; }
+  const jp = e.target.closest("[data-jump]");
+  if(jp){ jumpToCalls(Number(jp.dataset.jump)); return; }
+
   const fa = e.target.closest("[data-fixall]");
   if(fa){
     const names = fa.dataset.args.split(String.fromCharCode(1)).filter(Boolean);
@@ -2658,7 +3291,10 @@ document.addEventListener("keydown", e=>{
   // 表格行另有出路:它有 tabindex="-1" 供 focusCur 程序化聚焦,而 Enter 由下面那个
   // 全局 keydown 接(k==="Enter" -> toggleDetail),不需要这里再接一次。
   // 所以这里只留真的能聚焦的那一类,并由 test_page_js.py 钉住这条对应关系。
-  const act = e.target.closest && e.target.closest("[data-fr]");
+  // [data-jump] 是调用屏里那些「连续降级段」,它们自带 tabindex="0"。
+  // 加在这里而不是只给个 tabindex:一个能用 Tab 停上去、按回车却没反应的元素,
+  // 比一个根本停不上去的元素更糟 —— 前者看起来是可操作的。
+  const act = e.target.closest && e.target.closest("[data-fr],[data-jump]");
   if(act){ e.preventDefault(); e.stopPropagation(); act.click(); return; }
   const th = e.target.closest && e.target.closest("#tbl th[data-k]");
   if(!th) return;
@@ -3605,6 +4241,55 @@ loadSys();
 loadMem();
 $("cvreload").addEventListener("click",loadConvos);
 loadConvos();
+
+// ── 调用屏的挂点 ──
+$("lcreload").addEventListener("click", loadLLM);
+$("lcsave").addEventListener("click", lcSave);
+$("lcreset").addEventListener("click", ()=>{ LCDRAFT = null; renderChain(); });
+$("lmprov").addEventListener("change", e=>{ LMQ.provider = e.target.value; LMQ.offset = 0; loadCalls(); });
+$("lmok").addEventListener("change", e=>{ LMQ.ok = e.target.value; LMQ.offset = 0; loadCalls(); });
+$("lmcaller").addEventListener("change", e=>{ LMQ.caller = e.target.value; LMQ.offset = 0; loadCalls(); });
+// 敲一个字就发一次请求,在一个十一万行的账本上是每次全表扫。等人停手再发。
+let LMQT = null;
+$("lmq").addEventListener("input", e=>{
+  clearTimeout(LMQT);
+  const v = e.target.value;
+  LMQT = setTimeout(()=>{ LMQ.q = v; LMQ.offset = 0; loadCalls(); }, 260);
+});
+// 拖拽排序。上下箭头按钮是同一件事的键盘可达版本,两条路都留着:
+// 只有拖拽的话,这个控件对键盘用户不存在。
+let LCFROM = null;
+$("lclist").addEventListener("dragstart", e=>{
+  const li = e.target.closest("li[data-i]");
+  if(!li) return;
+  LCFROM = Number(li.dataset.i);
+  li.classList.add("drag");
+  e.dataTransfer.effectAllowed = "move";
+  // Firefox 不设 data 就不发 drop。值本身没人读。
+  try{ e.dataTransfer.setData("text/plain", String(LCFROM)); }catch(err){}
+});
+$("lclist").addEventListener("dragover", e=>{
+  const li = e.target.closest("li[data-i]");
+  if(!li || LCFROM == null) return;
+  e.preventDefault();
+  [...$("lclist").children].forEach(x=>x.classList.toggle("over", x === li));
+});
+$("lclist").addEventListener("drop", e=>{
+  const li = e.target.closest("li[data-i]");
+  if(!li || LCFROM == null) return;
+  e.preventDefault();
+  const to = Number(li.dataset.i);
+  const a = (LCDRAFT || ((LLM && LLM.chain && LLM.chain.effective) || [])).slice();
+  if(LCFROM !== to && LCFROM < a.length){
+    a.splice(to, 0, a.splice(LCFROM, 1)[0]);
+    LCDRAFT = a;
+  }
+  LCFROM = null;
+  renderChain();
+});
+$("lclist").addEventListener("dragend", ()=>{ LCFROM = null; renderChain(); });
+
+loadLLM();
 $("sidetoggle").addEventListener("click",()=>{
   const n=$("side").classList.toggle("navbar-folded");
   $("sidetoggle").textContent = n ? "\u00bb" : "\u00ab 收起";

@@ -327,3 +327,63 @@ def test_the_allowlist_only_covers_names_that_are_really_templated():
     unjustified = [p for p in _CSS_ALLOW if not _re.search(_re.escape(p), hay)]
     assert not unjustified, ("豁免表里这些前缀在页面和后端里都找不到,豁免没有依据: "
                              + " | ".join(unjustified))
+
+
+# ---- vendor 类名撞在表格元素上 -------------------------------------------------------------------
+# 真实事故 2026-09-15:调用屏的明细表给每一行写了 `class="row"`,当作「这是一行」的语义标记。
+# 而 Tabler 的 `.row` 是它栅格系统的容器,规则是 `display:flex`。于是每个 <tr> 变成 flex 容器、
+# 每个 <td> 变成 block,九列竖着堆起来,一行从 20px 变成 184px,整张表 9300px 高。
+#
+# **页面没有报任何错**,表格里的字一个不少,只是排成了九行。真浏览器里量 computed display
+# 才看得出来 —— 这正是「配色靠量、裁剪靠看」那条经验的另一面。
+#
+# 判据刻意收窄到**表格元素**,而不是「页面用的类名不许和 Tabler 撞」:后者会把 btn / nav-item /
+# navbar-* / page / show 这些**故意在用**的 Tabler 组件类全部判红(实测 10 个,全是正当使用),
+# 于是要么加一张没人核的白名单,要么这条闸被关掉。而一个 Tabler 的布局类出现在 <tr>/<td>/<th>
+# 上,没有一种情况是正当的 —— 那套栅格从设计上就不是给表格用的。
+
+
+def _tabler_layout_classes():
+    """Tabler 里会改 display 的类名。会改 display 的类才有能力拆掉表格的布局。"""
+    css = open(os.path.join(os.path.dirname(PAGE), "vendor", "tabler", "tabler.min.css"),
+               encoding="utf-8", errors="replace").read()
+    names = set()
+    for m in re.finditer(r"([^{}]+)\{([^{}]*)\}", css):
+        if "display:" not in m.group(2):
+            continue
+        names.update(re.findall(r"\.([A-Za-z][\w-]*)", m.group(1)))
+    return names
+
+
+def _classes_on_table_elements(html: str):
+    """(元素名, 类名) 对,只取 table / tr / td / th 上写着的类。"""
+    out = []
+    for m in re.finditer(r"<(table|tr|td|th)\b([^>]*)>", html, re.I):
+        for c in re.finditer(r'class="([^"]*)"', m.group(2)):
+            for tok in c.group(1).split():
+                # JS 拼接出来的片段(`class="lrow' + ...`)在这里会留下半个 token,
+                # 带引号或 ${ 的一律跳过:它们不是字面类名。
+                if tok and "'" not in tok and "$" not in tok and "+" not in tok:
+                    out.append((m.group(1).lower(), tok))
+    return out
+
+
+def test_no_vendor_layout_class_sits_on_a_table_element():
+    bad = [(el, c) for el, c in _classes_on_table_elements(open(PAGE, encoding="utf-8").read())
+           if c in _tabler_layout_classes()]
+    assert not bad, (
+        "这些 Tabler 布局类被写在了表格元素上,会把表格的行列结构拆掉(实测一行 20px 变 184px):\n  "
+        + "\n  ".join(f"<{el} class=\"{c}\">" for el, c in bad))
+
+
+def test_the_table_class_check_can_actually_fire():
+    """负对照:把当初那个 `class="row"` 塞回一个 <tr>,这条闸必须抓到。
+
+    没有这一条,一个抽不到 Tabler 类名的解析器(vendor 路径写错、正则不匹配)
+    会和一个真的没有撞车的页面打印出同样的绿色。
+    """
+    layout = _tabler_layout_classes()
+    assert "row" in layout, "没从 Tabler 里抽到 .row 的 display 规则,解析器大概没在工作"
+    poisoned = '<table><tr class="row" data-i="1"><td>x</td></tr></table>'
+    bad = [(el, c) for el, c in _classes_on_table_elements(poisoned) if c in layout]
+    assert bad == [("tr", "row")], f"投毒没有被抓到,实际 {bad}"

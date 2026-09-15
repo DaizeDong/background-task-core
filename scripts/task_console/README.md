@@ -34,11 +34,36 @@ Windows only. It reads the Windows Task Scheduler; there is nothing to read anyw
 | Memory pool | a memory directory | see index headroom and broken links; archive an entry |
 | Plugins | `claude plugin list` | enable or disable one |
 | Disk | a plugin cache and a session directory | delete abandoned clone staging directories |
+| Calls | the LLM-call primitive's append-only ledger | see today's and this week's usage, which rung answered, how long the degraded stretches were, and reorder the fallback chain |
 
 Five states, not two, for freshness. `LastTaskResult` is an HRESULT, not an exit code: one value
 means "currently running" and another means "has never run". Treating non-zero as failure marks
 healthy tasks red, so `up` / `grace` / `down` / `never` / `running` / `paused` / `unknown` stay
 separate, and `unknown` is drawn so it can never be mistaken for `up`.
+
+The call view answers "today" by the calendar day, not by a rolling 24 hours. Asked at eight in
+the morning, a rolling window folds in yesterday afternoon, so the number is larger, looks
+healthier, and matches nobody's idea of today.
+
+Records written before the ledger carried timestamps cannot be placed in any window at all. They
+are reported as excluded, with their count, rather than quietly counted as in-window or silently
+dropped: "no calls today" and "a hundred thousand calls that cannot be dated" are different
+findings and the page draws them differently.
+
+Served, failed and skipped are three separate columns for one rung. A rung is skipped when that
+call's chain did not contain it, which is neither a success nor a failure; before it was counted on
+its own it was indistinguishable from a rung that simply never got its turn.
+
+Who made the call is recorded as a bare script name, never a full path. The ledger sits outside
+every repository, but this page serves it over HTTP, and a full path carries a home directory for
+no gain in what it tells you. Three states stay separate: a name, "could not be inferred" (an
+embedded call with no main script), and "older than this field" (every record written before it
+existed). The last two look identical once merged, and merging them turns "the feature just landed"
+into "inference is failing".
+
+Degradation is clustered, not spread out. An average dilutes one bad afternoon into a harmless
+looking fraction, so the page also draws consecutive runs: how many calls in a row landed on the
+same rung.
 
 A fresh artifact does **not** clear a bad exit code by default. Log-shaped artifacts are usually
 written on the crash path too, so a task can fail for days while its artifact stays fresh. Only an
@@ -69,6 +94,9 @@ names with your own tasks. Everything else is optional.
 | `TASK_CONSOLE_IDENTITIES` | a table of `login\|display name\|commit email`, one per line, `#` for comments, saying which identity each repository owner should be committed under | unset means the account-match column reads NOT CHECKED for every repository, which is deliberately not the same as saying they match; no address from this file is ever rendered, only the account name and the verdict |
 | `TASK_CONSOLE_CONVO_CACHE` | where the conversation index caches its scan | unset means the first scan of every page load walks every transcript again; correctness is unaffected, the page is just slower |
 | `TASK_CONSOLE_DB` | the SQLite file the ingester writes and the page reads | falls back to the companion repo's `data/task-console/console.sqlite3`, and if no companion resolves it reports UNINITIALISED with setup instructions rather than falling back into this repo |
+| `TASK_CONSOLE_LLMCALL_LEDGER` | the append-only JSONL ledger the LLM-call primitive writes, one line per call | falls back to `~/.llmcall/ledger.jsonl`; a missing file makes the call view read NOT CHECKED, which is deliberately not the same as reading zero calls |
+| `TASK_CONSOLE_LLMCALL_CHAIN` | the file the call view writes a fallback-chain order into | falls back to `~/.llmcall/chain.txt`. This is the one path on this console that writes into another program's configuration, and it is shadowed by the `LLMCALL_CHAIN` environment variable: when that variable is set, the page says so in as many words instead of reporting a save that changes nothing |
+| `TASK_CONSOLE_LLMCALL_BODIES` | the directory holding recorded prompt and reply bodies, one file per day | falls back to the private companion repo the call primitive resolves (`LLMCALL_DATA_DIR`, then `LLMCALL_CONFIG/data`, then `~/.example-tool-config/data`, then `~/.llmcall-data`), each with a `bodies/` subdirectory. Body recording is off by default, and the three ways to have no bodies (never turned on, companion repo not initialised, entry past its retention) are reported as three different sentences rather than one empty box |
 | `TASK_CONSOLE_POWERSHELL` | the powershell.exe that task commands run through | falls back to the pinned `System32\WindowsPowerShell\v1.0\powershell.exe`, and only to a bare `powershell.exe` off PATH when that file is not there |
 
 The tool defaults only into its own namespace. Pointing it at whatever else a machine keeps its
@@ -151,6 +179,7 @@ normal user session. The console says so instead of reporting a bare access-deni
 | `maint.py` | the closed maintenance action table and its argument gate |
 | `memops.py` | memory pool diagnosis; archiving is delegated, not reimplemented |
 | `sysinfo.py` | disk, cache size, abandoned clone staging directories |
+| `llmstats.py` | the LLM-call ledger: windowing, per-rung reconstruction, consecutive runs, and the chain config file |
 | `retire.py` | the three-place deregistration, planned first and then written |
 | `console_store.py` / `console_ingest.py` / `history.py` / `timeline.py` | the run history layer |
 

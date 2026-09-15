@@ -65,6 +65,7 @@ import convos
 import evtlog
 import freshness
 import history
+import llmstats
 import maint
 import memops
 import repos as repos_mod
@@ -811,6 +812,71 @@ def build_payload() -> dict:
 
 
 # --------------------------------------------------------------------------- http
+# ── llmcall 账本 ────────────────────────────────────────────────────────────────
+# 二十兆、十一万行,而这一屏一次打开会连着发四五个请求(总览 + 明细 + 翻页 + 展开)。
+# 每个请求各解析一遍整个账本,人按一下翻页要等好几秒。
+#
+# 缓存键是 (路径, 字节数, mtime)。这三样对一个**只追加**的文件来说是可靠的:
+# 追加一行,后两样必变。刻意不用「缓存 N 秒」那种写法 ——
+# 那会让刚发生的一次调用在页面上消失几秒,而「刚跑完但看不见」正是这台台子要防的形态。
+_LEDGER_CACHE: dict = {}
+
+
+def llm_records():
+    """读账本,带失效缓存。返回 (records, meta)。"""
+    p = llmstats.ledger_path()
+    try:
+        st = os.stat(p)
+        key = (str(p), st.st_size, st.st_mtime_ns)
+    except OSError:
+        key = (str(p), None, None)
+    if _LEDGER_CACHE.get("key") == key:
+        return _LEDGER_CACHE["recs"], _LEDGER_CACHE["meta"]
+    recs, meta = llmstats.read()
+    _LEDGER_CACHE.update(key=key, recs=recs, meta=meta)
+    return recs, meta
+
+
+def llm_overview() -> dict:
+    """调用屏的总览。
+
+    窗口的选取是有讲究的。「今天」按**本地零点**算而不是「最近 24 小时」:
+    人问「今天用了多少」的时候问的是日历上的今天,而一个滑动 24 小时窗口
+    在早上八点看会把昨天下午的量算进来,那个数字对不上任何人的直觉。
+    """
+    recs, meta = llm_records()
+    now = time.time()
+    lt = time.localtime(now)
+    midnight = time.mktime((lt.tm_year, lt.tm_mon, lt.tm_mday, 0, 0, 0, 0, 0, -1))
+    wins = []
+    for label, hours in (("今天", (now - midnight) / 3600.0), ("近 7 日", 168.0)):
+        inside, unstamped, _out = llmstats.window(recs, hours, now=now)
+        agg = llmstats.aggregate(inside)
+        agg["label"] = label
+        agg["hours"] = round(hours, 3)
+        agg["unstamped_excluded"] = unstamped
+        wins.append(agg)
+    life = llmstats.aggregate(recs)
+    life["label"] = "全部历史"
+    life["hours"] = None
+    life["unstamped_excluded"] = 0
+    wins.append(life)
+
+    # 手上已经有解析好的 recs 就传下去。不传的话 chain_config 会自己再去扫一遍账本
+    # 尾部 —— 结果一样,但那是同一份文件在同一个请求里被读了两次,
+    # 而两次读之间文件可能已经变了,于是页面上的「最近一次调用」和明细表的最后一行
+    # 会指向不同的记录,且没有任何东西说得出这一点。
+    chain = llmstats.chain_config(recs)
+    # verify 不是装饰。rungs 那张表的每一个数都建在「chain[attempts-1] 就是应答那一级」
+    # 这条判据上,而判据垮掉的时候那张表照样画得很漂亮 —— 一张建在坏判据上的漂亮的表,
+    # 和一张对的表,在页面上长得一模一样。所以反例数要跟着表一起送上去。
+    return {"ledger": meta, "windows": wins, "chain": chain,
+            "rungs": llmstats.rungs(recs, chain.get("effective") or []),
+            "verify": llmstats.verify_rungs(recs),
+            "callers": llmstats.callers(recs),
+            "runs": llmstats.runs(recs)}
+
+
 class Handler(BaseHTTPRequestHandler):
     server_version = "task-console"
     # fail-closed:空集合什么都不匹配,所以一个没走过 main() 的 Handler 会拒绝每一个请求。
@@ -938,6 +1004,29 @@ class Handler(BaseHTTPRequestHandler):
         except Exception as e:
             return self._json(500, {"error": f"{type(e).__name__}: {e}"})
 
+    def _llm_chain(self):
+        """改降级链的顺序。
+
+        这是这台控制台上少数几个「改的东西不在这台控制台里」的动作之一 :
+        它写的是 llmcall 自己的配置文件,而 llmcall 是全 fleet 的判断基元。
+        所以名字闸门在 llmstats.write_chain 里,整批拒绝,不做部分写入 ——
+        一个写进去一半的链,比一个没写进去的链危险得多。
+        """
+        if not self._authed():
+            self._drain()
+            return self._json(403, {"error": "bad token"})
+        try:
+            n = int(self.headers.get("Content-Length") or 0)
+            body = json.loads(self.rfile.read(n) or b"{}")
+        except Exception as e:
+            return self._json(400, {"error": f"bad request: {e}"})
+        try:
+            return self._json(200, llmstats.write_chain(body.get("chain") or []))
+        except llmstats.Refused as e:
+            return self._json(400, {"error": str(e), "code": e.code})
+        except Exception as e:
+            return self._json(500, {"error": f"{type(e).__name__}: {e}"})
+
     def _maint_act(self):
         """维护动作。和 /api/act 分开是刻意的:两张动作表混在一起,加一个 skill 动作
         就等于同时扩大了任务动作的表面,而没有人会在评审时注意到这一点。"""
@@ -1054,6 +1143,51 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(200, codexinfo.list_transcripts(which))
             except Exception as e:
                 return self._json(500, {"error": f"{type(e).__name__}: {e}"})
+        if path == "/api/llmcall":
+            if not self._authed():
+                return self._json(403, {"error": "bad token"})
+            try:
+                return self._json(200, llm_overview())
+            except Exception as e:
+                return self._json(500, {"error": f"{type(e).__name__}: {e}"})
+        if path == "/api/llmcall/calls":
+            if not self._authed():
+                return self._json(403, {"error": "bad token"})
+            q = parse_qs(urlparse(self.path).query)
+            def _int(k, d, lo, hi):
+                try:
+                    return max(lo, min(hi, int((q.get(k) or [str(d)])[0])))
+                except ValueError:
+                    return d
+            prov = (q.get("provider") or [""])[0]
+            okq = (q.get("ok") or [""])[0]
+            ok = None if okq not in ("0", "1") else (okq == "1")
+            try:
+                recs, _ = llm_records()
+                # 搜索词只在错误文本里找,而且截断:一个十一万行的账本上,
+                # 一个超长的查询串除了让每一行都做一次白费的比较之外没有别的作用。
+                needle = (q.get("q") or [""])[0][:200]
+                caller = (q.get("caller") or [""])[0][:200]
+                rows, total = llmstats.page(recs, offset=_int("offset", 0, 0, 10 ** 9),
+                                            limit=_int("limit", 50, 1, 200),
+                                            provider=(prov or None), ok=ok,
+                                            q=(needle or None), caller=(caller or None))
+                return self._json(200, {"rows": rows, "total": total})
+            except Exception as e:
+                return self._json(500, {"error": f"{type(e).__name__}: {e}"})
+        if path.startswith("/api/llmcall/call/"):
+            if not self._authed():
+                return self._json(403, {"error": "bad token"})
+            raw = path[len("/api/llmcall/call/"):]
+            # 索引是**全账本的绝对行号**,所以它必须是纯数字。不先按形状拒绝的话,
+            # 这个值会一路走到正文查找里去,而那边要拿它去碰文件系统。
+            if not raw.isdigit():
+                return self._json(400, {"error": "bad index"})
+            try:
+                recs, _ = llm_records()
+                return self._json(200, llmstats.body(int(raw), recs))
+            except Exception as e:
+                return self._json(500, {"error": f"{type(e).__name__}: {e}"})
         if path == "/api/sys":
             if not self._authed():
                 return self._json(403, {"error": "bad token"})
@@ -1149,6 +1283,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._codex_delete()
         if self.path.split("?", 1)[0] == "/api/maint/act":
             return self._maint_act()
+        if self.path.split("?", 1)[0] == "/api/llmcall/chain":
+            return self._llm_chain()
         if self.path.split("?", 1)[0] != "/api/act":
             self._drain()
             return self._json(404, {"error": "not found"})
