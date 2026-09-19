@@ -1,7 +1,6 @@
 # task-console
 
-A local, loopback-only console for looking at a Windows machine: its scheduled tasks, the git
-repositories under one root, and whatever skill, memory and transcript directories you point it at.
+Manage local Windows tasks through declarations, adoption, registration, control and observations. Windows Task Scheduler provides triggers. The loopback web console also shows configured repositories, skills, memory and transcripts, distinguishing what was checked from what was found.
 
 It exists to answer one question honestly: **is anything broken that currently looks fine?** Every
 panel reports whether it was able to check, separately from what it found, because an unchecked
@@ -11,7 +10,7 @@ source that renders like a passing one is the failure this tool is built to refu
 
 `scripts/task_console/server.py` serves a single page on `127.0.0.1`, mints a token per start and
 never writes it down. `console_ingest.py` pays the cost of reading the Windows Operational event log
-out of band, so page loads do not; that log is a circular buffer of roughly five days, so anything
+out of band, so page loads do not; that log is a circular buffer with retention determined by its configured size and event volume, so anything
 not ingested inside that window is gone rather than late, and the console says so rather than
 showing a confident number that stopped moving.
 
@@ -20,11 +19,7 @@ is the authority; this file does not keep a second copy of it**, because a prose
 capabilities drifts the moment a verb is added and the drift is silent — the reader trusts the
 list, and the list is where the promise lives.
 
-The shape of the constraint, which does not drift: it cannot **create** a task, because creating
-one correctly means registering it in several places and a button that skipped them would
-manufacture exactly the untracked task that procedure exists to prevent. It can retire one, which
-is the opposite operation and safe to automate precisely because it is subtractive. Anything that
-leaves the machine is two steps, never one.
+Task creation and migration use the declaration, review and registration APIs described in [task registration](docs/task-registration.md). The web action table does not provide an unrestricted Scheduler shortcut. Registration records authority and recovery evidence before changing task definitions; the console keeps its existing review step for outgoing actions.
 
 ## Running it
 
@@ -40,6 +35,25 @@ counts it in its own denominator, so a check that skipped a source cannot print 
 is unset. That table is reconciled against the code by a test in both directions, because the
 launcher that sets those variables lives outside this repo and a variable missing from the table is
 a variable missing from every launcher anyone writes from it.
+
+## Read-only declaration producer
+
+The `task_console.compiler.plan(request)` API and `task-console plan` JSON CLI compile
+component `.console.json` declarations, explicit private bindings, machine overrides and
+a caller-supplied legacy snapshot. They return field comparisons and generated content
+without writing files, querying Scheduler or starting tasks. Existing task definitions remain authoritative until the reviewed adoption or migration transaction transfers the selected responsibility; planning alone does not transfer authority.
+
+After installing the package into an isolated runtime, run the synthetic example:
+
+```text
+python -m task_console plan --component examples/console/.console.json --bindings examples/console/bindings.example.json --machine examples/console/machine.console.example.json --baseline examples/console/baseline.example.json
+```
+
+From a source checkout, the same entrypoint is `python -m scripts.task_console`.
+The existing `python scripts/task_console/server.py` entrypoint is unchanged.
+See `scripts/task_console/README.md` for the producer input contract and parity limits.
+Real requests and returned plans contain machine data and belong in private storage.
+Regenerate the public examples with `python tools/make_fixtures.py`.
 
 ## Where the data lives
 

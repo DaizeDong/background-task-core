@@ -1,10 +1,9 @@
-﻿<#
+<#
   collect.ps1 - dump the live Windows Task Scheduler state as JSON on stdout.
 
-  This is the ONLY thing in task-console that talks to the scheduler for reading. It emits raw
-  facts and makes no judgement: the merging with a health watch-list, a backup allow-list and a
-  category map all happens in server.py, so the rules live in one place and this file stays a
-  dumb collector.
+  The existing collector emits raw facts without health judgments. An optional explicit
+  private binding sends the same capture to task_console.observations for compilation and
+  atomic snapshot publication. The server's raw Scheduler JSON contract remains available.
 
   I3 (spec invariant): enumerating zero tasks is a FAILURE, not an empty result. A collector that
   returns [] when the scheduler service is down looks exactly like a machine with no tasks, and the
@@ -16,11 +15,17 @@
 [CmdletBinding()]
 param(
   # Tasks whose name matches this are vendor-installed and out of scope for the console.
-  [string]$VendorPattern = '^(NVIDIA|OneDrive|Adobe|Zoom|XRite|MicrosoftEdge|Nahimic|Optane|Intel|NvProfile|SoftLanding|RunPlatform|Lenovo|Launch Adobe)'
+  [string]$VendorPattern = '^(NVIDIA|OneDrive|Adobe|Zoom|XRite|MicrosoftEdge|Nahimic|Optane|Intel|NvProfile|SoftLanding|RunPlatform|Lenovo|Launch Adobe)',
+  [string]$ObservationBinding = $env:TASK_CONSOLE_OBSERVATION_BINDING,
+  [string]$ObservationPython = $env:TASK_CONSOLE_OBSERVATION_PYTHON,
+  # Used by the bounded periodic owner; emit local facts without recursive publication.
+  [switch]$CaptureOnly
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+# Leave ten seconds of the existing server budget for startup and final delivery.
+$observationDeadlineMs = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() + 80000
 
 try { [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding $false } catch { }
 
@@ -82,6 +87,8 @@ foreach ($t in $all) {
     rcHex       = if ($i) { '0x{0:X}' -f ($i.LastTaskResult -band 0xFFFFFFFF) } else { $null }
     lastRun     = if ($i -and $i.LastRunTime -gt (Get-Date '2000-01-01')) { $i.LastRunTime.ToString('yyyy-MM-dd HH:mm') } else { $null }
     nextRun     = if ($i -and $i.NextRunTime) { $i.NextRunTime.ToString('yyyy-MM-dd HH:mm') } else { $null }
+    lastRunEpoch = if ($i -and $i.LastRunTime -gt (Get-Date '2000-01-01')) { ([DateTimeOffset]$i.LastRunTime).ToUnixTimeMilliseconds() / 1000.0 } else { $null }
+    nextRunEpoch = if ($i -and $i.NextRunTime) { ([DateTimeOffset]$i.NextRunTime).ToUnixTimeMilliseconds() / 1000.0 } else { $null }
     # NumberOfMissedRuns is the scheduler's OWN count of runs it should have started and
     # did not. Nothing else on this machine can answer 'should have run but did not':
     # an exit code only exists for runs that happened.
@@ -106,8 +113,80 @@ foreach ($t in $all) {
   }
 }
 
-[ordered]@{
+$capture = [ordered]@{
   generated = (Get-Date).ToString('yyyy-MM-dd HH:mm:ss')
+  observed_at = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() / 1000.0
   enumerated = $all.Count
   tasks = $rows
-} | ConvertTo-Json -Depth 6 -Compress
+}
+
+if ($ObservationBinding -or $CaptureOnly) {
+  if (-not $CaptureOnly -and (-not $ObservationPython -or -not [IO.Path]::IsPathRooted($ObservationPython) -or
+      -not [IO.Path]::IsPathRooted($ObservationBinding))) {
+    throw 'collect: observation binding and interpreter must be explicit absolute paths'
+  }
+  # Read facts once in this existing collection pass. Never execute task actions
+  # or commands from observations. Only matching evidence survives the adapter.
+  $local = [ordered]@{ observed_at=$capture.observed_at; processes=@(); listeners=@();
+                      process_query='unchecked'; listener_query='unchecked' }
+  try {
+    $local.processes = @(Get-CimInstance Win32_Process -ErrorAction Stop | ForEach-Object {
+      @{pid=[int]$_.ProcessId; executable=$_.ExecutablePath; command_line=$_.CommandLine}
+    })
+    $local.process_query = 'checked'
+  } catch {
+    # Image paths remain useful when CIM command-line access is denied. Rules
+    # requiring arguments cannot match this partial evidence.
+    try {
+      $local.processes = @(Get-Process -ErrorAction Stop | ForEach-Object {
+        @{pid=[int]$_.Id; executable=$_.Path; command_line=$null}
+      })
+      $local.process_query = 'checked'
+      $local.command_line_query = 'query_failed'
+    } catch { $local.process_query = 'query_failed' }
+  }
+  try {
+    $local.listeners = @(Get-NetTCPConnection -State Listen -ErrorAction Stop | ForEach-Object {
+      @{pid=[int]$_.OwningProcess; port=[int]$_.LocalPort; address=[string]$_.LocalAddress}
+    })
+    $local.listener_query = 'checked'
+  } catch { $local.listener_query = 'query_failed' }
+  $capture.local = $local
+}
+
+if ($ObservationBinding -and -not $CaptureOnly) {
+  # ASCII JSON is lossless for UTF-16 surrogate pairs and U+FEFF payloads.
+  # The installed Python entry owns bounded I/O, the worker Job and cleanup.
+  $json = $capture | ConvertTo-Json -Depth 30 -Compress
+  $json = [regex]::Replace($json, '[^\x00-\x7F]', { param($m) '\u{0:x4}' -f [int][char]$m.Value })
+  if ($json.Length -gt 16777216) { throw 'collect: observation input_limit' }
+  $previousEncoding = $OutputEncoding
+  try {
+    $OutputEncoding = New-Object System.Text.UTF8Encoding $false
+    # Stderr may contain an interpreter import traceback; never relay its paths
+    # or raw capture. Only the fixed receipt fields below cross this facade.
+    $ErrorActionPreference = 'Continue'
+    $result = @($json | & $ObservationPython -I -B -X utf8 -m task_console.observations `
+      --binding $ObservationBinding --deadline-ms $observationDeadlineMs --receipt-stdout 2>$null)
+    $code = $LASTEXITCODE
+    $ErrorActionPreference = 'Stop'
+    try { $receipt = ($result -join "`n") | ConvertFrom-Json -ErrorAction Stop }
+    catch { throw 'collect: observation reader unavailable or invalid receipt' }
+    if ($code -ne 0) {
+      $reason = 'collection_failed'
+      if ($receipt.reason_code -in @('dependency_unavailable', 'worker_timeout', 'worker_output_limit',
+          'worker_input_limit', 'input_limit', 'worker_cleanup_failed', 'worker_launch_failed',
+          'worker_cancelled', 'worker_failed')) { $reason = $receipt.reason_code }
+      throw "collect: observation reader failed ($reason)"
+    }
+    if ($receipt.schemaVersion -ne 1 -or $receipt.published -ne $true) {
+      throw 'collect: invalid observation publication receipt'
+    }
+  } finally {
+    $OutputEncoding = $previousEncoding
+    $ErrorActionPreference = 'Stop'
+    $capture.Remove('local')
+  }
+}
+# Preserve the raw Scheduler stdout contract for existing server/ingest readers.
+$capture | ConvertTo-Json -Depth 6 -Compress

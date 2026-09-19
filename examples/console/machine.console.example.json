@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "authority_epoch": 0,
+  "migrated_tasks": [],
+  "overrides": {},
+  "categories": [
+    {
+      "id": "maintenance",
+      "name": "Maintenance",
+      "desc": "Synthetic maintenance tasks"
+    }
+  ]
+}

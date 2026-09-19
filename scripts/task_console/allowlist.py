@@ -1,88 +1,241 @@
-"""备份 allow-list(`$TaskNames = @( 'A', 'B' )`)的**唯一**解析器。
+"""Read and edit literal PowerShell TaskNames arrays without evaluating a script.
 
-这个文件存在的理由是同一份东西曾经有三份互不相同的解析实现:
-
-  - `server.py` 用 `\\$TaskNames\\s*=\\s*@\\((.*?)\\n\\)` —— **要求收尾括号顶格**;
-  - `retire.py` 用 `(\\$TaskNames\\s*=\\s*@\\()(.*?)(\\n\\s*\\))` —— 允许它缩进;
-  - `retire.py` 的重写还有第三种「整行必须只有一个引号名」的判据。
-
-三者没有共用常量,也没有任何一处对账。后果是可以做到的:allow-list 脚本按常见
-PowerShell 风格把收尾括号写成缩进的 `  )`,于是 `server` 匹配失败、`allow` 变成 None,
-整张表的「备份」列显示 ?、「不在备份清单,换机会静默丢失」这条 issue 对所有任务一律不报
-—— **一个真的漏了备份的任务被显示成「未检查」**;而同一时刻点退役,`retire` 用宽一格的
-正则把同一个文件读得好好的,报「这一处要改」并真的改写它。
-**同一个文件,两个都自称权威的答案。**
-
-⚠ 三份实现合并成一份之后,合并进来的那一份仍然**只认跨行写法**:收尾括号必须在
-另起一行上。而 `@( 'A', 'B' )` 写在一行里是完全合法、而且是最常见的 PowerShell 写法
-—— 连本文件开头那句文档里举的例子都是这一种。它匹配不上,`parse_names` 返回
-(None, 「找不到 $TaskNames = @( ... ) 这个块」),于是整张表的备份列又变回 ?,
-而那正是这个模块存在的理由所反对的那一种输出:**一个真的漏了备份的任务被显示成
-「未检查」**,而文件本身好好的、人照着文档写的也没错。
-
-所以下面有两个模式,**单行那个先试**:
-`INLINE` 里的 `[^)\n]*` 不许跨行,所以它对跨行块根本不可能命中,先试它是安全的;
-反过来先试 `BLOCK` 则不安全 —— 遇到单行写法时,它的 `.*?` 会一路吞到文件后面
-某个恰好独占一行的 `)`,把中间所有带引号的字符串一并当成任务名。
-**一个匹配过宽的解析器,和一个真的读对了的解析器,输出长得一模一样。**
-
-这里还带上另一个仓的闸门(`check-drift.ps1` 的 `Get-PsArray`)用血换来的一条:
-**扫引号之前必须先去掉整行注释**。英文散文里的撇号(`the repo's tools`)和一个开引号
-长得一模一样,一条注释就能让解析器把后面半个清单吞掉。那次的表现是连续九轮绿灯之后
-突然报出三个不存在的漂移,同时**掩盖掉一个真的**。
+The legacy parse_names returns (None, reason) for absent, malformed and empty
+arrays. The strict reader distinguishes an empty array from a failed read so
+retirement remains idempotent after removing the last name.
 """
 from __future__ import annotations
 
+from dataclasses import dataclass
 import re
 
-# 单行写法:`$TaskNames = @( 'A', 'B' )`。`[^)\n]*` 同时挡住换行和右括号,
-# 所以它要么在同一行里干净地闭合,要么彻底不匹配 —— 不存在「吞到下面去」这种中间态。
-INLINE = re.compile(r"(\$TaskNames\s*=\s*@\()([^)\n]*)(\))")
 
-# 跨行写法。收尾括号允许缩进(两种写法都在真实脚本里出现过)。
-# 非贪婪到**第一行只有右括号的行**。
-BLOCK = re.compile(r"(\$TaskNames\s*=\s*@\()(.*?)(\n[ \t]*\))", re.S)
-
-# 两个模式的第 2 组都是块体。顺序即优先级,理由见模块文档。
-_PATTERNS = (INLINE, BLOCK)
-
-# 一行里可以有多个名字:`'A', 'B'` 是合法的 PowerShell,而按行只取第一个会静默漏掉后面的。
-_NAME = re.compile(r"'([^']+)'")
+class AllowlistError(ValueError):
+    """The script has no unambiguous literal TaskNames assignment."""
 
 
-def _strip_comments(body: str) -> str:
-    """去掉整行注释。只去整行的,不去行尾的 `# ...`:
-
-    一个 `'Name'  # 说明` 里的 `#` 后面不会再有名字,而按 `#` 截断会在
-    `'Na#me'` 这种(合法但没人会写的)名字上出错。整行注释是已知会咬人的那一种,
-    行尾注释不是 —— 只关掉证明会咬人的那一个。
-    """
-    return "\n".join(ln for ln in body.split("\n") if not ln.lstrip().startswith("#"))
+@dataclass(frozen=True)
+class _Literal:
+    value: str
+    start: int
+    end: int
 
 
-def find_block(text: str) -> re.Match | None:
-    """定位 `$TaskNames = @( ... )`,单行与跨行两种写法都认。找不到返回 None。
+def _comment_end(text: str, pos: int) -> int:
+    if text.startswith("<#", pos):
+        depth, pos = 1, pos + 2
+        while pos < len(text) and depth:
+            if text.startswith("<#", pos):
+                depth += 1
+                pos += 2
+            elif text.startswith("#>", pos):
+                depth -= 1
+                pos += 2
+            else:
+                pos += 1
+        if depth:
+            raise AllowlistError("Unterminated block comment")
+        return pos
+    end = text.find("\n", pos)
+    return len(text) if end < 0 else end
 
-    返回的 Match 第 2 组是块体,两个模式一致 —— 调用方不需要知道命中的是哪一个。
-    """
-    for pat in _PATTERNS:
-        m = pat.search(text)
-        if m:
-            return m
-    return None
+
+def _string(text: str, pos: int, *, literal: bool) -> _Literal:
+    start, quote, value = pos, text[pos], []
+    pos += 1
+    escapes = {"0": "\0", "a": "\a", "b": "\b", "f": "\f", "n": "\n",
+               "r": "\r", "t": "\t", "v": "\v"}
+    while pos < len(text):
+        char = text[pos]
+        if char == quote:
+            if pos + 1 < len(text) and text[pos + 1] == quote:
+                value.append(quote)
+                pos += 2
+                continue
+            return _Literal("".join(value), start, pos + 1)
+        if quote == '"' and char == "`":
+            pos += 1
+            if pos >= len(text):
+                break
+            char = escapes.get(text[pos], text[pos])
+        elif quote == '"' and char == "$" and literal:
+            raise AllowlistError("Interpolation is not a literal task name")
+        value.append(char)
+        pos += 1
+    raise AllowlistError("Unterminated string")
+
+
+def _trivia(text: str, pos: int) -> int:
+    while pos < len(text):
+        if text[pos].isspace() or text[pos] == "\ufeff":
+            pos += 1
+        elif text.startswith("`\r\n", pos):
+            pos += 3
+        elif text.startswith("`\n", pos):
+            pos += 2
+        elif text[pos] == "#" or text.startswith("<#", pos):
+            pos = _comment_end(text, pos)
+        else:
+            break
+    return pos
+
+
+_TASK_VARIABLE = re.compile(
+    r"\$(?:\{(?:(?:script|global|local|private):)?TaskNames\}|"
+    r"(?:(?:script|global|local|private):)?TaskNames\b)", re.I)
+
+
+def _mutates_task_names(text: str, pos: int) -> bool:
+    prefix = text[pos:pos + 2] in ("++", "--")
+    start = _trivia(text, pos + 2) if prefix else pos
+    variable = _TASK_VARIABLE.match(text, start)
+    if variable is None:
+        return False
+    if prefix:
+        return True
+    end = _trivia(text, variable.end())
+    # Follow index expressions without interpreting them. Strings and comments
+    # may themselves contain brackets, so a flat bracket regex is insufficient.
+    while end < len(text) and text[end] == "[":
+        depth, end = 1, end + 1
+        while end < len(text) and depth:
+            end = _trivia(text, end)
+            if end >= len(text):
+                break
+            if text[end] in "\"'":
+                end = _string(text, end, literal=False).end
+                continue
+            if text[end] == "[":
+                depth += 1
+            elif text[end] == "]":
+                depth -= 1
+            end += 1
+        if depth:
+            raise AllowlistError("Unterminated TaskNames index")
+        end = _trivia(text, end)
+    return re.match(r"(?:[+*/%\-]?=|\+\+|--)", text[end:]) is not None
+
+
+def _parse(text: str):
+    assignment = re.compile(r"\$TaskNames\b\s*=\s*@\(", re.I)
+    found = None
+    pos = 0
+    while pos < len(text):
+        if text[pos:pos + 2] in ("@'", '@"'):
+            quote = text[pos + 1]
+            end = re.search(r"(?m)^" + re.escape(quote + "@"), text[pos + 2:])
+            if not end:
+                raise AllowlistError("Unterminated here-string")
+            pos += 2 + end.end()
+            continue
+        if text[pos] == "#" or text.startswith("<#", pos):
+            pos = _comment_end(text, pos)
+            continue
+        if text[pos] in "\"'":
+            pos = _string(text, pos, literal=False).end
+            continue
+        match = assignment.match(text, pos)
+        if not match:
+            if _mutates_task_names(text, pos):
+                raise AllowlistError("Nonliteral TaskNames assignment or mutation")
+            pos += 1
+            continue
+        if found is not None:
+            raise AllowlistError("Multiple TaskNames assignments")
+        start, body_start = pos, match.end()
+        pos, names, commas = body_start, [], []
+        need_value = True
+        while True:
+            previous = pos
+            pos = _trivia(text, pos)
+            if pos >= len(text):
+                raise AllowlistError("Unterminated TaskNames array")
+            if text[pos] == ")":
+                if need_value and names:
+                    raise AllowlistError("Trailing comma in TaskNames")
+                break
+            if not need_value:
+                if text[pos] == ",":
+                    commas.append((len(names) - 1, pos))
+                    pos += 1
+                    need_value = True
+                    continue
+                if "\n" not in text[previous:pos]:
+                    raise AllowlistError("Expected a comma or newline between names")
+            if text[pos] not in "\"'":
+                raise AllowlistError("TaskNames accepts quoted literals only")
+            name = _string(text, pos, literal=True)
+            if not name.value or any(ord(c) < 32 for c in name.value):
+                raise AllowlistError("Empty or control-character task name")
+            names.append(name)
+            pos = name.end
+            need_value = False
+        end = pos + 1
+        tail = _trivia(text, end)
+        if tail < len(text) and "\n" not in text[end:tail] and text[tail] != ";":
+            raise AllowlistError("Executable expression after TaskNames array")
+        found = start, body_start, pos, end, names, commas
+        pos = end
+    if found is None:
+        raise AllowlistError("找不到 $TaskNames = @( ... ) 这个块")
+    return found
+
+
+def literal_names(text: str) -> list[str]:
+    """Strict reader: preserve order/duplicates; raise on an unchecked source."""
+    return [name.value for name in _parse(text)[4]]
 
 
 def parse_names(text: str) -> tuple[set[str] | None, str | None]:
-    """返回 (名字集合, 出错原因)。
-
-    **找不到块 -> (None, 原因),不是空集合。** 两者在界面上是完全不同的断言:
-    None 是「我没能检查」,空集合是「一个任务都没有被备份」,后者响亮得多。
-    折叠它们会让「解析器坏了」长得像「你的备份清单是空的」,反之亦然。
-    """
-    m = find_block(text)
-    if not m:
-        return None, "找不到 $TaskNames = @( ... ) 这个块"
-    names = set(_NAME.findall(_strip_comments(m.group(2))))
+    try:
+        names = set(literal_names(text))
+    except AllowlistError as exc:
+        return None, str(exc)
     if not names:
         return None, "$TaskNames 里解析出 0 个名字,判为未检查而不是全部缺失"
     return names, None
+
+
+def remove_name(text: str, name: str) -> tuple[str, bool]:
+    """Remove exact literals and their separators, preserving comments."""
+    try:
+        _, _, _, _, names, commas = _parse(text)
+    except AllowlistError:
+        return text, False
+    removed = {i for i, token in enumerate(names) if token.value == name}
+    if not removed:
+        return text, False
+    kept = set(range(len(names))) - removed
+    spans = [(token.start, token.end) for i, token in enumerate(names) if i in removed]
+    spans.extend((pos, pos + 1) for i, pos in commas
+                 if i not in kept or not any(j > i for j in kept))
+    for start, end in sorted(spans, reverse=True):
+        text = text[:start] + text[end:]
+    return text, True
+
+
+def render_names(names: list[str]) -> str:
+    """Render data as single-quoted literals; never interpolate PowerShell."""
+    text = "$TaskNames = @(\n" + ",\n".join(
+        "    '" + name.replace("'", "''") + "'" for name in names) + "\n)\n"
+    literal_names(text)
+    return text
+
+
+def find_block(text: str) -> re.Match | None:
+    """Compatibility match with groups (assignment, body, closing parenthesis)."""
+    try:
+        start, body, close, end, _, _ = _parse(text)
+    except AllowlistError:
+        return None
+    return re.compile(r"(.{%d})(.{%d})(.)" % (body - start, close - body), re.S).match(text, start, end)
+
+
+class _BlockPattern:
+    def search(self, text: str) -> re.Match | None:
+        return find_block(text)
+
+
+# Compatibility names for legacy callers. Production readers use literal_names.
+BLOCK = INLINE = _BlockPattern()
+_NAME = re.compile(r"'([^']+)'")

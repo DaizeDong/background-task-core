@@ -117,6 +117,8 @@ names with your own tasks. Everything else is optional.
 | Variable | What it points at | If unset |
 |---|---|---|
 | `TASK_CONSOLE_CATEGORIES` | your category map | `~/.task-console/categories.json`; if that is missing, every task lands in one group called uncategorized, and the page says so |
+| `TASK_CONSOLE_STATUS_SNAPSHOT` | captured version 1 component observations | no default; unset means component health is unchecked |
+| `TASK_CONSOLE_CATALOG_SNAPSHOT` | captured SMITH catalog schema_version 1 | no default; unset means catalog inventory is unchecked |
 | `TASK_CONSOLE_HEALTH` | a health watch list (`task-health.json` shape) | no default; unset means the health-coverage column reads NOT CHECKED |
 | `TASK_CONSOLE_ALLOWLIST` | a PowerShell file containing a `$TaskNames = @(...)` backup allow-list | no default; unset means the backup-coverage check reports NOT CHECKED rather than passing |
 | `TASK_CONSOLE_HISTORY` | a poll-observation log | unset means the observation columns read NOT CHECKED |
@@ -266,3 +268,124 @@ Read `../../docs/changing-this.md` before editing anything here. It is the invar
 must not break and the traps this repo has already fallen into, with the symptom each presents as.
 There is no list of routes or modules in it on purpose: a list drifts, and a drifted list reads
 exactly like an accurate one.
+
+## Declaration producer (schemaVersion 1)
+
+`task_console.compiler.plan(request)` is a pure function over JSON data. It accepts
+`schemaVersion`, `components` (a list of manifests or private installation wrappers),
+`bindings`, `machine`, and `baseline`.
+The CLI accepts that envelope on stdin or through `plan --request FILE`. Alternatively,
+pass all four of `--component FILE` (repeatable), `--bindings FILE`, `--machine FILE`, and
+`--baseline FILE`. There is no implicit discovery, configuration path or output directory.
+
+The generated examples in `examples/console` form a complete synthetic request. Their
+generator is `tools/make_fixtures.py`; `--out DIRECTORY` writes the example files
+directly to that directory. The data-boundary manifest registers each example as FIXTURE.
+`installations.request.example.json` is a separate complete request for two installations
+of the same public component in different scopes.
+
+| Input | Required fields and meaning |
+| --- | --- |
+| Component manifest | `schemaVersion: 1`, stable `component`, logical read entrypoint `read`, and `tasks[]`. Each task declares local `id`, `kind` (`oneshot`, `daemon`, `dispatcher`), logical `entrypoint`, recommended `timeout_seconds`, `concurrency_key`, and `checks[]` containing unique `id` and boolean `required`. Optional `schedule_hint` is advice only. |
+| Bindings | `schemaVersion: 1`, `tasks` keyed by `component/id`. Each binding explicitly supplies `name`, `enabled`, absolute-executable `argv[]`, absolute `cwd` and `source_root`, `timezone`, `trigger`, opaque nonempty `principal` and `power` objects, effective `timeout_seconds` (0 preserves no limit), `concurrency` with Scheduler `policy`, `backup`, category ID `category`, and `checks[]`. |
+| Bound check | `id` plus exactly one of `legacy` (the original health-row fields, excluding identity fields) or `watched_elsewhere` (`component`, `check_id`, `observation_ref`). An omitted check binding remains visible as `unbound`. External observation references are reported, never fetched or treated as proof of health. |
+| Machine | `schemaVersion: 1`, nonnegative `authority_epoch`, empty `migrated_tasks`, `overrides` keyed by `component/id`, and `categories[]` (`id`, `name`, optional `desc`). Overrides replace individual binding fields; nested objects/lists are replaced whole. Nonempty migrated sets are rejected in this producer phase. |
+| Baseline | Optional `tasks` Scheduler snapshot array, `task_names` containing the literal PowerShell source, parsed `task_health`, and parsed `categories`. Missing/null sources remain NOT CHECKED. This must be an explicit snapshot; the compiler never reads the live Scheduler. |
+
+For installed components, the caller supplies a private wrapper in `components`:
+
+```json
+{"namespace": "acme-user", "manifest": {"schemaVersion": 1, "component": "acme-maintenance", "read": "acme-status", "tasks": []}}
+```
+
+The manifest above illustrates the wrapper; use actual task declarations as in the
+generated request. The public manifest is embedded unchanged. The same request supplies
+this mapping alongside `bindings.tasks`:
+
+```json
+{"installations": {"acme-user": {"component": "acme-maintenance", "identity": {
+  "marketplace": "acme-market", "scope": "user", "client": "acme-client",
+  "source_id": "acme-source-user", "metadata": {"selected_version": "1.0"}
+}}}}
+```
+
+`namespace` uses the same slug syntax as component IDs. Each namespace selects exactly
+one wrapper and one mapping; their public `component` IDs must agree. The caller obtains
+the identity descriptor from its catalog. `marketplace`, `scope`, `client`, and `source_id`
+must be nonempty strings; other JSON metadata is preserved as structured data. No plugin
+discovery, cache selection, identity inference or second plugin parser runs here.
+The identity tuple excludes revision metadata: two mappings of the same identity fail
+even if their selected versions differ. Missing, duplicate, unused or mismatched mappings,
+or mixing wrapped and unwrapped declarations of the same component, fail closed.
+
+Wrapped task IDs are `namespace/component/id`; use that exact key for `bindings.tasks`
+and `machine.overrides`. There is no fallback to an unqualified binding. All check coverage,
+projection ownership and Scheduler proposals use the full task ID. `TaskSpec.component`
+retains the public ID, with separate `installation_namespace` and structured
+`installation_identity` fields. These are null for legacy unwrapped inputs, whose
+`component/id` keys remain supported. Identity metadata is not inserted into generated
+legacy file content. The request wrapper, mapping and returned plan belong in private
+storage; public manifest IDs never need an installation-specific edit.
+
+Compiled `recommended_timeout_seconds` retains the public declaration's `timeout_seconds`.
+Compiled `timeout_seconds` is the effective private binding/machine override, including 0
+for unlimited. Changing a recommendation does not propose a Scheduler timeout change.
+
+Supported triggers are `interval` (positive `minutes` or `seconds`), `daily` (`at`),
+`weekly` (`at`, `days` using `mon` through `sun`), `logon`, or `xml` (`xml`, `owner`, `reason`).
+A binding can supply a list of triggers; an empty list explicitly means no triggers.
+Additional trigger fields are retained. XML is checked for well-formedness and retained
+as supplied; DTD/entity declarations are rejected. Use optional binding `xml_passthrough`
+with `xml`, `owner`, and `reason` for complete task settings that cannot be represented
+losslessly. Supply the same object in the baseline for comparison. The optional
+`credential_ref` is a reference only; callers must keep credentials out of requests.
+
+Baseline Scheduler rows use `name`, `enabled`, `argv`, `cwd`, `timezone`, `trigger`,
+`principal`, `power`, `timeout_seconds`, `concurrency`, and optional `xml_passthrough`.
+Supply complete normalized snapshots of the current settings, including opaque fields.
+`tasks: []` means the caller checked the complete Scheduler scope and observed no tasks.
+A declared task absent from any supplied complete array produces `status: different`, an
+`absent_tasks` count and a blocked `scheduler-proposal` with `operation: create`,
+`before: null`, `after: TaskSpec`, and `reason_code: task_absent_requires_review`.
+This is a read-only proposal: the producer always returns `applicable: false` and legacy
+authority. Missing/null snapshots remain `not-checked` without create proposals; missing
+fields on an existing row remain individually unchecked. `compared_tasks` counts existing
+tasks with all comparison fields supplied, excluding absent tasks.
+Unknown OS task names produce adoption proposals
+without compiled bindings or create operations. A proposed false-to-true `enabled` change
+is explicitly blocked for review. Disabled tasks remain in projections when their explicit
+backup/category/check bindings require it.
+
+The plan reports `baseline_revision` (SHA-256 of canonical baseline JSON), `input_revision`
+(the complete canonical request), `task_specs`, `changes`, `parity`, `check_coverage`, and
+`adopt_proposals`. Its `generated_files` contain UTF-8 content and SHA-256 digests of those
+bytes, with ownership task IDs. These are **declared-task projections**, marked
+`replacement_safe: false`; they can omit unmanaged legacy entries and must not replace
+live files. The compiler writes no side files itself. Persist returned plans only in
+private storage chosen by the caller.
+
+Health parity compares all rows as a multiset and normalizes the two existing exit-code
+key spellings through `freshness.declared_ok_codes`. Each generated row keeps its own
+`task_id` and `check_id`. Coverage counts matching declarations; `evaluated: 0` explicitly
+states that no health checks ran. Categories retain order because the legacy reader uses
+first membership. Allowlist parity preserves the legacy empty/absent/malformed return
+convention; an unreadable or empty list is never reported as a checked empty set.
+The shared literal parser rejects direct assignments and mutations through ordinary or
+braced TaskNames references, including scope prefixes, comments, backtick line
+continuations and indexed updates. Unrelated names, comments and quoted text remain
+excluded. Here-string closing markers at the start of a line may be followed by expression
+code; scanning resumes after the marker. This is a literal-data reader, not execution or
+a general PowerShell evaluator.
+
+CLI exit 0 means a valid plan envelope, including drift and NOT CHECKED results. Exit 2
+means invalid arguments, unreadable input, invalid JSON or a contract error. Diagnostics
+identify fields without echoing input values. The package entrypoint exposes this producer;
+the source-tree web server and retirement APIs keep their existing launch/import forms.
+Registration, scheduler mutation, observation collection, runtime launchers and authority
+cutover are outside this interface.
+
+T12 adds a separate, explicitly injected registration transaction API and the
+apply/retire/recover CLI entrypoints. It does not change the read-only plan above.
+See [the registration contract](../../docs/task-registration.md) for required
+private inputs, transport guarantees, recovery semantics and integration gaps.
+No production runtime adapters or automatic authority cutover are installed.

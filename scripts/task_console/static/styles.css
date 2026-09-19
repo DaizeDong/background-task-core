@@ -1,0 +1,1142 @@
+/* 用 Tabler v1.5.0(MIT,随仓发在 vendor/ 下,不吊 CDN)做外壳。
+
+   这里原本写着「不用框架是决定不是疏漏」,机主明确要求改用现成模板,所以那句话连同
+   它的理由一起换掉,而不是留在文件里跟事实打架。原来的三条反对里,两条对 Tabler
+   本来就不成立:它不是只能管一个区域的网格库,而是整套外壳;这页也没有虚拟滚动。
+
+   第三条反对是真的,现在也仍然真:**后台模板都是按低密度调的,而这页是 36 行 19 列
+   的密集网格。** 所以引入之后立刻用 Tabler 自己的 --tblr-* 变量把密度压回来
+   (字号 14px 到 12px,表格内距减半)。密度是靠它支持的变量调的,不是靠覆盖它的规则,
+   所以升级版本不会把这些调整冲掉。
+
+   调色板保持本页原有的那套(--ink/--panel/--bad/...):它是为长时间盯着看的密集表
+   调出来的,双主题都量过对比度。做法是反过来把 Tabler 的表面色接到这套变量上,
+   于是 Tabler 的卡片、徽章、导航自动跟着走,不会出现两套配色。
+
+   字体栈仍然是原来那个,那是这页唯一真正白捡的东西:NSimSun 是每台 Windows 都有的
+   CJK 等宽字体,所以「终端观感 + 中文不塌」零字节成本。被否掉的替代是 vendored
+   Sarasa Mono SC:许可没问题,但整族 62.7MB,单字重 CJK 子集仍要一次离线 pyftsubset,
+   正是这个工具不能有的构建步骤。 */
+:root{
+  /* 两档字体。外壳(侧栏、顶栏、卡头、标签)用比例字体,数据用等宽。
+     整页等宽是这页最像老页面的单点:Tabler 的外壳预期比例字体,喂给它等宽,
+     结构对了字形不对。Grafana / Datadog 的做法都是 chrome 比例、数据等宽。
+     ⚠ --mono 早就被 .mt-t b / .rp-r .n / .cv-gh .dir / #todo .nm 四处引用,
+     却从来没定义过,一直吃 inherit 兜底。定义它顺手修掉那四处静默失效。 */
+  --ui:system-ui,"Segoe UI","Microsoft YaHei",sans-serif;
+  --mono:"Cascadia Mono",Consolas,NSimSun,"Courier New",monospace;
+  --bg:#EEF1F2;
+  /* 同一个颜色的第二份手写副本。Tabler 的组件按 rgb 三元组算半透明底色,拿不到十六进制,
+     ⚠ 这里以前是**两份**手写的同一个颜色:rgb 三元组给 Tabler,十六进制给自己的组件,
+     两份都不声称自己是权威,于是配了一个对账测试盯着它们相等。
+     现在只有一份:三元组是来源,十六进制由 `rgb(var(--x-rgb))` 派生出来。
+     漂移不再是「会被测出来」,而是**不可能发生** —— 那个对账测试也就一起删了。
+     一个对账闸的存在本身就是承认这里有两份;能变成一份的时候,闸门是次优解。
+
+     ⚠ 被删的那个测试里记着一条否决:「不改成运行时算,因为要等 JS 跑完,首屏会闪一下颜色」。
+     那条否决针对的是**用 JS 算**,依然成立。这里走的是纯 CSS 的 `rgb(var(--x-rgb))`,
+     由样式引擎在首屏之前解析,没有 JS 也没有闪色 —— 实测七个颜色改前改后逐位相同。
+     记在这里是因为那条否决本身是对的,不该让下一个人以为它被无视了。 */
+  --tblr-danger-rgb:171,49,35; --tblr-success-rgb:44,122,85;
+  --tblr-warning-rgb:140,98,16; --tblr-primary-rgb:14,107,117;
+ --panel:#FFFFFF; --panel2:#F6F8F9; --line:#D3DBDF; --line2:#E4EAED;
+  --ink:#141C22; --dim:#5C6B75; --faint:#8797A1;
+  --sel:#0E6B7522; --cur:#0E6B7514;
+  --amber:#9A6B0F; --cyan:rgb(var(--tblr-primary-rgb));
+  --ok:rgb(var(--tblr-success-rgb)); --bad:rgb(var(--tblr-danger-rgb));
+  --warn:rgb(var(--tblr-warning-rgb)); --idle:#6A757E;
+  /* 半透明底色同样由三元组派生。0x18 = 24/255 = .094,逐位等价于原来那串十六进制。 */
+  --okb:rgba(var(--tblr-success-rgb),.094); --badb:rgba(var(--tblr-danger-rgb),.094);
+  --warnb:rgba(var(--tblr-warning-rgb),.094); --idleb:#6A757E18;
+  --h0:#E4EAED; --h1:#B5DEC8; --h2:#77C39F; --h3:#E6CB86; --h4:#DB9C71; --h5:#C56E5F;
+  /* 字号四档。原来散着 12 种字号、94 处声明,其中 11px 用了 30 次、11.5px 用了 14 次 ——
+     这两档肉眼分不出,却在不同部件里承担不同角色。也就是说「大小不同」不携带任何意义,
+     人只能靠位置猜层级。收成四档之后字号本身开始表达层级。
+     整体密度不变:最大的一处变化是 9px 涨到 10.5px,而那几处都在 baseline 对齐的栅格里,
+     行高不受影响。19px 是指标格主值、18px 是记忆池计数,各自单独留着。 */
+  --fs-lead:13px;   /* 卡片标题、区块小标题 */
+  --fs-body:12px;   /* 正文、表格单元格 */
+  --fs-meta:11px;   /* 次要说明、计数 */
+  --fs-chip:10.5px; /* 徽章、芯片、轴标签 */
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0B0F12; --panel:#11171B; --panel2:#151D22; --line:#212C33; --line2:#1A242A;
+  --ink:#C7D3DB; --dim:#7E8E99; --faint:#5C6B75;
+  --sel:#3FA9B433; --cur:#3FA9B41A;
+  --tblr-danger-rgb:210,104,94; --tblr-success-rgb:95,175,127;
+  --tblr-warning-rgb:208,160,71; --tblr-primary-rgb:79,176,189;
+  --amber:#D9A441; --cyan:rgb(var(--tblr-primary-rgb));
+  --ok:rgb(var(--tblr-success-rgb)); --bad:rgb(var(--tblr-danger-rgb));
+  --warn:rgb(var(--tblr-warning-rgb)); --idle:#7E8E99;
+
+  --okb:rgba(var(--tblr-success-rgb),.118); --badb:rgba(var(--tblr-danger-rgb),.118);
+  --warnb:rgba(var(--tblr-warning-rgb),.118); --idleb:#7E8E991E;
+  --h0:#1A242A; --h1:#2A5744; --h2:#3C8663; --h3:#87692E; --h4:#985B3B; --h5:#A54A3F;
+}}
+:root[data-theme="dark"]{
+  --bg:#0B0F12; --panel:#11171B; --panel2:#151D22; --line:#212C33; --line2:#1A242A;
+  --ink:#C7D3DB; --dim:#7E8E99; --faint:#5C6B75;
+  --sel:#3FA9B433; --cur:#3FA9B41A;
+  --tblr-danger-rgb:210,104,94; --tblr-success-rgb:95,175,127;
+  --tblr-warning-rgb:208,160,71; --tblr-primary-rgb:79,176,189;
+  --amber:#D9A441; --cyan:rgb(var(--tblr-primary-rgb));
+  --ok:rgb(var(--tblr-success-rgb)); --bad:rgb(var(--tblr-danger-rgb));
+  --warn:rgb(var(--tblr-warning-rgb)); --idle:#7E8E99;
+
+  --okb:rgba(var(--tblr-success-rgb),.118); --badb:rgba(var(--tblr-danger-rgb),.118);
+  --warnb:rgba(var(--tblr-warning-rgb),.118); --idleb:#7E8E991E;
+  --h0:#1A242A; --h1:#2A5744; --h2:#3C8663; --h3:#87692E; --h4:#985B3B; --h5:#A54A3F;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font:12px/1.45 var(--ui);
+  -webkit-font-smoothing:antialiased}
+b{font-weight:600}
+.dim{color:var(--dim)} .faint{color:var(--faint)}
+.num{text-align:right;font-variant-numeric:tabular-nums}
+.hot{color:var(--amber)}
+
+#bar{position:sticky;top:0;z-index:30;display:flex;align-items:center;
+  /* height 改成 min-height。#bar 继承了 .navbar 的 flex-wrap:wrap,窗口窄到约 760px 时
+     总数/失败/待处理/停用/数据 这五个全局计数会换到第二行,然后被裁进一个高 26px、
+     overflow 计算值为 auto 的盒子里:既看不见,也几乎不可能滚到(26px 高的纵向滚动条)。
+     整页最顶上的「有没有事」摘要于是在窄屏下静默消失。
+     ⚠ 这正是上一轮「把写死高度改到根上」时漏掉的那一处:那次只改了 button 和 input,
+     容器上的 height 一个没动,而配的那道静态闸也只盯元素选择器。闸门下面一并扩了。 */
+  background:var(--panel);border-bottom:1px solid var(--line);min-height:26px;padding:0 4px;
+  white-space:nowrap;overflow-x:auto}
+#bar .seg{padding:0 9px;border-right:1px solid var(--line2);height:100%;display:flex;align-items:center;gap:6px}
+#bar .seg:last-child{border-right:none;margin-left:auto}
+#bar .k{color:var(--faint)}
+#bar b{font-variant-numeric:tabular-nums}
+
+#tools{display:flex;align-items:center;gap:6px;padding:5px 8px;flex-wrap:wrap;
+  background:var(--panel2);border-bottom:1px solid var(--line)}
+input[type=text],select{font:inherit;background:var(--panel);color:var(--ink);
+  border:1px solid var(--line);padding:2px 6px;border-radius:2px;min-height:22px}
+input[type=text]{width:200px}
+input[type=text]:focus,select:focus{outline:1px solid var(--cyan);outline-offset:-1px;border-color:var(--cyan)}
+button{font:inherit;background:var(--panel);color:var(--dim);border:1px solid var(--line);
+  padding:2px 8px;border-radius:2px;min-height:22px;cursor:pointer}
+button:hover{color:var(--ink);border-color:var(--cyan)}
+button.danger:hover{color:var(--bad);border-color:var(--bad)}
+button:disabled{opacity:.4;cursor:default}
+label.tg{display:inline-flex;align-items:center;gap:4px;color:var(--dim);cursor:pointer;user-select:none}
+label.tg input{accent-color:var(--cyan);margin:0}
+
+main{padding:8px}
+/* .box 与 .box>h2 已删:九个盒子全部换成 Tabler 的 .card / .card-header,
+   这两条再没有任何元素能命中。留着一条永远不生效的规则,会让下一个来改卡片样式的人
+   在这里改半天却看不到变化。 */
+.card-title .n{font-weight:400;color:var(--faint);flex:1;overflow:hidden;text-overflow:ellipsis}
+.pad{padding:6px 8px;overflow-x:auto}
+.warn-line{color:var(--warn);background:var(--warnb);border-left:2px solid var(--warn);
+  padding:3px 8px;font-size:var(--fs-meta);margin-bottom:6px}
+
+.tl{min-width:820px;user-select:none}
+.tl .hours{position:relative;margin-left:186px;border-bottom:1px solid var(--line);height:15px}
+.tl .hours i{position:absolute;top:0;bottom:0;border-left:1px solid var(--line2);
+  font-size:var(--fs-chip);color:var(--faint);padding-left:2px;font-style:normal;line-height:15px}
+.tltrack{cursor:grab}
+/* 拖动态的类挂在 .tl 上而不是 .tltrack 上:后者每次渲染都会被替换掉,类会跟着消失。 */
+.tl.drag .tltrack{cursor:grabbing}
+.tlrow{display:flex;align-items:center;height:15px;border-bottom:1px solid var(--line2)}
+.tlrow{cursor:pointer}
+.tlrow:hover{background:var(--cur)}
+.tlname{width:186px;flex:none;padding-right:8px;overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap;font-size:var(--fs-meta)}
+.tltrack{position:relative;flex:1;height:100%;overflow:hidden}
+.tlpt{position:absolute;top:4px;width:5px;height:7px;margin-left:-2px;background:var(--cyan)}
+.tlpt.done{background:var(--ok)}
+.tlspan{position:absolute;top:6px;height:3px;background:var(--cyan);opacity:.5}
+.tlact{position:absolute;top:1px;width:2px;height:13px;background:var(--amber)}
+.tlnow{position:absolute;top:0;bottom:0;width:1px;background:var(--bad);z-index:2}
+.tlevt{position:absolute;left:4px;top:0;font-size:var(--fs-chip);color:var(--faint);line-height:15px}
+.tlevt.warnish{color:var(--warn)}
+/* 六行几乎相同的长句压成六个徽章:一眼看出「这几行是同一类」。完整句子进 title。
+   ⚠ 实线框(事件驱动,正常)和虚线框 + 前缀 ?(触发器认不出,要人去查)在**形状**上不同,
+   不是只差一个字色 —— 后者绝不能被读成一个正常的事件驱动任务。 */
+.tlbadge{display:inline-block;padding:0 5px;border-radius:8px;font-size:var(--fs-chip);
+  line-height:13px;border:1px solid currentColor;font-weight:400;opacity:.85}
+.tlevt.warnish .tlbadge{border-style:dashed}
+/* 撞上展开上限的条带画成虚线:它的右端不是真的结束时刻,是我数到那里为止。 */
+.tlspan.trunc{background:repeating-linear-gradient(90deg,var(--amber) 0 3px,transparent 3px 6px)}
+.tlkey{font-size:var(--fs-chip);color:var(--faint);margin-top:5px;display:flex;gap:12px;flex-wrap:wrap}
+.tlkey i{display:inline-block;vertical-align:middle;margin-right:3px}
+
+/* table-layout:fixed + width:100% is what makes the day cells stretch to fill the row. Without
+   it the cells keep their intrinsic 9px and 45 columns leave most of a 1700px window empty. */
+/* min-width 是这块面板的可读下限。格子宽 = (容器宽 - 186 首列 - 46 个间隙) / 45,
+   所以视口窄到约 700px 时格子只剩 2px 级别,约 300px 以下彻底归零 —— 而整块依然画得
+   好好的,也没有横向滚动条提示「这里被压缩了」。这块面板的全部信息量都在格子的颜色和
+   面积上,压到 2px 时它显示的是一个看似正常、实际读不出任何东西的色带。
+   给一个下限之后,放不下就横向滚(.pad 本来就有 overflow-x:auto):
+   要滚才能看全是明确的信号,悄悄压扁不是。 */
+.hm{border-collapse:separate;border-spacing:1px;width:100%;table-layout:fixed;min-width:560px}
+.hm th.tn{text-align:left;font-weight:400;color:var(--dim);padding-right:8px;font-size:var(--fs-meta);
+  white-space:nowrap;position:sticky;left:0;background:var(--panel);z-index:1;
+  width:186px;overflow:hidden;text-overflow:ellipsis}
+.hm td{height:11px;padding:0;background:var(--h0)}
+.hm td.h1{background:var(--h1)}.hm td.h2{background:var(--h2)}
+.hm td.h3{background:var(--h3)}.hm td.h4{background:var(--h4)}.hm td.h5{background:var(--h5)}
+/* 卡头上的「说明」。通用说明读一次就够,常驻会把卡头顶成三行。
+   ⚠ 这里只放**说明**。真实状态(比如运行日志挂了)一律走 .warn-line 常驻,
+   折进悬停等于把告警藏起来 —— 那是「坏了却显示成正常」的另一种写法。 */
+.card-title .help{font-size:var(--fs-chip);color:var(--faint);border:1px solid var(--line);
+  border-radius:8px;padding:0 6px;margin-left:6px;cursor:help}
+.card-title .help:hover{color:var(--ink);border-color:var(--ink)}
+/* 「体征」那一格里的微型分段条。三段 = 正常 / 失败 / 陈旧,分母是判过的条数,
+   所以差出来的那一段(判词认不出)留成背景色缺口,看得见。 */
+.vit{display:inline-flex;width:54px;height:8px;vertical-align:middle;margin-right:5px;
+  background:var(--line2);border-radius:1px;overflow:hidden}
+.vit i{display:block;height:100%}
+.vit i.k-ok{background:var(--ok)} .vit i.k-bad{background:var(--bad)}
+.vit i.k-st{background:var(--warn)}
+/* 没有观察记录:虚线空框。⚠ 不能画成一条 0 宽的条 —— 那会读成「全是坏的」,
+   方向正好和真相相反。 */
+.vit.unk{background:transparent;border:1px dashed var(--faint)}
+/* 样本不足:整条降饱和 + 虚线外框。和「量足够的 100%」形状不同,不只是颜色不同。 */
+.vit.thin{opacity:.45;outline:1px dashed var(--faint);outline-offset:-1px}
+/* 主表从十三列降到十列之后,剩下的宽度被平摊进每一列:状态那列 127px 只放一个短徽章,
+   触发那列 228px 放一个截到 20 字的串。列与列之间因此拉开一两百像素,
+   而横向距离正是这一页反复在修的那个毛病。热力图不受影响,它有 45 列,确实要宽。 */
+#tbl{max-width:1440px}
+/* 大类汇总只有十行六列,不需要 1900px。任务主表和热力图确实要宽(列多),
+   但这张小表跟着它们一起铺满,会让四个百分比列各自相隔 280px ——
+   而这张表的全部用途就是横着比这四列。 */
+#scores{max-width:900px}
+/* 大类汇总里的百分比条。窄而矮:它是数字的第二重编码,不是主角。 */
+.pcb{display:inline-block;width:44px;height:5px;margin-right:6px;vertical-align:middle;
+  background:var(--line2);border-radius:1px;overflow:hidden}
+.pcb i{display:block;height:100%}
+/* 日期轴。标签横写会互相撞,所以只在首末与每月 1 号出现,其余格子留空但仍带 title。 */
+.hm th.hd{font-weight:400;font-size:var(--fs-chip);color:var(--faint);padding:0;height:12px;
+  white-space:nowrap;text-align:left;overflow:visible}
+/* 今天那一列画一条竖线。⚠ 只加线不改底色 —— 「无观察」用的是底色,
+   两个信号必须能叠加,否则今天恰好没观察时会有一个信号被另一个盖掉。 */
+.hm td.today,.hm th.hd.today{box-shadow:inset -1px 0 0 var(--cyan)}
+.hm th.hd.today{color:var(--cyan)}
+
+table.g{border-collapse:collapse;font-size:var(--fs-meta);white-space:nowrap;width:100%}
+/* pointer 只给真的能排序的那张表。#scores 的表头也是 table.g th,
+   拿到了 pointer 和 hover,而排序处理器写死 #tbl th[data-k],永远不匹配。 */
+/* 表头粘在**它自己的滚动容器**顶部,不是视口。原来写的是 top:26px(想避开顶栏),
+   那是视口级粘附的写法,而它有两个滚动祖先把它降级成了普通表头:
+   .pad{overflow-x:auto} 和 #dtbox{overflow:hidden}(后者是为圆角加的)。
+   实测滚 900px 后表头在 -509,而 CSS 看起来完全正确 : 这是「看起来能用但不能用」的典型。
+   现在 .pad 自己成为纵向滚动容器(下面那条 max-height),表头 top:0 粘在容器顶部。 */
+#dtbox .pad{max-height:calc(100vh - 190px);overflow:auto}
+#tbl thead th{top:0}
+#tbl th{position:sticky;top:26px;z-index:5;background:var(--panel2);color:var(--dim);
+  font-weight:600;text-align:left;padding:3px 6px;border-bottom:1px solid var(--line);
+  cursor:pointer;user-select:none;font-size:var(--fs-meta)}
+table.g th:hover{color:var(--ink)}
+table.g th.s::after{content:"\25BE";color:var(--cyan);margin-left:2px}
+table.g th.s.a::after{content:"\25B4"}
+/* height 从 20px 的定值改成下限。任务名那一格现在是两行(名字 + 说明),
+   写死 20px 时内容照自己的高度排、溢出去盖住下一行,看起来像排版错乱不像高度被覆盖
+   —— 这个仓已经被同一条元素级高度规则坑过两次(指标格一次、时间轴按钮一次)。 */
+table.g td{padding:1px 6px;border-bottom:1px solid var(--line2);min-height:20px}
+table.g tbody tr{cursor:pointer}
+table.g tbody tr:hover{background:var(--cur)}
+table.g tbody tr.cur{background:var(--cur);box-shadow:inset 2px 0 0 var(--cyan)}
+table.g tbody tr.sel{background:var(--sel)}
+table.g td.nm{max-width:340px;overflow:hidden;text-overflow:ellipsis;font-weight:500;
+  white-space:normal;line-height:1.25}
+/* 说明是任务名下面的第二行。它自己不换行:一条被折成三行的说明会把整张表撑散,
+   而完整正文在 title 和展开行里都还在。 */
+table.g td.nm .ds2{display:block;font-weight:400;color:var(--dim);font-size:var(--fs-chip);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-family:var(--ui)}
+/* 说明列。原来写的是 max-width:0 + width:100%,那是「吸收剩余宽度」的写法,
+   但这张表 19 列的自然宽度合计已经超过容器,**没有剩余宽度可吸收**,于是 max-width:0
+   赢,这一列被压成 34px、只显示一个字加省略号。一列只显示一个字比没有这一列更差:
+   它既读不出内容,又占着 34px。
+   改成给一个真实的宽度区间,放不下就让 .pad 横向滚(它本来就有 overflow-x:auto)。 */
+table.g tr[data-scat]{cursor:pointer}
+table.g tr[data-scat]:hover{background:var(--cur)}
+/* 展开出来的明细行也是 table.g tbody tr,继承了行的 pointer 和 hover,
+   但展开处理器要求 [data-name],它没有。 */
+#tbl tr.det{cursor:default}
+/* 明细里的 dd 有 overflow-wrap:anywhere,是全页唯一按容器宽度换行的长文本。可它的容器是
+   跨满整张表的 td:表宽 1050px 时每行就是 1050px 长,而 .pad 的可视宽度可能只有 550px,
+   于是读一条产物路径要来回横向滚 —— **换行了却仍然要横滚**,两头不讨好。
+   position:sticky + left:0 把这块内容钉在可视区左沿,宽度取自 --padw(由 .pad 的
+   ResizeObserver 写入)。--padw 没设时回落到 100%,也就是今天的行为:
+   观察器没跑起来时是原样,不是塌掉。 */
+#tbl tr.det>td{padding:0}
+#tbl tr.det>td>.det{position:sticky;left:0;width:var(--padw,100%);max-width:100%;
+  box-sizing:border-box;padding:6px 10px 8px}
+#tbl tr.det:hover{background:transparent}
+.st{display:inline-block;min-width:50px;text-align:center;padding:0 4px;font-size:var(--fs-chip)}
+.st.ok{color:var(--ok);background:var(--okb)}
+.st.bad{color:var(--bad);background:var(--badb)}
+.st.running{color:var(--cyan);background:var(--sel)}
+.st.pending,.st.disabled{color:var(--idle);background:var(--idleb)}
+/* 「信息读不到」是一个第三种答案:既不是正常也不是失败。给它警告色而不是灰色 ——
+   灰色会和「已停用/尚未首跑」这类平静的状态混在一起,而这一个是要人去查的。 */
+.st.unknown{color:var(--warn);background:var(--warnb)}
+.y{color:var(--ok)}.n{color:var(--bad)}.u{color:var(--faint)}
+tr.det>td{background:var(--panel2);white-space:normal;padding:6px 10px 8px;border-bottom:2px solid var(--line)}
+.det dl{display:grid;grid-template-columns:auto minmax(0,1fr);gap:2px 10px;margin:0 0 6px;font-size:var(--fs-meta)}
+.det dt{color:var(--faint)}
+.det dd{margin:0;overflow-wrap:anywhere}
+.iss{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:2px}
+.iss li{font-size:var(--fs-meta);padding:2px 7px;border-left:2px solid}
+.iss li.bad{color:var(--bad);background:var(--badb);border-color:var(--bad)}
+.iss li.warn{color:var(--warn);background:var(--warnb);border-color:var(--warn)}
+.iss li.info{color:var(--dim);background:var(--idleb);border-color:var(--idle)}
+
+#bulk{position:fixed;left:50%;transform:translateX(-50%);bottom:14px;z-index:40;
+  background:var(--panel);border:1px solid var(--cyan);padding:5px 10px;
+  display:flex;gap:7px;align-items:center;box-shadow:0 6px 22px #0006}
+#toast{position:fixed;right:10px;bottom:10px;z-index:50;display:flex;flex-direction:column;gap:5px;max-width:470px}
+#toast div{background:var(--panel);border:1px solid var(--line);border-left:3px solid var(--cyan);
+  padding:5px 9px;font-size:var(--fs-meta);box-shadow:0 4px 16px #0005}
+#toast div.bad{border-left-color:var(--bad);color:var(--bad)}
+#toast div.ok{border-left-color:var(--ok)}
+#help{position:fixed;inset:0;z-index:60;background:#0009;display:flex;align-items:center;justify-content:center}
+#help>div{background:var(--panel);border:1px solid var(--line);padding:14px 18px;font-size:var(--fs-body)}
+#help table{border-collapse:collapse}
+#help td{padding:1px 12px 1px 0}
+[hidden]{display:none!important}
+
+/* ---- 新鲜度灯板 ------------------------------------------------------------------
+   一格一个任务,按严重度排序,坏的浮到左上。颜色是唯一的主要信号,文字只出现在异常行。
+   unknown 刻意既不像 up 也不像 paused:虚线空心格。「没查成」和「查过了没问题」
+   在这块板子上必须一眼分得开,这是整个面板存在的理由。 */
+.fr-head{display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:8px 10px 0}
+/* flex:1 是它吃掉整行的原因:右端那段「正常 29」自己就有 800px。
+   灯板才是主视图(每格可点、是导航),这条降级成一条缩略条。 */
+.fr-stack{display:flex;height:7px;flex:0 1 280px;min-width:160px;border-radius:3px;overflow:hidden;
+  background:var(--line2)}
+.fr-stack i{height:100%;display:block}
+.fr-cov{display:flex;align-items:center;gap:6px;font-size:var(--fs-meta);color:var(--dim);white-space:nowrap}
+.fr-cov b{font-variant-numeric:tabular-nums;font-weight:600}
+.fr-key{display:flex;gap:10px;flex-wrap:wrap;font-size:var(--fs-meta);color:var(--dim);padding:6px 10px 0}
+.fr-key span{display:inline-flex;align-items:center;gap:4px}
+.fr-board{display:flex;flex-wrap:wrap;gap:3px;padding:8px 10px}
+/* pointer 只给真的带 data-fr 的灯板格。图例块共用 .fr-c 类,就在灯板正上方,
+   长得一模一样,却不是可点对象。 */
+.fr-c[data-fr]{cursor:pointer}
+.fr-c{width:15px;height:15px;border-radius:2px;border:1px solid transparent}
+.fr-c.s-up{background:var(--ok)}
+.fr-c.s-running{background:var(--cyan)}
+.fr-c.s-grace{background:var(--warn)}
+.fr-c.s-down{background:var(--bad)}
+.fr-c.s-paused{background:var(--idle);opacity:.45}
+.fr-c.s-never{background:repeating-linear-gradient(45deg,var(--amber),var(--amber) 2px,
+  transparent 2px,transparent 4px);border-color:var(--amber)}
+.fr-c.s-unknown{background:transparent;border:1px dashed var(--faint)}
+.fr-c[data-fr]:hover{outline:2px solid var(--cyan);outline-offset:1px}
+.fr-list{padding:0 10px 9px;display:flex;flex-direction:column;gap:1px}
+/* .fr-r 及其三个子选择器已删,只有它用的那个类名 .ag 也一并删了。
+   新鲜度明细行那个组件不存在了(现在 frlist 里是单个 div,不是四列网格)。
+   留这段话是为了说明**它们去哪了**:下一个想恢复明细行的人不会在这里找到可用的样式。
+   ⚠ 上一版这段注释先说「已删」,又说「这五条规则还描述着它,连 .ag 都留着」——
+   自相矛盾,而事实是那五条规则和 .ag 一条都不在文件里了。
+   **一段同时断言两件相反的事的注释,读的人只能靠去查代码来决定信哪半句;
+   那时它已经不是文档了。** */
+.fr-none{padding:8px 10px 10px;font-size:var(--fs-body);color:var(--ok)}
+.fr-off{padding:8px 10px 10px;font-size:var(--fs-body);color:var(--warn)}
+
+/* 行内动作。危险动作用红字而不是红底:一整列红底会把整张表变成警报墙,
+   而每一行都在报警等于没有一行在报警。 */
+td.ops{white-space:nowrap;width:1%}
+td.ops .mini{font:inherit;font-size:var(--fs-meta);line-height:1;padding:2px 5px;margin-right:2px;
+  border:1px solid var(--line);background:var(--panel2);color:var(--dim);cursor:pointer;border-radius:2px}
+td.ops .mini:hover{border-color:var(--cyan);color:var(--cyan)}
+td.ops .mini.danger:hover{border-color:var(--bad);color:var(--bad)}
+
+/* ---- 维护面板 ----------------------------------------------------------------------
+   三栏:skill 预算、记忆池用量、插件开关。每一栏都能动手,不是只读的。
+   「未配置」和「没问题」用两种完全不同的呈现:前者是一行灰字说明,后者是有数字的仪表。 */
+.mt-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:1px;
+  background:var(--line2)}
+.mt-col{background:var(--panel);padding:9px 10px;display:flex;flex-direction:column;gap:7px;
+  min-width:0}
+.mt-t{font-size:var(--fs-meta);font-weight:600;color:var(--dim);letter-spacing:.04em;
+  display:flex;align-items:baseline;gap:7px}
+.mt-t b{font-family:var(--mono,inherit);font-variant-numeric:tabular-nums;color:var(--ink);
+  font-size:var(--fs-lead)}
+.sub{color:var(--faint);font-weight:400;font-variant-numeric:tabular-nums}
+.mt-t .sub{margin-left:auto}
+.mt-meter{height:7px;background:var(--line2);border-radius:2px;overflow:hidden;position:relative}
+.mt-meter i{display:block;height:100%}
+/* 爆表:整条描红 + 右端长出一截斜纹。「满」和「爆」不能是同一根满条。 */
+.mt-meter.over{outline:1px solid var(--bad);outline-offset:1px;overflow:visible}
+.mt-meter.over::after{content:"";position:absolute;top:0;bottom:0;left:100%;width:14px;
+  background:repeating-linear-gradient(45deg,var(--bad) 0 3px,transparent 3px 6px)}
+.mt-r .c.over{color:var(--bad);font-weight:700}
+/* 这里原来是 max-height:172px + 内部滚动。那是九块盒子堆在同一页时代的写法:
+   每块必须自己收着,否则页面会长到五屏。
+   分区改造之后每一屏独占整个视口,这个上限就只剩害处了 : 实测这一屏用掉不到 300px,
+   底下 700px 全空,而 22 个 skill 只露出 7 个,人要在一个几乎全空的页面里滚一个小方块。
+   现在按视口给上限,滚动只在真的放不下时才出现。 */
+/* 下限不能少。calc(100vh - 340px) 在视口高 <=340px 时是 0 或负数,
+   于是 skill / 记忆 / 插件三栏的行列表整块消失,而标题、数字、进度条都还在,
+   也没有滚动条提示「这里还有东西」 : 一个 22 条的列表和一个空列表长得一模一样,
+   正是这个页面最在意的那一类。340 这个数还是照着 1040px 高的窗口手配的魔数。 */
+.mt-rows{max-height:max(180px, calc(100vh - 340px));overflow:auto;display:flex;flex-direction:column;
+  gap:1px;border-top:1px solid var(--line2);padding-top:4px}
+.mt-r{display:flex;align-items:center;gap:6px;font-size:var(--fs-body);padding:1px 0}
+/* 只有 skill 那一栏排成栅格:名字弹、条定宽、数字右对齐定宽,对齐之后数字才能竖着比。
+   ⚠ 刻意用新类而不是改 .mt-r 本身 —— 另外十二处也在用 .mt-r,而它们只有两三格,
+   改默认值会让那些行的按钮掉到第五列、中间空出两格。 */
+.mt-r.bar{display:grid;grid-template-columns:1fr auto 54px 40px auto}
+.mt-r .ub{height:5px;background:var(--line2);border-radius:2px;overflow:hidden}
+.mt-r .ub i{display:block;height:100%;background:var(--dim)}
+.mt-r.bar .c{text-align:right}
+
+/* ---- 维护屏:记忆与索引主区 ------------------------------------------------------
+   这块以前是四栏里的一栏,260px 宽,只露得出三行「标签 : 数字」和四个最大的名字。
+   而后端一直在下发孤儿链接(连是从哪几条指过去的都有)、索引够不到的、索引指向空的、
+   完整排行。采到了却没有出口,等于没采。 */
+#membox .pad{padding:8px 12px 12px}
+.mem-top{display:flex;gap:20px;align-items:flex-start;flex-wrap:wrap;margin-bottom:8px}
+.mem-counts{display:flex;gap:14px}
+.mem-counts .kv{font-size:var(--fs-meta);color:var(--dim)}
+.mem-counts .kv b{font-size:18px;font-weight:600;color:var(--ink);margin-right:3px;
+  font-variant-numeric:tabular-nums}
+.mem-meters{flex:1 1 320px;max-width:460px;min-width:240px}
+.mem-grps{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));
+  gap:8px 16px;max-width:1100px;margin-bottom:10px}
+/* 零态也占一行。三类问题都可能合法地是空的,而空在这里是好消息 ——
+   但它必须是**数出来的空**。合并成一句「链接与索引一致」的代价是:
+   三项里某一项其实没查的时候,那句绿色照样打印。 */
+.mem-grp{border-left:2px solid var(--line);padding-left:8px}
+.mem-grp.hit{border-left-color:var(--warn)}
+.mem-gh{display:flex;align-items:baseline;gap:6px;font-size:var(--fs-meta);color:var(--dim)}
+.mem-gh b{font-size:var(--fs-lead);font-variant-numeric:tabular-nums;color:var(--faint)}
+.mem-gh b.warn{color:var(--warn)} .mem-gh b.ok{color:var(--ok)}
+.mem-gh .lb{cursor:help}
+.mem-gh .ex{font-size:var(--fs-chip);color:var(--faint)}
+.mem-chips{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px}
+.mem-chips .chip{font-family:var(--mono);font-size:var(--fs-chip);padding:0 5px;
+  border:1px solid var(--line);border-radius:9px;color:var(--dim);cursor:help}
+.mem-big{max-width:560px}
+.mem-big .mt-r.bar{grid-template-columns:1fr auto 120px 48px auto}
+
+/* ---- 维护屏:占地方的那一张清单 ------------------------------------------------
+   刻意不做自动归档:归档只是把同一批字节挪到另一个目录,磁盘该满还是满,
+   而且它会替人做出「这份还要不要」的判断 —— 那个判断没有自动化依据。
+   这里只负责把「有哪些、多大、多旧」摆清楚,按哪一维排由看的人当场决定。 */
+#cxbox .pad{padding:8px 12px 12px}
+.cx-bar{display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap}
+.cx-bar .sel{font-size:var(--fs-meta);color:var(--dim);margin-left:4px}
+.cx-bar .sel b{color:var(--ink);font-variant-numeric:tabular-nums}
+.cx-list{max-height:min(60vh,520px);overflow:auto;border-top:1px solid var(--line2)}
+.cx-l{display:grid;grid-template-columns:16px minmax(0,1fr) 110px 62px 46px;
+  gap:8px;align-items:center;padding:2px 4px;font-size:var(--fs-meta);cursor:pointer;
+  border-bottom:1px solid var(--line2)}
+.cx-l:hover{background:var(--cur)}
+.cx-l.on{background:var(--sel)}
+.cx-l .p{font-family:var(--mono);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  direction:rtl;text-align:left}
+.cx-l .bar{height:5px;background:var(--line2);border-radius:1px;overflow:hidden}
+.cx-l .bar i{display:block;height:100%;background:var(--cyan);opacity:.55}
+.cx-l .sz,.cx-l .ag{text-align:right;font-variant-numeric:tabular-nums;color:var(--dim)}
+.cx-l input{pointer-events:none}
+
+/* ---- 维护屏:第二套 agent 那一栏 ------------------------------------------------ */
+.cx-r{display:grid;grid-template-columns:1fr 92px 54px;gap:6px;align-items:center;
+  font-size:var(--fs-body);padding:1px 0}
+.cx-r .n{font-family:var(--mono);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cx-r .c{text-align:right;font-variant-numeric:tabular-nums;color:var(--dim)}
+.cx-r .m{text-align:right;font-size:var(--fs-chip);color:var(--faint)}
+/* 「不在」不是「读不了」。前者是正常状态,后者要人去看,所以不共用一种灰。 */
+.cx-r.absent .c{color:var(--faint);font-style:italic}
+.cx-r.unread .c{color:var(--bad);font-weight:600}
+.mt-r .n{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mt-r .c{font-variant-numeric:tabular-nums;color:var(--faint);font-size:var(--fs-meta)}
+.mt-r.off .n{color:var(--faint);text-decoration:line-through}
+/* .lk 和 .sub 原来分别写死在 .mt-r 和 .mt-t 作用域下,而它们在别处也被用:
+   .lk 用在仓库网格里标嵌套仓,.sub 用在「要人管的事」的卡头计数上。
+   结果是同一个类名在第二个容器里完全没有样式,按周围的正文渲染 :
+   「这个仓是嵌套的」这个信号的视觉重量和仓名一样,扫一眼读起来像仓名的一部分。
+   **把一份样式按容器写死,然后在第二个容器里复用同一个类名,就会漏成这样。** */
+.lk{color:var(--cyan);font-size:var(--fs-chip)}
+.mt-note{font-size:var(--fs-body);color:var(--warn)}
+
+/* ---- 自检条 ------------------------------------------------------------------------
+   一行,不占地方,但它是整页的信任前提:下面每一块面板都建立在这些路径读得到之上。
+   四态四种画法,刻意都不一样:unset 是空心的,因为「没让它查」和「查了没问题」
+   在这条上必须能分开。 */
+#sck{display:flex;align-items:center;gap:8px;padding:5px 10px;font-size:var(--fs-meta);
+  border:1px solid var(--line);background:var(--panel);margin-bottom:8px;flex-wrap:wrap}
+#sck .lab{color:var(--faint);letter-spacing:.04em}
+#sck .dots{display:flex;gap:3px}
+#sck .d{width:8px;height:8px;border-radius:50%;border:1px solid transparent}
+/* 四个状态各有自己的形状,不只是自己的颜色。这一行是整页的信任前提 ——
+   它说的是「这些数字能不能信」,而四个只靠颜色区分的圆点在色觉受限下就是一种圆点。
+   ok=实心圆, stale=半填充圆, missing=实心方, unset=虚边空圆。逐点的 title 是第三重。 */
+#sck .d.ok{background:var(--ok)}
+#sck .d.stale{background:linear-gradient(135deg,var(--warn) 50%,transparent 50%);
+  border-color:var(--warn)}
+#sck .d.missing{background:var(--bad);border-radius:1px}
+#sck .d.unset{background:transparent;border-color:var(--faint);border-style:dashed}
+#sck .sum{font-variant-numeric:tabular-nums;color:var(--dim)}
+#sck .bad{color:var(--bad);font-weight:600}
+#sck button{font:inherit;font-size:var(--fs-meta);padding:1px 6px;margin-left:auto}
+#sckd{display:none;padding:0 10px 8px}
+#sckd.on{display:block}
+#sckd .r{display:grid;grid-template-columns:9px minmax(96px,150px) 1fr auto;gap:8px;
+  align-items:center;font-size:var(--fs-meta);padding:2px 0;border-top:1px solid var(--line2)}
+#sckd .r .p{color:var(--faint);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  direction:rtl;text-align:left}
+#sckd .r .w{color:var(--dim);white-space:nowrap;font-variant-numeric:tabular-nums}
+
+/* ---- 仓库面板 ----------------------------------------------------------------------
+   未推送排在脏文件前面:脏文件你自己知道,没推的提交没人会告诉你。
+   没有上游的仓单独一种画法(问号),因为它们的「没推」是看不见的,不是 0。 */
+#rpbox .pad{padding:8px 10px}
+.rp-head{display:flex;align-items:center;gap:12px;flex-wrap:wrap;font-size:var(--fs-meta);
+  color:var(--dim);margin-bottom:6px}
+.rp-head b{font-variant-numeric:tabular-nums;color:var(--ink);font-size:var(--fs-lead)}
+/* 两栏:左边找,右边看。
+   原来是 auto-fill 的卡片网格,它回答的是「整片仓里有没有出事」,而代价是每一行只剩
+   一个状态点和一个名字 —— path 和 branch 被塞进 title 悬停提示,remote、upstream、
+   最后一次提交根本没有出口。面板因此只能回答「我有哪些仓」,回答不了「这个仓在哪、
+   属于哪个账号、现在什么状态」。
+   左列只放**找到它**需要的东西,右列有地方把话说完整。 */
+/* ⚠ min-height:0 和 overflow:hidden 这两行是承重的,不是排版偏好。
+   grid 子项的 min-height 默认是 auto,也就是「不许缩到内容以下」,于是两栏被拉成
+   内容高度(实测 clientHeight 和 scrollHeight 都是 1189),它们身上的 overflow:auto
+   从来没生效过 —— 真正在滚的是外面那层 .pad,两栏因此**一起滚**,
+   往下翻列表时详情会整块滑出视野。这正是被报上来的那个毛病。
+   外层加 overflow:hidden 是为了让它自己永远不滚:否则修好子项之后,
+   外层仍然可能成为第二个滚动容器,而那时「哪个在滚」取决于鼠标停在哪。 */
+/* 整块收在一个宽度里,而不是铺满。在宽屏上铺满的结果是详情栏有一千多像素是空的,
+   而空出来的那片读起来像「这里本该有东西没加载出来」。限宽之后右边的留白是页边距,
+   不是一块空面板 —— 同样是没有内容,前者看着是排版,后者看着是坏了。
+   列表列也加宽到 300:260 时 acme-widget-split-billing 这类正常长度的仓名会被截成
+   acme-widget-split-bil…,而截断的名字读起来跟另一个仓一模一样。
+   ⚠ 这个例子是编的。上一版这里写的是本机上一个真实仓名 —— 随手拿手边的东西当例子,
+   正是这套闸门存在的全部理由,而 pii_guard 在提交前就把它挡住了。 */
+.rp-split{display:grid;grid-template-columns:minmax(240px,300px) minmax(0,1fr);gap:1px;
+  background:var(--line2);height:max(240px, calc(100vh - 230px));overflow:hidden;
+  max-width:1080px}
+.rp-list{background:var(--panel);overflow:auto;min-width:0;min-height:0}
+.rp-detail{background:var(--panel);overflow:auto;min-width:0;min-height:0;padding:10px 12px}
+@media (max-width:760px){
+  /* 窄屏下并排两栏会把两边都压到读不了。改成上下,列表限高,详情跟在后面。 */
+  .rp-split{grid-template-columns:1fr;max-height:none}
+  .rp-list{max-height:38vh}
+}
+
+/* 过滤条。搜索 + 账号 + 类型三个,都只改看得见什么,不改数据。 */
+.rp-filters{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:6px 0}
+.rp-filters input,.rp-filters select{font:inherit;font-size:var(--fs-meta);padding:2px 6px;
+  border:1px solid var(--line);border-radius:3px;background:var(--panel);color:var(--ink)}
+.rp-filters input{width:150px}
+.rp-filters .hit{font-size:var(--fs-meta);color:var(--dim);font-variant-numeric:tabular-nums}
+
+/* 列表行。四列:状态点、仓名、账号标记、可见性。
+   ⚠ 这里一度是五列而行里有五个元素,其中第三个长期是空串,因为可见性视图的匹配
+   逻辑坏了、从来没渲染出来过;匹配修好的当天,每一行的按钮就被挤到了第二行。
+   **一个从来没工作过的视图,连带它的布局也从来没有被验证过。**
+   现在按钮全部搬进详情面板,行上不再有动作 —— 一行里挤三个按钮在 48 行上重复,
+   既难点中又让扫视变难。 */
+.rp-r{display:grid;grid-template-columns:8px 1fr auto auto;gap:7px;
+  align-items:center;padding:3px 8px;font-size:var(--fs-body);cursor:pointer;
+  border-left:2px solid transparent}
+.rp-r:hover{background:var(--line2)}
+.rp-r.on{background:var(--line2);border-left-color:var(--ink)}
+/* 伴生行。缩进 + 小一号 + 名字降一档色,没有别的:从属是**看**出来的。
+   名字只写后缀,因为前缀逐字等于上面那一行 —— 重复一遍宿主名是纯噪音。
+   ⚠ 这里一度还有一条 1px 的竖线表示从属。实测它被算成 0.51px,
+   画在浅色主题的 --line 上基本看不见 —— **一个画了却看不见的元素比没画更糟**。 */
+.rp-r.sub{padding-left:20px;font-size:var(--fs-meta)}
+.rp-r.sub .n{color:var(--dim)}
+/* 组标题。不用全大写:那是模板腔,而且这几个词里有中文,大写也无从谈起。 */
+.rp-gh{display:flex;align-items:baseline;gap:8px;
+  padding:9px 8px 2px;font-size:var(--fs-meta);color:var(--dim)}
+.rp-gh:first-child{padding-top:2px}
+.rp-gh b{font-weight:600;color:var(--ink);font-size:var(--fs-meta)}
+.rp-gh .n{color:var(--faint);font-variant-numeric:tabular-nums}
+.rp-r .dot{width:9px;height:9px;border-radius:2px;box-sizing:border-box}
+.rp-r .n{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:var(--mono,inherit)}
+/* --dim 不是 --faint:实测 --faint 在这个字号下对比度 3.01,够不到 AA 的 4.5。
+   而「私有」读不清就会和「没有徽章」混在一起 —— 后者表示可见性未知,
+   而未知在闸门那边是**按公开拦**的。这两个状态要采取的行动相反,不能长得一样。
+   公开那一档仍然用 --warn 更醒目:危险的是公开,不是私有。 */
+/* 可见性:三种形状 + 三种颜色 + 三种悬停说明,而不是三段中文。
+   ⚠ 这里刻意不只用颜色,也刻意不合并任何两档:公开是实心方块(危险的是公开),
+   私有是空心方块,未知是问号。闸门对**未知** remote 是按公开拦的,所以未知和私有
+   要采取的行动相反,它们绝不能长得一样 —— 这条在换成图形之后必须仍然成立。 */
+/* 10px 的字形在 1920 屏上要放大才能分辨实心和空心,而这一列回答的是
+   「这个仓能不能装真实数据」。放到 13px。
+   未知那一档**不比私有淡**:闸门对未知 remote 是按公开拦的,
+   把它画成最不起眼的一个,正好和它的严重程度反着来。 */
+.rp-r .vis{font-size:var(--fs-lead);line-height:1;width:16px;text-align:center;color:var(--dim);
+  font-family:var(--mono,inherit)}
+.rp-r .vis.pub{color:var(--bad)}
+.rp-r .vis.unk{color:var(--warn);font-weight:700}
+/* 账号用两字缩写,不写全名。47/48 行是同一个账号,把它逐行印出来是 48 遍几乎零信息的
+   墨水,而「这一行属于谁」用两个字母同样答得上来,全名在悬停和详情里。
+   mismatch 是唯一会着色的那一档:它是事故形状,而 unchecked 不能长得像 ok,
+   所以它用虚线框 —— 一个和「有答案」形状不同的框,不只是颜色不同。 */
+.rp-r .acc{font-size:var(--fs-chip);letter-spacing:.3px;color:var(--faint);
+  border:1px solid transparent;border-radius:2px;padding:0 2px;font-family:var(--mono,inherit)}
+.rp-r .acc.bad{color:var(--bad);border-color:var(--bad);font-weight:700}
+.rp-r .acc.unk{color:var(--faint);border-style:dashed;border-color:var(--line)}
+
+/* 详情面板。字段分三组:身份、位置、状态。 */
+.rp-d-h{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;margin-bottom:8px}
+.rp-d-h b{font-size:var(--fs-lead);font-family:var(--mono,inherit)}
+.rp-d-h .k{font-size:var(--fs-chip);color:var(--dim)}
+.rp-f{display:grid;grid-template-columns:64px 1fr;gap:3px 10px;font-size:var(--fs-meta);
+  align-items:baseline;padding:1px 0}
+/* 数字用小方块排成一行,不是三行「标签:数字」。三个数字各自一行时,一屏里
+   最占地方的是那三个标签,而它们每次都一样。 */
+.rp-chipsrow{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:4px 0 2px}
+.rp-chip{display:inline-flex;align-items:baseline;gap:3px;font-size:var(--fs-meta);
+  border:1px solid var(--line);border-radius:3px;padding:1px 5px;
+  font-variant-numeric:tabular-nums}
+.rp-chip .t{font-size:var(--fs-chip);color:var(--dim)}
+.rp-chip.hot{border-color:var(--bad);color:var(--bad)}
+.rp-chip.warn{border-color:var(--warn);color:var(--warn)}
+.rp-chip.zero{color:var(--faint)}
+.rp-chip.unk{border-style:dashed;color:var(--faint)}
+/* 分支关系画成一条线而不是写成 "master → origin/master" 一串文字。
+   没有 upstream 时线是断的 —— 那是这个面板最要紧的一个状态,
+   而「没有 upstream」和「和上游同步」在纯文字里差一个词,在图形里差一个形状。 */
+.rp-flow{display:flex;align-items:center;gap:6px;font-size:var(--fs-meta);
+  font-family:var(--mono,inherit);flex-wrap:wrap;margin:3px 0}
+.rp-flow .arr{color:var(--dim)}
+.rp-flow .arr.cut{color:var(--bad);font-weight:700}
+.rp-flow .up.none{color:var(--bad);font-family:inherit;font-size:var(--fs-meta)}
+/* 一行一个事实,带一个复制角标。标签列去掉:"本地路径" 这四个字每次都一样,
+   而一条以 C:\ 开头的绝对路径不需要标签就认得出是什么。 */
+.rp-line{display:flex;align-items:center;gap:6px;margin:3px 0;min-width:0}
+.rp-line .ic{font-size:var(--fs-chip);color:var(--dim);width:12px;text-align:center;flex:none}
+.rp-line code{font-size:var(--fs-meta);font-family:var(--mono,inherit);word-break:break-all;min-width:0}
+/* 正文限宽。一条路径换行之后如果铺到 1700px,眼睛要横扫一整屏才能回到下一行开头。 */
+.rp-detail > *{max-width:700px}
+.rp-detail > .rp-out{max-width:none}
+.rp-line button{flex:none}
+.rp-rel{display:flex;gap:5px;flex-wrap:wrap;margin-top:4px}
+.rp-rel span{font-size:var(--fs-chip);color:var(--dim);border:1px solid var(--line);
+  border-radius:3px;padding:0 5px}
+.rp-f .lb{color:var(--dim)}
+.rp-f .vv{word-break:break-all;font-family:var(--mono,inherit);min-width:0}
+.rp-f .vv.warn{color:var(--warn)} .rp-f .vv.bad{color:var(--bad);font-weight:600}
+.rp-f .vv.note{font-family:inherit;color:var(--dim)}
+.rp-acts{display:flex;gap:6px;flex-wrap:wrap;margin-top:12px;
+  border-top:1px solid var(--line);padding-top:10px}
+.rp-out{margin-top:8px;font-size:var(--fs-meta);white-space:pre-wrap;word-break:break-all;
+  max-height:200px;overflow:auto;color:var(--dim);font-family:var(--mono,inherit)}
+.rp-empty{color:var(--dim);font-size:var(--fs-body);padding:14px 2px}
+
+/* 状态分段条。段宽按数量,数字印在段上,点一下按这一类过滤。
+   ⚠ 形状规则(.d-error 是空心圆、.d-detached 是菱形)在这里用不上 ——
+   段是矩形。所以段上必须有数字和 title,不能只靠段色;
+   而真正需要形状区分的地方(48 行列表、图例)仍然有。 */
+.rp-bar{display:flex;width:100%;max-width:520px;height:19px;border-radius:3px;
+  overflow:hidden;background:var(--line2);margin:2px 0}
+.rp-bar i{display:flex;align-items:center;justify-content:center;font-style:normal;
+  min-width:26px;font-size:var(--fs-chip);cursor:pointer;font-variant-numeric:tabular-nums;
+  border-radius:0}
+.rp-bar i b{color:#fff;font-weight:600;text-shadow:0 0 2px #0006}
+/* 把点用的形状规则在条里中和掉。不中和的话 .d-error 会变成一个透明的圆,
+   而 .d-detached 会把整段转 45 度 —— 两个都是实心矩形段里不成立的形状。 */
+.rp-bar i.d-error{background:var(--bad);border:0}
+.rp-bar i.d-detached{background:var(--idle);transform:none}
+.rp-bar i.sel{outline:2px solid var(--ink);outline-offset:-2px}
+.rp-bar i:hover{filter:brightness(1.15)}
+/* 图例里的状态点。尺寸写在类里而不是内联,因为内联的 border-radius 会赢过下面
+   .d-error 的圆角,让图例上的「扫不动」退回成一个方块 —— 图例和列表对不上,
+   比没有图例更糟。这条必须排在 .d-* 前面,好让形状规则后来居上。 */
+/* 五个状态各有形状,不只有颜色。
+   ⚠ unpushed 和 error 以前都是 var(--bad) 的实心方块,在列表里逐字长得一样。
+   但它们是两类完全不同的东西:unpushed 是**查出来的结果**(有提交没推出去),
+   error 是**没查成**(这个仓扫不动)。把「没检查」画成一个检查结论,
+   正是这个项目最怕的那种失败。所以 error 改成空心圆 —— 里面没有东西,
+   因为里面确实没读到东西。
+   detached 转 45 度成菱形:游离 HEAD 是个结构异常,不是一档严重程度。 */
+.d-clean{background:var(--ok)} .d-dirty{background:var(--warn)}
+.d-unpushed{background:var(--bad)}
+.d-error{background:transparent;border:2px solid var(--bad);border-radius:50%}
+.d-detached{background:var(--idle);transform:rotate(45deg);border-radius:1px}
+
+/* ---- 会话(对话历史) ----------------------------------------------------------------------
+   按对话创建时所在的目录分组。标题来自对话自己,而标题**从哪来**也画出来:
+   一个由代号充数的标题和一句真概括长得一样,但信息量差着量级。 */
+#cvbox .pad{padding:7px 10px 9px}
+.cv-head{display:flex;align-items:center;gap:12px;flex-wrap:wrap;font-size:var(--fs-meta);
+  color:var(--dim);margin-bottom:6px}
+.cv-head b{font-variant-numeric:tabular-nums;color:var(--ink);font-size:var(--fs-lead)}
+.cv-head label{display:inline-flex;align-items:center;gap:4px;cursor:pointer}
+.cv-g{border-top:1px solid var(--line2)}
+.cv-gh{display:grid;grid-template-columns:10px minmax(0,1fr) 88px 44px 46px 106px;
+  gap:8px;align-items:center;padding:4px 0;cursor:pointer;font-size:var(--fs-body)}
+.cv-gh:hover{background:var(--cur)}
+.cv-gh .caret{color:var(--faint);font-size:var(--fs-chip);transition:none}
+/* ⚠ 这条以前写成 `.cv-gh .hm`,而 JS 渲染出来的类名是 cv-hm,所以它一行都没生效过:
+   那一列既不是 cyan 也没有右对齐,宽度跟着内容抖。两条规则合并成一条。 */
+.cv-hm{font-variant-numeric:tabular-nums;color:var(--cyan);font-size:var(--fs-meta);
+  white-space:nowrap;min-width:34px;text-align:right}
+/* 路径拆两段:前缀降成背景纹理,末段(真正区分这一行的那部分)留全色不截断。
+   刻意不只显示末段 —— `...\scripts` 这种末段在别处会撞名,那会丢掉定位能力。
+   前缀仍然逐字在 DOM 里,只是宽度不够时才省略;title 始终是完整绝对路径。 */
+.cv-gh .dir{display:flex;min-width:0;font-family:var(--mono,inherit);text-align:left}
+.cv-gh .dp{color:var(--faint);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:0 1 auto}
+.cv-gh .dn{color:var(--ink);font-weight:500;white-space:nowrap;flex:none}
+.cv-gh .n{font-variant-numeric:tabular-nums;color:var(--faint);font-size:var(--fs-meta);
+  white-space:nowrap;text-align:right}
+.cv-gh .ag{font-variant-numeric:tabular-nums;color:var(--dim);font-size:var(--fs-meta);
+  white-space:nowrap;text-align:right}
+/* 体积条。跨度是 88K 到 3.7G 四个数量级,线性条会让除最大两行外全部归零,所以取对数。
+   ⚠ 非零的最小值保底 3px,而真正的 0 走 .zero 的斜纹 ——
+   「小到看不见」和「没有」必须是两个不同的图形。 */
+.cv-bar{height:6px;background:var(--line2);border-radius:1px;position:relative;overflow:hidden}
+.cv-bar i{position:absolute;inset:0 auto 0 0;background:var(--cyan);opacity:.55;display:block}
+.cv-bar.zero{background:repeating-linear-gradient(45deg,var(--line2) 0 3px,transparent 3px 6px)}
+.cv-list{padding:0 0 4px 18px;display:none}
+.cv-g.open .cv-list{display:block}
+.cv-r{display:grid;grid-template-columns:1fr auto auto auto;gap:8px;align-items:baseline;
+  font-size:var(--fs-body);padding:3px 0;border-top:1px solid var(--line2)}
+.cv-r .t{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* 标题和正文是两样东西。改过名之后标题不再透露这场对话在说什么,所以两行都留。 */
+.cv-r .pv{grid-column:1;font-size:var(--fs-meta);color:var(--faint);overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap;margin-top:1px}
+.cv-r .src.rename{color:var(--cyan);border-color:var(--cyan)}
+.cv-r .src.ai-title{color:var(--dim)}
+.cv-r .src{font-size:var(--fs-chip);padding:0 3px;border:1px solid var(--line);border-radius:2px;
+  color:var(--faint);white-space:nowrap}
+.cv-r .src.slug,.cv-r .src.id{color:var(--warn);border-color:var(--warn)}
+.cv-r .m{font-variant-numeric:tabular-nums;color:var(--faint);font-size:var(--fs-meta);white-space:nowrap}
+.cv-r.human .t{color:var(--ink);font-weight:500}
+.cv-r .t{color:var(--dim)}
+.cv-r[data-cvfile]{cursor:pointer;border-radius:2px}
+.cv-r[data-cvfile]:hover{background:var(--cur)}
+.cv-more{font-size:var(--fs-meta);color:var(--warn);padding:3px 0}
+
+/* ================= 把 Tabler 接到本页的调色板与密度上 ==============================
+   外壳(侧栏、顶栏、卡片、徽章)现在全是 Tabler 的组件,所以这一段不再画外壳,
+   只做两件事:把 Tabler 的表面色接到本页原有的变量上,以及把密度压回来。
+
+   方向是刻意反过来的:不是把本页改成 Tabler 的颜色,而是把 Tabler 的变量指向本页的
+   颜色。因为这套调色板是为一张长时间盯着看的密集表调的、双主题都量过对比度,
+   而 Tabler 的默认色没量过这一点;更要紧的是,只要有两套颜色,就一定会在某个组件上
+   对不上,然后没人说得清哪一套才是对的。 */
+:root,
+[data-bs-theme="dark"]{
+  --tblr-body-bg:var(--bg);
+  --tblr-body-color:var(--ink);
+  --tblr-secondary:var(--dim);
+  --tblr-border-color:var(--line);
+  --tblr-border-color-translucent:var(--line2);
+  --tblr-bg-surface:var(--panel);
+  --tblr-bg-surface-secondary:var(--panel2);
+  --tblr-bg-surface-tertiary:var(--panel2);
+  --tblr-card-bg:var(--panel);
+  --tblr-card-cap-bg:var(--panel2);
+  --tblr-primary:var(--cyan);
+  --tblr-danger:var(--bad);
+  --tblr-success:var(--ok);
+  --tblr-warning:var(--warn);
+  --tblr-muted:var(--faint);
+  --tblr-link-color:var(--cyan);
+
+  /* 密度。Tabler 默认 14px 正文、0.5rem/0.75rem 的表格内距,那是给一屏十来行的
+     卡片式面板调的;这页的任务表是 36 行 19 列,按默认值要多滚两屏。
+     用它自己的变量压,不覆盖它的规则,所以升级不会把这些冲掉。 */
+  --tblr-body-font-size:var(--fs-body);
+  --tblr-font-size-h1:15px; --tblr-font-size-h2:13px; --tblr-font-size-h3:12px;
+  --tblr-border-radius:3px;
+  --tblr-table-cell-padding-y:2px;
+  --tblr-table-cell-padding-x:6px;
+  --tblr-card-spacer-y:6px;
+  --tblr-card-spacer-x:9px;
+  --tblr-card-cap-padding-y:4px;
+  --tblr-card-cap-padding-x:9px;
+}
+body{font-size:var(--fs-body)}
+
+/* 侧栏。宽度变量是 --tblr-sidebar-width(不是 navbar-width,写错了不报错、只是不生效),
+   默认 16rem 对五个分区太宽,收到 10.5rem。
+   折叠用 Tabler 自带的 .navbar-folded,不用我自己那套:它已经把宽度、标题隐藏、
+   悬停展开都处理好了,自己再写一份等于多一份要跟着版本走的东西。 */
+/* 这两个变量必须声明在 :root 上,不能只挂在 #side 上。
+   .page-wrapper 的左外边距读的是同名变量,它在 :root 作用域里解析 :
+   只改 #side 的话侧栏是 168px 而内容区从 Tabler 默认的 240px 开始,
+   中间一条 72px 的空档,底色是 body 背景,看起来像刻意的留白而不是错位。
+   折叠态同理:按「收起」换来的宽度和眼睛看到的对不上。 */
+:root{--tblr-sidebar-width:10.5rem;--tblr-sidebar-folded-width:3rem}
+#side{--tblr-sidebar-width:10.5rem;--tblr-sidebar-folded-width:3rem}
+#side .navbar-brand{font-size:var(--fs-lead);padding:6px 4px 4px;font-weight:600;margin-inline:0}
+#side .nav-link{padding:4px 8px 4px 10px;font-size:var(--fs-body);border-radius:3px}
+#side .nav-link-icon{width:15px;text-align:center;opacity:.85;margin-right:6px}
+/* 徽章原来贴在每一项的上沿,看起来像浮在两行之间的红块,而不是那一项的属性。
+   min-width 让一位数和两位数不再是两种宽度 —— 现在 6 那个明显窄一圈,
+   读起来像另一种东西。 */
+#side .nav-link{display:flex;align-items:center}
+#side .nav-link .badge{font-size:var(--fs-chip);padding:1px 5px;align-self:center;
+  line-height:1.45;min-width:20px;text-align:center}
+/* 这些小按钮一度是单字符图标,同一个 ⏸ 在三处分别表示归档移出、禁用、归档进冷层,
+   而它长得像暂停,三个含义一个都不是;于是全部换成了文字。
+   现在换回图标,但换的是**另一件东西**:一个含义一个图形,取自页内的 SVG sprite,
+   而且每个按钮都带 title 和 aria-label。当年的毛病不是「用了图标」,
+   是「拿一个图形去表示三件事」—— 那个毛病靠文字能治,靠画对图标也能治。
+   ⚠ 图标按钮必须有可读名字。一个没有 aria-label 的图标按钮,对读屏和对
+   「这个键是干嘛的」都是空白,那是把文字太多换成了什么都没有。 */
+button.mini{padding:0 5px;font-size:var(--fs-chip);white-space:nowrap;
+  min-height:22px;border-radius:3px}
+/* 纯图标按钮:方形、点击区 24px。24 不是随便取的 —— 之前 padding:0 5px 加 10.5px 字
+   实测高度只有 14px,比正文还小。 */
+button.mini.ib{padding:0;width:24px;min-height:24px;display:inline-flex;
+  align-items:center;justify-content:center}
+button.mini.ib .ic{width:15px;height:15px}
+/* 图标本身。stroke 用 currentColor,所以按钮的颜色规则一行都不用改。 */
+.ic{width:14px;height:14px;flex:none;vertical-align:-2px;
+  fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+/* 带文字的按钮里,图标和字之间留一点气 */
+button.mini .ic{margin-right:3px}
+button.mini.ib .ic{margin-right:0}
+/* 这一排里唯一会改东西、而且会把东西送出这台机器的那个。给它一点分量,
+   但**不是红色** —— 红留给「出事了」。它是一个要做的事,不是一个警报。 */
+button.mini.ib.go{border-color:var(--cyan);color:var(--cyan)}
+button.mini.ib.go:hover{background:var(--cyan);color:#fff}
+/* 归档 / 禁用 / 停用都是可逆的,常态不该是全页最红的东西 —— 22 个红按钮排成一竖排
+   比它们旁边的数据还抢眼。危险感留到 hover:那时人已经瞄准了。
+   ⚠ 只降常态的视觉权重,不动 danger 这个类本身:确认流程和 title 一个字没改。 */
+.mt-r .mini.danger,.ops .mini.danger{color:var(--dim);border-color:var(--line);
+  background:transparent}
+.mt-r .mini.danger:hover,.mt-r .mini.danger:focus-visible,
+.ops .mini.danger:hover,.ops .mini.danger:focus-visible{color:var(--bad);border-color:var(--bad)}
+/* 168 个按钮(42 行 × 4)常驻是全表最大的视觉噪音,而实际点它们的次数接近 0。
+   不用 display:none —— 那会让列宽跳动而且键盘够不着。淡下去,鼠标扫过或 j/k
+   光标落上就实体化。 */
+td.ops .mini{opacity:.25;transition:opacity .08s}
+table.g tbody tr:hover td.ops .mini,
+table.g tbody tr.cur td.ops .mini,
+td.ops .mini:focus-visible{opacity:1}
+/* 徽章是「合并」这件事的安全带:分区把东西收了起来,徽章负责让要人管的东西不用点进去
+   也看得见。所以折叠时它不能跟着藏,而是贴到图标角上 : 折叠恰恰是最需要它的时候。 */
+#side.navbar-folded .nav-link{position:relative}
+#side.navbar-folded .nav-link .badge{position:absolute;top:1px;right:3px;font-size:var(--fs-chip);
+  padding:0 3px;margin:0!important}
+#side.navbar-folded #sidetoggle{padding:2px 0;font-size:var(--fs-meta)}
+/* 低于 navbar-expand-sm 的断点(576px)时,Tabler 把 navbar-vertical 变成页面顶部一条
+   全宽的块,而 .navbar-folded 在这个断点下没有任何规则 : 于是点「收起」会把按钮文字换成
+   »、把状态写进 localStorage,页面却纹丝不动,**一个自称已折叠、实际没折叠的控件**;
+   下次在宽屏打开时启动代码又会照着这个假状态自动折叠一次。
+   这里让折叠在窄屏下也真的生效:收起时只留品牌行,分区项藏起来。 */
+@media (max-width:575.98px){
+  /* 只藏分区列表,不藏它的容器 : 收起按钮就在 #sidenav 里面,
+     把整个 #sidenav display:none 会把按钮一起带走,于是收起之后再也展不开。
+     实测过一次:收起后按钮高度为 0。 */
+  #side.navbar-folded .navbar-nav{display:none}
+  #side.navbar-folded{padding-bottom:2px}
+  #side.navbar-folded #sidetoggle{display:block}
+}
+
+#bar{--tblr-navbar-padding-y:0;min-height:26px;font-size:var(--fs-meta)}
+#bar .container-fluid{gap:0;padding:0}
+#bar .seg{padding:0 9px;border-right:1px solid var(--line2);align-self:stretch;
+  display:flex;align-items:center;gap:6px}
+#bar .seg:last-child{border-right:none}
+#bar .k{color:var(--faint)}
+/* 顶栏原来八段等重,「失败 6」和「总数 42」长得完全一样,扫一眼看不出今天有没有事。
+   给会变红的那两个上色,零态压成 faint 但**仍然显示**。
+   后面几段(数据时间、最后摄入、运行日志、库)属于「这页可不可信」那一层,
+   不是状态计数,整体降权而不是删掉。 */
+#bar b{font-variant-numeric:tabular-nums}
+#bar b.bad{color:var(--bad)} #bar b.warn{color:var(--warn)}
+#bar b.zero{color:var(--faint);font-weight:400}
+#bar #s-src{opacity:.75}
+
+.page-body{margin-top:0;padding:7px 0 18px}
+/* 阅读栏。1920 屏上原来每一行都横跨 1800px:会话那屏左端是路径、右端是「1 场 · 249K」,
+   中间 1500px 空白,眼睛要走完整屏才能把一行的两端连上。靠左不居中 ——
+   导航在左边,居中会把内容推离它。
+   ⚠ 任务表是刻意的例外:那张表列多,卡到 1500px 会开始横向滚,横滚比长行更难用。 */
+#view{padding:0 9px}
+section[data-view]{display:flex;flex-direction:column;gap:6px;scroll-margin-top:32px;
+  max-width:1500px}
+/* ⚠ 上限加在 section 上而不是 #view 上,因为任务表要能例外。加在 #view 上时
+   内层再写 max-width:none 也没用 —— 父容器已经窄了,子元素放不宽。
+   任务表列多,卡到 1500px 会开始横向滚,而横滚比长行更难用。 */
+section[data-view="tasks"]{max-width:none}
+section[data-view][hidden]{display:none}
+#view .card{margin-bottom:0}
+#view #tools{margin-bottom:0}
+
+/* 现在用的是 Tabler 真正的 .card / .card-header / .card-title / .card-actions。
+   之前这里是一套模仿:.box 加 .box>h2,靠四段互相打补丁的 CSS 去装成卡片,
+   而任何 Tabler 版本升级都不会把这套模仿带上。
+   挡住迁移的那句注释说「要动十二处渲染代码的类名」 : 实际九个卡片全在静态 HTML 里,
+   .box 一次都没出现在 JS 拼串中,那个风险不存在。
+   头部右侧的按钮原来靠 <span style="flex:none"> 硬凑,那正是「没有卡片组件所以拿 flex 顶」;
+   .card-actions 就是 Tabler 给这个位置准备的。 */
+.card-header{min-height:0;padding:4px 9px}
+.card-title{font-size:var(--fs-body);font-weight:600;color:var(--ink);margin:0;
+  display:flex;align-items:center;gap:6px;flex:1;min-width:0}
+.card-actions{display:flex;gap:4px;align-items:center}
+
+/* ---- 概览的关键指标 ----------------------------------------------------------------
+   分区之后概览只剩两块盒子,一屏填不满三分之一。空着不是「干净」,是**把已经算出来的
+   东西藏进了别的分区**:每一格都是别处早就算好的数字,放在这里只是让人不用先点进去。
+   每格可点,点了就跳到那一类,所以它同时是导航。 */
+/* 上限 220px 而不是 1fr:1fr 没有上限,六格会被拉到一格 285px 宽,里面只放一个两位数。
+   auto-fit 保留,所以窄屏照常换行。 */
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,220px));
+  justify-content:start;gap:1px;
+  background:var(--line);border:1px solid var(--line)}
+.tile{background:var(--panel);padding:8px 10px 9px;display:flex;flex-direction:column;gap:2px;height:auto;
+  cursor:pointer;border:0;text-align:left;font-family:inherit;min-width:0}
+.tile:hover{background:var(--cur)}
+.tile .k{font-size:var(--fs-chip);color:var(--faint);letter-spacing:.03em;white-space:nowrap}
+.tile .v{font-size:19px;font-weight:600;font-variant-numeric:tabular-nums;line-height:1.15}
+.tile .s{font-size:var(--fs-meta);color:var(--dim);overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap}
+.tile .v.ok{color:var(--ok)} .tile .v.bad{color:var(--bad)}
+.tile .v.warn{color:var(--warn)} .tile .v.idle{color:var(--faint)}
+/* 比例条。只在这一格的数字真有分母时才出现;没有分母的格子(比如对话总数)不画轨道。 */
+.tile .tb{display:block;height:3px;border-radius:2px;background:var(--line);
+  overflow:hidden;margin:3px 0 1px;position:relative}
+.tile .tb i{display:block;height:100%;background:var(--dim)}
+.tile .tb i.ok{background:var(--ok)} .tile .tb i.bad{background:var(--bad)}
+.tile .tb i.warn{background:var(--warn)} .tile .tb i.idle{background:var(--faint)}
+/* 爆表:条的右端长出一截斜纹,并整条描红。满和爆不能是同一根满条。 */
+.tile .tb.over{outline:1px solid var(--bad);outline-offset:1px;overflow:visible}
+.tile .tb.over::after{content:"";position:absolute;top:0;bottom:0;left:100%;width:12px;
+  background:repeating-linear-gradient(45deg,var(--bad) 0 2px,transparent 2px 4px)}
+/* 上面 .tile 那处的 height:auto 现在是冗余的,留着无害(注释以前写「两处」,只剩一处了 ——
+   一段替不存在的第二处背书的注释,会让读的人去找它)。
+   本页曾给工具条写过 `button{height:22px}` 这条元素选择器,任何拿 <button> 当积木的
+   多行部件都会被它钉死,内容照样按自己的高度排、溢出去盖住下一行 : 看起来像排版错乱,
+   不像高度被覆盖。当时的对策是「拿 button 做新部件时一律显式写 height:auto」,
+   **而那条规矩两次都没被记住**:指标格一次,时间轴的三个缩放按钮一次(换成比例字体后
+   内容涨到 30px,被裁在 21px)。所以这次改的是根,那条元素选择器现在是 min-height,
+   再没有哪个 button 会被它裁掉。**一条要靠每个人每次都记得的规矩,和一条没有的规矩,
+   效果是一样的。** */
+
+/* ---- 概览:要人管的事 ------------------------------------------------------------
+   概览排完六格指标只占了不到三分之一屏,剩下一片空。空着不是干净:六格告诉你「有 11 个
+   仓库要人管」,却不告诉你是哪 11 个,于是还得点进去。这张清单把四个分区里判为要人管的
+   行合到一处,每行点一下跳到它所属的分区。
+   六格回答「有没有事」,这张清单回答「是哪些事」。 */
+/* 轨道的最小尺寸决定了谁先被挤没。原来是 `1fr auto`:.nm 有 overflow:hidden 所以最小
+   尺寸是 0,.why 没有所以最小尺寸是 max-content —— 宽度不够时先被压到 0 的是任务名,
+   留下的是「未推送」「产物过期」这种**没有主语的原因**,而这张清单存在的理由就是回答
+   「是哪一个」。现在反过来:名字有下限,原因先收。 */
+/* 再加一条:1920 屏上这张清单原来横跨 1740px,名字停在 x≈260、原因贴在 x≈1900,
+   中间 1600px 全空。限宽之后一次眼动就能读完「哪个 · 怎么了」。
+   820px 是最长的名字加最长的原因的自然宽度,不会截断。 */
+#todod{max-width:820px}
+#todo .rw{display:grid;grid-template-columns:6px 44px minmax(150px,max-content) minmax(0,1fr);
+  gap:8px;align-items:baseline;
+  padding:2px 0;border-bottom:1px solid var(--line2);cursor:pointer}
+/* 同一个原因重复多行时合并成一行 + 一排芯片。原来 31 行里有 19 行只说了两件事:
+   「有未提交改动」印了 15 遍、「有未推送提交」印了 4 遍。合并之后
+   「19 个仓库脏着」这个**规模**第一次变得可见 —— 以前它藏在「你自己去数有多少行」里。
+   ⚠ 分桶键必须带上 sev:少了它,一条 sev=3 会被并进一堆 sev=2 里,
+   色点只剩一个,那正是把两种状态合并成同一个视觉。 */
+#todo .rw.grp{grid-template-columns:6px 44px minmax(150px,max-content) minmax(0,1fr);
+  cursor:default}
+/* ⚠ 色点在 .rw 上是 align-self:center。芯片换行把一条分组行撑到 85px 高时,
+   点会垂直居中飘到第 40px 处 —— 屏幕上看起来是一个不属于任何一行的孤立色块,
+   而它本该贴着「有未提交改动 16」那一行。分组行里改成对齐第一行。 */
+#todo .rw.grp .dot{align-self:start;margin-top:5px}
+#todo .chips{display:flex;flex-wrap:wrap;gap:4px}
+#todo .chip{font-family:var(--mono);font-size:var(--fs-chip);padding:0 5px;min-height:17px;
+  border-radius:9px;border:1px solid var(--line);background:transparent;color:var(--dim);
+  cursor:pointer}
+#todo .chip:hover{color:var(--ink);border-color:var(--ink)}
+#todo .why b{color:var(--ink);font-variant-numeric:tabular-nums}
+/* 一键按钮。它和芯片(那些是导航)长得不一样:芯片是圆角描边的名字,
+   这个是有底色的动词 —— 「点了会跳过去」和「点了会动手」不能长得一样。 */
+#todo .fix{font-size:var(--fs-chip);line-height:16px;padding:0 7px;margin-left:8px;
+  border:1px solid var(--cyan);color:var(--cyan);background:transparent;
+  border-radius:3px;cursor:pointer;white-space:nowrap}
+#todo .fix:hover{background:var(--cyan);color:#fff}
+#todo .fix.all{margin-left:6px;font-weight:600}
+#todo .rw:last-child{border-bottom:0}
+#todo .rw:hover{background:var(--cur)}
+#todo .dot{width:6px;height:6px;border-radius:1px;align-self:center}
+#todo .src{font-size:var(--fs-chip);color:var(--faint);white-space:nowrap}
+#todo .nm{font-family:var(--mono);font-size:var(--fs-meta);overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap}
+#todo .why{font-size:var(--fs-meta);color:var(--dim);white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis;min-width:0}
+#todo .none{color:var(--ok);font-size:var(--fs-meta);padding:3px 0}
+
+/* ---- 一页模式 -------------------------------------------------------------------
+   分区把页面从五屏压到一屏,代价是任意时刻有五分之四的内容处在 display:none 里,
+   浏览器的 Ctrl+F 搜不到。徽章解决的是「哪一类有事」,解决不了「我记得在哪儿见过
+   一个词」,而这个台子的全部价值是打开就在眼前,Ctrl+F 正是「在眼前」最物理的定义。
+   Shift+A 全摊开,再按收回。顺带也是打印和整页截图模式。 */
+#view.all section[data-view]{display:flex!important}
+#view.all section[data-view]::before{content:attr(data-label);font-size:var(--fs-meta);color:var(--dim);
+  letter-spacing:.04em;padding:2px 0;border-bottom:1px solid var(--line);margin-top:4px}
+#view.all section[data-view]:first-of-type::before{margin-top:0}
+
+/* 等宽显式加回数据。这几处是「要对齐着扫」的东西:数字、路径、任务名、时间戳。
+   剩下用比例字体的是大类、说明、触发这三列和状态芯片,它们本来就是散文。 */
+.num{font-family:var(--mono)}
+/* .lr/.nr/.to 三个类名在 C 数组里从来没被赋给任何 td,所以这条规则四分之三是死的,
+   而它的死法正好抵消了它宣布的目标:上次/下次/超时三列至今是比例字体、数字不对齐。
+   改成按列的 data-col 选,渲染那边一并补上属性,两处必须一起改。 */
+table.g td.nm,table.g td[data-col="lastRun"],table.g td[data-col="nextRun"],
+table.g td[data-col="timeout"]{font-family:var(--mono)}
+#sckd .r .p,.cv-r .m,.mt-r .c,.tile .v,#bar b,.tlkey{font-family:var(--mono)}
+#help td.hot{font-family:var(--mono)}
+
+/* 三处原来都是 gap:1px 铺在 --line 底色上画分隔线。单看每一处都合理,
+   三处叠起来整页就是一张连续的网格纸,而那正是「像老页面」最主要的来源。
+   改成真的间隙 + 各自边框:同样是分隔,但读起来是几张卡片而不是一个表格区域。 */
+.tiles{gap:6px;background:none;border:0}
+.tile{border:1px solid var(--line);border-radius:3px}
+/* 组标题不是卡片,别给它边框 —— 它是标尺不是内容。 */
+.rp-gh{border:0}
+.mt-grid{gap:8px;background:none}
+.mt-col{border:1px solid var(--line);border-radius:3px}
+/* 卡头层级原来是反的:标题 11.5px/--dim,正文 12px/--ink,
+   也就是卡片标题是整张卡里最不显眼的东西。 */
+
+/* ---- 芯片、顶栏、卡头 ------------------------------------------------------------
+   这三处是「套了现代壳子的老页面」里剩下最明显的。共同点是它们都还在用
+   「直角 + 1px 线 + 全部同字号」这套终端写法,而外壳已经不是终端了。 */
+
+/* 状态芯片原来是直角、min-width:50px 硬撑、10.5px,读起来像终端里的色块不像徽章。
+   形态上它离 Tabler 的 badge 只差一个圆角和一点内距;颜色继续走自己的类,
+   不换成 bg-*-lt : 那套类吃的是 rgb 三元组,换过去等于把配色交给另一套变量。 */
+.st{border-radius:9px;min-width:44px;padding:0 6px;letter-spacing:.02em}
+
+/* 顶栏原来是一排竖线分隔的等宽小字,标签和数字同为 11.5px,也就是没有层级。
+   现在标签压小压灰、数字放大加粗,分隔靠间距而不是竖线 : 26px 的高度放得下。 */
+#bar .seg{border-right:0;padding:0 10px 0 0;gap:5px}
+#bar .k{font-size:var(--fs-chip);letter-spacing:.04em;text-transform:none}
+#bar b{font-size:var(--fs-lead);font-weight:600;line-height:1}
+#bar .seg:first-child{padding-left:2px}
+
+/* 卡头原来只是一条灰带。给它一点上下呼吸和一个更实的底线,
+   让「这里是一块的开头」不需要靠颜色去猜。 */
+
+/* ── 调用屏 ────────────────────────────────────────────────────────────────
+   这一屏要同时显示两种量:有时间戳的近期调用,和十一万条没有时间戳的历史。
+   配色上刻意让后者用虚线 + 降透明度(.l-unk),因为「没量过」和「量出来是零」
+   在这一屏出现的频率很高,而它们长得一样就是这整个台子存在的理由。 */
+.lc-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:3px;max-width:420px}
+.lc-list li{display:flex;align-items:center;gap:6px;padding:4px 6px;border:1px solid var(--line2);
+  border-radius:3px;background:var(--panel2);font-size:var(--fs-body);cursor:grab}
+.lc-list li.drag{opacity:.4;border-style:dashed}
+.lc-list li.over{border-color:var(--cyan)}
+.lc-list li .ord{color:var(--faint);font-size:var(--fs-chip);min-width:14px;
+  font-variant-numeric:tabular-nums}
+.lc-list li .nm{flex:1;color:var(--ink);font-family:var(--mono,inherit)}
+.lc-list li .mv{display:flex;gap:2px}
+.lc-list li .mv button{padding:0 5px;min-height:20px;font-size:var(--fs-chip);line-height:1}
+.lc-foot{display:flex;align-items:center;gap:8px;margin-top:8px;flex-wrap:wrap}
+.lc-foot .faint{font-size:var(--fs-chip);font-family:var(--mono,inherit)}
+/* env 覆盖的告示。它不是装饰 : 没有它,在这一屏上排好的顺序会被一个看不见的
+   环境变量压掉,而页面会显示成保存成功 —— 一个能点、点了看起来生效、实际没有的按钮。 */
+.lc-warn{border:1px solid var(--bad);background:var(--badb);color:var(--bad);
+  padding:5px 8px;border-radius:3px;font-size:var(--fs-meta);margin-bottom:8px}
+.lc-warn b{font-family:var(--mono,inherit)}
+.lc-src{font-size:var(--fs-chip);padding:1px 6px;border-radius:9px;border:1px solid var(--line);
+  color:var(--dim);margin-left:6px}
+.lc-src.env{border-color:var(--warn);color:var(--warn)}
+.lc-src.file{border-color:var(--cyan);color:var(--cyan)}
+.lc-src.observed{border-color:var(--ok);color:var(--ok)}
+/* builtin 刻意画成灰的:它是控制台自己存的一份拷贝,权威在另一个仓里,
+   只有一台从没调用过的机器才会看到它。一个权威的样子会让人信错东西。 */
+.lc-src.builtin{border-style:dashed;color:var(--faint)}
+
+.l-wins{display:flex;gap:10px;flex-wrap:wrap}
+.l-win{flex:1 1 200px;min-width:190px;border:1px solid var(--line2);border-radius:3px;padding:7px 9px}
+.l-win h4{margin:0 0 5px;font-size:var(--fs-meta);color:var(--dim);font-weight:500;
+  letter-spacing:.04em}
+.l-win .big{font-size:18px;font-weight:600;color:var(--ink);font-variant-numeric:tabular-nums;
+  line-height:1.1}
+.l-win .sub{font-size:var(--fs-chip);color:var(--faint);margin-top:3px;
+  font-variant-numeric:tabular-nums}
+.l-win .sub .bad{color:var(--bad)} .l-win .sub .ok{color:var(--ok)}
+.l-win.l-unk{border-style:dashed;opacity:.62}
+.l-win.l-unk .big{color:var(--faint)}
+/* 无时间戳的历史。单独一条,措辞刻意不说「0」也不说「无数据」:
+   它有十一万条,只是问不出「今天」。 */
+.l-led{margin-top:8px;font-size:var(--fs-chip);color:var(--faint);
+  font-variant-numeric:tabular-nums;border-top:1px dashed var(--line2);padding-top:6px}
+
+.l-rung{border-collapse:collapse;font-size:var(--fs-body);width:auto;min-width:360px}
+.l-rung th{text-align:right;font-weight:500;color:var(--dim);font-size:var(--fs-meta);
+  padding:2px 10px 4px;border-bottom:1px solid var(--line2)}
+.l-rung th:first-child{text-align:left}
+.l-rung td{padding:3px 10px;font-variant-numeric:tabular-nums;text-align:right;
+  border-bottom:1px solid var(--line2)}
+.l-rung td:first-child{text-align:left;font-family:var(--mono,inherit);color:var(--ink)}
+.l-rung td.z{color:var(--faint)}
+.l-rung td.f{color:var(--bad)}
+.l-hint{margin:8px 0 0;font-size:var(--fs-chip);max-width:60ch;line-height:1.5}
+.l-verify{margin-top:6px;font-size:var(--fs-chip);color:var(--faint)}
+.l-verify.bad{color:var(--bad);border:1px solid var(--bad);background:var(--badb);
+  padding:4px 7px;border-radius:3px}
+.l-sub{font-size:var(--fs-meta);color:var(--dim);margin:6px 0 2px}
+.l-sub:first-child{margin-top:0}
+.l-sub b{color:var(--ink)}
+.l-more{font-size:var(--fs-chip);padding:3px 0 0}
+
+.l-run{display:flex;align-items:center;gap:8px;padding:3px 0;font-size:var(--fs-meta);
+  border-bottom:1px solid var(--line2)}
+.l-run .who{font-family:var(--mono,inherit);color:var(--ink);min-width:66px}
+.l-run .who.none{color:var(--bad);font-family:inherit}
+.l-run.jump{cursor:pointer}
+.l-run.jump:hover{background:var(--cur)}
+.l-run.jump:focus-visible{outline:2px solid var(--cyan);outline-offset:-2px}
+.l-run .faint{font-size:var(--fs-chip);overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap;max-width:200px}
+.l-run .barw{flex:1;min-width:60px;height:9px;background:var(--line2);border-radius:2px;overflow:hidden}
+.l-run .bar{height:100%;background:var(--warn)}
+/* 两张表共用同一条长度基准,所以整链失败那几段的条不一定最长 —— 靠颜色而不是长度
+   说明它更严重。用长度去表达严重程度正是上一版把 23 连全失败排到第九位的那个错。 */
+.l-run .bar.dead{background:var(--bad)}
+.l-run .len{font-variant-numeric:tabular-nums;color:var(--ink);min-width:52px;text-align:right}
+.l-run .when{color:var(--faint);font-size:var(--fs-chip);min-width:112px;text-align:right}
+.l-run .when.unk{font-style:italic}
+
+.l-scroll{overflow-x:auto}
+.l-calls{border-collapse:collapse;width:100%;font-size:var(--fs-meta)}
+.l-calls th{text-align:left;font-weight:500;color:var(--dim);padding:2px 8px 4px;
+  border-bottom:1px solid var(--line);white-space:nowrap}
+.l-calls th.r,.l-calls td.r{text-align:right}
+.l-calls td{padding:2px 8px;border-bottom:1px solid var(--line2);
+  font-variant-numeric:tabular-nums;white-space:nowrap}
+.l-calls tr.lrow:hover{background:var(--cur);cursor:pointer}
+.l-calls tr.open{background:var(--sel)}
+.l-calls td.who{font-family:var(--mono,inherit);color:var(--ink)}
+.l-calls td.who.none{color:var(--bad)}
+.l-calls td.unk{color:var(--faint);font-style:italic}
+.l-calls td.sk{color:var(--faint);font-family:var(--mono,inherit)}
+.l-calls td.det{white-space:normal;background:var(--panel2);padding:7px 10px}
+.l-calls td.det dl{display:grid;grid-template-columns:auto 1fr;gap:2px 10px;margin:0;
+  font-size:var(--fs-chip)}
+.l-calls td.det dt{color:var(--dim)} .l-calls td.det dd{margin:0;color:var(--ink);
+  font-family:var(--mono,inherit);word-break:break-all}
+.l-calls td.det pre{margin:6px 0 0;padding:6px 8px;background:var(--panel);
+  border:1px solid var(--line2);border-radius:3px;max-height:340px;overflow:auto;
+  font-size:var(--fs-chip);white-space:pre-wrap;word-break:break-word}
+.l-att{border-collapse:collapse;margin:6px 0 0;font-size:var(--fs-chip);width:100%}
+.l-att td{padding:1px 8px 1px 0;border-bottom:1px solid var(--line2);
+  font-family:var(--mono,inherit);color:var(--dim)}
+.l-att td:first-child{color:var(--ink)}
+.l-att td.y{color:var(--ok)} .l-att td.n{color:var(--bad)}
+.l-att td.r{text-align:right;font-variant-numeric:tabular-nums}
+.l-page{display:flex;align-items:center;gap:8px;margin-top:8px;font-size:var(--fs-meta);
+  color:var(--dim);font-variant-numeric:tabular-nums}
+.l-sel{font-size:var(--fs-meta);padding:1px 4px}
+.l-q{font-size:var(--fs-meta);padding:1px 6px;width:150px;min-width:0;max-width:100%}
+/* 明细卡头那排筛选件(两个下拉 + 一个输入框)在窄窗口下会把整页撑出横向滚动条,
+   而横滚的是**页面**不是那张表 —— 于是左边的卡片也跟着一起漂。
+   让它们换行:筛选件少一行比整页错位强。表格自己的横滚在 .l-scroll 上,不受影响。 */
+#lcalls .card-actions{flex-wrap:wrap;gap:4px;min-width:0}
+#lcalls .card-actions select,#lcalls .card-actions input{max-width:100%}
+
+/* Review frozen repository plans before any publication. */
+.rp-review{width:min(1000px,90vw);max-height:90vh;background:var(--panel);color:var(--ink);border:1px solid var(--line);padding:20px}
+.rp-review::backdrop{background:#0009}
+.rp-review pre{max-height:60vh;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;text-align:left}
+.rp-review input{display:block;width:100%;box-sizing:border-box;margin:8px 0}
+.rp-review button{margin-right:12px}

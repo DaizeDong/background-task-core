@@ -20,8 +20,8 @@ decorative, and all three are implemented in this file:
      would attach no credentials and the server would accept. That is the CSRF shape, and being on
      localhost does not protect against it.
   3. Names that arrive over HTTP have no standing. A task name is re-enumerated against the live
-     system before any verb runs, and it reaches PowerShell through an ENVIRONMENT VARIABLE, never
-     interpolated into a command string (see `act.ps1`).
+     system before any verb runs. The shared controller sends names as JSON data
+     to the fixed root-folder COM transport, never as PowerShell source.
 
 Usage:
     python server.py [--port 8787] [--no-browser]
@@ -46,6 +46,7 @@ from urllib.parse import parse_qs, urlparse, unquote
 
 import allowlist
 import codexinfo
+import component_status
 import console_store
 import convos
 import evtlog
@@ -56,6 +57,7 @@ import maint
 import memops
 import repos as repos_mod
 import retire as retire_mod
+import controller as task_control
 import selfcheck
 import sysinfo
 import timeline
@@ -81,6 +83,13 @@ RUNLOG = HERE / "runlog.ps1"
 PAGE = HERE / "console.html"
 ICON = HERE / "icon.svg"
 VENDOR = HERE / "vendor"
+STATIC = HERE / "static"
+STATIC_FILES = {
+    "app.js", "api.js", "events.js", "styles.css",
+    "panels/tasks.js", "panels/skills.js", "panels/plugins.js",
+    "panels/profile.js", "panels/repositories.js", "panels/storage.js",
+    "panels/overview.js", "panels/conversations.js", "panels/calls.js",
+}
 
 NOT_RUN, RUNNING = 0x41303, 0x41301
 VERBS = ("enable", "disable", "run", "stop")
@@ -411,6 +420,14 @@ def load_categories() -> tuple[list[dict], str | None]:
     return cats, None
 
 
+class HealthDeclarations(dict):
+    """Old name lookup plus every raw declaration for coverage accounting."""
+
+    def __init__(self, groups, declarations):
+        super().__init__(groups)
+        self.declarations = declarations
+
+
 def load_health() -> tuple[dict, str | None]:
     """No default path. Unset means NOT CHECKED, which the page renders as unknown, not as a pass."""
     p = cfg_path("TASK_CONSOLE_HEALTH")
@@ -452,7 +469,7 @@ def load_health() -> tuple[dict, str | None]:
                         + ", ".join(f"{n}x{k}" for n, k in sorted(multi.items())[:5]))
         warn = (f"健康监控清单声明了 {len(raw_tasks)} 条,归到 {len(out)} 个任务名 —— "
                 + ";".join(bits) + "。")
-    return out, warn
+    return HealthDeclarations(out, raw_tasks), warn
 
 
 # 同一个任务名在清单里可以有多条声明:一个任务把几件事折叠进来之后,
@@ -591,7 +608,7 @@ def build_freshness(tasks: dict, health: dict, health_reason: str | None = None)
     judged on freshness, and saying so is the point. When the manifest itself is missing, coverage
     is 0 and the page says NOT CHECKED instead of drawing an empty green board.
     """
-    if not health:
+    if not health and not getattr(health, "declarations", None):
         # 把 load_health 给出的**具体**原因透传上去,不要在这里换成一句笼统的话。
         # 「清单解析失败(JSON 坏了)」和「压根没设环境变量」是两件事:前者是需要修的故障,
         # 后者是没启用。压成同一句之后,页面上没有任何办法把它们分开。
@@ -607,13 +624,17 @@ def build_freshness(tasks: dict, health: dict, health_reason: str | None = None)
             "last_run": _epoch(t.get("lastRun")),
             "next_run": _epoch(t.get("nextRun")),
             "missed_runs": t.get("missedRuns") or 0,
+            "observations": t.get("observations") or {},
         }
     # 逐条评估,不是逐个任务名。同名多条在这里要展开回去:
     # 合并那一份是任务表的口径(一行一个任务),而新鲜度问的是「每一件声明过的事
     # 是不是都还在跑」,把折叠进一个任务的几件事合成一条,等于把盲区原样保留。
     decls = []
-    for v in health.values():
-        decls.extend(v.get("_decls") or [v])
+    if isinstance(health, HealthDeclarations):
+        decls = health.declarations
+    else:
+        for v in health.values():
+            decls.extend(v.get("_decls") or [v])
     return freshness.evaluate(decls, rows, time.time())
 
 
@@ -949,8 +970,12 @@ class Handler(BaseHTTPRequestHandler):
         except Exception as e:
             return self._json(400, {"error": f"bad request: {e}"})
         try:
-            return self._json(200, retire_mod.plan(str(body.get("name") or ""),
-                                                   str(body.get("reason") or "x")))
+            if not isinstance(body, dict):
+                return self._json(400, {"error": "request must be an object"})
+            return self._json(200, task_control.retire_plan(str(body.get("name") or ""),
+                                                          str(body.get("reason") or "x")))
+        except task_control.ContractError as e:
+            return self._json(400, task_control.error_result(e))
         except maint.Refused as e:
             return self._json(400, {"error": str(e), "code": e.code})
         except Exception as e:
@@ -1035,9 +1060,14 @@ class Handler(BaseHTTPRequestHandler):
         except Exception as e:
             return self._json(400, {"error": f"bad request: {e}"})
         try:
-            return self._json(200, maint.act(str(body.get("action") or ""),
-                                             str(body.get("name") or ""),
-                                             body.get("arg")))
+            if not isinstance(body, dict):
+                return self._json(400, {"error": "request must be an object"})
+            result = maint.act(str(body.get("action") or ""),
+                               str(body.get("name") or ""), body.get("arg"))
+            status = 500 if body.get('action') == 'task.retire' and result.get('ok') is False else 200
+            return self._json(status, result)
+        except task_control.ContractError as e:
+            return self._json(400, task_control.error_result(e))
         except maint.Refused as e:
             return self._json(400, {"error": str(e), "code": e.code})
         except Exception as e:
@@ -1100,6 +1130,23 @@ class Handler(BaseHTTPRequestHandler):
         if path in ("/", "/index.html"):
             html = PAGE.read_text(encoding="utf-8").replace("__TOKEN__", self.token)
             return self._send(200, html.encode("utf-8"), "text/html; charset=utf-8")
+        if path.startswith("/static/"):
+            # Exact lexical membership rejects encoded traversal and UNC before I/O.
+            rel = path[len("/static/"):]
+            if rel not in STATIC_FILES:
+                return self._json(404, {"error": "not found"})
+            try:
+                target = (STATIC / rel).resolve()
+                target.relative_to(STATIC.resolve())
+                body = target.read_bytes()
+            except (OSError, ValueError):
+                return self._json(404, {"error": "not found"})
+            ctype = "text/css; charset=utf-8" if rel.endswith(".css") else "text/javascript; charset=utf-8"
+            return self._send(200, body, ctype)
+        if path == "/api/components":
+            if not self._authed():
+                return self._json(403, {"error": "bad token"})
+            return self._json(200, component_status.read_configured())
         if path == "/api/hours":
             if not self._authed():
                 return self._json(403, {"error": "bad token"})
@@ -1293,11 +1340,17 @@ class Handler(BaseHTTPRequestHandler):
         except Exception as e:
             return self._json(400, {"error": f"bad request: {e}"})
 
+        if not isinstance(req, dict):
+            return self._json(400, {"error": "request must be an object"})
         name, verb = str(req.get("name", "")), str(req.get("verb", ""))
         if verb not in VERBS:
             return self._json(400, {"error": f"verb not allowed: {verb}"})
         if not name:
             return self._json(400, {"error": "no task name"})
+        try:
+            task_control.validate(name, verb)
+        except task_control.ContractError as e:
+            return self._json(400, task_control.error_result(e, name=name, verb=verb))
 
         # Re-enumerate and check membership rather than trusting the client's name. The page could
         # be stale, and more to the point a name that arrived over HTTP has no standing until this
@@ -1309,23 +1362,10 @@ class Handler(BaseHTTPRequestHandler):
         if name not in live:
             return self._json(400, {"error": f"不在本机可管理的任务列表里: {name}"})
 
-        rc, out, err = run_ps(ACT, {"TASKCONSOLE_NAME": name, "TASKCONSOLE_VERB": verb}, timeout=60)
         try:
-            res = json.loads(out) if out else {}
-        except Exception:
-            res = {"ok": rc == 0, "message": out or err}
-        res.setdefault("ok", rc == 0)
-        # ⚠ act.ps1 一个字节都没输出时 res 是空字典,而 **err 完全不进响应**
-        # (只有 JSON 解析失败那一支才用 out or err)。前端无条件读 r.message,
-        # 于是右下角只弹出「<任务名>:undefined」四秒后消失,真正的错误文本
-        # (解释器找不到、被 ExecutionPolicy 挡下、脚本解析失败 —— 这几种都是
-        # rc!=0 且 stdout 为空、stderr 有正文)停在 server 进程里从不外传。
-        # 一个报错却不说错在哪的界面,和不报错差不多。
-        if not res.get("message"):
-            res["message"] = (err or out or
-                              (f"act.ps1 退出 {rc},而且什么都没输出"
-                               if rc else "动作完成,但脚本没有回报任何信息"))
-        res["name"], res["verb"] = name, verb
+            res = task_control.action(name, verb)
+        except Exception as e:
+            res = task_control.error_result(e, name=name, verb=verb)
         return self._json(200 if res.get("ok") else 500, res)
 
 

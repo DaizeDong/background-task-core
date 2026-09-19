@@ -37,3 +37,7 @@ Thumbs.db
 PROGRESS.md
 scratchpad/
 *.log
+
+# Local development and verification output
+*.stackdump
+/Microsoft/Windows/PowerShell/ModuleAnalysisCache

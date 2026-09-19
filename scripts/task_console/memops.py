@@ -128,13 +128,22 @@ def read() -> dict:
             continue
     sizes.sort(key=lambda x: -x["bytes"])
 
+    from health import resource_verdict
+    line_pct = round(lines / INDEX_HARD_LINES * 100, 1) if lines is not None else None
+    byte_pct = round(ibytes / INDEX_HARD_BYTES * 100, 1) if ibytes is not None else None
+    line_verdict = resource_verdict(line_pct, warning=90, critical=100)
+    byte_verdict = resource_verdict(byte_pct, warning=90, critical=100)
+    line_verdict["overBy"] = max(0, lines - INDEX_HARD_LINES) if lines is not None else None
+    byte_verdict["overBy"] = max(0, ibytes - INDEX_HARD_BYTES) if ibytes is not None else None
+    measured = [p for p in (line_pct, byte_pct) if p is not None]
+    verdict = resource_verdict(max(measured) if len(measured) == 2 else None, warning=90, critical=100)
     return {
         "available": True, "root": str(root),
         "live": len(live), "cold": len(cold),
         "indexLines": lines, "indexBytes": ibytes,
         "hardLines": INDEX_HARD_LINES, "hardBytes": INDEX_HARD_BYTES,
-        "linePct": round(lines / INDEX_HARD_LINES * 100, 1) if lines else None,
-        "bytePct": round(ibytes / INDEX_HARD_BYTES * 100, 1) if ibytes else None,
+        "linePct": line_pct, "bytePct": byte_pct,
+        "lineVerdict": line_verdict, "byteVerdict": byte_verdict, "verdict": verdict,
         # 三项都可能是空的,而空在这里是好消息 : 但它必须是数出来的空,不是没数。
         "orphanLinks": [{"name": k, "from": sorted(v)} for k, v in sorted(orphans.items())],
         "unreachable": unreachable,

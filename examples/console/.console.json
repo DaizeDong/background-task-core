@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "component": "acme-maintenance",
+  "read": "acme-status",
+  "tasks": [
+    {
+      "id": "sync",
+      "kind": "oneshot",
+      "entrypoint": "acme-sync",
+      "schedule_hint": {
+        "type": "interval",
+        "minutes": 60
+      },
+      "timeout_seconds": 300,
+      "concurrency_key": "acme-destination",
+      "checks": [
+        {
+          "id": "output",
+          "required": true
+        },
+        {
+          "id": "dependencies",
+          "required": false
+        }
+      ]
+    }
+  ]
+}

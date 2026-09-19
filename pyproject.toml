@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "task-console"
+version = "0.1.0"
+description = "Read-only task declaration producer and local Windows console"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = ["fleet-guards>=0.1.0", "llmcall>=0.2.0"]
+license = "MIT"
+
+[project.scripts]
+task-console = "task_console.__main__:main"
+task-console-status = "task_console.component_status:main"
+
+[tool.setuptools]
+include-package-data = false
+
+[tool.setuptools.packages.find]
+where = ["scripts"]
+include = ["task_console", "task_console.*"]
+namespaces = true
+
+[tool.setuptools.package-data]
+task_console = ["*.ps1", "*.html", "*.sql", "*.svg", "*.json", "vendor/tabler/*", "static/*.js", "static/*.css", "static/panels/*.js"]

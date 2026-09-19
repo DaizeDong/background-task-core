@@ -14,8 +14,8 @@
 **读不了的仓要报错,不能跳过。** 一个悄悄跳过三个仓的扫描器,和一个扫完发现三个仓
 都没问题的扫描器,输出的绿色一模一样。
 
-网络动作有两个,都只由人显式触发:fetch 只读;push 是这个模块里唯一把东西送出这台机器的,
-所以它是两步的 —— 先出只读计划,执行时必须带回计划里那份文件清单,对不上就整个拒绝。
+审阅计划用 ls-remote 只读核对实际推送目标,不自动 fetch。fetch 和 push 都由人显式触发,
+所以它是两步的:先出审核计划,执行时必须带回绑定内容、HEAD 和索引的快照。
 「push 绝不自动」这句仍然成立,而且现在由 commit_push 那段注释和它的用例守着;
 这里不再复述它的规则,免得同一条约束有两份会各自漂的说法。
 """
@@ -28,6 +28,11 @@ import os
 import subprocess
 import time
 from pathlib import Path
+
+if __package__:
+    from . import git_ops
+else:
+    import git_ops
 
 # 在 pythonw(GUI 子系统)下,每个控制台子程序都要新分配一个控制台。那次分配很慢,
 # 而且并发时根本不成立:实测同一条 git 命令,普通 python 下几毫秒,pythonw 下单次
@@ -117,20 +122,8 @@ def _has_skill_manifest(repo: Path) -> bool:
 _SEV = {CLEAN: 0, DETACHED: 1, DIRTY: 2, UNPUSHED: 3, ERROR: 4}
 
 
-def _git(repo: Path, *args: str, timeout: int = 20) -> tuple[int, str]:
-    try:
-        r = subprocess.run(("git", "-C", str(repo)) + args, capture_output=True,
-                           text=True, encoding="utf-8", errors="replace", timeout=timeout, stdin=subprocess.DEVNULL, creationflags=_NO_WINDOW)
-        # 失败时要带上 stderr:git 把成功的输出写 stdout,把**失败的原因**写 stderr。
-        # 原来只取 stdout,于是仓库面板上一个 error 行只会显示「git status 退出 128」、
-        # fetch 失败只会显示「fetch 退出 128:」后面什么都没有 :
-        # 真正的原因(认证失败、dubious ownership、远端不存在)读不到,
-        # 排查只能到命令行重跑一遍,而那正是这块面板想省掉的事。
-        if r.returncode != 0:
-            return r.returncode, ((r.stdout or "") + (r.stderr or "")).strip()
-        return r.returncode, (r.stdout or "")
-    except (OSError, subprocess.SubprocessError) as e:
-        return 127, f"{e.__class__.__name__}: {e}"
+def _git(repo: Path, *args: str, timeout: int = 20, env=None) -> tuple[int | None, str]:
+    return git_ops.run_git(repo, *args, timeout=timeout, env=env)
 
 
 def _owner_repo(url: str | None) -> str | None:
@@ -616,7 +609,7 @@ def status(name: str) -> dict:
 # 按钮迟早会在没人看的时候被点到」。那句话没有错,错的是把它读成「所以永远别做」。
 # 真正要防的是**一次误击就把东西发出去**,而不是「人明确决定之后还要手工敲六条命令」。
 # 所以它是两步的:先出一份只读计划,把要提交哪些文件、要推到哪个 ref、那个 remote 是
-# 公开还是私有全部摆出来;执行那一步必须带着计划里那份文件清单回来,清单对不上就整个拒绝。
+# 公开还是私有全部摆出来;执行时带回完整审核快照,内容、HEAD 或索引变化就拒绝。
 # 一次误击只会打开一份计划。
 #
 # 为什么值得做:伴生仓按设计天天在长数据,于是「有未提交改动」长期挂着十几条。
@@ -628,6 +621,8 @@ def status(name: str) -> dict:
 # 迟早会被别处读出来再执行。
 _MSG_BAD = set('\r\n\x00`$')
 _MSG_MAX = 200
+_REVIEW_MAX_COMMITS = 1000
+_REVIEW_MAX_BYTES = 128000
 
 
 def _repo_for(name: str):
@@ -645,44 +640,17 @@ def _repo_for(name: str):
 
 
 def _porcelain_paths(repo: Path) -> tuple[list[str], list[str]]:
-    """返回 (可提交的路径, 跳过的原文行)。
-
-    用 `-z` 而不是按行切:文件名里可以有空格、引号、甚至换行,而按行切会把一个
-    带换行的文件名读成两条记录,然后把其中半条当成路径传给 `git add`。
-    """
-    rc, out = _git(repo, "status", "--porcelain=v1", "-z", "--untracked-files=all", timeout=60)
-    if rc != 0:
-        from maint import Refused
-        raise Refused(f"git status 退出 {rc}: {out.strip()[:200]}", "status_failed")
-    paths: list[str] = []
-    skipped: list[str] = []
-    parts = out.split("\x00")
-    i = 0
-    while i < len(parts):
-        rec = parts[i]
-        i += 1
-        if not rec:
-            continue
-        code, _, path = rec[:2], rec[2:3], rec[3:]
-        if not path:
-            continue
-        if code[0] == "R" or code[0] == "C":
-            # 重命名/复制在 -z 下多占一条记录(原名紧跟其后)。两个名字都要提交,
-            # 否则会留下一半的重命名。
-            if i < len(parts):
-                old = parts[i]
-                i += 1
-                if old:
-                    paths.append(old)
-        if code == "!!":
-            skipped.append(rec)
-            continue
-        paths.append(path)
-    return paths, skipped
+    """Compatibility adapter; Git status parsing belongs to git_ops."""
+    from maint import Refused
+    try:
+        paths, _ = git_ops.status_paths(repo, runner=_git)
+        return paths, []
+    except git_ops.GitError as exc:
+        raise Refused(str(exc), exc.code) from exc
 
 
 def commit_push_plan(name: str) -> dict:
-    """只读。把「点下去会发生什么」全部摆出来,一个字节都不写。"""
+    """Review plan: preserve worktree/index/refs, pin content and target."""
     repo = _repo_for(name)
     rc, br = _git(repo, "rev-parse", "--abbrev-ref", "HEAD", timeout=20)
     branch = br.strip() if rc == 0 else None
@@ -690,12 +658,6 @@ def commit_push_plan(name: str) -> dict:
     upstream = up.strip() if rc == 0 else None
 
     paths, skipped = _porcelain_paths(repo)
-
-    ahead = []
-    if upstream:
-        rc, log = _git(repo, "log", "--oneline", "--no-decorate", f"{upstream}..HEAD", timeout=30)
-        if rc == 0:
-            ahead = [ln for ln in log.splitlines() if ln.strip()][:50]
 
     rc, rem = _git(repo, "remote", "get-url", "origin", timeout=20)
     remote = rem.strip() if rc == 0 else None
@@ -712,10 +674,50 @@ def commit_push_plan(name: str) -> dict:
     blocked = []
     if not branch or branch == "HEAD":
         blocked.append("现在是游离 HEAD,没有分支可推")
-    if not upstream:
-        blocked.append("没有 upstream。第一次推要人指定推到哪里,这个面板不替你选")
-    if not remote:
-        blocked.append("没有 origin")
+    expected = None
+    target = None
+    diff = ""
+    ahead, ahead_count, ahead_known = [], None, False
+    history = None
+    error, code = None, None
+    # Resolve configuration even when the cached upstream ref is absent. No ref
+    # or URL is guessed. Only the exact push ref can bound outgoing history.
+    try:
+        target = git_ops.push_target(repo, runner=_git)
+    except git_ops.GitError as exc:
+        blocked.append("无法确定 upstream 推送目标: " + str(exc))
+        error, code = str(exc), exc.code
+    try:
+        snapshot = git_ops.snapshot(repo, paths, runner=_git)
+        if target is None:
+            raise git_ops.GitError(error or "Exact push target unavailable", code or "no_upstream")
+        history = git_ops.review_history(repo, snapshot["head"], target=target, runner=_git,
+                                         max_commits=_REVIEW_MAX_COMMITS, max_bytes=_REVIEW_MAX_BYTES)
+        ahead_count = history["count"]
+        ahead = history["summaries"]
+        ahead_known = True
+        rc, pending = _git(repo, "diff", "--binary", "--full-index", "--no-renames",
+                           "--no-ext-diff", "--no-textconv", "--ignore-submodules=none",
+                           "--submodule=short", snapshot["head"], snapshot["tree"], "--")
+        if rc != 0:
+            raise git_ops.GitError("无法读取待提交差异: " + pending)
+        diff = history["diff"] + "\n\n待提交差异 / Pending changes\n" + pending
+        expected = {"snapshot": snapshot, "target": target,
+                    "history": {key: value for key, value in history.items() if key != "diff"}}
+    except (git_ops.GitError, OSError) as exc:
+        error, code = git_ops.sanitize_diagnostic(str(exc)), getattr(exc, "code", "snapshot_unavailable")
+        blocked.append(error)
+        if history and not diff:
+            diff = history["diff"]
+    if target:
+        remote = target["url"]
+        vis = _visibility(remote, _load_visibility()[0])
+    history_truncated = bool(history and history["truncated"])
+    ahead_truncated = ahead_count is not None and ahead_count > len(ahead)
+    diff_bytes = diff.encode("utf-8")
+    diff_truncated = history_truncated or len(diff_bytes) > _REVIEW_MAX_BYTES
+    if len(paths) > 200 or diff_truncated or ahead_truncated:
+        blocked.append("计划太大,无法完整显示;请缩小提交范围")
     # ⚠ 公开仓不在这里放行也不在这里拦死:拦死会让一个合法的公开仓改不动,
     # 放行则等于替闸门做决定。把它摆出来,并说清接下来谁会检查。
     warn = []
@@ -726,24 +728,34 @@ def commit_push_plan(name: str) -> dict:
         warn.append("可见性问不出来。闸门对未知 remote 是按公开拦的,这里照样提醒。")
     if skipped:
         warn.append(f"{len(skipped)} 条被 .gitignore 忽略的路径不会提交。")
+    warn.append("下方包含相对实际推送目标的全部待发布提交和逐提交差异；远端变化后需重新审阅。")
 
-    return {"ok": True, "repo": name, "branch": branch, "upstream": upstream,
+    ok = expected is not None and not blocked
+    plan = {"ok": ok, "state": "ready" if ok else ("unavailable" if error else "blocked"),
+            "repo": name, "branch": branch, "upstream": upstream,
             "remote": remote, "visibility": vis,
             "files": paths[:200], "fileCount": len(paths), "filesTruncated": len(paths) > 200,
-            "ahead": ahead, "aheadCount": len(ahead),
+            "ahead": ahead, "aheadCount": ahead_count, "aheadKnown": ahead_known,
+            "aheadTruncated": ahead_truncated,
+            "historyCount": history["count"] if history else None,
+            "historyScope": history["scope"] if history else None, "historyKnown": history is not None,
+            "remoteBase": history["base"] if history else None,
+            "historyTruncated": history_truncated,
             "blocked": blocked, "warn": warn,
-            "nothing": not paths and not ahead}
+            "pushTarget": target,
+            "diff": diff_bytes[:_REVIEW_MAX_BYTES].decode("utf-8", errors="ignore"),
+            "diffTruncated": diff_truncated,
+            "nothing": ok and not paths and ahead_count == 0}
+    if ok:
+        plan["expect"] = expected
+    if error:
+        plan.update(error=error, code=code)
+    return plan
 
 
-def commit_push(name: str, message: str, expect: list[str] | None = None,
+def commit_push(name: str, message: str, expect: dict | None = None,
                 push: bool = True) -> dict:
-    """执行。必须带着计划里那份文件清单回来。
-
-    ⚠ 不用 `git add -A`。共享工作树里 -A 会捡走别的自动化做到一半的改动,
-    而那种提交事后没人分得清是谁的。只 add 计划里逐条列出来的路径。
-    ⚠ 不用 --no-verify,一次都不。钩子的输出原样回传 ——
-    一个把闸门输出吞掉的按钮,和一个绕过闸门的按钮,后果一样。
-    """
+    """Execute reviewed evidence. A retry receipt invokes only publication."""
     from maint import Refused
     repo = _repo_for(name)
     msg = (message or "").strip()
@@ -754,42 +766,55 @@ def commit_push(name: str, message: str, expect: list[str] | None = None,
     if set(msg) & _MSG_BAD:
         raise Refused("提交信息里有不允许的字符(换行 / 反引号 / $)", "bad_message")
 
-    plan_paths, _ = _porcelain_paths(repo)
-    out: list[str] = []
-
-    if plan_paths:
-        if expect is None:
-            raise Refused("没有带上计划里的文件清单,拒绝提交", "no_plan")
-        # 钉住读到的那一版。工作树在你看计划和点确认之间被别的自动化改过时,
-        # 这里必须整个拒绝而不是「顺手把新出现的也提交了」——
-        # 这个仓已经因为「长任务中途工作树被另一自动化改掉」出过一次事。
-        if sorted(expect) != sorted(plan_paths):
-            added = sorted(set(plan_paths) - set(expect))
-            gone = sorted(set(expect) - set(plan_paths))
-            raise Refused(
-                "工作树在你看计划之后变了,拒绝提交。重新出一份计划再确认。"
-                + (f" 新增: {', '.join(added[:5])}" if added else "")
-                + (f" 消失: {', '.join(gone[:5])}" if gone else ""),
-                "plan_stale")
-        rc, o = _git(repo, "add", "--", *plan_paths, timeout=120)
-        out.append(o)
-        if rc != 0:
-            raise Refused(f"git add 退出 {rc}: {o.strip()[:300]}", "add_failed")
-        rc, o = _git(repo, "commit", "-m", msg, timeout=300)
-        out.append(o)
-        if rc != 0:
-            # 钩子挡下来是**正常结果**,不是这个按钮坏了。原文回传,一个字不删。
-            raise Refused(f"git commit 退出 {rc}(钩子可能拦下了):\n{o.strip()[:2000]}",
-                          "commit_failed")
-
-    pushed = False
-    if push:
-        rc, o = _git(repo, "push", timeout=600)
-        out.append(o)
-        if rc != 0:
-            raise Refused(f"git push 退出 {rc}:\n{o.strip()[:2000]}", "push_failed")
-        pushed = True
-
-    return {"ok": True, "repo": name, "committed": bool(plan_paths),
-            "fileCount": len(plan_paths), "pushed": pushed,
-            "out": "\n".join(x for x in out if x).strip()[:4000]}
+    if not isinstance(expect, dict):
+        raise Refused("需要完整的审核快照;只有文件名不能授权提交", "no_plan")
+    if "retry" in expect and (not push or not isinstance(expect["retry"], dict)):
+        raise Refused("重试仅用于明确请求的推送", "bad_args")
+    target = expect.get("target")
+    retry_safe = False
+    committed_result = None
+    reviewed = expect.get("history")
+    created = expect.get("created")
+    try:
+        if push and (not target or git_ops.push_target(repo, runner=_git) != target):
+            raise git_ops.GitError("Push target changed or is missing", "plan_stale")
+        if "retry" in expect:
+            retry = expect["retry"]
+            result = git_ops.publish(repo, retry.get("commit"), retry.get("tree"), target,
+                                     history=reviewed, created=created, runner=_git)
+            committed, count = False, 0
+            retry_safe = True
+        else:
+            snapshot = expect.get("snapshot")
+            if not isinstance(snapshot, dict) or not isinstance(reviewed, dict):
+                raise git_ops.GitError("Complete history review is required", "no_plan")
+            if reviewed.get("head") != snapshot.get("head"):
+                raise git_ops.GitError("Snapshot and history HEAD differ", "plan_stale")
+            git_ops.verify_history(repo, reviewed, target, runner=_git)
+            result = git_ops.commit(repo, snapshot, msg, runner=_git)
+            committed = result["committed"]
+            count = len(snapshot["changed_paths"])
+            created = ({"commit": result["commit"], "tree": result["tree"], "message": msg}
+                       if result["state"] == "committed" else None)
+            if push and result["state"] != "unknown":
+                committed_result = result
+                published = git_ops.publish(repo, result["commit"], result["tree"], target,
+                                            history=reviewed, created=created, runner=_git)
+                published["out"] = "\n".join(filter(None, [result["out"], published["out"]]))
+                result = published
+                retry_safe = True
+            elif result["state"] == "committed":
+                retry_safe = True
+    except git_ops.GitError as exc:
+        if committed_result is None:
+            raise Refused(str(exc), exc.code) from exc
+        result = dict(committed_result, state="unknown", reason=exc.code, error=str(exc))
+        retry_safe = True
+    result.update(ok=result["state"] not in {"unknown", "push_failed"}, repo=name,
+                  committed=committed, fileCount=count)
+    if retry_safe and result["commit"] and result["state"] in {"committed", "push_failed", "unknown"}:
+        result.update(history=reviewed, created=created,
+                      publication=git_ops.publication_evidence(reviewed, result["commit"]))
+        result["expect"] = {"retry": {"commit": result["commit"], "tree": result["tree"]},
+                            "target": target, "history": reviewed, "created": created}
+    return result

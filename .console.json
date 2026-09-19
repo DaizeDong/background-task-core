@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "component": "task-console",
+  "read": "task-console-status --configured",
+  "tasks": [
+    {
+      "id": "refreshconsolerunlog",
+      "kind": "oneshot",
+      "entrypoint": "task:refreshconsolerunlog",
+      "timeout_seconds": 1800,
+      "concurrency_key": "task-console/refreshconsolerunlog",
+      "checks": [
+        {
+          "id": "legacy-1",
+          "required": true
+        }
+      ]
+    }
+  ]
+}

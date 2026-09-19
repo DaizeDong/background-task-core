@@ -18,6 +18,8 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from pathlib import Path
+import json
 
 import pytest
 
@@ -28,9 +30,14 @@ _NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
 
 def scripts():
-    """页面里所有内联脚本块。"""
+    """Follow the actual app loader, including every production module."""
     html = open(PAGE, encoding="utf-8").read()
-    return re.findall(r"<script>(.*?)</script>", html, re.S)
+    assert 'src="/static/app.js"' in html
+    root = Path(PAGE).parent / "static"
+    loader = (root / "app.js").read_text(encoding="utf-8")
+    names = json.loads(re.search(r"const CONSOLE_MODULES = (\[.*?\]);", loader, re.S).group(1))
+    assert names and len(names) == len(set(names))
+    return [(root / name).read_text(encoding="utf-8") for name in names] + [loader]
 
 
 def check(js: str):
@@ -90,10 +97,10 @@ import re as _re
 
 
 def _page_style():
-    """页面里所有 <style> 块拼起来。"""
+    """Read the stylesheet linked by the actual HTML shell."""
     html = open(PAGE, encoding="utf-8").read()
-    blocks = _re.findall(r"<style>(.*?)</style>", html, _re.S)
-    assert blocks, "页面里一个 <style> 都没读到,这条检查会因为没东西可查而打印绿色"
+    assert 'href="/static/styles.css"' in html
+    blocks = [(Path(PAGE).parent / "static/styles.css").read_text(encoding="utf-8")]
     css = chr(10).join(blocks)
     # 注释要剥掉:样式表里那段解释为什么不能写死高度的注释,本身就引用了 `button{height:22px}`
     # 这个反例,于是检查器把讲这条规则的话当成了这条规则。
@@ -203,7 +210,7 @@ def test_the_enter_space_handler_only_lists_selectors_that_can_be_focused():
     判据是「处理器里的选择器」与「渲染时带 tabindex 的选择器」对得上,
     不是「处理器里有没有某个名字」—— 后者只能证明我写了那个名字。
     """
-    src = open(PAGE, encoding="utf-8").read()
+    src = _page_without_style()
     m = _re.search(r'closest\(\s*"([^"]*data-fr[^"]*)"\s*\)', src)
     assert m, "找不到 Enter/空格处理器里的那个 closest 选择器"
     listed = [x.strip() for x in m.group(1).split(",") if x.strip()]
@@ -265,7 +272,7 @@ def _class_names_in_css(css):
 def _page_without_style():
     """页面去掉 <style> 之后剩下的东西:HTML 加 JS。类名要在这里面找得到。"""
     html = open(PAGE, encoding="utf-8").read()
-    return _re.sub(r"<style>.*?</style>", "", html, flags=_re.S)
+    return _re.sub(r"<style>.*?</style>", "", html, flags=_re.S) + "\n" + "\n".join(scripts())
 
 
 def _dead_class_names():
@@ -369,7 +376,7 @@ def _classes_on_table_elements(html: str):
 
 
 def test_no_vendor_layout_class_sits_on_a_table_element():
-    bad = [(el, c) for el, c in _classes_on_table_elements(open(PAGE, encoding="utf-8").read())
+    bad = [(el, c) for el, c in _classes_on_table_elements(_page_without_style())
            if c in _tabler_layout_classes()]
     assert not bad, (
         "这些 Tabler 布局类被写在了表格元素上,会把表格的行列结构拆掉(实测一行 20px 变 184px):\n  "

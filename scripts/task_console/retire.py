@@ -19,7 +19,6 @@ from __future__ import annotations
 
 import json
 import os
-import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -33,10 +32,17 @@ from pathlib import Path
 _NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
 
-# allow-list 在一个 PowerShell 脚本里,形如 $TaskNames = @( 'A', 'B' )
-# 块正则只有一份,在 allowlist.py 里。这里曾经有自己的一份,和 server.py 那份对收尾括号
-# 缩进的处理不一致 —— 同一个文件,一边读得到一边读不到,而两边都自称权威。
-from allowlist import BLOCK as TASKNAMES_BLOCK  # noqa: E402
+# The reader and editor share the literal parser. Keep the old match alias for
+# callers that imported it from this module.
+if __package__:
+    from . import allowlist
+    from .maint import Refused, SAFE_NAME
+    from .winps import powershell as _powershell
+else:
+    import allowlist
+    from maint import Refused, SAFE_NAME
+    from winps import powershell as _powershell
+TASKNAMES_BLOCK = allowlist.BLOCK
 
 
 def _env_path(var: str) -> Path | None:
@@ -52,7 +58,6 @@ def _env_path(var: str) -> Path | None:
 
 
 # 解释器解析只有一份,在 winps.py。这里原来是三份手写中的一份。
-from winps import powershell as _powershell  # noqa: E402
 
 
 def _task_state(name: str) -> str | None:
@@ -85,7 +90,6 @@ def _task_state(name: str) -> str | None:
         capture_output=True, text=True, encoding="utf-8", errors="replace",
         env=dict(os.environ, TC_NAME=name), timeout=90, stdin=subprocess.DEVNULL, creationflags=_NO_WINDOW)
     if r.returncode != 0:
-        from maint import Refused
         raise Refused(
             "查不到任务状态(调度器读不出来),拒绝退役: "
             + ((r.stderr or r.stdout or "").strip()[:200] or f"rc={r.returncode}"),
@@ -94,13 +98,12 @@ def _task_state(name: str) -> str | None:
     return out or None
 
 
-def plan(name: str, reason: str) -> dict:
+def _plan_legacy(name: str, reason: str, *, paths=None, read_state=None) -> dict:
     """算出这次退役会改什么,不写任何东西。
 
     每一处都单独报 state:already / will-change / missing-config / not-found。
     把它们折叠成一个布尔会让「这一处本来就不用改」和「这一处我没能力改」变成同一个答案。
     """
-    from maint import Refused, SAFE_NAME
     if not SAFE_NAME.match(name or ""):
         raise Refused(f"任务名不合法: {name!r}", "bad_name")
     if not (reason or "").strip():
@@ -109,7 +112,7 @@ def plan(name: str, reason: str) -> dict:
 
     steps = []
 
-    state = _task_state(name)
+    state = (read_state or _task_state)(name)
     if state is None:
         disable_state = "not-found"
     elif state == "Disabled":
@@ -120,19 +123,23 @@ def plan(name: str, reason: str) -> dict:
                   "detail": "停用任务并把原因写进 Description",
                   "taskState": state})
 
-    al = _env_path("TASK_CONSOLE_ALLOWLIST")
+    al = Path(paths['TaskNames.ps1']) if paths is not None else _env_path("TASK_CONSOLE_ALLOWLIST")
     if not al or not al.is_file():
         steps.append({"step": "allowlist", "state": "missing-config",
                       "detail": "没有配 TASK_CONSOLE_ALLOWLIST"})
     else:
         txt = al.read_text(encoding="utf-8-sig", errors="replace")
-        m = TASKNAMES_BLOCK.search(txt)
-        listed = bool(m and re.search(rf"^\s*'{re.escape(name)}'", m.group(2), re.M))
-        steps.append({"step": "allowlist",
-                      "state": "will-change" if listed else "already",
-                      "detail": str(al)})
+        try:
+            listed = name in allowlist.literal_names(txt)
+        except allowlist.AllowlistError as exc:
+            steps.append({"step": "allowlist", "state": "missing-config",
+                          "detail": f"{al}: {exc}"})
+        else:
+            steps.append({"step": "allowlist",
+                          "state": "will-change" if listed else "already",
+                          "detail": str(al)})
 
-    hp = _env_path("TASK_CONSOLE_HEALTH")
+    hp = Path(paths['task-health.json']) if paths is not None else _env_path("TASK_CONSOLE_HEALTH")
     if not hp or not hp.is_file():
         steps.append({"step": "health", "state": "missing-config",
                       "detail": "没有配 TASK_CONSOLE_HEALTH"})
@@ -161,16 +168,10 @@ def plan(name: str, reason: str) -> dict:
 
 def _rewrite_allowlist(path: Path, name: str) -> bool:
     txt = path.read_text(encoding="utf-8-sig", errors="replace")
-    m = TASKNAMES_BLOCK.search(txt)
-    if not m:
+    new, changed = allowlist.remove_name(txt, name)
+    if not changed:
         return False
-    body = m.group(2)
-    kept = [ln for ln in body.splitlines()
-            if not re.match(rf"^\s*'{re.escape(name)}'\s*,?\s*$", ln)]
-    if len(kept) == len(body.splitlines()):
-        return False
-    new = m.group(1) + "\n".join(kept) + m.group(3)
-    path.write_text(txt[:m.start()] + new + txt[m.end():], encoding="utf-8")
+    path.write_text(new, encoding="utf-8")
     return True
 
 
@@ -234,10 +235,37 @@ def _disable(name: str, reason: str) -> tuple[bool, str]:
     return r.returncode == 0, (r.stderr or r.stdout or "").strip()[:200]
 
 
-def apply(name: str, reason: str) -> dict:
-    """执行退役。先算完整计划,再依次写。每个被改的文件先留一份 .bak。"""
-    from maint import Refused
-    p = plan(name, reason)
+def plan(name: str, reason: str) -> dict:
+    """Compatibility preview; configured authority is never bypassed."""
+    if __package__:
+        from . import controller as entry
+    else:
+        import controller as entry
+    if any(variable in os.environ for variable in entry.ENVIRONMENT.values()):
+        return entry.retire_plan(name, reason)
+    result = _plan_legacy(name, reason)
+    result['authority_status'] = 'unconfigured'
+    return result
+
+
+def apply(name: str, reason: str, *, controller=None) -> dict:
+    """Public compatibility write always enters the authoritative dispatcher."""
+    if not SAFE_NAME.match(name or ''):
+        raise Refused('Invalid task name', 'bad_name')
+    if not (reason or '').strip():
+        raise Refused('Retirement requires a reason', 'no_reason')
+    if controller is None:
+        if __package__:
+            from . import controller as entry
+        else:
+            import controller as entry
+        return entry.action(name, 'retire', reason=reason)
+    return controller(name, 'retire', reason=reason, legacy=lambda: _apply_legacy(name, reason))
+
+
+def _apply_legacy(name: str, reason: str, *, paths=None, read_state=None) -> dict:
+    """Private callback; callers must hold dispatcher authority/task locks."""
+    p = _plan_legacy(name, reason, paths=paths, read_state=read_state)
     if p["blocked"]:
         raise Refused("这几处没有配置,拒绝只做一半: " + ", ".join(p["blocked"]), "no_config")
 

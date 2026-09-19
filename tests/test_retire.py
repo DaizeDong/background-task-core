@@ -81,7 +81,7 @@ def test_missing_config_blocks_the_whole_thing(tmp_path, monkeypatch):
     monkeypatch.delenv("TASK_CONSOLE_HEALTH", raising=False)
     monkeypatch.setattr(R, "_task_state", lambda n: "Ready")
     with pytest.raises(Refused) as e:
-        R.apply("Alpha", "架构上被判定为错误")
+        R._apply_legacy("Alpha", "架构上被判定为错误")
     assert e.value.code == "no_config"
 
 
@@ -114,7 +114,7 @@ def test_plan_writes_nothing(cfg):
 
 def test_apply_changes_all_three_places(cfg):
     al, hp, calls = cfg
-    r = R.apply("Alpha", "架构上判定为错误")
+    r = R._apply_legacy("Alpha", "架构上判定为错误")
     assert set(r["done"]) == {"disable", "allowlist", "health"}
     assert "'Alpha'," not in al.read_text(encoding="utf-8")
     assert all(t["name"] != "Alpha" for t in json.loads(hp.read_text(encoding="ascii"))["tasks"])
@@ -126,7 +126,7 @@ def test_a_similarly_named_task_is_not_taken_along(cfg):
     # 治理规范里记过一次实测事故:按字面比对把一个活任务当孤儿删掉了。
     # 这里的对应形态是删 Alpha 的时候顺手带走 AlphaBeta。
     al, hp, _ = cfg
-    R.apply("Alpha", "reason")
+    R._apply_legacy("Alpha", "reason")
     txt = al.read_text(encoding="utf-8")
     assert "'AlphaBeta'" in txt, "同前缀的任务被一起删掉了"
     assert "'Gamma'" in txt
@@ -144,7 +144,7 @@ def test_health_manifest_stays_pure_ascii(cfg):
     data = json.loads(hp.read_text(encoding="ascii"))
     data["tasks"].append({"name": "Delta", "label": "中文标签", "max_age_hours": 24})
     hp.write_text(json.dumps(data, ensure_ascii=True, indent=2), encoding="ascii")
-    R.apply("Alpha", "reason")
+    R._apply_legacy("Alpha", "reason")
     raw = hp.read_bytes()
     assert all(b < 128 for b in raw), "健康清单里出现了非 ASCII 字节"
     # 正对照:内容还在,只是被转义了。
@@ -153,7 +153,7 @@ def test_health_manifest_stays_pure_ascii(cfg):
 
 def test_backups_are_left_behind(cfg):
     al, hp, _ = cfg
-    r = R.apply("Alpha", "reason")
+    r = R._apply_legacy("Alpha", "reason")
     assert len(r["backups"]) == 2
     for b in r["backups"]:
         assert os.path.isfile(b)
@@ -161,8 +161,8 @@ def test_backups_are_left_behind(cfg):
 
 def test_apply_is_idempotent(cfg):
     al, hp, calls = cfg
-    R.apply("Alpha", "reason")
-    second = R.apply("Alpha", "reason")
+    R._apply_legacy("Alpha", "reason")
+    second = R._apply_legacy("Alpha", "reason")
     # 第二次没有任何一处需要改,所以 done 是空的,而不是报错或重复写。
     assert second["done"] == []
 
@@ -172,7 +172,7 @@ def test_disable_failure_stops_before_touching_files(cfg, monkeypatch):
     monkeypatch.setattr(R, "_disable", lambda n, why: (False, "boom"))
     before = al.read_text(encoding="utf-8")
     with pytest.raises(Refused) as e:
-        R.apply("Alpha", "reason")
+        R._apply_legacy("Alpha", "reason")
     assert e.value.code == "disable_failed"
     # 停用都没成的情况下改配置文件,会造出「配置里没有、任务还在跑」的错位。
     assert al.read_text(encoding="utf-8") == before
@@ -247,7 +247,7 @@ def test_a_present_task_returns_its_state(monkeypatch):
 def test_a_rewrite_that_changes_nothing_is_refused(cfg, monkeypatch):
     monkeypatch.setattr(R, "_rewrite_allowlist", lambda p, n: False)
     with pytest.raises(Refused) as e:
-        R.apply("Alpha", "because")
+        R._apply_legacy("Alpha", "because")
     assert e.value.code == "rewrite_noop", e.value.code
 
 
@@ -255,7 +255,7 @@ def test_the_same_path_succeeds_when_the_rewrite_really_changes_something(cfg):
     """正对照:不加桩时同一条路径必须成功。
     否则上面那条对着一个「永远抛」的 apply 也会通过。"""
     al, hp, calls = cfg
-    got = R.apply("Alpha", "because")
+    got = R._apply_legacy("Alpha", "because")
     assert got["ok"] is True
     assert "allowlist" in got["done"] and "health" in got["done"], got
     assert "'Alpha'," not in al.read_text(encoding="utf-8")

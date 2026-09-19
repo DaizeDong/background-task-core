@@ -42,7 +42,10 @@ ACTIONS = ("skill.archive", "skill.restore", "plugin.enable", "plugin.disable",
 # 两份手写的同一个数,没有任何东西对账 —— 改一处而另一处照旧,页面上就会出现
 # 两个都自称权威的百分比,而它们的分母不同。
 # 现在从 memops 借,那边才是回答记忆池问题的那个模块。
-from memops import INDEX_HARD_BYTES, INDEX_HARD_LINES  # noqa: E402,F401
+if __package__:
+    from .memops import INDEX_HARD_BYTES, INDEX_HARD_LINES
+else:
+    from memops import INDEX_HARD_BYTES, INDEX_HARD_LINES  # noqa: E402,F401
 
 
 class Refused(Exception):
@@ -162,9 +165,12 @@ def read_skills() -> dict:
         for name in sorted(os.listdir(arch)):
             if (arch / name / "SKILL.md").is_file():
                 archived.append({"name": name, "chars": 0, "linked": False, "archived": True})
+    from health import resource_verdict
     return {"available": True, "root": str(root), "archiveSet": bool(arch),
             "skills": live + archived, "liveCount": len(live),
-            "archivedCount": len(archived), "budgetChars": budget,
+            "archivedCount": len(archived), "budgetChars": budget, "budgetLimit": 18600,
+            "budgetPct": budget / 18600 * 100,
+            "verdict": resource_verdict(None if unreadable else budget, warning=15000, critical=18600),
             # 单独报,不并进 0:预算条旁边要能看出「这个数字是不完整的」。
             "descUnreadable": unreadable}
 
@@ -264,16 +270,23 @@ def read_plugins(timeout: int = 40) -> dict:
 
 
 def read_all() -> dict:
-    return {"skills": read_skills(), "memory": read_memory(), "plugins": read_plugins()}
+    import component_status
+    return {"skills": read_skills(), "memory": read_memory(), "plugins": read_plugins(),
+            "components": component_status.read_configured()}
 
 
-def act(action: str, name: str, arg: str | None = None) -> dict:
+def act(action: str, name: str, arg: str | None = None, *, controller=None) -> dict:
     if action not in ACTIONS:
         raise Refused(f"不在动作表里: {action!r}", "bad_action")
     if action == "task.retire":
         # 退役是唯一一个会同时改三处登记的动作。它必须带原因:一个没写原因的退役,
         # 半年后没人敢重启用也没人敢删。参数从这里透传下去,由 retire 自己校验。
-        import retire
+        if __package__:
+            from . import retire
+        else:
+            import retire
+        if controller is not None:
+            return retire.apply(name, arg or "", controller=controller)
         return retire.apply(name, arg or "")
     if action.startswith("memory."):
         # 归档不在这里实现:它是一个三步的生命周期迁移,而那份逻辑已经存在于一个

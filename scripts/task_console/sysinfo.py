@@ -75,12 +75,16 @@ def dir_size(path: Path, cap: int = WALK_CAP) -> dict:
 
 
 def disk(path: str = ".") -> dict:
+    from health import resource_verdict
     try:
         u = shutil.disk_usage(os.path.expanduser(path))
     except OSError as e:
         return {"available": False, "reason": f"{e.__class__.__name__}"}
+    pct = round(u.used / u.total * 100, 1) if u.total else None
+    verdict = resource_verdict(pct, warning=85, critical=95)
+    verdict["attention"] = verdict["state"] in ("unhealthy", "unknown")
     return {"available": True, "total": u.total, "free": u.free, "used": u.used,
-            "usedPct": round(u.used / u.total * 100, 1) if u.total else None}
+            "usedPct": pct, "verdict": verdict}
 
 
 def temp_git_leftovers(root: Path, now: float, errors: list | None = None) -> list[dict]:

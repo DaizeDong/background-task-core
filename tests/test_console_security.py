@@ -460,7 +460,8 @@ def test_the_page_refuses_to_be_framed(srv):
 
 def test_every_response_carries_the_frame_ban_not_just_the_page(srv):
     """API 和静态资产也要带。只给 / 加,等于把「以后新增的路由」全漏掉。"""
-    for p in ("/favicon.svg", "/vendor/tabler/tabler.min.css", "/api/selfcheck"):
+    for p in ("/favicon.svg", "/vendor/tabler/tabler.min.css", "/api/selfcheck",
+              "/static/app.js", "/static/styles.css", "/api/components"):
         h = _headers(srv, p)
         assert "frame-ancestors 'none'" in h.get("content-security-policy", ""), p
 
@@ -602,12 +603,17 @@ def test_act_never_answers_with_an_undefined_message(srv, monkeypatch):
 
     monkeypatch.setattr(S, "run_ps", fake_run_ps)
 
+    def failed_controller(*args, **kwargs):
+        raise S.task_control.ContractError('bounded_transport_failed', 'transport')
+    monkeypatch.setattr(S.task_control, 'action', failed_controller)
+
     st, body = call(srv, "POST", "/api/act", token=TOKEN,
                     body={"name": "AcmeSyntheticTask", "verb": "disable"})
     assert st == 500, body[:200]
     payload = _json.loads(body.decode("utf-8"))
     assert payload.get("message"), "响应里没有 message,前端会印出 undefined"
-    assert "AcmeUnreadableStderrText" in payload["message"], payload["message"]
+    assert payload['error']['code'] == 'bounded_transport_failed'
+    assert "AcmeUnreadableStderrText" not in str(payload)
     assert payload.get("ok") is False
     assert payload.get("name") == "AcmeSyntheticTask"
 
@@ -626,6 +632,8 @@ def test_act_still_reports_a_real_message_when_the_script_speaks(srv, monkeypatc
                                "before": "Ready", "after": "Disabled"}), ""
 
     monkeypatch.setattr(S, "run_ps", fake_run_ps)
+    monkeypatch.setattr(S.task_control, 'action', lambda *args, **kwargs: {
+        'ok': True, 'message': 'AcmeScriptSaidThis', 'before': 'Ready', 'after': 'Disabled'})
     st, body = call(srv, "POST", "/api/act", token=TOKEN,
                     body={"name": "AcmeSyntheticTask", "verb": "disable"})
     assert st == 200

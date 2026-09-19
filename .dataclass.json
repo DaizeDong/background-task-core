@@ -15,7 +15,13 @@
     "task-console/console.sqlite3"
   ],
   "data_sealed": [],
-  "fixture": [],
+  "fixture": [
+    "examples/console/.console.json",
+    "examples/console/bindings.example.json",
+    "examples/console/machine.console.example.json",
+    "examples/console/baseline.example.json",
+    "examples/console/installations.request.example.json"
+  ],
   "_data_home": "A PRIVATE companion outside this repo, resolved at runtime through guards/tools/datadir.py by the convention that file documents. Deliberately not named here: a public repo that spells out which private repo it pairs with has published the link between them, and the resolver derives the name anyway, so writing it down buys nothing. If this tool ever needs to record real-run output, it goes THERE -- never back into this repo.",
   "_run_shape_probes": [
     "task-console/console.sqlite3"

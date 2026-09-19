@@ -34,6 +34,8 @@ OK, STALE, MISSING, UNSET = "ok", "stale", "missing", "unset"
 MAY_BE_EMPTY = frozenset(("skill_archive", "plugin_cache"))
 
 SOURCES = (
+    ("component_status", "Component observations", "TASK_CONSOLE_STATUS_SNAPSHOT", "file", None, False),
+    ("source_catalog", "Source catalog", "TASK_CONSOLE_CATALOG_SNAPSHOT", "file", None, False),
     ("categories", "任务分类映射", "TASK_CONSOLE_CATEGORIES", "file", None, False),
     ("health", "健康声明清单", "TASK_CONSOLE_HEALTH", "file", None, True),
     ("allowlist", "备份 allow-list", "TASK_CONSOLE_ALLOWLIST", "file", None, False),

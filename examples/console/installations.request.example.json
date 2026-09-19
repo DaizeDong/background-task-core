@@ -1,0 +1,257 @@
+{
+  "schemaVersion": 1,
+  "components": [
+    {
+      "namespace": "acme-user",
+      "manifest": {
+        "schemaVersion": 1,
+        "component": "acme-maintenance",
+        "read": "acme-status",
+        "tasks": [
+          {
+            "id": "sync",
+            "kind": "oneshot",
+            "entrypoint": "acme-sync",
+            "schedule_hint": {
+              "type": "interval",
+              "minutes": 60
+            },
+            "timeout_seconds": 300,
+            "concurrency_key": "acme-destination",
+            "checks": [
+              {
+                "id": "output",
+                "required": true
+              },
+              {
+                "id": "dependencies",
+                "required": false
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "namespace": "acme-project",
+      "manifest": {
+        "schemaVersion": 1,
+        "component": "acme-maintenance",
+        "read": "acme-status",
+        "tasks": [
+          {
+            "id": "sync",
+            "kind": "oneshot",
+            "entrypoint": "acme-sync",
+            "schedule_hint": {
+              "type": "interval",
+              "minutes": 60
+            },
+            "timeout_seconds": 300,
+            "concurrency_key": "acme-destination",
+            "checks": [
+              {
+                "id": "output",
+                "required": true
+              },
+              {
+                "id": "dependencies",
+                "required": false
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "bindings": {
+    "schemaVersion": 1,
+    "tasks": {
+      "acme-user/acme-maintenance/sync": {
+        "name": "AcmeUserSync",
+        "enabled": false,
+        "argv": [
+          "C:/Acme/runtime/python.exe",
+          "C:/Acme/source/sync.py",
+          "--check"
+        ],
+        "cwd": "C:/Acme/source",
+        "timezone": "UTC",
+        "trigger": {
+          "type": "daily",
+          "at": "03:15"
+        },
+        "principal": {
+          "user_id": "AcmeService",
+          "logon_type": "InteractiveToken",
+          "run_level": "LeastPrivilege"
+        },
+        "power": {
+          "disallow_start_on_batteries": true,
+          "stop_on_batteries": false,
+          "wake_to_run": false
+        },
+        "timeout_seconds": 420,
+        "concurrency": {
+          "policy": "IgnoreNew"
+        },
+        "source_root": "C:/Acme/source",
+        "backup": true,
+        "category": "maintenance",
+        "checks": [
+          {
+            "id": "output",
+            "legacy": {
+              "label": "Synthetic output",
+              "max_age_hours": 26,
+              "artifact": "C:/Acme/data/output.json",
+              "ok_exit_codes": [
+                0,
+                2
+              ]
+            }
+          },
+          {
+            "id": "dependencies",
+            "legacy": {
+              "label": "Synthetic dependencies",
+              "max_age_hours": 48
+            }
+          }
+        ]
+      },
+      "acme-project/acme-maintenance/sync": {
+        "name": "AcmeProjectSync",
+        "enabled": false,
+        "argv": [
+          "C:/Acme/runtime/python.exe",
+          "C:/Acme/source/sync.py",
+          "--check"
+        ],
+        "cwd": "C:/Acme/source",
+        "timezone": "UTC",
+        "trigger": {
+          "type": "daily",
+          "at": "03:15"
+        },
+        "principal": {
+          "user_id": "AcmeService",
+          "logon_type": "InteractiveToken",
+          "run_level": "LeastPrivilege"
+        },
+        "power": {
+          "disallow_start_on_batteries": true,
+          "stop_on_batteries": false,
+          "wake_to_run": false
+        },
+        "timeout_seconds": 420,
+        "concurrency": {
+          "policy": "IgnoreNew"
+        },
+        "source_root": "C:/Acme/source",
+        "backup": true,
+        "category": "maintenance",
+        "checks": [
+          {
+            "id": "output",
+            "legacy": {
+              "label": "Synthetic output",
+              "max_age_hours": 26,
+              "artifact": "C:/Acme/data/output.json",
+              "ok_exit_codes": [
+                0,
+                2
+              ]
+            }
+          },
+          {
+            "id": "dependencies",
+            "legacy": {
+              "label": "Synthetic dependencies",
+              "max_age_hours": 48
+            }
+          }
+        ]
+      }
+    },
+    "installations": {
+      "acme-user": {
+        "component": "acme-maintenance",
+        "identity": {
+          "marketplace": "acme-market",
+          "scope": "user",
+          "client": "acme-client",
+          "source_id": "acme-source-user",
+          "metadata": {
+            "selected_version": "1.0",
+            "origin": {
+              "kind": "synthetic"
+            }
+          }
+        }
+      },
+      "acme-project": {
+        "component": "acme-maintenance",
+        "identity": {
+          "marketplace": "acme-market",
+          "scope": "project",
+          "client": "acme-client",
+          "source_id": "acme-source-project",
+          "metadata": {
+            "selected_version": "1.0",
+            "origin": {
+              "kind": "synthetic"
+            }
+          }
+        }
+      }
+    }
+  },
+  "machine": {
+    "schemaVersion": 1,
+    "authority_epoch": 0,
+    "migrated_tasks": [],
+    "overrides": {},
+    "categories": [
+      {
+        "id": "maintenance",
+        "name": "Maintenance",
+        "desc": "Synthetic maintenance tasks"
+      }
+    ]
+  },
+  "baseline": {
+    "tasks": [],
+    "task_names": "$TaskNames = @( 'AcmeSync' )\n",
+    "task_health": {
+      "tasks": [
+        {
+          "name": "AcmeSync",
+          "label": "Synthetic output",
+          "max_age_hours": 26,
+          "artifact": "C:/Acme/data/output.json",
+          "ok_exit_codes": [
+            0,
+            2
+          ]
+        },
+        {
+          "name": "AcmeSync",
+          "label": "Synthetic dependencies",
+          "max_age_hours": 48
+        }
+      ]
+    },
+    "categories": {
+      "categories": [
+        {
+          "name": "Maintenance",
+          "desc": "Synthetic maintenance tasks",
+          "tasks": [
+            "AcmeSync"
+          ]
+        }
+      ]
+    }
+  }
+}
