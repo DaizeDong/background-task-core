@@ -450,6 +450,7 @@ $('runtime-sort').addEventListener('change',event=>{RUNTIME_SORT=event.target.va
 $('rpissue').addEventListener('change',event=>{RP_ISSUE=event.target.value;renderRepoList();});
 ConsoleActions.start();
 startWorkPlatform();
+startWorkActions();
 showView(location.hash.slice(1) || VIEWS[0], false);
 $("tlin").addEventListener("click",()=>tlZoom(0.7,0.5));
 $("tlout").addEventListener("click",()=>tlZoom(1.4,0.5));

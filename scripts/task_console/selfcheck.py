@@ -31,13 +31,14 @@ OK, STALE, MISSING, UNSET = "ok", "stale", "missing", "unset"
 # 对它们套用「空目录 = 没配好」会让自检对着一个正常状态天天喊,
 # 而一道对合法状态开火的闸门会被忽略,连带它真正该抓的那一类一起被忽略。
 # (上线当天实测:它对着一个空的 skill 归档区报「读不到」。)
-MAY_BE_EMPTY = frozenset(("skill_archive", "plugin_cache"))
+MAY_BE_EMPTY = frozenset(("skill_archive", "plugin_cache", "action_workspace"))
 
 SOURCES = (
     ("component_status", "Component observations", "TASK_CONSOLE_STATUS_SNAPSHOT", "file", None, False),
     ("source_catalog", "Source catalog", "TASK_CONSOLE_CATALOG_SNAPSHOT", "file", None, False),
     ("work_reader", "工作记录接口", "TASK_CONSOLE_REMINDER_CLI", "file", None, False),
     ("work_database", "工作记录库", "TASK_CONSOLE_REMINDER_DB", "file", None, False),
+    ("action_workspace", "待办输出目录", "TASK_CONSOLE_ACTION_WORKSPACE", "dir", None, False),
     ("categories", "任务分类映射", "TASK_CONSOLE_CATEGORIES", "file", None, False),
     ("health", "健康声明清单", "TASK_CONSOLE_HEALTH", "file", None, True),
     ("allowlist", "备份 allow-list", "TASK_CONSOLE_ALLOWLIST", "file", None, False),
@@ -69,6 +70,8 @@ SOURCES = (
 # 现在 tests/test_selfcheck.py 按 SOURCES ∪ OVERRIDES 与实际扫描结果**双向**对账,
 # 任何一边多一个少一个都会红。
 OVERRIDES = (
+    ("TASK_CONSOLE_AGENT_TASK_ID", "待办执行队列对应的已登记任务 ID，由控制器检查后唤醒。"),
+    ("TASK_CONSOLE_READ_ONLY", "只读预览的服务器写入限制，不是数据来源；动作接口在写入前拒绝预览请求。"),
     ("TASK_CONSOLE_RUNTIME_CONFIG", "控制器执行配置，不作为只读面板来源；动作接口在执行前校验完整绑定与权限。"),
     ("TASK_CONSOLE_PRIVATE_ROOT", "控制器私有根目录，不作为面板数据读取入口；由控制器校验归属和数据边界。"),
     ("TASK_CONSOLE_STATE_ROOT", "控制器状态目录绑定，仅执行接口读取；不作为只读面板的来源，由控制器检查完整绑定。"),

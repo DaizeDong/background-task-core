@@ -6,6 +6,13 @@ import subprocess
 import sys
 
 
+def owner_environment(env):
+    child = dict(env)
+    child['SCHEDULE_DB_PATH'] = env.get('TASK_CONSOLE_REMINDER_DB', '')
+    child['SCHEDULE_ACTION_WORKSPACE'] = env.get('TASK_CONSOLE_ACTION_WORKSPACE', '')
+    return child
+
+
 def read_configured(env=None):
     env = os.environ if env is None else env
     unavailable = {"schemaVersion": 1, "available": False, "items": [], "events": [], "sources": []}
@@ -17,6 +24,7 @@ def read_configured(env=None):
     try:
         result = subprocess.run([sys.executable, cli, "--db", database, "work-feed"],
             capture_output=True, text=True, encoding="utf-8", timeout=20,
+            env=owner_environment(env),
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
         if result.returncode or len(result.stdout) > 16_000_000:
             return dict(unavailable, reason="work_reader_failed")
@@ -30,6 +38,17 @@ def read_configured(env=None):
                        or item.get('execution') is not None and not isinstance(item['execution'], dict)
                        for item in payload.get('items', []))):
             return dict(unavailable, reason="work_contract_invalid")
+        runtime_ready = all(env.get(key) for key in ('TASK_CONSOLE_RUNTIME_CONFIG', 'TASK_CONSOLE_PRIVATE_ROOT',
+                                                     'TASK_CONSOLE_STATE_ROOT', 'TASK_CONSOLE_VAULT_ROOT'))
+        for item in payload.get('items', []):
+            actions = item.get('actions')
+            if not isinstance(actions, dict):
+                continue
+            for offer in actions.get('offers', []):
+                if not runtime_ready or offer.get('kind') == 'agent' and not env.get('TASK_CONSOLE_AGENT_TASK_ID'):
+                    offer.update(enabled=False, reason='执行服务尚未连接')
+            if actions.get('offers') and not actions.get('current') and not any(offer.get('enabled') for offer in actions['offers']):
+                actions.update(available=False, reason='执行服务尚未连接', offers=[])
         return payload
     except (OSError, ValueError, subprocess.SubprocessError):
         return dict(unavailable, reason="work_reader_failed")

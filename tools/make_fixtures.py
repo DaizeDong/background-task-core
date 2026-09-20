@@ -48,6 +48,16 @@ def example_request() -> dict:
     }
 
 
+def work_action_case():
+    """A synthetic todo with an owner-issued action offer."""
+    return {"id": "acme-todo", "title": "Prepare Acme report", "state": "pending",
+            "role": "tracked_item", "source": "user", "summary": "Synthetic report request",
+            "actions": {"available": True, "revision": "sha256:synthetic",
+                        "offers": [{"id": "agent", "kind": "agent", "label": "整理报告",
+                                    "description": "根据待办内容处理", "enabled": True}],
+                        "links": [], "current": None}}
+
+
 def work_feed_case():
     """Small composition fixture with deliberately non-equivalent work states."""
     rows=[]
@@ -181,6 +191,18 @@ def legacy_health_snapshot() -> dict:
          "artifact": "synthetic-output", "artifact_max_age_hours": 24, "ok_exit_codes": [2]}],
         "rows": {"AcmeSync": {"state": "Ready", "last_rc": "0x80070002", "last_run": now - 60}},
         "artifact_observations": {"synthetic-output": {"mtime": now - 60}}}
+
+
+def action_session_fixture(root):
+    """Exact synthetic conversation identity for action-context tests."""
+    session = '11111111-2222-4333-8444-555555555555'
+    path = Path(root) / 'acme-project' / (session + '.jsonl')
+    path.parent.mkdir(parents=True, exist_ok=True)
+    rows = [{'sessionId': session, 'type': 'user', 'uuid': 'synthetic-message',
+             'message': {'content': 'Prepare the Acme report using synthetic inputs.'}},
+            {'sessionId': 'unrelated-session', 'type': 'user', 'message': {'content': 'UNRELATED_CANARY'}}]
+    path.write_text('\n'.join(json.dumps(row) for row in rows), encoding='utf-8')
+    return session, path
 
 
 def console_page_fixture() -> dict:

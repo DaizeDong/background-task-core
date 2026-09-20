@@ -2,7 +2,7 @@
 const ConsoleActions={
   get readOnly(){return document.querySelector('meta[name="console-read-only"]')?.content==='true';},
   reason:'只读预览：操作请使用正式控制台',
-  selector:'[data-act],[data-retire],[data-mt],[data-rpact]:not([data-rpact="copy"]):not([data-rpact="web"]),[data-fix],[data-fixall],[data-bulk]:not([data-bulk="clear"]),#lcsave,#cxdel',
+  selector:'[data-work-action],[data-work-stop],[data-act],[data-retire],[data-mt],[data-rpact]:not([data-rpact="copy"]):not([data-rpact="web"]),[data-fix],[data-fixall],[data-bulk]:not([data-bulk="clear"]),#lcsave,#cxdel',
   allowWrite(){if(!this.readOnly) return true;toast(this.reason,'bad');return false;},
   sync(){
     if(!this.readOnly) return;

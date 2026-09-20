@@ -48,6 +48,7 @@ import allowlist
 import codexinfo
 import component_status
 import work_status
+import work_actions
 import console_store
 import convos
 import evtlog
@@ -91,7 +92,7 @@ STATIC_FILES = {
     "panels/profile.js", "panels/repositories.js", "panels/storage.js",
     "panels/overview.js", "panels/conversations.js", "panels/calls.js",
     "panels/pipelines.js", "panels/review.js",
-    "navigation.js", "actions.js", "work-model.js", "workbench.js", "workbench.css",
+    "navigation.js", "actions.js", "work-model.js", "workbench.js", "workbench.css", "work-actions.js", "work-actions.css",
 }
 
 NOT_RUN, RUNNING = 0x41303, 0x41301
@@ -1132,6 +1133,8 @@ class Handler(BaseHTTPRequestHandler):
         path = self.path.split("?", 1)[0]
         if path in ("/", "/index.html"):
             html = PAGE.read_text(encoding="utf-8").replace("__TOKEN__", self.token)
+            if os.environ.get('TASK_CONSOLE_READ_ONLY') == '1':
+                html = html.replace('name="console-read-only" content="false"', 'name="console-read-only" content="true"')
             return self._send(200, html.encode("utf-8"), "text/html; charset=utf-8")
         if path.startswith("/static/"):
             # Exact lexical membership rejects encoded traversal and UNC before I/O.
@@ -1154,6 +1157,14 @@ class Handler(BaseHTTPRequestHandler):
             if not self._authed():
                 return self._json(403, {"error": "bad token"})
             return self._json(200, work_status.read_configured())
+        if path == '/api/work/context':
+            if not self._authed():
+                return self._json(403, {'error': 'bad token'})
+            query = parse_qs(urlparse(self.path).query)
+            item_id = query.get('item_id', [''])[0]
+            if set(query) != {'item_id'} or len(query['item_id']) != 1 or not 0 < len(item_id) <= 300:
+                return self._json(400, {'error': 'invalid context request'})
+            return self._json(200, work_actions.context_view(item_id))
         if path == "/api/hours":
             if not self._authed():
                 return self._json(403, {"error": "bad token"})
@@ -1325,6 +1336,23 @@ class Handler(BaseHTTPRequestHandler):
         if not self._host_ok():
             self._drain()
             return self._json(400, {"error": "bad host"})
+        if os.environ.get('TASK_CONSOLE_READ_ONLY') == '1':
+            self._drain()
+            return self._json(403, {'error': '只读预览，无法执行操作'})
+        if self.path.split('?', 1)[0] in ('/api/work/action', '/api/work/stop'):
+            if not self._authed():
+                self._drain()
+                return self._json(403, {'error': 'bad token'})
+            try:
+                n = int(self.headers.get('Content-Length') or 0)
+                if n < 1 or n > 8192 or self.headers.get('Transfer-Encoding'):
+                    self.close_connection = True
+                    return self._json(400, {'error': 'invalid request size'})
+                request = json.loads(self.rfile.read(n))
+            except (ValueError, UnicodeError):
+                return self._json(400, {'error': 'invalid JSON request'})
+            reply = work_actions.submit(request, stop=self.path.split('?', 1)[0].endswith('/stop'))
+            return self._json(200, reply)
         if self.path.split("?", 1)[0] == "/api/retire/plan":
             return self._retire_plan()
         if self.path.split("?", 1)[0] == "/api/repo/plan":

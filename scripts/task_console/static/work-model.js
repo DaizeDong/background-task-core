@@ -8,7 +8,7 @@ const workActive=item=>item.role==='agent_work' && ['queued','running'].includes
 const workResult=item=>item.role==='agent_work' && workState(item)==='done';
 const workTracked=item=>item.role==='tracked_item' && ['pending','doing','blocked','snoozed'].includes(item.state);
 const workSourceLabel=source=>({'agent-center:work':'Agent 工作单','claude-session':'Claude 会话','claude-cc-session':'Claude 会话（cc）','user-request':'用户交办','user':'用户记录','manual-cli':'手动记录（CLI）','manual-claude':'手动记录（Claude）','manual-cc':'手动记录（cc）','manual-session':'会话手动记录'}[source] || source || '来源未记录');
-const WORK_EVENTS={status_change:'更改状态',notified:'已发出提醒',created:'创建记录',idempotent_replay:'收到重复请求，沿用原记录',updated:'更新记录',rearmed:'重新安排提醒'};
+const WORK_EVENTS={action_requested:'已提交处理请求',action_update:'更新处理进度',action_stop_requested:'已请求停止处理',work_prepared:'已加入执行队列',status_change:'更改状态',notified:'已发出提醒',created:'创建记录',idempotent_replay:'收到重复请求，沿用原记录',updated:'更新记录',rearmed:'重新安排提醒'};
 const workEventLabel=event=>(WORK_EVENTS[event.event_type] || event.event_type || '活动类型未记录')+(event.to_state?' · '+(WORK_STATES[event.to_state] || event.to_state):'');
 function workRows(feed,options={}){
   if(!feed?.available) return [];

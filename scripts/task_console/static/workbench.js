@@ -33,7 +33,7 @@ function workItemRow(item,compact=false){
     <div class="work-subject"><button class="record-link" title="${esc(title)}" data-work-id="${esc(item.id)}">${esc(title)}</button>
     ${note && !(compact && result)?`<p>${esc(note)}</p>`:''}<small title="${esc(item.source)}">${esc(workSourceLabel(item.source))}${item.project?' / '+esc(item.project):''}</small></div>
     <div class="work-when"><time>${esc(workTime(item.updated_at))}</time>${item.due_at?`<small>到期 ${esc(workTime(item.due_at))}</small>`:''}
-    </div></article>`;
+    </div>${workActionButtons(item,compact)}</article>`;
 }
 function renderWorkPlatform(){
   const present=WORK?.available, p=workProjection(WORK), coverage=WORK?.coverage || {};
@@ -96,8 +96,8 @@ function openWorkRecord(id,keepOrder=false){
   const events=(WORK.events || []).filter(event=>event.item_id===id);
   $('work-detail-title').textContent=item.title;
   $('work-detail-body').innerHTML=`<dl class="record-fields"><dt>类别</dt><dd>${esc(ROLE_LABELS[item.role])}</dd><dt>来源</dt><dd>${esc(workSourceLabel(item.source))}${workSourceLabel(item.source)!==item.source?' · '+esc(item.source):''}</dd><dt>记录状态</dt><dd>${esc(workLabel(item))}</dd><dt>更新时间</dt><dd>${esc(workTime(item.updated_at))}</dd>${item.due_at?`<dt>截止时间</dt><dd>${esc(workTime(item.due_at))}</dd>`:''}${item.project?`<dt>项目</dt><dd>${esc(item.project)}</dd>`:''}<dt>记录 ID</dt><dd>${esc(item.id)}</dd></dl>
-    <h3>${workResult(item)?'完成摘要':'摘要'}</h3><p class="record-summary">${esc(item.summary || '没有摘要')}</p>
-    ${item.execution?'<p class="work-empty">状态来自工作单，不能据此确认程序是否仍在运行。这里尚无独立验证结果。</p>':''}
+    ${workActionButtons(item)}<h3>${workResult(item)?'完成摘要':'摘要'}</h3><p class="record-summary">${esc(item.summary || '没有摘要')}</p>
+    ${item.execution?'<p class="work-empty">状态来自工作单，不能据此确认程序是否仍在运行。这里尚无独立验证结果。</p>':''}${workSourceContext(item.id)}
     <h3>最近活动</h3><ul class="record-events">${events.map(event=>`<li>${esc(workTime(event.ts))} · ${esc(workEventLabel(event))}${event.actor?' · '+esc(event.actor):''}</li>`).join('') || '<li>本次读取的活动中没有这条记录</li>'}</ul>`;
   const index=WORK_DETAIL_IDS.indexOf(id);
   $('work-detail-prev').disabled=index<=0;$('work-detail-next').disabled=index<0 || index>=WORK_DETAIL_IDS.length-1;

@@ -14,6 +14,7 @@ const CONSOLE_MODULES = [
   "panels/pipelines.js",
   "panels/review.js",
   "work-model.js",
+  "work-actions.js",
   "workbench.js",
   "navigation.js",
   "operations.js",
