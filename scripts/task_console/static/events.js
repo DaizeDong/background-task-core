@@ -1,5 +1,7 @@
 // Classic script module; loaded in app.js dependency order.
 document.addEventListener("click", e=>{
+  const reset=e.target.closest('[data-reset-filters]');
+  if(reset){resetFilters(reset.dataset.resetFilters);return;}
   // ⚠ 这一段必须留在**这个**监听里,而且在最前面。
   // 页面上有两个 document 级的 click 监听,先注册的先跑,而 stopPropagation
   // 拦不住同一个元素上的另一个监听(那要 stopImmediatePropagation)。
@@ -63,7 +65,7 @@ document.addEventListener("click", e=>{
   const nv = e.target.closest(".nv");
   // 分区项现在是 <a href="#xxx">。让浏览器自己跳会同时触发 hashchange,
   // 于是 showView 跑两遍;更糟的是原生跳转会把页面滚到那个 id 上(并不存在)。
-  if(nv){ e.preventDefault(); showView(nv.dataset.view, true); return; }
+  if(nv){ if(e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return; e.preventDefault(); showView(nv.dataset.view, true); return; }
 });
 // 方向键在侧栏项之间移焦点,但**不切视图**。APG 把 tab 模式拆成 manual 和 automatic
 // 两种,面板要发请求的场景必须选 manual:仓库、配置、会话三个分区各自会真扫一遍,
@@ -268,7 +270,7 @@ document.addEventListener("keydown",e=>{
     return;   // 动作类的键(r/s/e/d/x/a)直接不受理:静默执行一个破坏性动作是最坏的结果
   }
   if(k==="/"){
-    const searchId={overview:'work-search',work:'work-search',automations:'automation-search',resources:'runtime-search',repos:'rpq',convos:'cv-search',llm:'lmq'}[CURVIEW];
+    const searchId={overview:'work-search',work:'work-search',automations:'automation-search',resources:'catalog-search',repos:'rpq',convos:'cv-search',llm:'lmq',diagnostics:'review-search',pipelines:'pipeline-search'}[CURVIEW];
     if(searchId){e.preventDefault();if(CURVIEW==='overview')showView('work',true);$(searchId).focus();return;}
     // 过滤框在任务分区里。在别的分区按 / 时,preventDefault 顺手掐掉了浏览器的快速查找,
     // 而承诺的过滤框既没出现也没获得焦点,零反馈 :

@@ -118,7 +118,7 @@ const context=vm.createContext({document});
 """ + "\n".join("vm.runInContext(" + json.dumps(source) + ",context);" for source in sources)
         + "vm.runInContext(" + json.dumps("MAINT=" + json.dumps(data) + ";renderMaint();") + ",context);"
         + "console.log(JSON.stringify(elements['mt-catalog'].innerHTML+elements['catalog-results'].innerHTML));")
-    for expected in ("3 个来源", "角色模板", "shared", "codex", "<dt>认证</dt><dd>未检查</dd>", "MCP 连接 (1)", "部分检查"):
+    for expected in ("3 项", "角色模板", "shared", "codex", "<dt>认证</dt><dd>未检查</dd>", "MCP 连接 (1)", "部分检查"):
         assert expected in result
 
 

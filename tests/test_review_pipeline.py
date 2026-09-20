@@ -51,8 +51,16 @@ def test_absent_or_ambiguous_task_is_unknown():
 def test_backup_artifacts_do_not_prove_copy_push_or_model_execution():
     steps = project("pipelineSteps('backup',COMPONENTS)", review_pipeline_case())
     assert steps[0]['tone'] == 'idle'
-    assert all(step['label'] == '产物检查正常' for step in steps[1:])
-    assert '尚未按运行标识关联' in steps[1]['detail']
+    assert all(step['label'] == '输出检查正常' for step in steps[1:])
+    assert '尚未对应到本次模型调用' in steps[1]['detail']
+
+
+def test_missing_backup_checks_cannot_claim_the_files_were_checked():
+    data = review_pipeline_case()
+    data['tasks'][1]['checks'] = []
+    steps = project("pipelineSteps('backup',COMPONENTS)", data)
+    assert all(step['tone'] == 'idle' for step in steps)
+    assert all('检查记录缺失' in step['detail'] for step in steps[1:])
 
 
 def test_review_groups_same_task_and_preserves_distinct_check_evidence():

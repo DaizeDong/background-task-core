@@ -13,13 +13,43 @@ const TL_MIN_SPAN=5;    // 最小窗口 5 分钟。实测深度缩放时一帧 1
 const sev = r => r.issues.some(i=>i[0]==="bad")?"bad":r.issues.some(i=>i[0]==="warn")?"warn":"";
 const mins = t => { const p=String(t).split(":"); return (+p[0])*60+(+p[1]); };
 
+// Format the owner's trigger fields; do not calculate or infer future runs here.
+function taskDuration(value){
+  const match=/^P(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?)?$/.exec(value || '');
+  if(!match || !match.slice(1).some(part=>part!==undefined)) return value || '未设置';
+  const units=['天','小时','分钟','秒'];
+  return match.slice(1).map((part,i)=>Number(part)?Number(part)+' '+units[i]:'').filter(Boolean).join(' ') || '0 秒';
+}
+function taskSchedule(row,full=false){
+  if(!row.triggersRaw?.length) return row.triggers || '未记录触发计划';
+  return row.triggersRaw.map(trigger=>{
+    const kind=(trigger.kind || '').toLowerCase();
+    const clock=trigger.start?.match(/T(\d\d:\d\d(?::\d\d)?)/)?.[1] || '';
+    const time=clock?' '+clock:'';
+    const events={logon:'登录时',boot:'开机时',registration:'注册任务时',idle:'系统空闲时',event:'指定事件发生时',sessionstatechange:'会话状态变化时'};
+    let label=events[kind];
+    if(kind==='daily') label=(trigger.days===1?'每天':trigger.days?'每 '+trigger.days+' 天':'按日计划')+time;
+    if(kind==='weekly'){
+      const days=['日','一','二','三','四','五','六'].filter((_,i)=>(Number(trigger.dow)&(1<<i))!==0);
+      label=(trigger.weeks===1?'每周':trigger.weeks?'每 '+trigger.weeks+' 周':'按周计划')+(days.length?' '+days.map(day=>'周'+day).join('、'):'')+time;
+    }
+    if(kind==='time') label=trigger.interval?'':'指定时间'+(trigger.start?' '+trigger.start:'');
+    if(label===undefined) label='触发条件未识别'+(trigger.kind?'（'+trigger.kind+'）':'');
+    if(trigger.interval) label+=(label?'，':'')+'每 '+taskDuration(trigger.interval)+' 重复'+(trigger.duration?'，持续 '+taskDuration(trigger.duration):'');
+    if(trigger.enabled===false) label+='（此触发器已停用）';
+    if(full) label+=(trigger.start?'；开始 '+trigger.start:'')+(trigger.end?'；结束 '+trigger.end:'');
+    else if(trigger.end) label+='，有截止时间';
+    return label;
+  }).join('；');
+}
+
 async function load(){
   try{
     DATA=await api("/api/tasks");
     if(DATA.error) throw new Error(DATA.error);
     ROWS=[]; for(const g of DATA.groups) for(const r of g.rows) ROWS.push(Object.assign({cat:g.cat},r));
     const s=$("cat"), keep=s.value;
-    s.innerHTML='<option value="">全部大类</option>'+DATA.groups.map(g=>`<option>${esc(g.cat)}</option>`).join("");
+    s.innerHTML='<option value="">全部分类</option>'+DATA.groups.map(g=>`<option>${esc(g.cat)}</option>`).join("");
     s.value=keep;
     render();
     if(typeof renderPipelines==="function") renderPipelines();
@@ -60,7 +90,7 @@ function renderTL(){
   if(help){ help.textContent="说明"; help.dataset.full=T.note||""; help.title=T.note||""; }
   const w=$("tlwarn");
   if(w){ w.hidden=!rlDown;
-    w.textContent="运行日志不可用,本图只有计划、没有实际:每行都没有实际运行标记不代表它们没跑。"; }
+    w.textContent="暂时读不到运行日志。本图只显示计划，无法确认任务实际是否运行。"; }
   const fmt=m=>`${String(Math.floor(m/60)).padStart(2,"0")}:${String(Math.round(m)%60).padStart(2,"0")}`;
   $("tlrange").textContent=`${fmt(tlFrom)}-${fmt(Math.min(tlTo,1439))}`;
   const nowM=mins(T.now);
@@ -186,8 +216,8 @@ function renderFresh(){
   // grace 是「还在宽限期内」,不算要人管;unknown 是「查不成」,算。
   const bad=ts.filter(t=>FR_ATT().indexOf(t.state) >= 0);
   $("frlist").innerHTML = bad.length
-    ? `<div class="fr-off">${bad.length} 条明细在上面的「要人管的事」</div>`
-    : `<div class="fr-none">全部产物新鲜</div>`;
+    ? `<div class="fr-off">${bad.length} 项未通过检查，原因见上方「技术问题」</div>`
+    : `<div class="fr-none">所有已检查的输出文件均按时更新</div>`;
 }
 
 // 维护面板。单独一次 fetch:它要跑 `claude plugin list`,几秒起步,不该拖住主表。
@@ -205,7 +235,7 @@ function pc(v){ if(v==null) return `<td class="num u" title="未检查">-</td>`;
     Math.min(100,Math.max(0,v))}%;background:${c}"></i></span><span
     style="color:${c}">${v.toFixed(1)}</span></td>`; }
 function renderScores(){
-  $("scores").innerHTML=`<thead><tr><th>大类</th><th class="num">数</th><th class="num">健康%</th>
+  $("scores").innerHTML=`<thead><tr><th>大类</th><th class="num">任务数</th><th class="num">检查通过率</th>
     <th class="num">备份%</th><th class="num">监控%</th><th class="num" title="本类里「没有任何 warn 项」的任务占比。注意它和上面那个按钮说的
 「卫生六列」不是一回事:那六列包含备份与监控,而这个百分比不看这两项,却多算了两条电池规则。
 一个大类可能六列全是 N 而这里是 100.0">无警告项%</th></tr></thead><tbody>`
@@ -258,14 +288,14 @@ const C=[
  //   没有观察记录 -> 虚线空框(不是一条 0 宽的条,那会读成「全坏」)
  //   样本不足     -> 整条降饱和 + 虚线外框
  //   判词认不出   -> 分母里留一段**背景色缺口**,把原来只在 tooltip 里的那个缺陷画出来
- ["health","体征",r=>{
+ ["health","检查结果",r=>{
    const h=r.hist||{}, v=h.health;
    const oth=h.other||0;
    const tip = v==null ? "没有观察记录"
      : `${h.ok}/${h.judged} 条观察判为正常`
        + (h.bad?` · 失败 ${h.bad}`:"") + (h.stale?` · 陈旧 ${h.stale}`:"")
        + (oth ? ` · ${oth} 条判词认不出来,它们只进了分母` : "");
-   // 小样本降色。紧挨着的两处都做了这件事(实成功% 在 j<5 时降 faint,大类评分表在
+   // 小样本降色。紧挨着的两处都做了这件事(动作成功率 在 j<5 时降 faint,大类评分表在
    // healthN<n 时降色),唯独这一列没有:**一个 1 条观察的 100% 和一个 4000 条观察的
    // 100% 在屏幕上长得完全一样**,而分母只在 hover 的 tooltip 里。
    // 一个刚被监控器纳入、只轮询到一次的任务因此显示满格绿色。
@@ -291,7 +321,7 @@ const C=[
  // 分母要说出来。judged 是动作返回码事件数,不是旁边那列的「实跑」(启动事件数):
  // 多动作任务每次运行写多条 201,分母大于实跑;rc 事件被日志滚动截断的任务分母小于实跑。
  // 一个 1 个样本的 100% 和一个 4000 个样本的 100% 不该长得一样。
- ["realOk","实成功%",r=>{
+ ["realOk","动作成功率",r=>{
    const R2=r.runs||{}, v=R2.successRate, j=R2.judged, st=R2.starts;
    const thin = (j != null && j < 5) || (st != null && j != null && j < st * 0.5);
    const tip = v==null ? "运行日志里还没有这个任务的动作返回码"
@@ -301,7 +331,7 @@ const C=[
  },r=>(r.runs&&r.runs.successRate!=null)?r.runs.successRate:-1],
  // 实跑 / 失败 / 陈旧 三列已经并进「体征」那一格的分段条,精确值在展开行的「观察」一条。
  // 它们留在表上时是三列几乎全 0 的数字,而三个标签每次都一样。
- ["triggers","触发",r=>`<td class="dim" title="${esc(r.triggers)}">${esc((r.triggers||"").slice(0,20))}</td>`,r=>r.triggers||""],
+ ["triggers","运行计划",r=>`<td class="dim" title="${esc(taskSchedule(r,true))}">${esc(taskSchedule(r))}</td>`,r=>r.triggers||""],
  // 84 个等宽时间戳(42 行两列),而读它们的目的基本只有「多久没跑了」「还有多久跑」。
  // 相对时间直接回答那个问题,绝对时刻进 title,一个都没丢。
  // ⚠ 「从未」和「-」保持两个不同的词:前者是确定没跑过,后者是没有下次计划。
@@ -310,30 +340,31 @@ const C=[
     r.lastRun?esc(relTime(r.lastRun)):'<span class="u">从未</span>'}</td>`,r=>r.lastRun||""],
  ["nextRun","下次",r=>`<td class="dim num" data-col="nextRun" title="${esc(r.nextRun||"没有下次计划")}">${
     r.nextRun?esc(relTime(r.nextRun)):'<span class="u">-</span>'}</td>`,r=>r.nextRun||""],
- ["catchup","补跑",r=>`<td class="${r.catchup?"y":"n"}">${r.catchup?"Y":"N"}</td>`,r=>r.catchup?1:0],
+ ["catchup","补跑",r=>`<td class="${r.catchup?"y":"n"}">${r.catchup?"是":"否"}</td>`,r=>r.catchup?1:0],
  ["retries","重试",r=>`<td class="num">${r.retries}</td>`,r=>r.retries],
- ["timeout","超时",r=>{const i=(r.timeout==="PT72H"||r.timeout==="PT0S");return `<td data-col="timeout" style="color:${i?"var(--warn)":"var(--dim)"}">${esc(r.timeout)}</td>`},r=>r.timeout||""],
- ["artifact","产物",r=>`<td class="${r.artifact?(r.cannotProve?"u":"y"):"u"}" title="${esc(r.artifact||"未声明")}">${r.artifact?(r.cannotProve?"弱":"Y"):"-"}</td>`,r=>r.artifact?(r.cannotProve?1:2):0],
- ["inAllow","备份",r=>{const u=!DATA.summary.allowChecked;return `<td class="${u?"u":r.inAllow?"y":"n"}">${u?"?":r.inAllow?"Y":"N"}</td>`},r=>r.inAllow?1:0],
- ["inHealth","监控",r=>`<td class="${r.inHealth?"y":r.elsewhere?"u":"n"}" title="${esc(r.elsewhere||"")}">${r.inHealth?"Y":r.elsewhere?"代":"N"}</td>`,r=>r.inHealth?1:0],
+ ["timeout","超时限制",r=>{const i=(r.timeout==="PT72H"||r.timeout==="PT0S");return `<td data-col="timeout" title="${esc(r.timeout)}" style="color:${i?"var(--warn)":"var(--dim)"}">${esc(r.timeout==='PT0S'?'不限时':taskDuration(r.timeout))}</td>`},r=>r.timeout||""],
+ ["artifact","产物",r=>`<td class="${r.artifact?(r.cannotProve?"u":"y"):"u"}" title="${esc(r.artifact||"未声明")}">${r.artifact?(r.cannotProve?"不足以验证":"已设置"):"-"}</td>`,r=>r.artifact?(r.cannotProve?1:2):0],
+ ["inAllow","备份",r=>{const u=!DATA.summary.allowChecked;return `<td class="${u?"u":r.inAllow?"y":"n"}">${u?"?":r.inAllow?"是":"否"}</td>`},r=>r.inAllow?1:0],
+ ["inHealth","监控",r=>`<td class="${r.inHealth?"y":r.elsewhere?"u":"n"}" title="${esc(r.elsewhere||"")}">${r.inHealth?"是":r.elsewhere?"另有监控":"否"}</td>`,r=>r.inHealth?1:0],
 ];
 
 function detail(r){
   const tail=s=>esc(String(s==null?"":s).split("\\").pop().replace(/"$/,""));
   const rcs=r.runs?Object.keys(r.runs.rcs||{}).map(k=>k+"x"+r.runs.rcs[k]).join(", "):"";
   const dl=[
-   ["说明",r.desc?esc(r.desc):'<span class="u">没有说明。补在分类配置的 taskDesc 里(路径见 README)</span>'],
+   ["用途",r.desc?esc(r.desc):'<span class="u">没有用途说明</span>'],
+   ["运行计划",esc(taskSchedule(r,true))],
    ["命令",`${tail(r.exec)} ${tail(r.args)}`],
    ["身份",`${esc(r.userId)} · ${esc(r.runLevel)} · ${esc(r.multi)}`],
    ["退出码",`${esc(r.rcHex)||"-"}${r.okCodes?` <span class="faint">声明 ${esc(r.okCodes)} 也算正常</span>`:""}`],
    ["产物",r.artifact?`${esc(r.artifact)} · ${esc(r.artifactMax)}h`:"未声明"],
-   ["电池",`${r.refuseOnBattery?"用电池时拒绝启动":"电池可启动"} · ${r.stopOnBattery?"拔电源会被杀":"拔电源不杀"}`],
+   ["电池",`${r.refuseOnBattery?"用电池时拒绝启动":"电池可启动"} · ${r.stopOnBattery?"拔电源时停止":"拔电源后继续运行"}`],
    // 「体征」那一格只画比例,精确值在这里。少了这一条,失败与陈旧的具体条数
    // 就只剩 tooltip 一个出口 —— 而 tooltip 是发现不了的。
    ["观察",r.hist?`正常 ${r.hist.ok} · 失败 ${r.hist.bad} · 陈旧 ${r.hist.stale}`
      +(r.hist.other?` · 判词认不出 ${r.hist.other}`:"")
      +` / 共 ${r.hist.judged} 条`:'<span class="u">没有观察记录</span>'],
-   ["真实运行",r.runs?`启动 ${r.runs.starts} · 完成 ${r.runs.done} · 被杀 ${r.runs.killed} · 超时 ${r.runs.timedOut} · 启动失败 ${r.runs.failStart} · 返回码 ${rcs||"无"}${r.runs.okApplied?` (声明 ${r.runs.okApplied.join(",")} 也算成功)`:""}`:'<span class="u">运行日志里还没有记录</span>'],
+   ["真实运行",r.runs?`启动 ${r.runs.starts} · 完成 ${r.runs.done} · 被终止 ${r.runs.killed} · 超时 ${r.runs.timedOut} · 启动失败 ${r.runs.failStart} · 返回码 ${rcs||"无"}${r.runs.okApplied?` (声明 ${r.runs.okApplied.join(",")} 也算成功)`:""}`:'<span class="u">运行日志里还没有记录</span>'],
   ].map(x=>`<dt>${x[0]}</dt><dd>${x[1]}</dd>`).join("");
   const iss=r.issues.length?`<ul class="iss">${r.issues.map(i=>`<li class="${i[0]}">${esc(i[1])}</li>`).join("")}</ul>`:"";
   // 展开态原来还有一组 启用/停用/立即运行/停止 按钮,是行内操作列的真子集(少一个退役)。
@@ -462,16 +493,16 @@ function renderBulk(){
   if(!sel.size){ b.hidden=true; return; }
   b.hidden=false;
   b.innerHTML=`<span>已选 <b>${sel.size}</b></span>
-    <button data-bulk="run">全部运行</button>
-    <button data-bulk="enable">全部启用</button>
-    <button class="danger" data-bulk="disable">全部停用</button>
-    <button data-bulk="clear">清空</button>`;
+    <button data-bulk="run">运行选中任务</button>
+    <button data-bulk="enable">启用选中任务</button>
+    <button class="danger" data-bulk="disable">停用选中任务</button>
+    <button data-bulk="clear">取消选择</button>`;
 }
 
 async function act(names, verb){
   if(busy||!names.length) return;
   if(!ConsoleActions.allowWrite()) return;
-  if(verb==="disable"&&!confirm(`停用 ${names.length} 个任务?\n\n${names.join("\n")}\n\n它们将不再按计划运行,直到重新启用。`)) return;
+  if(verb==="disable"&&!confirm(`停用 ${names.length} 个任务？\n\n${names.join("\n")}\n\n它们将不再按计划启动，直到重新启用。正在运行的任务不会因此停止。`)) return;
   busy=true;
   renderAutomations();
   render();
@@ -479,11 +510,11 @@ async function act(names, verb){
   for(const n of names){
     try{
       const r=await api("/api/act",{method:"POST",body:JSON.stringify({name:n,verb:verb})});
-      if(r.ok){ ok++; if(names.length===1) toast(`${n}:${r.message} (${r.before} -> ${r.after})`,"ok"); }
-      else { fail++; toast(`${n}:${r.message}`,"bad"); }
+      if(r.ok){ ok++; if(names.length===1) toast(`${n}：${taskOutcome(r,verb)}`,"ok"); }
+      else { fail++; toast(`${n}：${taskOutcome(r,verb)}`,"bad"); }
     }catch(e){ fail++; toast(`${n}:${e.message}`,"bad"); }
   }
-  if(names.length>1) toast(`${verb}:成功 ${ok},失败 ${fail}`, fail?"bad":"ok");
+  if(names.length>1) toast(`${{run:'运行请求',stop:'停止请求',enable:'启用',disable:'停用'}[verb] || verb}：已受理 ${ok}，失败 ${fail}`, fail?"bad":"ok");
   busy=false;
   await load();
 }
@@ -498,12 +529,14 @@ async function act(names, verb){
 function focusTask(name){
   showView("tasks", true);
   const q = $("q");
-  // 再点同一个就取消过滤:一个只能进不能退的过滤,用一次就得手动清一次。
-  q.value = (q.value === name) ? "" : name;
-  $("cat").value = "";        // 大类过滤会和任务名过滤互相缩小,同时开着等于两道条件
+  // A detail link always opens the named task, even with stale filters or selections.
+  q.value = name;
+  $("cat").value = "";$("only").checked=false;$("hideoff").checked=false;sel.clear();
   if (DATA) render();
-  const tr = document.querySelector("#tbl tbody tr");
-  if (tr) tr.scrollIntoView({block: "nearest"});
+  cur=VIEW.findIndex(row=>row.name===name);
+  const tr = document.querySelector(`#tbl tbody tr[data-i="${cur}"]`);
+  if (tr){openDetail(tr);focusCur();}
+  else toast('没有读到该任务，请刷新运行详情','bad');
 }
 
 function focusCategory(cat){
@@ -547,14 +580,14 @@ async function retireTask(name){
     toast(`${name}: 这几处没配置,不能只做一半 (${p.blocked.join(", ")})`,"bad"); return;
   }
   const lines=p.steps.map(s=>`  ${s.step}: ${s.state}`).join("\n");
-  if(!confirm(`退役 ${name}\n\n${lines}\n\n共 ${p.changes} 处会被改动。继续?`)) return;
-  const reason=prompt(`退役原因(必填,会写进任务的 Description):`,"");
-  if(!reason||!reason.trim()){ toast("没有原因就不退役",'bad'); return; }
+  if(!confirm(`停用并移出清单：${name}\n\n任务将停用，并移出备份与健康检查清单。\n\n${lines}\n\n共 ${p.changes} 处会被改动。继续?`)) return;
+  const reason=prompt(`停用并移出清单的原因（必填，会写入任务说明）：`,"");
+  if(!reason||!reason.trim()){ toast("未填写原因，操作已取消",'bad'); return; }
   try{
     const r=await api("/api/maint/act",{method:"POST",
       body:JSON.stringify({action:"task.retire",name,arg:reason})});
     if(r.error){ toast(`${name}: ${r.error}`,"bad"); return; }
-    toast(`${name} 已退役(${(r.done||[]).join("+")||"无需改动"})`);
+    toast(`${name} 已停用并移出清单（${(r.done||[]).join("+")||"无需改动"}）`);
     await load();
   }catch(e){ toast(`${name}: ${e.message}`,"bad"); }
 }

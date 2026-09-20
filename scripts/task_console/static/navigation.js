@@ -2,9 +2,9 @@
 const VIEW_GROUPS={
   overview:{label:'工作台',views:{overview:'工作台'}},
   work:{label:'工作记录',views:{work:'工作与结果',convos:'会话',llm:'模型调用'}},
-  automations:{label:'自动化',views:{automations:'开关与计划',pipelines:'流水线收据',tasks:'执行明细'}},
-  resources:{label:'资源',views:{resources:'能力与配置',repos:'代码仓库',storage:'存储'}},
-  diagnostics:{label:'诊断',views:{diagnostics:'技术异常与数据来源'}}
+  automations:{label:'自动化',views:{automations:'任务开关',pipelines:'同步与备份',tasks:'运行详情'}},
+  resources:{label:'资源',views:{resources:'技能、插件与记忆',repos:'代码仓库',storage:'存储清理'}},
+  diagnostics:{label:'诊断',views:{diagnostics:'技术问题与数据来源'}}
 };
 const VIEWS=Object.values(VIEW_GROUPS).flatMap(group=>Object.keys(group.views));
 let CURVIEW=null;

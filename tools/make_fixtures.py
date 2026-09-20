@@ -61,6 +61,28 @@ def work_feed_case():
             'coverage':{'total':5,'returned':5,'roles':{'agent_work':3,'tracked_item':1,'signal':1}}}
 
 
+def usability_case():
+    """Generated cases for filters, stale reads and trigger display boundaries."""
+    feed=work_feed_case()
+    for state in ('done','cancelled','snoozed','blocked'):
+        item=deepcopy(feed['items'][3])
+        item.update(id='tracked-'+state,state=state)
+        feed['items'].append(item)
+    feed['sources']=[{'source':'synthetic','count':len(feed['items'])}]
+    feed['events']=[{'item_id':key,'title':'Acme event','event_type':'created'} for key in ('active','not-loaded')]
+    feed['coverage'].update(total=len(feed['items']),returned=len(feed['items']),roles={'agent_work':3,'tracked_item':5,'signal':1},events_available=True,event_total=2)
+    feed['observed_at']='2030-01-02T00:00:00Z'
+    triggers=[
+        {'kind':'Time','enabled':True,'start':'2030-01-02T10:15:00','interval':'PT5M'},
+        {'kind':'Daily','enabled':False,'days':2,'start':'2030-01-02T08:00:00','interval':'PT1H','duration':'PT3H'},
+        {'kind':'Weekly','weeks':2,'dow':10,'start':'2030-01-02T09:00:00','end':'2030-12-31T09:00:00'},
+        {'kind':'AcmeCustom','start':'2030-01-02T09:00:00'},
+    ]
+    return {'feed':feed,'triggers':triggers,
+            'cleanup':{'items':[{'rel':'acme.jsonl','bytes':1024}]},
+            'partial_delete':{'ok':False,'deleted':1,'freed':1024,'stoppedAt':'sample.jsonl','error':'synthetic error'}}
+
+
 def installation_request() -> dict:
     """Two installations of an unchanged public manifest, supplied by a catalog caller."""
     request = example_request()

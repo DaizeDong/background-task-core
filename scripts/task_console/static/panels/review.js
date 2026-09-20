@@ -20,7 +20,7 @@ function renderReviewQueue(rows,dataBroken){
   });
   const all=[...groups.values()].sort((a,b)=>b.sev-a.sev || a.nm.localeCompare(b.nm));
   const query=REVIEW_QUERY.trim().toLowerCase();
-  const selected=all.filter(row=>(REVIEW_FILTER==="all" || row.v===REVIEW_FILTER) &&
+  const selected=all.filter(row=>(REVIEW_FILTER==="all" || row.v===REVIEW_FILTER || REVIEW_FILTER==='storage' && row.v==='resources') &&
     (!query || JSON.stringify([row.nm,row.description,row.reasons]).toLowerCase().includes(query)));
   $("todon").textContent=`${all.length} 个对象`;
   $("review-count").textContent=`${selected.length}/${all.length} 个对象 · ${rows.length} 条检查`;
@@ -29,8 +29,8 @@ function renderReviewQueue(rows,dataBroken){
     <div class="review-object"><h3>${esc(row.task || row.nm)}</h3>
     <ul>${row.reasons.map(reason=>`<li>${esc(reason)}</li>`).join("")}</ul></div>
     <div class="review-actions">
-    <button ${row.task?`data-task="${esc(row.task)}"`:row.v==="repos"?`data-review-repo="${esc(row.nm)}"`:`data-goto="${esc(row.v)}"`}>查看</button></div>
-    </article>`).join("") || '<p class="review-empty">没有匹配的待处理项</p>';
+    <button ${row.task?`data-task="${esc(row.task)}"`:row.v==="repos"?`data-review-repo="${esc(row.nm)}"`:`data-goto="${esc(row.v)}"`}>查看详情</button></div>
+    </article>`).join("") || '<p class="review-empty">没有符合筛选条件的技术问题</p>';
   return all.length;
 }
 function updateViewHeading(key){

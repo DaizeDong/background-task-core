@@ -1,5 +1,17 @@
 // Shared page controls use existing loaders and in-memory snapshots only.
 let PAGE_REFRESHING=false;
+// Each panel owns its filters. This shared control only calls their existing renderers.
+function resetFilters(scope){
+  const clear=ids=>ids.forEach(id=>$(id).value='');
+  if(scope==='tasks'){clear(['q','cat']);$('only').checked=false;$('hideoff').checked=false;if(DATA) render();}
+  if(scope==='repos'){clear(['rpq','rpacc','rpkind','rpvis','rpissue']);RP_STATE='';RP_ISSUE='';renderRepos();}
+  if(scope==='catalog'){CATALOG_QUERY='';CATALOG_KIND='';CATALOG_CLIENT='';CATALOG_STATE='';HEALTH_STATE='';renderCatalog();}
+  if(scope==='runtime'){clear(['runtime-search','runtime-state']);RUNTIME_QUERY='';RUNTIME_STATE='';renderSkills();renderPlugins();}
+  if(scope==='convos'){clear(['cv-search']);CV_QUERY='';CV_HUMAN_ONLY=false;renderConvos();}
+  if(scope==='llm'){clearTimeout(LMQT);clear(['lmq','lmprov','lmcaller','lmok']);Object.assign(LMQ,{q:'',provider:'',caller:'',ok:'',offset:0});LMOPEN=null;loadCalls();}
+  if(scope==='diagnostics'){clear(['review-search']);$('review-filter').value='all';REVIEW_QUERY='';REVIEW_FILTER='all';renderTodo();}
+  if(scope==='pipelines'){PIPELINE_QUERY='';clear(['pipeline-search']);renderPipelineIssues();}
+}
 const PAGE_READS={
   overview:[loadWork,load,loadComponents],
   work:[loadWork],automations:[load],

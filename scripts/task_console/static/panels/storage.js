@@ -36,9 +36,9 @@ function renderSys(){
   // 撞上限是「太大了没数完」,读不动是「有一块我根本没看见」,而后者更该让人去查。
   const errN = (pc.size&&pc.size.errors||0)+(se.size&&se.size.errors||0);
   if(errN)
-    h+=`<div class="mt-r"><span class="n" style="color:var(--warn)">有 ${errN} 处扫不动(权限/路径过长/中途消失),体积和残留数都是偏小的</span></div>`;
+    h+=`<div class="mt-r"><span class="n" style="color:var(--warn)">有 ${errN} 处读取失败（权限、路径过长或文件已消失），体积和数量未统计完整</span></div>`;
   else if((pc.size&&pc.size.partial)||(se.size&&se.size.partial))
-    h+=`<div class="mt-r"><span class="n" style="color:var(--warn)">体积只数到上限,带 +</span></div>`;
+    h+=`<div class="mt-r"><span class="n" style="color:var(--warn)">扫描达到上限，带 + 的体积仍有未统计部分</span></div>`;
   // 残留数自己也可能没数成。「这里很干净」和「我根本没数成」不能都渲染成 0。
   if(pc.leftoverPartial)
     h+=`<div class="mt-r"><span class="n" style="color:var(--warn)">残留目录没扫完:${
@@ -95,8 +95,8 @@ function renderMem(){
   const maxB=Math.max(1,...MEM.biggest.map(b=>b.bytes||0));
   el.innerHTML=`<div class="mem-top">
       <div class="mem-counts">
-        <span class="kv"><b>${MEM.live}</b>热层</span>
-        <span class="kv"><b>${MEM.cold}</b>冷层</span>
+        <span class="kv"><b>${MEM.live}</b>常用记忆</span>
+        <span class="kv"><b>${MEM.cold}</b>归档记忆</span>
       </div>
       <div class="mem-meters">
         ${bar(MEM.linePct,MEM.indexLines,MEM.hardLines,"索引行数",MEM.lineVerdict)}
@@ -105,18 +105,18 @@ function renderMem(){
     </div>
     ${MEM.indexReason?`<div class="warn-line">${esc(MEM.indexReason)}</div>`:""}
     <div class="mem-grps">
-      ${grp("孤儿链接",orph,"某条记忆里的 [[链接]] 指向一个既不在热层也不在冷层的名字。悬停看是从哪几条指过去的")}
-      ${grp("索引够不到",unre,"文件在池子里,但 MEMORY.md 里没有任何一行指向它 —— 下次会话不会加载到")}
-      ${grp("索引指向空",dang,"索引里有一行,而它指的文件不在")}
+      ${grp("记忆中的失效链接",orph,"某条记忆里的 [[链接]] 指向一个既不在热层也不在冷层的名字。悬停看是从哪几条指过去的")}
+      ${grp("未加入索引的记忆",unre,"记忆文件存在，但 MEMORY.md 中没有对应链接")}
+      ${grp("索引中的失效链接",dang,"索引里有一行,而它指的文件不在")}
     </div>
-    <div class="mem-big"><div class="mem-gh"><span class="lb">最占地方的</span>
-      <b>${MEM.biggest.length}</b><span class="ex">条,按字节</span></div>`
+    <div class="mem-big"><div class="mem-gh"><span class="lb">较大的记忆文件</span>
+      <b>${MEM.biggest.length}</b><span class="ex">个，按大小排列</span></div>`
     + MEM.biggest.slice(0,10).map(b=>`<div class="mt-r bar">
         <span class="n" title="${esc(b.slug)}">${esc(b.slug)}</span><span></span>
         <span class="ub" aria-hidden="true"><i style="width:${
           Math.round((b.bytes||0)/maxB*100)}%"></i></span>
         <span class="c">${kb(b.bytes)}</span>
-        ${MEM.archiverConfigured?ibtn("i-archive","移进冷层,索引里只留一行指路",
+        ${MEM.archiverConfigured?ibtn("i-archive","归档记忆文件，索引保留链接",
           `data-mt="memory.archive" data-name="${esc(b.slug)}"`,"danger"):""}</div>`).join("")
     + `</div>`;
   memNote("");

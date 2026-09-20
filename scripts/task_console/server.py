@@ -372,8 +372,8 @@ def load_from_db():
         # 页面只负责搬结论 —— 页面自己再判一次就是同一条规则的第二份,两份一定会漂。
         "ingest": console_store.ingest_verdict(cov.get("lastIngest")),
         "matched": cov["health"]["rows"], "skipped": 0, "days": all_days, "tasks": htasks,
-        "caveat": ("健康率来自每小时轮询的观察序列,不是每次运行的成功率:一个坏了一整天的任务贡献约 24 条"
-                   "不健康观察而不是 1 条。「实成功率」那一列才是每次运行的,来自 Windows 运行日志。"),
+        "caveat": ("检查通过率按巡检记录统计，同一任务可被重复检查。"
+                   "动作成功率按 Windows 日志中的动作返回码统计。"),
     }
     # 运行数据这一半也要说原因。旁边 hist 那一半为同一情形写了三种具体原因,
     # 而这里 reason 恒为 None —— 于是库可用但 run_event 是空表时,页面上只剩一句

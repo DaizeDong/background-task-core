@@ -54,6 +54,13 @@ td.ops .mini{opacity:1}button:disabled{opacity:1;color:var(--dim);background:var
 button.mini.ib{width:30px;min-height:30px}.ic use{pointer-events:none}
 #work-detail{width:min(760px,calc(100vw - 32px));max-height:85vh;padding:0;border:1px solid var(--line);border-radius:8px;background:var(--panel);color:var(--ink);overflow:auto}
 #work-detail::backdrop{background:rgba(0,0,0,.45)}#work-detail-body{padding:14px}#work-detail h3{font-size:14px;margin:16px 0 8px}
+.record-toolbar{display:flex;align-items:center;gap:7px;padding:9px 12px;position:sticky;top:0;background:var(--panel);border-bottom:1px solid var(--line);z-index:1;flex-wrap:wrap}
+.record-toolbar>span{font-size:12px;color:var(--dim)}#work-detail-copy{margin-left:auto}#work-detail-title{overflow-wrap:anywhere}
+.source-volume button[aria-pressed="true"]{color:var(--cyan);background:var(--cur)}
+.task-controls{flex-wrap:wrap}.task-controls button{font-size:12px}
+button.mini.ib.with-label{width:auto;padding:4px 7px;gap:5px;white-space:nowrap}
+.mt-r.bar,.mem-big .mt-r.bar{grid-template-columns:minmax(0,1fr) auto 48px 40px auto}
+@media(max-width:767px){.mt-r.bar,.mem-big .mt-r.bar{grid-template-columns:minmax(0,1fr) auto 30px 32px auto}.cv-r{grid-template-columns:minmax(0,1fr) max-content max-content;column-gap:8px}}
 .record-fields{display:grid;grid-template-columns:80px minmax(0,1fr);gap:6px 14px;font-size:13px;margin:0}.record-fields dt{color:var(--dim);font-weight:400}.record-fields dd{margin:0;overflow-wrap:anywhere}.record-summary{white-space:pre-wrap;overflow-wrap:anywhere}.record-events{padding-left:18px;font-size:12px;color:var(--dim)}
 @media(max-width:1200px){.automation-row{grid-template-columns:minmax(190px,1fr) 80px auto 64px;gap:9px}.automation-schedule{grid-column:1;grid-row:2}.automation-row .task-controls{grid-column:3;grid-row:1 / span 2}.automation-row>.record-link{grid-column:4;grid-row:1 / span 2}.work-columns{grid-template-columns:1fr}.work-aside .work-row{grid-template-columns:72px minmax(0,1fr) 152px}.work-aside .work-when{grid-column:auto;text-align:right}}
 @media(max-width:767px){#side .nav-item:last-child{margin-top:0}.workspace-meta{gap:3px}.work-row,.work-aside .work-row{grid-template-columns:64px minmax(0,1fr)}.work-when,.work-aside .work-when{grid-column:2;text-align:left}.work-when small{display:inline;margin-left:8px}.work-toolbar input{width:100%}.work-toolbar select{max-width:100%;flex:1}.automation-row{grid-template-columns:minmax(0,1fr) 85px}.automation-row .task-controls{grid-column:1;grid-row:auto}.automation-row>.record-link{grid-column:2;grid-row:3}.automation-row .automation-schedule{grid-column:1 / -1}.activity-list li{grid-template-columns:1fr;gap:2px}.source-strip{gap:7px 12px}.work-section{margin-bottom:10px}}

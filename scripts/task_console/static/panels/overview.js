@@ -11,7 +11,7 @@ function setBadge(key, n, warn){
   el.className = "badge ms-auto " + (warn ? "bg-warning" : "bg-danger");
   // 一个只有数字的红块说不出自己是什么。加可读名字之后它才是「这一区有 N 项要人管」,
   // 而不是「这里有个红色的东西」。
-  el.title = `${n} 项技术观察,点进去看`;
+  el.title = `${n} 项技术问题，点击查看`;
   el.setAttribute("aria-label", el.title);
 }
 
@@ -161,7 +161,7 @@ function renderTodo(){
   // 而屏幕上说它离上限还有 100%。
   if(MEM && MEM.available && (MEM.linePct != null || MEM.bytePct != null)){
     const p = Math.max(MEM.linePct||0, MEM.bytePct||0);
-    if(MEM.verdict && MEM.verdict.attention) rows.push({v:"storage", src:"存储", nm:"MEMORY.md",
+    if(MEM.verdict && MEM.verdict.attention) rows.push({v:"resources", src:"存储", nm:"MEMORY.md",
       why:"索引 "+p+"%,逼近硬上限", sev:toneOf(MEM.verdict)==="bad"?3:2});
   }
 
@@ -187,7 +187,7 @@ function renderTiles(){
   // 印出「0 / 覆盖 0% · 共 0」 : 读起来是「零个产物过期」,实际上一个任务都没被检查。
   // 数值和副标题必须一起换掉:只把大字换成 "-" 而留着「共 0」,那个零照样像一个结论。
   if(typeof DATA !== "undefined" && DATA && DATA.freshness && DATA.freshness.reason){
-    out.push(tile("#frbox","产物新鲜度","-", DATA.freshness.reason, "idle"));
+    out.push(tile("#frbox","输出文件检查","-", DATA.freshness.reason, "idle"));
   } else if(typeof DATA !== "undefined" && DATA && DATA.freshness && DATA.freshness.summary){
     const F = DATA.freshness.summary;
     // 这一格原来 data-goto="overview",而它自己就渲染在 overview 里:
@@ -195,10 +195,10 @@ function renderTiles(){
     // 用 attention 不用 bad:attention 含 unknown(查不成),而查不成正是这块板子
     // 最该喊出来的那一类。bad 留给别处表示「判成坏的」。
     const fa = (F.attention != null) ? F.attention : F.bad;
-    out.push(tile("#frbox","产物新鲜度",fa,
+    out.push(tile("#frbox","输出文件异常",fa,
       `覆盖 ${Math.round((F.coverage||0)*100)}% · 共 ${F.total}`, fa?"bad":"ok",
-      F.total?100*fa/F.total:null, F.total?`条里填的是要人管的占比 ${fa}/${F.total}`:null));
-  } else out.push(tile("#frbox","产物新鲜度","-","未检查","idle"));
+      F.total?100*fa/F.total:null, F.total?`异常或无法检查 ${fa}/${F.total}`:null));
+  } else out.push(tile("#frbox","输出文件检查","-","未检查","idle"));
 
   if(REPOS && REPOS.available && REPOS.summary){
     const R = REPOS.summary;
@@ -207,17 +207,17 @@ function renderTiles(){
     // 后端已经补齐了那条分支,这里再兜一层:一个 undefined 印在屏幕上,
     // 比一个说不出来的空更糟,因为它看起来像一个值。
     const up = (R.unknownUpstream == null) ? "?" : R.unknownUpstream;
-    out.push(tile("repos","仓库要人管",R.attention,
+    out.push(tile("repos","仓库待检查",R.attention,
       `共 ${R.total} · 无上游 ${up}`, R.attention?"bad":"ok",
       R.total?100*R.attention/R.total:null,
-      R.total?`条里填的是要人管的占比 ${R.attention}/${R.total}`:null));
+      R.total?`存在改动或读取问题 ${R.attention}/${R.total}`:null));
   } else out.push(tile("repos","仓库","-","未检查","idle"));
 
   if(SYS && SYS.disk && SYS.disk.usedPct != null){
     const d = SYS.disk;
     out.push(tile("storage","磁盘已用",d.usedPct+"%",
       `剩 ${(d.free/1073741824).toFixed(0)}G`, toneOf(d.verdict),
-      d.usedPct, "条里填的就是大字那个百分比"));
+      d.usedPct, "磁盘已用空间占比"));
   } else out.push(tile("storage","磁盘","-","未检查","idle"));
 
   // ⚠ available 只表示**记忆池目录**读到了。MEMORY.md 不在或读不了时,
@@ -237,15 +237,15 @@ function renderTiles(){
     const pFrac = (pWhich === "字节" && MEM.indexBytes != null)
       ? `${kb(MEM.indexBytes)}/${kb(MEM.hardBytes)}`
       : `${MEM.indexLines}/${MEM.hardLines} 行`;
-    out.push(tile("storage","记忆索引",p+"%",
-      `${pWhich} ${pFrac} · 冷 ${MEM.cold}`,
+    out.push(tile("resources","记忆索引",p+"%",
+      `${pWhich} ${pFrac} · 已归档 ${MEM.cold}`,
       toneOf(MEM.verdict),
-      p, "条里填的就是大字那个百分比,超过 100 时右端长出斜纹"));
+      p, "索引额度使用率，超过 100% 时显示斜纹"));
   } else if(MEM && MEM.available){
     // 目录读到了、索引没读到 —— 这不是「未检查」,是「查了但查不成」。
-    out.push(tile("storage","记忆索引","?",
+    out.push(tile("resources","记忆索引","?",
       esc(MEM.indexReason || "MEMORY.md 读不到"),"warn"));
-  } else out.push(tile("storage","记忆索引","-","未检查","idle"));
+  } else out.push(tile("resources","记忆索引","-","未检查","idle"));
 
   if(CONVOS && CONVOS.available && CONVOS.summary){
     const C2 = CONVOS.summary;
@@ -280,7 +280,7 @@ function renderHeat(){
       const p=c.ok/j, k=p>=.99?"h2":p>=.9?"h1":p>=.6?"h3":p>=.25?"h4":"h5";
       return `<td class="${k} ${td}" title="${esc(r.name)} ${d} 正常 ${c.ok}/${j}${c.bad?" 失败 "+c.bad:""}${c.stale?" 陈旧 "+c.stale:""}"></td>`;
     }).join("");
-    return `<tr><th class="tn" title="健康率 ${r.hist.health==null?"-":r.hist.health+"%"}">${esc(r.name)}</th>${cells}</tr>`;
+    return `<tr><th class="tn" title="检查通过率 ${r.hist.health==null?"-":r.hist.health+"%"}">${esc(r.name)}</th>${cells}</tr>`;
   }).join("");
   // 横轴。这块图原来**一个列标签都没有**,于是右边那片浅灰到底是「最近没数据」
   // 还是「45 天前没数据」只能靠一格一格 hover 问出来 —— 而这两件事的严重程度天差地别,

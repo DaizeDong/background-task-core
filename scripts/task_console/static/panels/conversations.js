@@ -7,7 +7,7 @@ let CV_SORT="new";
 const CV_EPH_KEY="::eph::";
 // 标题从哪来。改过名的单独一种颜色:那是唯一一个人明确说过「这场对话叫这个」的地方,
 // 别的都是推断出来的,看的人有权知道自己在看哪一种。
-const CV_TAG={rename:"名","ai-title":"AI",summary:"概","first-message":"首",slug:"代",id:"?"};
+const CV_TAG={rename:"自命名","ai-title":"自动标题",summary:"摘要","first-message":"首条消息",slug:"代号",id:"会话号"};
 const CV_SRC={rename:"你用 /rename 起的名字","ai-title":"自动生成的窗口标题",
   summary:"压缩时写的概括","first-message":"第一条消息",slug:"自动代号",id:"只有会话号"};
 
@@ -18,7 +18,7 @@ async function loadConvos(){
   renderConvos();
 }
 
-function cvAge(h){ return h<24 ? h.toFixed(0)+"h" : (h/24).toFixed(0)+"d"; }
+function cvAge(h){ return h<24 ? h.toFixed(0)+" 小时" : (h/24).toFixed(0)+" 天"; }
 
 function renderConvos(){
   if(!CONVOS) return;
@@ -28,7 +28,7 @@ function renderConvos(){
   }
   const S=CONVOS.summary;
   $("cvhead").innerHTML=`<span>共 <b>${S.files}</b> 场</span>`
-    +`<span><b style="color:var(--cyan)">${S.humanish}</b> 场真人多轮</span>`
+    +`<span><b style="color:var(--cyan)">${S.humanish}</b> 场用户多轮对话</span>`
     +`<span>${S.groups} 个目录 · ${kb(S.bytes)}</span>`
     +`<label>排序 <select id="cvsort">
         <option value="new"${CV_SORT==="new"?" selected":""}>最近活动</option>
@@ -36,9 +36,9 @@ function renderConvos(){
         <option value="count"${CV_SORT==="count"?" selected":""}>场次</option>
         <option value="old"${CV_SORT==="old"?" selected":""}>最旧在前</option>
       </select></label>`
-    +`<label><input type="checkbox" id="cvonly"${CV_HUMAN_ONLY?" checked":""}> 只看真人</label>`
+    +`<label><input type="checkbox" id="cvonly"${CV_HUMAN_ONLY?" checked":""}> 只看用户多轮对话</label>`
     // 读不动的必须报出来:悄悄跳过会让「没有这些对话」和「我没读到」变成同一个数字。
-    +(S.unreadable?`<span style="color:var(--bad)">读不动 ${S.unreadable}</span>`:"");
+    +(S.unreadable?`<span style="color:var(--bad)">读取失败 ${S.unreadable} 场</span>`:"");
 
   const query=CV_QUERY.trim().toLowerCase();
   const matches=(g,r)=>(!CV_HUMAN_ONLY || r.humanSeen>=2) && (!query ||
@@ -105,7 +105,7 @@ function renderConvos(){
       </button>
       <div class="cv-list">${rows.map(r=>`
         <div class="cv-r${r.humanSeen>=2?" human":""}" data-cvfile="${esc(r.file||"")}"
-             title="点一下复制转录路径">
+             title="点击复制会话文件路径">
           <button class="t cv-copy" title="${esc(r.title)}">${esc(r.title)}</button>
           <span class="src ${esc(r.titleFrom)}" title="${esc(CV_SRC[r.titleFrom]||r.titleFrom)}">${
             CV_TAG[r.titleFrom]||"?"}</span>

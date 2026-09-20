@@ -15,7 +15,7 @@
 <link rel="stylesheet" href="/static/workbench.css">
 </head>
 <body>
-<div id="module-error" role="alert" hidden>Console module failed to load.</div>
+<div id="module-error" role="alert" hidden>页面加载失败，请刷新重试。</div>
 
 <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false"><defs>
 <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h3l2 2h7a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></symbol>
@@ -67,7 +67,7 @@
   <div class="view-heading"><h1 id="view-title">工作台</h1></div>
   <div class="page-actions"><span id="console-mode" class="mode-badge" hidden></span>
     <span id="page-refresh-state" class="faint" role="status"></span>
-    <button id="page-refresh">刷新</button><button id="page-export" title="导出当前已加载的数据；调用记录仅含当前页">导出 JSON</button>
+    <button id="page-refresh">刷新</button><button id="page-export" title="下载当前已加载的数据（JSON）；调用记录仅含当前页">导出数据</button>
     <select id="theme-select" aria-label="外观"><option value="system">跟随系统</option><option value="light">浅色</option><option value="dark">深色</option></select>
     <button id="page-help" aria-label="查看键盘帮助">快捷键</button>
   </div>
@@ -78,22 +78,22 @@
 <nav id="view-tabs" aria-label="当前工作区" hidden></nav>
 <section id="overview" data-view="overview" data-label="工作台" hidden>
   <div class="workspace-meta"><span id="work-source-state">正在连接工作记录</span><span id="work-context"></span></div>
-  <div class="decision-strip"><h2>待决策</h2><div id="decision-state"></div></div>
+  <div class="decision-strip"><h2>需要你确认</h2><div id="decision-state"></div></div>
   <div class="work-columns">
     <div class="work-main">
-      <div class="work-section"><div class="section-heading"><h2>Agent 正在做 <span id="active-count">—</span></h2><button class="record-link" data-work-filter="agent_work">全部工作</button></div><div id="active-work"></div></div>
-      <div class="work-section"><div class="section-heading"><h2>Agent 已交付 <span id="result-count">—</span></h2><button class="record-link" data-work-filter="agent_work">查看记录</button></div><div class="work-section-note">已记录的完成摘要 · 验证收据尚未接入</div><div id="recent-results"></div></div>
+      <div class="work-section"><div class="section-heading"><h2>Agent 正在做 <span id="active-count">—</span></h2><button class="record-link" data-work-filter="agent_work" data-work-state="active">查看进行中</button></div><div id="active-work"></div></div>
+      <div class="work-section"><div class="section-heading"><h2>Agent 完成记录 <span id="result-count">—</span></h2><button class="record-link" data-work-filter="agent_work" data-work-state="done">查看全部结果</button></div><div class="work-section-note">以下是 Agent 记录的完成摘要，这里尚无独立验证结果。</div><div id="recent-results"></div></div>
     </div>
-    <aside class="work-aside"><div class="work-section"><div class="section-heading"><h2>跟踪事项 <span id="tracked-count">—</span></h2><button class="record-link" data-work-filter="tracked_item">全部事项</button></div><div id="tracked-work"></div></div></aside>
+    <aside class="work-aside"><div class="work-section"><div class="section-heading"><h2>待办事项 <span id="tracked-count">—</span></h2><button class="record-link" data-work-filter="tracked_item" data-work-state="tracked_active">查看全部待办</button></div><div id="tracked-work"></div></div></aside>
   </div>
   <div id="platform-sources" class="source-strip"></div>
 </section>
 <section id="work" data-view="work" data-label="工作记录" hidden>
   <div class="work-toolbar">
     <input id="work-search" type="search" placeholder="搜索工作、摘要、项目" aria-label="搜索工作记录">
-    <select id="work-role" aria-label="记录类别"><option value="work">工作与事项</option><option value="agent_work">Agent 工作</option><option value="tracked_item">跟踪事项</option><option value="signal">信息输入</option><option value="all">全部记录</option></select>
-    <select id="work-state" aria-label="工作状态"><option value="">全部状态</option><option value="active">Agent 执行中 / 排队</option><option value="pending">待办</option><option value="doing">进行中</option><option value="done">已完成</option><option value="blocked">阻塞</option><option value="stalled">已停滞</option><option value="failed">未完成</option><option value="cancelled">已取消</option></select>
-    <select id="work-source" aria-label="记录来源"><option value="">全部来源</option></select><span id="work-match"></span>
+    <select id="work-role" aria-label="记录类别"><option value="work">工作与待办</option><option value="agent_work">Agent 工作</option><option value="tracked_item">待办事项</option><option value="signal">通知与线索</option><option value="all">全部记录</option></select>
+    <select id="work-state" aria-label="工作状态"><option value="">全部状态</option><option value="active">Agent 执行中或排队</option><option value="tracked_active">尚未完成的待办</option><option value="pending">待办</option><option value="doing">进行中</option><option value="done">已完成</option><option value="blocked">遇到阻碍</option><option value="stalled">已停滞</option><option value="failed">执行失败</option><option value="cancelled">已取消</option><option value="stopped">已停止</option><option value="snoozed">已延后</option><option value="reconcile">结果待核实</option><option value="review_unavailable">无法复核</option><option value="notified">已提醒</option></select>
+    <select id="work-source" aria-label="记录来源"><option value="">全部来源</option></select><button id="work-reset" hidden>清除筛选</button><span id="work-match" role="status"></span>
   </div>
   <p id="work-coverage" class="workspace-meta"></p>
   <div class="work-section"><div id="work-list" class="work-list"></div></div>
@@ -103,7 +103,7 @@
   </div>
 </section>
 <section id="automations" data-view="automations" data-label="自动化" hidden>
-  <div class="work-toolbar"><input id="automation-search" type="search" placeholder="搜索自动化及用途" aria-label="搜索自动化"><select id="automation-state" aria-label="自动化状态"><option value="">全部状态</option><option value="enabled">已启用</option><option value="disabled">已停用</option><option value="running">正在运行</option></select><span id="automation-count"></span></div>
+  <div class="work-toolbar"><input id="automation-search" type="search" placeholder="搜索任务名称或用途" aria-label="搜索自动化"><select id="automation-state" aria-label="自动化状态"><option value="">全部状态</option><option value="enabled">已启用</option><option value="disabled">已停用</option><option value="running">正在运行</option></select><button id="automation-reset" hidden>清除筛选</button><span id="automation-count" role="status"></span></div>
   <div class="work-section"><div id="automation-list"></div></div>
 </section>
 <section id="storage" data-view="storage" data-label="存储" hidden>
@@ -124,17 +124,17 @@
 
   <section id="diagnostics" data-view="diagnostics" data-label="技术诊断" hidden>
 <div class="module-section"><div class="tiles" id="tiles"></div></div>
-<div class="card review-pipelines"><div class="card-header"><h2 class="card-title">关键流水线</h2><a href="#pipelines">查看环节</a></div><div id="overview-pipelines">正在读取流水线证据</div></div>
-<div class="card" id="todo"><div class="card-header"><h2 class="card-title">技术异常 <span class="sub" id="todon"></span></h2>
-  <div class="catalog-tools"><input id="review-search" type="search" placeholder="搜索技术观察" aria-label="搜索技术观察"><select id="review-filter" aria-label="观察范围"><option value="all">全部对象</option><option value="tasks">任务与产物</option><option value="repos">仓库</option><option value="storage">存储</option></select></div></div>
+<div class="card review-pipelines"><div class="card-header"><h2 class="card-title">同步与备份</h2><a href="#pipelines">查看进度</a></div><div id="overview-pipelines">正在读取同步与备份记录</div></div>
+<div class="card" id="todo"><div class="card-header"><h2 class="card-title">技术问题 <span class="sub" id="todon"></span></h2>
+  <div class="catalog-tools"><input id="review-search" type="search" placeholder="搜索任务、仓库或问题" aria-label="搜索任务、仓库或问题"><select id="review-filter" aria-label="问题范围"><option value="all">全部对象</option><option value="tasks">任务与产物</option><option value="repos">仓库</option><option value="storage">存储与记忆</option></select><button data-reset-filters="diagnostics">清除筛选</button></div></div>
   <p id="review-count" class="review-caption">正在读取检查结论</p><div id="todod"></div></div>
 
 
 <div class="module-section"><div class="card" id="frbox">
-    <div class="card-header"><h3 class="card-title">产物新鲜度</h3></div>
+    <div class="card-header"><h3 class="card-title">输出文件是否按时更新</h3></div>
     <div class="fr-head">
       <div class="fr-stack" id="frstack"></div>
-      <div class="fr-cov">覆盖 <b id="frcov">-</b></div>
+      <div class="fr-cov">已检查 <b id="frcov">-</b></div>
     </div>
     <div class="fr-key" id="frkey"></div>
     <div class="fr-board" id="frboard"></div>
@@ -146,19 +146,19 @@
 <div id="warns"></div><div id="s-src"></div></div>
 </section>
 <section id="pipelines" data-view="pipelines" data-label="流水线" hidden>
-  <div class="pipeline-toolbar"><span id="pipeline-sample" class="faint"></span><button id="pipeline-refresh">刷新证据</button></div>
-  <div id="pipeline-body">正在读取组件证据</div>
+  <div class="pipeline-toolbar"><span id="pipeline-sample" class="faint"></span><button id="pipeline-refresh">刷新记录</button></div>
+  <div id="pipeline-body">正在读取运行记录</div>
 
 </section>
   <section id="tasks" data-view="tasks" data-label="计划任务" hidden>
-<div class="task-summary"><span>任务 <b id="s-total">-</b></span><span>失败 <b id="s-bad">-</b></span><span>待处理 <b id="s-iss">-</b></span><span>停用 <b id="s-off">-</b></span></div>
+<div class="task-summary"><span>任务 <b id="s-total">-</b></span><span>失败 <b id="s-bad">-</b></span><span>有警告 <b id="s-iss">-</b></span><span>停用 <b id="s-off">-</b></span></div>
 <div id="tools">
   <input type="text" id="q" placeholder="搜索任务名或说明" autocomplete="off">
-  <select id="cat"><option value="">全部大类</option></select>
-  <label class="tg"><input type="checkbox" id="only"> 只看有问题</label>
+  <select id="cat"><option value="">全部分类</option></select>
+  <label class="tg"><input type="checkbox" id="only"> 只看异常与警告</label>
   <label class="tg"><input type="checkbox" id="hideoff"> 隐藏停用</label>
   <button id="hygtog" title="补跑 / 重试 / 超时 / 产物 / 备份 / 监控 六列"></button>
-  <button id="refresh">重新读取</button>
+  <button id="refresh">刷新任务</button><button data-reset-filters="tasks">清除筛选</button>
   <span class="faint" id="cnt"></span>
 </div>
 <div class="card" id="dtbox">
@@ -175,9 +175,9 @@
       <div class="warn-line" id="tlwarn" hidden></div>
       <div class="tl" id="tl"></div>
       <div class="tlkey">
-        <span><i class="tlpt" style="position:static;width:5px;height:7px"></i>计划(未到)</span>
-        <span><i class="tlpt done" style="position:static;width:5px;height:7px"></i>计划(已过)</span>
-        <span><i class="tlspan" style="position:static;width:14px;height:3px"></i>分钟级条带</span>
+        <span><i class="tlpt" style="position:static;width:5px;height:7px"></i>计划时间（未到）</span>
+        <span><i class="tlpt done" style="position:static;width:5px;height:7px"></i>计划时间（已过）</span>
+        <span><i class="tlspan" style="position:static;width:14px;height:3px"></i>高频计划</span>
         <span><i class="tlact" style="position:static;width:2px;height:11px"></i>实际运行</span>
         <span><i class="tlnow" style="position:static;width:1px;height:11px"></i>现在</span>
         <span class="faint">Ctrl/Shift+滚轮缩放(以指针为中心) · 按住拖动平移 · 双击回到整天</span>
@@ -185,7 +185,7 @@
     </div>
   </div></div>
 <div class="module-section"><div class="card" id="hmbox">
-    <div class="card-header"><h3 class="card-title">健康热力图 <span class="n" id="hmnote"></span></h3></div>
+    <div class="card-header"><h3 class="card-title">历史检查结果 <span class="n" id="hmnote"></span></h3></div>
     <div class="pad"><table class="hm" id="heat"></table></div>
   </div></div>
 <div class="module-section"><div class="card" id="scbox">
@@ -195,19 +195,19 @@
   </section>
   <section id="repos" data-view="repos" data-label="仓库" hidden>
 <div class="card" id="rpbox">
-    <div class="card-header"><h3 class="card-title">仓库<span class="n" id="rpnote">读取中</span></h3><div class="card-actions"><button id="rpreload" title="重新扫描">↻</button></div></div>
+    <div class="card-header"><h3 class="card-title">仓库<span class="n" id="rpnote">读取中</span></h3><div class="card-actions"><button id="rpreload" title="重新扫描仓库">刷新</button></div></div>
     <div class="pad">
       <div class="rp-head" id="rphead"></div>
       <div class="rp-filters">
-        <input id="rpq" type="search" placeholder="搜仓名 / 账号" aria-label="搜索仓库">
+        <input id="rpq" type="search" placeholder="搜索仓库名称或账号" aria-label="搜索仓库">
         <select id="rpacc" aria-label="按账号过滤"><option value="">全部账号</option></select>
         <select id="rpkind" aria-label="按类型过滤"><option value="">全部类型</option></select>
 
         <select id="rpvis" aria-label="按可见性过滤"><option value="">全部可见性</option>
           <option value="pub">公开</option><option value="priv">私有</option>
           <option value="unk">未知</option></select>
-        <select id="rpissue" aria-label="仓库问题"><option value="">全部问题</option><option value="identity_mismatch">账号不匹配</option><option value="identity_unchecked">账号未检查</option><option value="upstream">无上游</option><option value="behind">落后未知</option></select>
-        <span class="hit" id="rphit"></span>
+        <select id="rpissue" aria-label="仓库问题"><option value="">全部问题</option><option value="identity_mismatch">账号不匹配</option><option value="identity_unchecked">账号未检查</option><option value="upstream">未设置远程跟踪分支</option><option value="behind">尚未检查远程更新</option></select>
+        <button data-reset-filters="repos">清除筛选</button><span class="hit" id="rphit"></span>
       </div>
       <div class="rp-split">
         <div class="rp-list" id="rplist"></div>
@@ -218,9 +218,9 @@
   </section>
 
   <section id="resources" data-view="resources" data-label="能力与配置" hidden>
-<div class="card catalog-card"><div class="pad" id="mt-catalog">正在读取组件来源</div></div>
+<div class="card catalog-card"><div class="pad" id="mt-catalog">正在读取技能和插件</div></div>
   <div class="module-section"><div class="card" id="membox">
-    <div class="card-header"><h3 class="card-title">记忆与索引<span class="n" id="memnote">读取中</span></h3>
+    <div class="card-header"><h3 class="card-title">Claude 记忆与索引<span class="n" id="memnote">读取中</span></h3>
       <div class="card-actions"><button class="mini ib" id="memreload" title="重新读取记忆池"
         aria-label="重新读取记忆池"><svg class="ic"><use href="#i-refresh"/></svg></button></div></div>
     <div class="pad" id="mt-memory"></div>
@@ -230,7 +230,7 @@
   <div class="catalog-tools runtime-tools">
     <input type="search" id="runtime-search" aria-label="搜索技能和插件" placeholder="搜索技能 / 插件">
     <select id="runtime-state" aria-label="技能和插件状态"><option value="">全部状态</option><option value="active">启用中</option><option value="inactive">归档 / 停用</option></select>
-    <select id="runtime-sort" aria-label="技能排序"><option value="name">按名称</option><option value="budget">按描述大小</option></select>
+    <select id="runtime-sort" aria-label="技能排序"><option value="name">按名称</option><option value="budget">按描述大小</option></select><button data-reset-filters="runtime">清除筛选</button><span class="faint">技能和插件的更改在下次会话生效</span>
   </div><div class="mt-grid">
       <div class="runtime-section"><h3>Claude 技能</h3><div class="mt-col" id="mt-skills"></div></div>
       <div class="runtime-section"><h3>Claude 插件</h3><div class="mt-col" id="mt-plugins"></div></div>
@@ -239,9 +239,9 @@
   </section>
   <section id="convos" data-view="convos" data-label="会话记录" hidden>
 <div class="card" id="cvbox">
-    <div class="card-header"><h3 class="card-title">会话<span class="n" id="cvnote">读取中</span></h3><div class="card-actions"><button id="cvreload" title="重新扫描">↻</button></div></div>
+    <div class="card-header"><h3 class="card-title">会话<span class="n" id="cvnote">读取中</span></h3><div class="card-actions"><button id="cvreload" title="重新扫描会话">刷新</button></div></div>
     <div class="pad">
-      <div class="catalog-tools"><input id="cv-search" type="search" aria-label="搜索已加载会话" placeholder="搜索标题、项目、路径或内容"><span id="cv-match" class="faint"></span></div>
+      <div class="catalog-tools"><input id="cv-search" type="search" aria-label="搜索已加载会话" placeholder="搜索标题、项目、路径或内容"><button data-reset-filters="convos">清除筛选</button><span id="cv-match" class="faint"></span></div>
       <div class="cv-head" id="cvhead"></div>
       <div id="cvgroups"></div>
     </div>
@@ -252,15 +252,15 @@
   <section id="llm" data-view="llm" data-label="模型调用" hidden>
 
   <div class="module-section"><div class="card" id="lchain">
-    <div class="card-header"><h3 class="card-title">llmcall 路由<span class="n" id="lcnote">读取中</span></h3>
-      <div class="card-actions"><button id="lcreload" title="重新读取">↻</button></div></div>
+    <div class="card-header"><h3 class="card-title">模型服务调用顺序<span class="n" id="lcnote">读取中</span></h3>
+      <div class="card-actions"><button id="lcreload" title="重新读取模型调用记录">刷新</button></div></div>
     <div class="pad">
       <div id="lcwarn"></div>
       <div id="lcdrift"></div>
       <ol class="lc-list" id="lclist"></ol>
       <div class="lc-foot">
         <button class="mini" id="lcsave" disabled>保存顺序</button>
-        <button class="mini" id="lcreset" disabled>还原</button>
+        <button class="mini" id="lcreset" disabled>放弃修改</button>
         <span class="faint" id="lcpath"></span>
       </div>
     </div>
@@ -279,7 +279,7 @@
   </div></div>
 
   <div class="module-section"><div class="card" id="lruns">
-    <div class="card-header"><h3 class="card-title">连续降级记录<span class="n" id="lsnote"></span></h3></div>
+    <div class="card-header"><h3 class="card-title">连续失败与备用服务记录<span class="n" id="lsnote"></span></h3></div>
     <div class="pad"><div id="lstab"></div>
       </div>
   </div></div>
@@ -287,12 +287,12 @@
   <div class="card" id="lcalls">
     <div class="card-header"><h3 class="card-title">调用记录<span class="n" id="lmnote"></span></h3>
       <div class="card-actions">
-        <select id="lmprov" class="l-sel" title="按应答的那一级筛"><option value="">全部级</option></select>
+        <select id="lmprov" class="l-sel" title="按实际应答服务筛选"><option value="">全部服务</option></select>
         <select id="lmcaller" class="l-sel" title="按发起调用的脚本筛"><option value="">全部调用方</option></select>
-        <input type="text" id="lmq" class="l-q" placeholder="搜错误文本" title="在错误文本里搜,留空为不筛">
-        <select id="lmok" class="l-sel" title="按成败筛">
-          <option value="">成败不限</option><option value="1">只看成功</option><option value="0">只看失败</option>
-        </select>
+        <input type="text" id="lmq" class="l-q" placeholder="搜索错误信息" title="搜索调用失败的原因">
+        <select id="lmok" class="l-sel" title="按调用结果筛选">
+          <option value="">全部结果</option><option value="1">只看成功</option><option value="0">只看失败</option>
+        </select><button data-reset-filters="llm">清除筛选</button>
       </div></div>
     <div class="pad">
 
@@ -307,12 +307,12 @@
 </div>
 </div>
 
-<dialog id="work-detail" aria-labelledby="work-detail-title"><div class="section-heading"><h2 id="work-detail-title"></h2><button id="work-detail-close" aria-label="关闭工作详情">关闭</button></div><div id="work-detail-body"></div></dialog>
+<dialog id="work-detail" aria-labelledby="work-detail-title"><div class="record-toolbar"><button id="work-detail-prev">上一条</button><span id="work-detail-position" role="status"></span><button id="work-detail-next">下一条</button><button id="work-detail-copy">复制记录</button><button id="work-detail-close" aria-label="关闭工作详情" autofocus>关闭</button></div><div class="section-heading"><h2 id="work-detail-title"></h2></div><div id="work-detail-body"></div></dialog>
 <div id="bulk" hidden role="status" aria-live="polite"></div>
 
 <div id="toast" role="status" aria-live="polite" aria-atomic="false"></div>
 <div id="help" hidden><div>
-  <b>键盘</b>
+  <b>键盘快捷键</b>
   <table>
     <tr><td class="hot">j / k</td><td>上下移动光标</td><td class="hot">g / G</td><td>首行 / 末行</td></tr>
     <tr><td class="hot">Enter</td><td>展开或收起细节</td><td class="hot">x</td><td>选中或取消</td></tr>
@@ -320,9 +320,9 @@
     <tr><td class="hot">r</td><td>立即运行</td><td class="hot">s</td><td>停止</td></tr>
     <tr><td class="hot">e</td><td>启用</td><td class="hot">d</td><td>停用(需确认)</td></tr>
     <tr><td class="hot">/</td><td>跳到过滤框</td><td class="hot">R</td><td>重新读取</td></tr>
-    <tr><td class="hot">Shift+A</td><td>摊开全部分区(为了 Ctrl+F)</td><td class="hot">← →</td><td>侧栏内移动</td></tr>
+    <tr><td class="hot">Shift+A</td><td>显示全部页面，便于 Ctrl+F 搜索</td><td class="hot">← →</td><td>侧栏内移动</td></tr>
   </table>
-  <p class="faint" style="margin:8px 0 0">有选中行时 r/s/e/d 作用于整个选择,否则作用于光标行。点任意处关闭。</p>
+  <p class="faint" style="margin:8px 0 0">任务操作快捷键仅在任务表中生效。有勾选时操作选中任务，否则操作当前行。按 Esc 或点击关闭。</p>
 </div></div>
 
 <script src="/static/app.js" defer onerror="document.getElementById('module-error').hidden=false"></script>

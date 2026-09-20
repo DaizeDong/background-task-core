@@ -27,13 +27,13 @@ function renderSkills(){
     const selected=runtimeRows(S.skills,"skill");
     const rows=selected.map(k=>`<div class="mt-r bar${k.archived?" off":""}">
       <span class="n" title="${esc(k.name)}">${esc(k.name)}</span>
-      ${k.linked?`<span class="lk" title="junction,指向别处的仓库">↗</span>`:""}
+      ${k.linked?`<span class="lk" title="目录联接（junction），指向其他仓库">↗</span>`:""}
       <span class="ub" aria-hidden="true"><i style="width:${
         k.archived?0:Math.round((k.chars||0)/maxC*100)}%"></i></span>
       <span class="c">${k.archived?"":k.chars}</span>
       ${k.archived
-        ? ibtn("i-restore","从归档区还原回来",`data-mt="skill.restore" data-name="${esc(k.name)}"`)
-        : ibtn("i-archive","移出到归档区,不再占描述预算",
+        ? ibtn("i-restore","恢复技能，下次会话生效",`data-mt="skill.restore" data-name="${esc(k.name)}"`)
+        : ibtn("i-archive","归档技能，下次会话不再加载",
                `data-mt="skill.archive" data-name="${esc(k.name)}"`,"danger")}
     </div>`).join("");
     el.innerHTML=`<div class="mt-t">技能 <b>${selected.length}/${S.skills.length}</b>
@@ -58,8 +58,8 @@ const CATALOG_LABELS={yes:"是",no:"否",unknown:"未检查",not_applicable:"不
   checked:"已检查",partial:"部分检查",unchecked:"未检查",complete:"完整",zero:"无检查项",
   healthy:"正常",degraded:"需留意",unhealthy:"异常",completed:"已完成",running:"运行中",
   repository:"仓库",blocked:"受阻",unsupported:"尚不支持",skill:"技能",plugin:"插件",mcp_binding:"MCP 连接",app_connector:"App 连接",agent_template:"角色模板",
-  skill_roots:"技能目录",plugin_registries:"插件登记",declared:"已声明",enabled:"已启用",cached:"已缓存",
-  installed:"安装",resolved:"定位",discovered:"发现",compatible:"兼容",
+  skill_roots:"技能目录",plugin_registries:"插件登记",declared:"已登记",enabled:"已启用",cached:"已缓存",
+  installed:"已安装",resolved:"路径有效",discovered:"客户端可见",compatible:"兼容",
   external_skill_repos:"外部技能仓",repo_roots:"仓库目录",private_bindings:"私有绑定",runtime_discovery:"运行时发现",workflow_roots:"工作流",plugin_descriptors:"插件描述",native_discovery:"原生发现",skills:"技能",agents:"角色",hooks:"钩子",memory:"记忆",mcp:"MCP"};
 const catalogLabel=value=>CATALOG_LABELS[value] || value || "未检查";
 function catalogCoverageText(coverage){
@@ -101,13 +101,13 @@ function renderCatalog(){
   const clients=[...new Set(records.flatMap(catalogClients))].sort();
   const states=[["compatible:no","不兼容"],["compatible:unknown","兼容性未检查"],["authenticated:no","未认证"],["authenticated:unknown","认证未检查"],
     ...[...new Set(records.map(source=>source.sync && source.sync.state || "unknown"))].sort().map(state=>["sync:"+state,"同步: "+catalogLabel(state)])];
-  el.innerHTML=`<div class="catalog-heading"><h2>组件来源</h2><span>${catalog && catalog.available?records.length+" 个来源":"来源未检查"}</span></div>
-    <div class="catalog-tools"><input type="search" id="catalog-search" aria-label="搜索组件来源" placeholder="名称、来源、入口或依赖" value="${esc(CATALOG_QUERY)}">
+  el.innerHTML=`<div class="catalog-heading"><h2>已登记的技能和插件</h2><span>${catalog && catalog.available?records.length+" 项":"尚未读取目录"}</span></div>
+    <div class="catalog-tools"><input type="search" id="catalog-search" aria-label="搜索已登记的技能和插件" placeholder="搜索名称、路径或依赖" value="${esc(CATALOG_QUERY)}">
       <select id="catalog-kind" aria-label="来源类型"><option value="">全部类型</option>${Object.entries(catalog && catalog.statistics || {}).map(([kind,count])=>`<option value="${esc(kind)}"${CATALOG_KIND===kind?" selected":""}>${esc(catalogLabel(kind))} (${count})</option>`).join("")}</select>
       <select id="catalog-client" aria-label="涉及客户端"><option value="">全部客户端</option>${clients.map(client=>`<option value="${esc(client)}"${client===CATALOG_CLIENT?" selected":""}>${esc(catalogLabel(client))}</option>`).join("")}</select>
-      <select id="catalog-state" aria-label="组件状态"><option value="">全部状态</option>${states.map(([value,label])=>`<option value="${esc(value)}"${value===CATALOG_STATE?" selected":""}>${esc(label)}</option>`).join("")}</select><span id="catalog-count"></span></div>
+      <select id="catalog-state" aria-label="组件状态"><option value="">全部状态</option>${states.map(([value,label])=>`<option value="${esc(value)}"${value===CATALOG_STATE?" selected":""}>${esc(label)}</option>`).join("")}</select><button data-reset-filters="catalog">清除筛选</button><span id="catalog-count"></span></div>
     <div id="catalog-results" class="ops-scroll"></div>
-    <div class="catalog-heading health-heading"><h2>组件健康 <span>${esc(cov.checked ?? "?")}/${esc(cov.expected ?? "?")}</span></h2>
+    <div class="catalog-heading health-heading"><h2>自动化检查结果 <span>${esc(cov.checked ?? "?")}/${esc(cov.expected ?? "?")}</span></h2>
       <select id="health-state" aria-label="健康检查状态"><option value="">全部结论</option>${["healthy","degraded","unhealthy","unknown"].map(state=>`<option value="${state}"${state===HEALTH_STATE?" selected":""}>${catalogLabel(state)}</option>`).join("")}</select></div>
     <div class="catalog-tools"><span class="faint">${esc(catalogCoverageText(catalog && catalog.coverage))}</span><span id="health-count"></span></div><div id="health-results" class="ops-scroll"></div>`;
   $("catalog-search").addEventListener("input",event=>{CATALOG_QUERY=event.target.value;renderCatalogResults();renderCatalogHealth();});
@@ -123,15 +123,15 @@ function renderCatalogHealth(){
   const tasks=components.tasks || [], query=CATALOG_QUERY.trim().toLowerCase();
   const rows=tasks.filter(task=>(!HEALTH_STATE || (task.verdict||"unknown")===HEALTH_STATE) && (!query || JSON.stringify([task.name,task.task_id,task.checks]).toLowerCase().includes(query)));
   $("health-count").textContent=`${rows.length}/${tasks.length} 个任务`;
-  el.innerHTML=`<table class="ops-table"><thead><tr><th>任务</th><th>结论</th><th>检查项</th><th>执行证据</th><th>操作</th></tr></thead><tbody>${rows.map(task=>`<tr>
+  el.innerHTML=`<table class="ops-table"><thead><tr><th>任务</th><th>结论</th><th>检查项</th><th>最近执行记录</th><th>操作</th></tr></thead><tbody>${rows.map(task=>`<tr>
     <th scope="row">${esc(task.name || task.task_id)}<small>${esc(task.task_id)}</small></th>
     <td>${esc(catalogLabel(task.verdict))}</td><td>${(task.checks||[]).map(check=>`<div>${esc(check.check_id)}: ${esc(catalogLabel(check.state))} (${esc(check.checked)}/${esc(check.expected)})</div>`).join("") || "未检查"}</td>
     <td><div>运行 ${esc(task.run_id || "未提供")}</div><div>${esc(catalogLabel(task.execution && task.execution.state))}</div>${task.verdict!=="healthy"?`<small>${esc((task.reason_codes||[]).join(" · "))}</small>`:""}</td>
-    <td>${task.name?`<button data-task="${esc(task.name)}">任务</button>`:"未关联"}</td></tr>`).join("")}</tbody></table>`;
+    <td>${task.name?`<button data-task="${esc(task.name)}">查看任务</button>`:"未关联"}</td></tr>`).join("")}</tbody></table>`;
 }
 const CATALOG_DIMENSIONS=["declared","enabled","cached","installed","resolved","discovered","compatible"];
 function catalogStateCell(value){
-  const label=catalogLabel(value), symbol=({yes:"是",no:"否",unknown:"?",not_applicable:"—"})[value || "unknown"] || label;
+  const label=catalogLabel(value), symbol=({yes:"是",no:"否",unknown:"未查",not_applicable:"—"})[value || "unknown"] || label;
   return `<td title="${esc(label)}"><span aria-label="${esc(label)}" class="${value==='no'?'warn':value==='yes'?'ok':'faint'}">${esc(symbol)}</span></td>`;
 }
 function catalogRow(source,entry){
@@ -151,6 +151,6 @@ function renderCatalogResults(){
   if(!catalog || !catalog.available){el.innerHTML=`<p class="review-notice">${esc(catalog && catalog.reason || "来源目录尚未读取")}</p>`;return;}
   const rows=(catalog.records||[]).filter(catalogMatches).sort((a,b)=>Number(catalogName(a).startsWith("未命名"))-Number(catalogName(b).startsWith("未命名")) || catalogName(a).localeCompare(catalogName(b)));
   $("catalog-count").textContent=`显示 ${rows.length}/${(catalog.records||[]).length}`;
-  el.innerHTML=rows.length?`<table class="ops-table catalog-table"><thead><tr><th>名称 / 入口</th><th>类型 / 客户端</th>${CATALOG_DIMENSIONS.map(key=>`<th>${catalogLabel(key)}</th>`).join("")}<th>同步 / 认证</th><th>依赖</th></tr></thead><tbody>${rows.map(source=>catalogRow(source)+(source.entrypoints||[]).map(entry=>catalogRow(source,entry)).join("")).join("")}</tbody></table>`:'<p class="review-empty">没有匹配的来源</p>';
+  el.innerHTML=rows.length?`<table class="ops-table catalog-table"><thead><tr><th>名称 / 入口</th><th>类型 / 客户端</th>${CATALOG_DIMENSIONS.map(key=>`<th>${catalogLabel(key)}</th>`).join("")}<th>同步 / 认证</th><th>依赖</th></tr></thead><tbody>${rows.map(source=>catalogRow(source)+(source.entrypoints||[]).map(entry=>catalogRow(source,entry)).join("")).join("")}</tbody></table>`:'<p class="review-empty">没有符合筛选条件的技能或插件</p>';
   if((catalog.problems||[]).length){const note=document.createElement("p");note.className="review-notice";note.textContent=(catalog.problems||[]).map(p=>typeof p==="string"?p:p.reason||p.message||p.code||"来源检查异常").join("；");el.appendChild(note);}
 }

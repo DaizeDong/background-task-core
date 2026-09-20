@@ -354,9 +354,9 @@ function renderRepoDetail(){
     ${ibtn("i-folder","打开目录",'data-rpact="reveal"')}`;
   h += r.webUrl
     ? ibtn("i-web","在浏览器里打开 "+r.webUrl,'data-rpact="web"')
-    : ibtn("i-web","认不出这个 remote 对应的网页地址。按「反正都是同一家」拼出来的链接会把人送到不存在的页面,而那比没有链接更糟","disabled");
-  h += ibtn("i-diff","看改动:git status,具体是哪些文件",'data-rpact="status"')
-    + ibtn("i-fetch","fetch:只取不合",`data-mt="repo.fetch" data-name="${esc(r.name)}"`);
+    : ibtn("i-web","无法识别此仓库的网页地址","disabled");
+  h += ibtn("i-diff","查看本地改动文件（git status）",'data-rpact="status"')
+    + ibtn("i-fetch","获取远程更新（git fetch），不会合并到本地分支",`data-mt="repo.fetch" data-name="${esc(r.name)}"`);
   // 提交并推送。只在真有东西要做的时候出现 —— 一个永远亮着、点下去说「没什么要做」的
   // 按钮,会让人停止相信这一排按钮的状态。
   const needs = RP_RETRIES.has(r.name) || (r.dirty||0) > 0 || (r.unpushedKnown && (r.ahead||0) > 0);

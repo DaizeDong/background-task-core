@@ -85,8 +85,8 @@ def test_client_filter_includes_explicit_entrypoint_clients():
 def test_pipeline_shows_both_and_all_stage_evidence_without_disclosure():
     result = run("renderPipelines();$('pipeline-body').innerHTML", "COMPONENTS=" + json.dumps(review_pipeline_case()) + ";")
     assert result.count('class="card pipeline-run"') == 2
-    assert "复制 / 推送缺少分阶段收据" in result
-    assert "原生记忆召回未验收" in result
+    assert "无法分别确认复制和推送结果" in result
+    assert "尚未验证 Codex 能否在会话中调用这些记忆" in result
     assert "<details" not in result
 
 

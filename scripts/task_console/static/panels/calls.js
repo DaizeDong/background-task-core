@@ -1,5 +1,6 @@
 // Classic script module; loaded in app.js dependency order.
 let LLM=null, LCDRAFT=null, LMROWS=null, LMTOTAL=0, LMOPEN=null, LMBODY={};
+let LM_REQUEST=0;
 const LMQ = {offset:0, limit:20, provider:"", ok:"", q:"", caller:""};
 
 const lnum = n => n==null ? "—" : Number(n).toLocaleString("en-US");
@@ -67,9 +68,8 @@ function renderChain(){
     && JSON.stringify(c.observed) !== JSON.stringify(c.effective);
   $("lcdrift").innerHTML = drift
     ? '<div class="lc-warn">配置里是 <b>' + esc((c.effective || []).join(" → "))
-      + "</b>,但最近一次真实调用(第 " + lnum(c.observed_i) + " 行)走的是 <b>"
-      + esc(c.observed.join(" → ")) + "</b>。要么那次调用自己指定了链,"
-      + "要么这份配置还没被任何进程读到 —— 长期运行的调用方是在启动时读的。</div>"
+      + "</b>，最近一次调用（第 " + lnum(c.observed_i) + " 行）使用 <b>"
+      + esc(c.observed.join(" → ")) + "</b>。可能是该次调用指定了顺序，也可能是调用程序尚未读取新配置。</div>"
     : "";
 
   // 这条告示是这一屏最重要的一行。LLMCALL_CHAIN 一旦存在就压过文件里的一切,
@@ -77,11 +77,9 @@ function renderChain(){
   // 然后所有调用照旧走那个被环境变量钉死的顺序。
   $("lcwarn").innerHTML = c.shadowed_by_env
     ? '<div class="lc-warn">环境变量 <b>LLMCALL_CHAIN=' + esc(c.env_value || "")
-      + '</b> 正压着这里的设置。你在这一屏改的顺序会写进文件,但<b>当前不会生效</b>,'
-      + '直到那个环境变量被清掉。</div>'
+      + '</b> 优先于配置文件。这里保存的顺序<b>当前不会生效</b>，需先移除该环境变量。</div>'
     : (src === "env"
-       ? '<div class="lc-warn">当前顺序来自环境变量 <b>LLMCALL_CHAIN</b>,不是这里的配置文件。'
-         + '在这一屏保存会建立文件配置,但只有清掉那个环境变量之后才会轮到它。</div>'
+       ? '<div class="lc-warn">当前顺序由环境变量 <b>LLMCALL_CHAIN</b> 指定。这里保存的顺序需移除该变量后才会生效。</div>'
        : "");
 
   $("lclist").innerHTML = eff.map((p,i)=>
@@ -92,7 +90,9 @@ function renderChain(){
   ).join("");
   const dirty = LCDRAFT && JSON.stringify(LCDRAFT) !== JSON.stringify(c.effective || []);
   $("lcsave").disabled = !dirty || busy;
+  $("lcsave").title=busy?'正在保存':dirty?'保存当前排列顺序':'先用上下箭头调整顺序';
   $("lcreset").disabled = !LCDRAFT;
+  $("lcreset").title=LCDRAFT?'放弃未保存的排列修改':'当前没有未保存的修改';
   $("lcpath").textContent = c.file_path || "";
 }
 
@@ -116,7 +116,7 @@ async function lcSave(){
     // 成功提示里必须带上「是否生效」。一个只说「已保存」的提示,在被环境变量压着的时候
     // 说的是真话,但传达的是假消息。
     toast(r.shadowed_by_env
-      ? "顺序已写入文件,但被 LLMCALL_CHAIN 压着,当前不生效"
+      ? "顺序已保存，但环境变量 LLMCALL_CHAIN 优先，当前不会生效"
       : "顺序已保存:" + (r.effective || []).join(" → "),
       r.shadowed_by_env ? "bad" : "");
     renderChain();
@@ -131,12 +131,11 @@ function renderWins(){
   // 后者是「今天很闲」,前者是「这一屏什么都没看」—— 而把前者画成一排 0,
   // 正是这台台子从头到尾在反对的那种绿色。
   if(!L0.exists){
-    $("lwins").innerHTML = '<div class="l-win l-unk"><h4>账本</h4>'
+    $("lwins").innerHTML = '<div class="l-win l-unk"><h4>调用记录</h4>'
       + '<div class="big">未检查</div><div class="sub">'
       + esc(L0.path || "路径未知") + " 不存在，无法统计。</div></div>";
-    $("lledger").innerHTML = "设 <code>TASK_CONSOLE_LLMCALL_LEDGER</code> 指向账本,"
-      + "或确认调用基元真的在写它。";
-    $("lunote").textContent = "账本不在";
+    $("lledger").innerHTML = "请检查调用记录路径 <code>TASK_CONSOLE_LLMCALL_LEDGER</code>，并确认 llmcall 已开启记录。";
+    $("lunote").textContent = "未找到调用记录文件";
     return;
   }
   const wins = LLM.windows || [];
@@ -147,10 +146,10 @@ function renderWins(){
     const big = blind ? "无从得知" : lnum(w.calls) + " 次";
     const sub = blind
       ? (lnum(w.unstamped_excluded) + " 条历史记录没有时间戳,无法归入这个窗口")
-      : ('<span class="ok">' + lnum(w.ok) + " 成</span> · "
-         + (w.failed ? '<span class="bad">' + lnum(w.failed) + " 败</span>" : "0 败")
-         + " · 廉价级 " + lpct(w.cheap_share)
-         + (w.avg_ms != null ? " · 均 " + lnum(Math.round(w.avg_ms)) + "ms" : "")
+      : ('<span class="ok">' + lnum(w.ok) + " 成功</span> · "
+         + (w.failed ? '<span class="bad">' + lnum(w.failed) + " 失败</span>" : "0 失败")
+         + " · 低成本服务占比 " + lpct(w.cheap_share)
+         + (w.avg_ms != null ? " · 平均 " + lnum(Math.round(w.avg_ms)) + "ms" : "")
          + (w.unstamped_excluded ? " · 另有 " + lnum(w.unstamped_excluded) + " 条无时间戳未计入" : ""));
     return '<div class="' + cls + '"><h4>' + esc(w.label) + "</h4>"
       + '<div class="big">' + esc(big) + "</div>"
@@ -177,7 +176,7 @@ function renderWins(){
 function renderRungs(){
   const rs = LLM.rungs || [];
   $("lrtab").innerHTML =
-    "<tr><th>级</th><th>应答</th><th>失败</th><th>没轮到</th><th>没上场</th></tr>"
+    '<tr><th>模型服务</th><th>成功应答</th><th>调用失败</th><th title="前面的服务已应答，未尝试此服务">未轮到调用</th><th title="该次调用跳过了此服务">已跳过</th></tr>'
     + rs.map(r=>"<tr><td>" + esc(r.name)
       // 链里出现了配置之外的 provider 时它照样进这张表 —— 丢掉它等于让一个
       // 没人登记过的调用路径在统计上不存在。标出来,别藏。
@@ -205,9 +204,9 @@ function renderRungs(){
   $("lrverify").innerHTML = v.checked == null ? "" :
     '<div class="l-verify' + (bad ? " bad" : "") + '">'
     + (bad
-       ? "判据在 " + lnum(v.checked) + " 条里有 " + lnum(bad)
-         + " 条自相矛盾(应答的那一级不等于链上该轮到的那一级)—— 上表的数不能当真。"
-       : "判据核过 " + lnum(v.checked) + " 条,零反例。")
+       ? "已核对 " + lnum(v.checked) + " 条，其中 " + lnum(bad)
+         + " 条的应答服务与尝试顺序不符，上表统计可能不准确。"
+       : "已核对 " + lnum(v.checked) + " 条，应答服务与尝试顺序一致。")
     + (meh ? '<span class="faint"> 另有 ' + lnum(meh)
              + " 条字段不全、无法参与核对,已排除在外。</span>" : "")
     + "</div>";
@@ -217,7 +216,7 @@ function renderRungs(){
 function renderRuns(){
   const rs = LLM.runs || [];
   if(!rs.length){
-    $("lstab").innerHTML = '<p class="faint" style="margin:0">没有达到阈值的连续段。</p>';
+    $("lstab").innerHTML = '<p class="faint" style="margin:0">没有达到统计阈值的连续失败或连续使用备用服务记录。</p>';
     $("lsnote").textContent = "";
     return;
   }
@@ -233,9 +232,9 @@ function renderRuns(){
   // 永远是最长的那几段。所以每类只画前 LRUN_TOP 段,并且**把没画的那些数出来** ——
   // 一张悄悄截断的表和一张本来就这么短的表,看起来一模一样。
   $("lstab").innerHTML =
-    (dead.length ? '<div class="l-sub"><b>整链失败</b>:这些调用没有拿到任何答案</div>'
+    (dead.length ? '<div class="l-sub"><b>调用失败</b>：未获得回答</div>'
                    + runRows(dead.slice(0, LRUN_TOP), max) + more(dead) : "")
-    + (down.length ? '<div class="l-sub"><b>降级</b>:答上了,但落到了更靠后的一级</div>'
+    + (down.length ? '<div class="l-sub"><b>备用服务应答</b>：由调用顺序中靠后的服务回答</div>'
                      + runRows(down.slice(0, LRUN_TOP), max) + more(down) : "");
 }
 
@@ -276,6 +275,8 @@ function runRows(rs, max){
 
 // ── 明细 ──
 async function loadCalls(){
+  const request=++LM_REQUEST;
+  $("lmnote").textContent='读取中';
   const q = "?offset=" + LMQ.offset + "&limit=" + LMQ.limit
     + (LMQ.provider ? "&provider=" + encodeURIComponent(LMQ.provider) : "")
     + (LMQ.ok !== "" ? "&ok=" + LMQ.ok : "")
@@ -283,9 +284,10 @@ async function loadCalls(){
     + (LMQ.caller ? "&caller=" + encodeURIComponent(LMQ.caller) : "");
   try{
     const r = await api("/api/llmcall/calls" + q);
+    if(request!==LM_REQUEST) return;
     LMROWS = r.rows || []; LMTOTAL = r.total || 0;
     $("lmnote").textContent = "";
-  }catch(e){ LMROWS = []; LMTOTAL = 0; $("lmnote").textContent = e.message; }
+  }catch(e){ if(request!==LM_REQUEST) return; LMROWS = []; LMTOTAL = 0; $("lmnote").textContent = '读取失败：'+e.message; }
   renderCalls();
 }
 
@@ -333,15 +335,14 @@ function renderCalls(){
     return tr;
   }).join("");
   $("lmtab").innerHTML =
-    '<tr><th>#</th><th>时间</th><th>调用方</th><th>应答</th><th>没上场</th><th>模式</th>'
-    + '<th class="r">提示字数</th><th class="r">回复字数</th><th class="r">耗时</th><th class="r">尝试</th></tr>'
+    '<tr><th>行号</th><th>时间</th><th>调用方</th><th>应答服务</th><th>已跳过</th><th>模式</th>'
+    + '<th class="r">输入字符</th><th class="r">回复字符</th><th class="r">耗时（ms）</th><th class="r">尝试次数</th></tr>'
     // 空结果必须说出**为什么**空。「搜错误文本」+「只看成功」是一个天然的空集:
     // 成功的调用根本没有错误文本。不说破的话,一个用对了工具的人会以为工具坏了,
     // 而这和工具真的坏了在屏幕上是同一句话。
     + (rows || '<tr><td colspan="10" class="faint">'
        + (LMQ.q && LMQ.ok === "1"
-          ? "这个组合必然为空:搜的是错误文本,而成功的调用没有错误文本。"
-            + "把「只看成功」改回不限,或者清掉搜索框。"
+          ? "成功记录没有错误信息。请清除搜索词，或将结果筛选改为「全部结果」。"
           : LMQ.q ? "没有哪条调用的错误文本里含「" + esc(LMQ.q) + "」。"
                   : "没有符合条件的记录。")
        + "</td></tr>");
@@ -349,15 +350,15 @@ function renderCalls(){
   const from = LMTOTAL ? LMQ.offset + 1 : 0;
   const to = Math.min(LMQ.offset + LMQ.limit, LMTOTAL);
   $("lmpage").innerHTML =
-    '<button class="mini" id="lmprev"' + (LMQ.offset <= 0 ? " disabled" : "") + ">← 更新</button>"
-    + '<button class="mini" id="lmnext"' + (to >= LMTOTAL ? " disabled" : "") + ">更旧 →</button>"
+    '<button class="mini" id="lmprev"' + (LMQ.offset <= 0 ? " disabled" : "") + ">上一页</button>"
+    + '<button class="mini" id="lmnext"' + (to >= LMTOTAL ? " disabled" : "") + ">下一页</button>"
     + "<span>" + lnum(from) + "–" + lnum(to) + " / 共 " + lnum(LMTOTAL) + " 条</span>";
 }
 
 function detailHTML(r){
   const b = LMBODY[r.i];
   let s = "<dl>"
-    + "<dt>链</dt><dd>" + esc((r.chain || []).join(" → ")) + "</dd>"
+    + "<dt>调用顺序</dt><dd>" + esc((r.chain || []).join(" → ")) + "</dd>"
     + "<dt>联网</dt><dd>" + (r.web ? "是" : "否") + "</dd>"
     + "<dt>结果</dt><dd>" + (r.ok ? "成功" : "失败") + "</dd>"
     + (r.error ? "<dt>错误</dt><dd>" + esc(r.error) + "</dd>" : "")
@@ -370,7 +371,7 @@ function detailHTML(r){
     s += '<table class="l-att">'
       + r.attempts_detail.map(a=>
           "<tr><td>" + esc(a.name) + "</td>"
-          + '<td class="' + (a.ok ? "y" : "n") + '">' + (a.ok ? "成" : "败") + "</td>"
+          + '<td class="' + (a.ok ? "y" : "n") + '">' + (a.ok ? "成功" : "失败") + "</td>"
           + '<td class="r">' + (a.ms == null ? "—" : lnum(a.ms) + "ms") + "</td>"
           + "<td>" + esc(a.error || "") + "</td></tr>").join("")
       + "</table>";

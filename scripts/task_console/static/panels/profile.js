@@ -2,7 +2,7 @@
 let SCK=null;
 async function loadSelfcheck(){
   try{ SCK=await api("/api/selfcheck"); }
-  catch(e){ $("scksum").innerHTML=`<span class="bad">自检本身失败:${esc(e.message)}</span>`; return; }
+  catch(e){ $("scksum").innerHTML=`<span class="bad">数据来源检查失败：${esc(e.message)}</span>`; return; }
   renderSelfcheck();
   updateBadges();
 }
@@ -14,7 +14,7 @@ function renderSelfcheck(){
   const c=SCK.counts||{};
   const parts=[`读到 ${SCK.probed}/${SCK.total}`];
   if(c.unset) parts.push(`未配 ${c.unset}`);
-  if(c.stale) parts.push(`陈旧 ${c.stale}`);
+  if(c.stale) parts.push(`未更新 ${c.stale}`);
   $("scksum").innerHTML = SCK.ok
     ? `<span>${parts.join(" · ")}</span>`
     : `<span class="bad">${SCK.broken.length?("读不到 "+SCK.broken.join(", ")):"必需来源不可用"}</span>`
@@ -43,26 +43,26 @@ const CX_LAB={"AGENTS.md":"指令文件","config.toml":"配置",
 
 function renderCodex(){
   const el=$("mt-codex"); if(!el) return;
-  if(!CODEX){ el.innerHTML=`<div class="mt-t">第二套 agent</div>
+  if(!CODEX){ el.innerHTML=`<div class="mt-t">Codex 存储</div>
     <div class="mt-note">读取中</div>`; return; }
-  if(CODEX.error){ el.innerHTML=`<div class="mt-t">第二套 agent</div>
+  if(CODEX.error){ el.innerHTML=`<div class="mt-t">Codex 存储</div>
     <div class="warn-line">读取失败:${esc(CODEX.error)}</div>`; return; }
-  if(!CODEX.available){ el.innerHTML=`<div class="mt-t">第二套 agent</div>
+  if(!CODEX.available){ el.innerHTML=`<div class="mt-t">Codex 存储</div>
     <div class="mt-note">${esc(CODEX.reason)}</div>`; return; }
 
   const rows=Object.keys(CX_LAB).map(k=>{
     const it=CODEX.items[k]||{};
     if(!it.available)
       return `<div class="cx-r unread"><span class="n" title="${esc(k)}">${CX_LAB[k]}</span>
-        <span class="c" title="${esc(it.reason||"")}">读不了</span><span class="m"></span></div>`;
+        <span class="c" title="${esc(it.reason||"")}">读取失败</span><span class="m"></span></div>`;
     if(!it.exists)
       return `<div class="cx-r absent"><span class="n" title="${esc(k)}">${CX_LAB[k]}</span>
-        <span class="c" title="这一项不在。不在是一个结论,不是一次失败">不在</span>
+        <span class="c" title="未找到对应文件或目录">不存在</span>
         <span class="m"></span></div>`;
     // 条数只有会话那两项有。没有条数的项这一格留空,不填 0 ——
     // 一个 0 会被读成「有这个东西但里面是空的」。
     const n = (it.count==null) ? (it.files!=null?it.files+" 个":"") : it.count+" 场";
-    const warn = it.errors ? ` · ${it.errors} 处扫不动,这个数偏小` : "";
+    const warn = it.errors ? ` · ${it.errors} 处读取失败，已显示的总量偏小` : "";
     return `<div class="cx-r${it.errors?" warnish":""}">
       <span class="n" title="${esc(k)}">${CX_LAB[k]}</span>
       <span class="c" title="${esc(kb(it.bytes)+warn)}">${kb(it.bytes)}${it.errors?"+":""}</span>
@@ -70,10 +70,10 @@ function renderCodex(){
   }).join("");
 
   const bad=[];
-  if(CODEX.incomplete.length) bad.push(`${CODEX.incomplete.length} 项没扫全,总量偏小`);
+  if(CODEX.incomplete.length) bad.push(`${CODEX.incomplete.length} 项未扫完，总量偏小`);
   if(CODEX.unread.length) bad.push(`${CODEX.unread.length} 项读不了`);
   el.innerHTML=`<div class="mt-t">Codex 存储 <b>${kb(CODEX.bytes)}</b>
-      <span class="sub">${CODEX.incomplete.length||CODEX.unread.length?"":"全部数到"}</span></div>
+      <span class="sub">${CODEX.incomplete.length||CODEX.unread.length?"":"扫描完成"}</span></div>
     ${bad.length?`<div class="warn-line">${esc(bad.join(" · "))}</div>`:""}
     <div class="mt-rows">${rows}</div>`;
 }
@@ -119,8 +119,8 @@ function renderCxList(){
   // 截断必须说出来。一个悄悄只给前 N 条的清单,会让人以为剩下的不存在,
   // 然后按一个不完整的总量去做清理决定。
   $("cxnote").textContent = `${CXL.count} 份 · ${kb(CXL.bytes)}`
-    + (CXL.truncated ? ` · 只列出最大的 ${items.length} 份` : "")
-    + (CXL.errors ? ` · ${CXL.errors} 处扫不动,这个数偏小` : "");
+    + (CXL.truncated ? ` · 仅列出最大的 ${items.length} 份，排序只影响已列出的文件` : "")
+    + (CXL.errors ? ` · ${CXL.errors} 处读取失败，已显示的总量偏小` : "");
 
   // 体积条取对数并把 [最小, 最大] 整段铺开。线性标度下最大的一份 583M 把别的全压成
   // 一两个像素 —— 一列几乎人人等长(或者人人等于零)的条,和没有这一列一样没用。
@@ -143,11 +143,11 @@ function renderCxList(){
 
   const selBytes=items.filter(i=>CXSEL.has(i.rel)).reduce((a,i)=>a+i.bytes,0);
   el.innerHTML=`<div class="cx-bar">
-      <button class="mini" id="cxall">全选这一屏</button>
+      <button class="mini" id="cxall">全选已列出的文件</button>
       <button class="mini" id="cxnone">清空选择</button>
       <span class="sel">选中 <b>${CXSEL.size}</b> 份 · ${kb(selBytes)}</span>
       <button class="mini danger" id="cxdel"${CXSEL.size?"":" disabled"}
-        title="${CXSEL.size?"删掉选中的这些。不可逆":"先选几份"}">删掉选中的</button>
+        title="${CXSEL.size?"永久删除选中的文件，需要确认":"请先选择文件"}">删除选中文件</button>
     </div><div class="cx-list">${rows}</div>`;
 }
 
@@ -159,7 +159,7 @@ function cxSelSummary(){
   el.innerHTML=`选中 <b>${CXSEL.size}</b> 份 · ${kb(b)}`;
   const d=document.getElementById("cxdel");
   if(d){ d.disabled=!CXSEL.size;
-         d.title=CXSEL.size?"删掉选中的这些。不可逆":"先选几份"; }
+         d.title=CXSEL.size?"永久删除选中的文件，需要确认":"请先选择文件"; }
 }
 
 async function cxDelete(){
@@ -169,18 +169,18 @@ async function cxDelete(){
   const bytes=rels.reduce((a,r)=>a+((byRel[r]||{}).bytes||0),0);
   // 删除不可逆,所以确认里要写清「多少份、多少字节」,并把前几条路径列出来 ——
   // 一个只说「确定删除?」的弹窗,等于让人在不知道删什么的情况下下决定。
-  if(!confirm(`删掉 ${rels.length} 份转录,约 ${kb(bytes)}。\n\n`
+  if(!confirm(`永久删除 ${rels.length} 份会话文件，约 ${kb(bytes)}。\n\n`
       +rels.slice(0,8).map(r=>"  "+r).join("\n")
       +(rels.length>8?`\n  …还有 ${rels.length-8} 份`:"")
-      +`\n\n不可逆。继续?`)) return;
+      +`\n\n删除后无法恢复。继续？`)) return;
   try{
     const r=await api("/api/codex/delete",{method:"POST",body:JSON.stringify({rels})});
-    if(r.error){ toast(r.error,"bad"); return; }
+    if(r.error && !Number.isInteger(r.deleted)){ toast('未能确认删除结果：'+r.error,"bad");await loadCxList();return; }
     if(!r.ok){
       // 中途失败要说清停在哪里、已经删了几份 —— 不假装什么都没发生。
-      alert(`停在 ${r.stoppedAt}\n\n${r.error}\n\n已经删掉 ${r.deleted} 份,释放 ${kb(r.freed)}。`);
+      alert(`删除未全部完成，在 ${r.stoppedAt} 处停止。\n\n${r.error}\n\n已删除 ${r.deleted} 个文件，合计 ${kb(r.freed)}。`);
     } else {
-      toast(`删掉 ${r.deleted} 份,释放 ${kb(r.freed)}`);
+      toast(`已删除 ${r.deleted} 个文件，合计 ${kb(r.freed)}`);
     }
     await loadCxList();
     loadCodex(); loadSys();

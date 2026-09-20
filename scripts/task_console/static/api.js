@@ -29,8 +29,9 @@ const kb = n => n==null ? "-" : n<1024 ? n+"B" : n<1048576 ? (n/1024).toFixed(0)
 function mtUnset(el,reason){ el.innerHTML=`<div class="mt-note">${esc(reason)}</div>`; }
 
 function ibtn(sym, label, extra, cls){
-  return `<button class="mini ib ${cls||""}" ${extra||""} title="${esc(label)}"
-    aria-label="${esc(label)}"><svg class="ic"><use href="#${sym}"/></svg></button>`;
+  const text=({'i-copy':'复制路径','i-folder':'打开目录','i-web':'打开网页','i-diff':'查看改动','i-fetch':'获取远程更新','i-push':'提交并推送','i-archive':'归档','i-restore':'恢复','i-off':'停用','i-on':'启用'})[sym];
+  return `<button class="mini ib ${text?'with-label ':''}${cls||""}" ${extra||""} title="${esc(label)}"
+    aria-label="${esc(label)}"><svg class="ic" aria-hidden="true"><use href="#${sym}"/></svg>${text?`<span>${text}</span>`:''}</button>`;
 }
 
 async function maintAct(action,name){
