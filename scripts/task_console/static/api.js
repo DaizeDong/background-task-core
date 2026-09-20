@@ -3,6 +3,14 @@ const TOKEN = document.querySelector('meta[name="console-token"]').content;
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const $ = id => document.getElementById(id);
 
+// Presentation only: callers supply the owner's label and its display tone.
+const componentTone=state=>({healthy:'ok',unhealthy:'bad',degraded:'warn',failed:'bad',success:'ok',ok:'ok',running:'active',completed:'ok'}[state] || 'idle');
+function statusBadge(label,tone='idle',symbol,extraClass=''){
+  const symbols={ok:'✓',bad:'×',warn:'!',active:'▶',pending:'◷',idle:'?',muted:'—'};
+  if(!Object.hasOwn(symbols,tone)) tone='idle';
+  return `<span class="status-chip ${tone} ${esc(extraClass)}"><span class="status-symbol" aria-hidden="true">${esc(symbol || symbols[tone])}</span><span>${esc(label)}</span></span>`;
+}
+
 function toast(m,k){const d=document.createElement("div");d.className=k||"";d.textContent=m;
   $("toast").appendChild(d);setTimeout(()=>d.remove(),k==="bad"?9000:4200);}
 

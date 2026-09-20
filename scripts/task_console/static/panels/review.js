@@ -25,7 +25,7 @@ function renderReviewQueue(rows,dataBroken){
   $("todon").textContent=`${all.length} 个对象`;
   $("review-count").textContent=`${selected.length}/${all.length} 个对象 · ${rows.length} 条检查`;
   box.innerHTML=selected.map(row=>`<article class="review-row">
-    <span class="review-status ${row.sev>=3?"bad":"warn"}">${row.sev>=3?"异常":"提示"}</span>
+    ${statusBadge(row.sev>=3?'异常':'提示',row.sev>=3?'bad':'warn',undefined,'review-status')}
     <div class="review-object"><h3>${esc(row.task || row.nm)}</h3>
     <ul>${row.reasons.map(reason=>`<li>${esc(reason)}</li>`).join("")}</ul></div>
     <div class="review-actions">

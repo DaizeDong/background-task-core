@@ -125,14 +125,15 @@ function renderCatalogHealth(){
   $("health-count").textContent=`${rows.length}/${tasks.length} 个任务`;
   el.innerHTML=`<table class="ops-table"><thead><tr><th>任务</th><th>结论</th><th>检查项</th><th>最近执行记录</th><th>操作</th></tr></thead><tbody>${rows.map(task=>`<tr>
     <th scope="row">${esc(task.name || task.task_id)}<small>${esc(task.task_id)}</small></th>
-    <td>${esc(catalogLabel(task.verdict))}</td><td>${(task.checks||[]).map(check=>`<div>${esc(check.check_id)}: ${esc(catalogLabel(check.state))} (${esc(check.checked)}/${esc(check.expected)})</div>`).join("") || "未检查"}</td>
-    <td><div>运行 ${esc(task.run_id || "未提供")}</div><div>${esc(catalogLabel(task.execution && task.execution.state))}</div>${task.verdict!=="healthy"?`<small>${esc((task.reason_codes||[]).join(" · "))}</small>`:""}</td>
+    <td>${statusBadge(catalogLabel(task.verdict),componentTone(task.verdict))}</td><td>${(task.checks||[]).map(check=>`<div class="check-line"><span>${esc(check.check_id)}</span> ${statusBadge(catalogLabel(check.state),componentTone(check.state))} <span class="faint">${esc(check.checked)}/${esc(check.expected)}</span></div>`).join("") || "未检查"}</td>
+    <td><div>运行 ${esc(task.run_id || "未提供")}</div><div>${statusBadge(catalogLabel(task.execution && task.execution.state),componentTone(task.execution && task.execution.state))}</div>${task.verdict!=="healthy"?`<small>${esc((task.reason_codes||[]).join(" · "))}</small>`:""}</td>
     <td>${task.name?`<button data-task="${esc(task.name)}">查看任务</button>`:"未关联"}</td></tr>`).join("")}</tbody></table>`;
 }
 const CATALOG_DIMENSIONS=["declared","enabled","cached","installed","resolved","discovered","compatible"];
-function catalogStateCell(value){
+function catalogStateCell(value,dimension){
   const label=catalogLabel(value), symbol=({yes:"是",no:"否",unknown:"未查",not_applicable:"—"})[value || "unknown"] || label;
-  return `<td title="${esc(label)}"><span aria-label="${esc(label)}" class="${value==='no'?'warn':value==='yes'?'ok':'faint'}">${esc(symbol)}</span></td>`;
+  const tone=value==='yes'?'ok':value==='no'?(dimension==='compatible'?'warn':'muted'):value==='not_applicable'?'muted':'idle';
+  return `<td class="catalog-state" title="${esc(label)}">${value==='not_applicable'?`<span class="faint" aria-label="${esc(label)}">—</span>`:statusBadge(symbol,tone)}</td>`;
 }
 function catalogRow(source,entry){
   const item=entry || source, status=item.status || {};
@@ -141,7 +142,7 @@ function catalogRow(source,entry){
   const dependencies=!entry ? (source.dependencies||[]).map(d=>typeof d==="string"?d:d.name||d.id||d.kind||"未命名").join("、") : "";
   return `<tr${entry?' class="catalog-entry"':''}><th scope="row" title="${esc(source.source_id)}">${entry?'↳ ':''}${esc(name)}</th>
     <td>${entry?'入口: ':''}${esc(catalogLabel(item.kind))}<small>${esc(client || "未记录")}</small></td>
-    ${CATALOG_DIMENSIONS.map(key=>catalogStateCell(status[key])).join("")}
+    ${CATALOG_DIMENSIONS.map(key=>catalogStateCell(status[key],key)).join("")}
     <td>${entry?'—':esc(catalogLabel(source.sync && source.sync.state))}
     ${!entry && ["mcp_binding","app_connector"].includes(source.kind)?`<dl class="auth-state"><dt>认证</dt><dd>${esc(catalogLabel(status.authenticated))}</dd></dl>`:''}</td>
     <td>${esc(dependencies || "—")}</td></tr>`;

@@ -25,10 +25,11 @@ function setWorkFilters({role='work',state='',source='',query=''}={}){
 function selectedWorkRows(){return workRows(WORK,{role:WORK_ROLE,state:WORK_STATE,query:WORK_QUERY,source:WORK_SOURCE});}
 function workEmpty(text){return `<p class="work-empty">${esc(text)}</p>`;}
 function workItemRow(item,compact=false){
-  const tone=workActive(item)?'active':workResult(item)?'done':'neutral';
+  const state=workState(item);
+  const tone=({running:'active',doing:'active',queued:'pending',pending:'pending',done:'ok',failed:'bad',blocked:'warn',stalled:'warn',reconcile:'warn',review_unavailable:'idle',cancelled:'muted',stopped:'muted',snoozed:'muted',notified:'muted'})[state] || 'idle';
   const result=workResult(item) && item.summary, title=result?item.summary:item.title;
   const note=result?item.title:item.summary;
-  return `<article class="work-row"><span class="work-state ${tone}">${esc(workLabel(item))}</span>
+  return `<article class="work-row" data-state="${esc(state)}">${statusBadge(workLabel(item),tone,undefined,'work-state')}
     <div class="work-subject"><button class="record-link" title="${esc(title)}" data-work-id="${esc(item.id)}">${esc(title)}</button>
     ${note && !(compact && result)?`<p>${esc(note)}</p>`:''}<small title="${esc(item.source)}">${esc(workSourceLabel(item.source))}${item.project?' / '+esc(item.project):''}</small></div>
     <div class="work-when"><time>${esc(workTime(item.updated_at))}</time>${item.due_at?`<small>到期 ${esc(workTime(item.due_at))}</small>`:''}
@@ -67,8 +68,8 @@ function renderWorkPlatform(){
 }
 function renderPlatformSignals(){
   if(!$('platform-sources')) return;
-  const status=(path,available)=>API_READS.get(path)?.pending?'读取中':API_READS.get(path)?.error?'读取失败':available?'已连接':'未连接';
-  $('platform-sources').innerHTML=`<span>工作记录 ${status('/api/work',WORK?.available)}</span><span>计划任务 ${status('/api/tasks',!!DATA)}</span><span>技能与插件 ${status('/api/components',COMPONENTS?.catalog?.available)}</span><a href="#diagnostics">查看技术问题</a>`;
+  const status=(path,available)=>API_READS.get(path)?.pending?statusBadge('读取中','pending'):API_READS.get(path)?.error?statusBadge('读取失败','bad'):available?statusBadge('已连接','ok'):statusBadge('未连接','idle');
+  $('platform-sources').innerHTML=`<span>工作记录 ${status('/api/work',WORK?.available)}</span><span>计划任务 ${status('/api/tasks',!!DATA)}</span><span>技能与插件 ${status('/api/components',COMPONENTS?.catalog?.available)}</span><a href="#diagnostics">查看技术问题 →</a>`;
 }
 function renderAutomations(){
   if(!$('automation-list')) return;
@@ -78,7 +79,7 @@ function renderAutomations(){
   const groups=new Map();rows.forEach(row=>{if(!groups.has(row.cat))groups.set(row.cat,[]);groups.get(row.cat).push(row);});
   const rowHtml=row=>`<article class="automation-row">
     <div class="automation-name"><strong title="${esc(row.desc || row.name)}">${esc((row.desc || row.name).split(/[。]|[：:](?!\d)/)[0])}</strong><small>${esc(row.name)}</small></div>
-    <span class="work-state ${row.state==='Running'?'active':'neutral'}">${esc(taskStateLabel(row.state))}</span>
+    ${statusBadge(taskStateLabel(row.state),({Ready:'ok',Running:'active',Queued:'pending',Disabled:'muted'})[row.state] || 'idle',row.state==='Disabled'?'Ⅱ':undefined,'work-state')}
     <div class="automation-schedule" title="${esc(row.triggers)}">${esc(taskSchedule(row))}<small>${row.nextRun?'下次 '+esc(workTime(row.nextRun)):'没有下次运行时间'}</small></div>
     ${taskActionButtons(row)}<button class="record-link" data-task="${esc(row.name)}">查看详情</button></article>`;
   $('automation-list').innerHTML=!DATA?workEmpty('暂时读不到计划任务'):rows.length?[...groups].map(([name,items])=>`<div class="automation-group"><h3>${esc(name)}<span>${items.length} 项计划</span></h3>${items.map(rowHtml).join('')}</div>`).join(''):workEmpty('没有符合筛选条件的计划任务');

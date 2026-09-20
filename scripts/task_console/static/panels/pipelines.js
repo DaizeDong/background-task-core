@@ -11,8 +11,7 @@ const pipeTime = value => {
   const date = new Date(typeof value === "number" ? value*1000 : value);
   return Number.isNaN(date.getTime()) ? "时间无法识别" : date.toLocaleString("zh-CN", {hour12:false});
 };
-const pipeTone = state => ({healthy:"ok",unhealthy:"bad",degraded:"warn",failed:"bad",success:"ok",ok:"ok"}[state] || "idle");
-const pipeState = state => ({healthy:"正常",unhealthy:"异常",degraded:"部分可用",failed:"失败",success:"完成",ok:"完成",running:"运行中",unknown:"待验证"}[state] || "待验证");
+const pipeState = state => ({healthy:"正常",unhealthy:"异常",degraded:"部分可用",failed:"失败",success:"完成",ok:"完成",completed:"完成",running:"运行中",unknown:"待验证"}[state] || "待验证");
 
 function pipelineTask(key, components){
   const def = PIPELINE_DEFS[key];
@@ -31,7 +30,7 @@ function pipelineSteps(key, components){
     const catalog = components && components.catalog;
     const source = unknown("读取来源", "汇集配置、技能和插件", "目录单独读取，不能据此确认本次同步结果。");
     if(catalog && catalog.available){
-      source.label="已读取"; source.evidence=[["来源数",(catalog.records||[]).length],["读取时间",pipeTime(catalog.observed_at)],
+      source.label="已读取"; source.tone="muted"; source.symbol="✓"; source.evidence=[["来源数",(catalog.records||[]).length],["读取时间",pipeTime(catalog.observed_at)],
         ["检查范围",catalogCoverageText(catalog.coverage)]];
     }
     const files = unknown("写入配置", "应用差异并复查", "还没有可读取的同步结果。");
@@ -104,7 +103,7 @@ function renderPipelines(){
       const steps=pipelineSteps(key,COMPONENTS);
       return `<div class="card pipeline-run" id="pipeline-${key}">
         <div class="card-header"><h2 class="card-title">${esc(def.title)}</h2><div class="review-actions">
-          <span class="review-status ${task?pipeTone(status):"idle"}">${task?esc(pipeState(status)):"未找到对应任务"}</span>
+          ${statusBadge(task?pipeState(status):'未找到对应任务',task?componentTone(status):'idle',undefined,'review-status')}
           ${task?`<button data-task="${esc(task.name)}">任务详情</button>`:""}
           ${row?fixBtn("run",row.name):""}</div></div>
         <div class="pipeline-metrics"><span>最近运行 <b>${esc(pipeTime(task && task.execution && task.execution.started_at))}</b></span>
@@ -113,9 +112,9 @@ function renderPipelines(){
           ${receipt?`<span>模式 <b>${esc(receipt.mode || "未记录")}</b></span><span>本次改动 <b>${esc(receipt.change_count ?? "未记录")}</b></span><span>剩余差异 <b>${esc(receipt.remaining_changes ?? "未记录")}</b></span>`:""}
         </div>
         <div class="ops-scroll"><table class="ops-table pipeline-table"><thead><tr><th>环节</th><th>结果</th><th>检查记录</th></tr></thead><tbody>
-        ${steps.map((step,i)=>`<tr><th scope="row">${i+1}. ${esc(step.title)}</th><td><span class="review-status ${step.tone}">${esc(step.label)}</span></td>
+        ${steps.map((step,i)=>`<tr><th scope="row"><span class="step-index">${i+1}</span>${esc(step.title)}</th><td>${statusBadge(step.label,step.tone,step.symbol,'review-status')}</td>
           <td><div>${esc(step.detail.replace("展开问题查看具体对象。","见下方问题清单。"))}</div>
-            ${(step.checks||[]).map(check=>`<span class="check-chip ${pipeTone(check.state)}">${esc(check.check_id)}: ${esc(pipeState(check.state))}</span>`).join("")}
+            ${(step.checks||[]).map(check=>`<span class="check-chip">${esc(check.check_id)} ${statusBadge(pipeState(check.state),componentTone(check.state))}</span>`).join("")}
             <div class="pipeline-evidence">${(step.evidence||[]).filter(([label])=>!["任务","任务标识","运行标识","开始时间"].includes(label)).map(([label,value])=>`<span>${esc(label)} <b>${esc(value ?? "未记录")}</b></span>`).join("")}</div>
           </td></tr>`).join("")}</tbody></table></div></div>`;
     }).join("")+
@@ -127,7 +126,7 @@ function renderPipelines(){
   const links=$("overview-pipelines");
   if(links) links.innerHTML=Object.entries(PIPELINE_DEFS).map(([key,def])=>{
     const task=pipelineTask(key,COMPONENTS), state=task && (task.last_run_v1 && task.last_run_v1.status || task.verdict);
-    return `<button data-open-pipeline="${key}"><strong>${esc(def.title)}</strong><span class="review-status ${task?pipeTone(state):"idle"}">${task?esc(pipeState(state)):"待验证"}</span></button>`;
+    return `<button data-open-pipeline="${key}"><strong>${esc(def.title)}</strong>${statusBadge(task?pipeState(state):'待验证',task?componentTone(state):'idle',undefined,'review-status')}</button>`;
   }).join("");
 }
 function renderPipelineIssues(){

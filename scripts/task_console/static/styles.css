@@ -37,7 +37,7 @@
      那条否决针对的是**用 JS 算**,依然成立。这里走的是纯 CSS 的 `rgb(var(--x-rgb))`,
      由样式引擎在首屏之前解析,没有 JS 也没有闪色 —— 实测七个颜色改前改后逐位相同。
      记在这里是因为那条否决本身是对的,不该让下一个人以为它被无视了。 */
-  --tblr-danger-rgb:171,49,35; --tblr-success-rgb:44,122,85;
+  --tblr-danger-rgb:171,49,35; --tblr-success-rgb:35,105,73;
   --tblr-warning-rgb:140,98,16; --tblr-primary-rgb:14,107,117;
  --panel:#FFFFFF; --panel2:#F6F8F9; --line:#D3DBDF; --line2:#E4EAED;
   --ink:#141C22; --dim:#5C6B75; --faint:#8797A1;
@@ -63,7 +63,7 @@
   --bg:#0B0F12; --panel:#11171B; --panel2:#151D22; --line:#212C33; --line2:#1A242A;
   --ink:#C7D3DB; --dim:#7E8E99; --faint:#5C6B75;
   --sel:#3FA9B433; --cur:#3FA9B41A;
-  --tblr-danger-rgb:210,104,94; --tblr-success-rgb:95,175,127;
+  --tblr-danger-rgb:226,124,111; --tblr-success-rgb:95,175,127;
   --tblr-warning-rgb:208,160,71; --tblr-primary-rgb:79,176,189;
   --amber:#D9A441; --cyan:rgb(var(--tblr-primary-rgb));
   --ok:rgb(var(--tblr-success-rgb)); --bad:rgb(var(--tblr-danger-rgb));
@@ -77,7 +77,7 @@
   --bg:#0B0F12; --panel:#11171B; --panel2:#151D22; --line:#212C33; --line2:#1A242A;
   --ink:#C7D3DB; --dim:#7E8E99; --faint:#5C6B75;
   --sel:#3FA9B433; --cur:#3FA9B41A;
-  --tblr-danger-rgb:210,104,94; --tblr-success-rgb:95,175,127;
+  --tblr-danger-rgb:226,124,111; --tblr-success-rgb:95,175,127;
   --tblr-warning-rgb:208,160,71; --tblr-primary-rgb:79,176,189;
   --amber:#D9A441; --cyan:rgb(var(--tblr-primary-rgb));
   --ok:rgb(var(--tblr-success-rgb)); --bad:rgb(var(--tblr-danger-rgb));
@@ -274,7 +274,8 @@ table.g tr[data-scat]:hover{background:var(--cur)}
 /* 「信息读不到」是一个第三种答案:既不是正常也不是失败。给它警告色而不是灰色 ——
    灰色会和「已停用/尚未首跑」这类平静的状态混在一起,而这一个是要人去查的。 */
 .st.unknown{color:var(--warn);background:var(--warnb)}
-.y{color:var(--ok)}.n{color:var(--bad)}.u{color:var(--faint)}
+/* n is also used for names and counts; negative values are table cells only. */
+td.y{color:var(--ok)}td.n{color:var(--bad)}.u{color:var(--faint)}
 tr.det>td{background:var(--panel2);white-space:normal;padding:6px 10px 8px;border-bottom:2px solid var(--line)}
 .det dl{display:grid;grid-template-columns:auto minmax(0,1fr);gap:2px 10px;margin:0 0 6px;font-size:var(--fs-meta)}
 .det dt{color:var(--faint)}

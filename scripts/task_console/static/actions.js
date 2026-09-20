@@ -35,9 +35,10 @@ function taskActionButtons(row,advanced=false){
   const disabled=!known || busy || ConsoleActions.readOnly;
   const reason=ConsoleActions.readOnly?ConsoleActions.reason:busy?'正在执行操作':!known?'任务状态未确认':'';
   const hints={enable:'恢复按计划启动',disable:'不再按计划启动；正在运行的任务继续执行',run:'立即运行一次，保留原计划',stop:'请求停止当前运行，保留后续计划'};
-  const control=(verb,label,extraReason='')=>`<button class="mini task-control" data-act="${verb}" data-name="${esc(row.name)}" ${disabled || extraReason?'disabled':''} title="${esc(reason || extraReason || hints[verb])}">${label}</button>`;
+  const symbols={enable:'i-on',disable:'i-pause',run:'i-play',stop:'i-stop'};
+  const control=(verb,label,extraReason='')=>`<button class="mini task-control" data-act="${verb}" data-name="${esc(row.name)}" ${disabled || extraReason?'disabled':''} title="${esc(reason || extraReason || hints[verb])}"><svg class="ic" aria-hidden="true"><use href="#${symbols[verb]}"/></svg>${label}</button>`;
   return '<span class="task-controls">'+
     control(row.state==='Disabled'?'enable':'disable',row.state==='Disabled'?'启用':'停用')+
     (row.state==='Running'?control('stop','停止本次'):control('run','运行一次',row.state==='Disabled'?'请先启用':row.state==='Queued'?'已在队列中':''))+
-    (advanced?`<button class="mini task-control" data-retire="${esc(row.name)}" ${disabled?'disabled':''} title="${esc(reason || '停用任务，并移出备份与健康检查清单；需要确认')}">停用并移出清单</button>`:'')+'</span>';
+    (advanced?`<button class="mini task-control retire-control" data-retire="${esc(row.name)}" ${disabled?'disabled':''} title="${esc(reason || '停用任务，并移出备份与健康检查清单；需要确认')}"><svg class="ic" aria-hidden="true"><use href="#i-retire"/></svg>停用并移出清单</button>`:'')+'</span>';
 }

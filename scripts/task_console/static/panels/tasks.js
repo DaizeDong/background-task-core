@@ -264,7 +264,7 @@ const C=[
  ["selc","",r=>`<td style="width:20px"><input type="checkbox" class="selbox"
    data-selname="${esc(r.name)}"${sel.has(r.name)?" checked":""}
    aria-label="选中 ${esc(r.name)}"></td>`,()=>0],
- ["sl","状态",r=>`<td><span class="st ${r.sk}">${esc(r.sl)}</span></td>`,r=>r.sl],
+ ["sl","状态",r=>`<td>${statusBadge(r.sl,({ok:'ok',bad:'bad',running:'active',pending:'pending',disabled:'muted',unknown:'idle'})[r.sk] || 'idle',undefined,'st')}</td>`,r=>r.sl],
  ["ops","操作",r=>`<td class="ops">${taskActionButtons(r,true)}</td>`,r=>r.state],
  // 说明折进任务名的第二行。它们本来就是一体的「这是什么」,而分成两列的代价是
  // 说明只剩 280px、每行都被截成半句话(「每日 22:00 的配置备份总…」)。

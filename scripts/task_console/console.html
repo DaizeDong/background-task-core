@@ -67,7 +67,7 @@
   <div class="view-heading"><h1 id="view-title">工作台</h1></div>
   <div class="page-actions"><span id="console-mode" class="mode-badge" hidden></span>
     <span id="page-refresh-state" class="faint" role="status"></span>
-    <button id="page-refresh">刷新</button><button id="page-export" title="下载当前已加载的数据（JSON）；调用记录仅含当前页">导出数据</button>
+    <button id="page-refresh"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg>刷新</button><button id="page-export" title="下载当前已加载的数据（JSON）；调用记录仅含当前页"><svg class="ic" aria-hidden="true"><use href="#i-fetch"/></svg>导出数据</button>
     <select id="theme-select" aria-label="外观"><option value="system">跟随系统</option><option value="light">浅色</option><option value="dark">深色</option></select>
     <button id="page-help" aria-label="查看键盘帮助">快捷键</button>
   </div>
@@ -78,13 +78,13 @@
 <nav id="view-tabs" aria-label="当前工作区" hidden></nav>
 <section id="overview" data-view="overview" data-label="工作台" hidden>
   <div class="workspace-meta"><span id="work-source-state">正在连接工作记录</span><span id="work-context"></span></div>
-  <div class="decision-strip"><h2>需要你确认</h2><div id="decision-state"></div></div>
+  <div class="decision-strip"><h2><span class="section-symbol idle" aria-hidden="true">?</span>需要你确认</h2><div id="decision-state"></div></div>
   <div class="work-columns">
     <div class="work-main">
-      <div class="work-section"><div class="section-heading"><h2>Agent 正在做 <span id="active-count">—</span></h2><button class="record-link" data-work-filter="agent_work" data-work-state="active">查看进行中</button></div><div id="active-work"></div></div>
-      <div class="work-section"><div class="section-heading"><h2>Agent 完成记录 <span id="result-count">—</span></h2><button class="record-link" data-work-filter="agent_work" data-work-state="done">查看全部结果</button></div><div class="work-section-note">以下是 Agent 记录的完成摘要，这里尚无独立验证结果。</div><div id="recent-results"></div></div>
+      <div class="work-section"><div class="section-heading"><h2><span class="section-symbol" aria-hidden="true">▶</span>Agent 正在做 <span id="active-count">—</span></h2><button class="record-link" data-work-filter="agent_work" data-work-state="active">查看进行中 <span aria-hidden="true">→</span></button></div><div id="active-work"></div></div>
+      <div class="work-section"><div class="section-heading"><h2><span class="section-symbol ok" aria-hidden="true">✓</span>Agent 完成记录 <span id="result-count">—</span></h2><button class="record-link" data-work-filter="agent_work" data-work-state="done">查看全部结果 <span aria-hidden="true">→</span></button></div><div class="work-section-note">以下是 Agent 记录的完成摘要，这里尚无独立验证结果。</div><div id="recent-results"></div></div>
     </div>
-    <aside class="work-aside"><div class="work-section"><div class="section-heading"><h2>待办事项 <span id="tracked-count">—</span></h2><button class="record-link" data-work-filter="tracked_item" data-work-state="tracked_active">查看全部待办</button></div><div id="tracked-work"></div></div></aside>
+    <aside class="work-aside"><div class="work-section"><div class="section-heading"><h2><span class="section-symbol pending" aria-hidden="true">◷</span>待办事项 <span id="tracked-count">—</span></h2><button class="record-link" data-work-filter="tracked_item" data-work-state="tracked_active">查看全部待办 <span aria-hidden="true">→</span></button></div><div id="tracked-work"></div></div></aside>
   </div>
   <div id="platform-sources" class="source-strip"></div>
 </section>
@@ -151,7 +151,7 @@
 
 </section>
   <section id="tasks" data-view="tasks" data-label="计划任务" hidden>
-<div class="task-summary"><span>任务 <b id="s-total">-</b></span><span>失败 <b id="s-bad">-</b></span><span>有警告 <b id="s-iss">-</b></span><span>停用 <b id="s-off">-</b></span></div>
+<div class="task-summary"><span><span aria-hidden="true">▤</span>任务 <b id="s-total">-</b></span><span><span aria-hidden="true">×</span>失败 <b id="s-bad">-</b></span><span><span aria-hidden="true">!</span>有警告 <b id="s-iss">-</b></span><span><span aria-hidden="true">Ⅱ</span>停用 <b id="s-off">-</b></span></div>
 <div id="tools">
   <input type="text" id="q" placeholder="搜索任务名或说明" autocomplete="off">
   <select id="cat"><option value="">全部分类</option></select>
