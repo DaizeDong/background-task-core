@@ -47,6 +47,7 @@ from urllib.parse import parse_qs, urlparse, unquote
 import allowlist
 import codexinfo
 import component_status
+import work_status
 import console_store
 import convos
 import evtlog
@@ -90,6 +91,7 @@ STATIC_FILES = {
     "panels/profile.js", "panels/repositories.js", "panels/storage.js",
     "panels/overview.js", "panels/conversations.js", "panels/calls.js",
     "panels/pipelines.js", "panels/review.js",
+    "navigation.js", "actions.js", "work-model.js", "workbench.js", "workbench.css",
 }
 
 NOT_RUN, RUNNING = 0x41303, 0x41301
@@ -1148,6 +1150,10 @@ class Handler(BaseHTTPRequestHandler):
             if not self._authed():
                 return self._json(403, {"error": "bad token"})
             return self._json(200, component_status.read_configured())
+        if path == "/api/work":
+            if not self._authed():
+                return self._json(403, {"error": "bad token"})
+            return self._json(200, work_status.read_configured())
         if path == "/api/hours":
             if not self._authed():
                 return self._json(403, {"error": "bad token"})

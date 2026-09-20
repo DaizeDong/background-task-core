@@ -1,7 +1,10 @@
 // Shared page controls use existing loaders and in-memory snapshots only.
 let PAGE_REFRESHING=false;
 const PAGE_READS={
-  overview:[load,loadComponents,loadSelfcheck,loadRepos,loadSys,loadMem,loadConvos],
+  overview:[loadWork,load,loadComponents],
+  work:[loadWork],automations:[load],
+  resources:[loadComponents,loadMaint,loadMem],
+  diagnostics:[load,loadComponents,loadSelfcheck,loadRepos,loadSys,loadMem,loadConvos],
   pipelines:[loadComponents,load],tasks:[load],repos:[loadRepos],
   storage:[loadComponents,loadMaint,loadMem,loadSys,loadCodex,loadCxList],
   convos:[loadConvos],llm:[loadLLM]
@@ -24,7 +27,11 @@ async function refreshPage(){
 function pageSnapshot(view){
   const value=id=>$(id)?.value || '';
   const snapshots={
-    overview:()=>({tasks:DATA,components:COMPONENTS,selfcheck:SCK,repositories:REPOS,system:SYS,memory:MEM}),
+    overview:()=>({work:WORK,tasks:DATA,components:COMPONENTS}),
+    work:()=>({work:WORK,filters:{query:WORK_QUERY,role:WORK_ROLE,state:WORK_STATE,source:WORK_SOURCE}}),
+    automations:()=>({tasks:DATA,filters:{query:AUTO_QUERY,state:AUTO_STATE}}),
+    resources:()=>({components:catalogComponents(),maintenance:MAINT,memory:MEM}),
+    diagnostics:()=>({tasks:DATA,components:COMPONENTS,selfcheck:SCK,repositories:REPOS,system:SYS,memory:MEM}),
     pipelines:()=>({components:COMPONENTS,tasks:DATA}),
     tasks:()=>({tasks:DATA,visibleTaskNames:VIEW.map(row=>row.name)}),
     repos:()=>({repositories:REPOS,filters:{query:value('rpq'),account:value('rpacc'),kind:value('rpkind'),visibility:value('rpvis'),state:RP_STATE,issue:RP_ISSUE}}),

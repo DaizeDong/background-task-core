@@ -48,6 +48,19 @@ def example_request() -> dict:
     }
 
 
+def work_feed_case():
+    """Small composition fixture with deliberately non-equivalent work states."""
+    rows=[]
+    for item_id,role,state in [('active','agent_work','running'),('draft','agent_work','stalled'),
+                              ('result','agent_work','done'),('reminder','tracked_item','pending'),
+                              ('news','signal','pending')]:
+        rows.append({'id':item_id,'role':role,'title':'Acme '+item_id,'summary':'Synthetic summary',
+                     'state':state,'source':'synthetic','updated_at':'2030-01-02T00:00:00Z',
+                     'execution':{'state':state,'evidence':'summary_only'} if role=='agent_work' else None})
+    return {'schemaVersion':1,'available':True,'items':rows,'events':[],'sources':[],
+            'coverage':{'total':5,'returned':5,'roles':{'agent_work':3,'tracked_item':1,'signal':1}}}
+
+
 def installation_request() -> dict:
     """Two installations of an unchanged public manifest, supplied by a catalog caller."""
     request = example_request()

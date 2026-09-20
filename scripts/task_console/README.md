@@ -118,6 +118,8 @@ names with your own tasks. Everything else is optional.
 |---|---|---|
 | `TASK_CONSOLE_CATEGORIES` | your category map | `~/.task-console/categories.json`; if that is missing, every task lands in one group called uncategorized, and the page says so |
 | `TASK_CONSOLE_STATUS_SNAPSHOT` | captured version 1 component observations | no default; unset means component health is unchecked |
+| `TASK_CONSOLE_REMINDER_CLI` | absolute path to the reminder owner's `reminder.py` supporting `work-feed` | no default; work records report unconnected; invoked with the console Python interpreter |
+| `TASK_CONSOLE_REMINDER_DB` | absolute path to the existing reminder database | no default; work records and reviewed task links report unavailable; work-feed reads never initialize or migrate it |
 | `TASK_CONSOLE_CATALOG_SNAPSHOT` | captured SMITH catalog schema_version 1 | no default; unset means catalog inventory is unchecked |
 | `TASK_CONSOLE_HEALTH` | a health watch list (`task-health.json` shape) | no default; unset means the health-coverage column reads NOT CHECKED |
 | `TASK_CONSOLE_ALLOWLIST` | a PowerShell file containing a `$TaskNames = @(...)` backup allow-list | no default; unset means the backup-coverage check reports NOT CHECKED rather than passing |

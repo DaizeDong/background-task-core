@@ -1,10 +1,8 @@
 # task-console
 
-Manage local Windows tasks through declarations, adoption, registration, control and observations. Windows Task Scheduler provides triggers. The loopback web console also shows configured repositories, skills, memory and transcripts, distinguishing what was checked from what was found.
+View agent work, recorded results, tracked commitments and local automation in one loopback console. Work records come from the existing reminder owner; Windows Task Scheduler supplies triggers and task-console retains declarations, registration and guarded controls.
 
-It exists to answer one question honestly: **is anything broken that currently looks fine?** Every
-panel reports whether it was able to check, separately from what it found, because an unchecked
-source that renders like a passing one is the failure this tool is built to refuse.
+The workbench separates human decisions from technical diagnostics. Every source reports its coverage: an unavailable source does not render as an empty successful one, and a completion summary does not stand in for execution evidence.
 
 ## What it does
 
@@ -21,7 +19,9 @@ list, and the list is where the promise lives.
 
 Task creation and migration use the declaration, review and registration APIs described in [task registration](docs/task-registration.md). The web action table does not provide an unrestricted Scheduler shortcut. Registration records authority and recovery evidence before changing task definitions; the console keeps its existing review step for outgoing actions.
 
-The review overview groups outstanding checks by affected object and links to task or repository details. The pipeline view separates process steps from execution evidence: a zero-difference sync receipt does not prove capability parity, and a fresh backup artifact does not prove every step ran. Both views reuse the configured component snapshot; they introduce no scheduler or state store. Source search, type filters and expandable evidence keep large catalogs usable. Historical statistics and route settings remain available on their respective pages.
+Navigation groups information into work, automation and resources. Work, result and activity projections reuse the same owner records. Pipelines and execution details sit under automation; conversations and model calls support work records. Technical exceptions remain in diagnostics and do not become human approvals. See [the work platform design](docs/work-platform.md) for data ownership and integration limits.
+
+Pipeline evidence remains scoped: a zero-difference sync receipt does not prove capability parity, and a fresh backup artifact does not prove every step ran. The UI adds no scheduler, state store, notification transport or agent runner. Existing task-control authority and outgoing-action reviews remain in force.
 
 ## Running it
 

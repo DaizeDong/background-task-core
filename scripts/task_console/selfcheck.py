@@ -36,6 +36,8 @@ MAY_BE_EMPTY = frozenset(("skill_archive", "plugin_cache"))
 SOURCES = (
     ("component_status", "Component observations", "TASK_CONSOLE_STATUS_SNAPSHOT", "file", None, False),
     ("source_catalog", "Source catalog", "TASK_CONSOLE_CATALOG_SNAPSHOT", "file", None, False),
+    ("work_reader", "工作记录接口", "TASK_CONSOLE_REMINDER_CLI", "file", None, False),
+    ("work_database", "工作记录库", "TASK_CONSOLE_REMINDER_DB", "file", None, False),
     ("categories", "任务分类映射", "TASK_CONSOLE_CATEGORIES", "file", None, False),
     ("health", "健康声明清单", "TASK_CONSOLE_HEALTH", "file", None, True),
     ("allowlist", "备份 allow-list", "TASK_CONSOLE_ALLOWLIST", "file", None, False),
@@ -71,7 +73,6 @@ OVERRIDES = (
     ("TASK_CONSOLE_PRIVATE_ROOT", "控制器私有根目录，不作为面板数据读取入口；由控制器校验归属和数据边界。"),
     ("TASK_CONSOLE_STATE_ROOT", "控制器状态目录绑定，仅执行接口读取；不作为只读面板的来源，由控制器检查完整绑定。"),
     ("TASK_CONSOLE_VAULT_ROOT", "控制器凭据目录，仅执行接口使用；页面不读取凭据内容，控制器校验绑定和访问权限。"),
-    ("TASK_CONSOLE_REMINDER_DB", "可选的关联提醒数据，不是主面板依赖；未配置和读取失败由关联项目接口分别报告。"),
     ("TASK_CONSOLE_DB",
      "数据库位置。默认由 datadir 解析器从私有伴生仓算出来,环境变量只是覆盖 —— "
      "它没设是正常状态,列进面板会变成一条永远显示「未设」的噪音。"

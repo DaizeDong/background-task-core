@@ -232,11 +232,14 @@ document.addEventListener("keydown",e=>{
     if("resd".indexOf(e.key) >= 0 && ae.closest(ACTIVATABLE)) return;
   }
   const k=e.key;
+  if(document.querySelector('dialog[open]')) return;
   if(k==="?"){ $("help").hidden=false; return; }
   // 表格相关的键只在任务分区里有意义。不拦的话,人在仓库分区按 j,
   // 光标在一张 display:none 的表里往下走一行,按 d 甚至会停用光标所在的那个任务 :
   // 屏幕上完全没有反应,而动作真的发生了。这比不响应危险得多。
   const TABLE_KEYS = "jkgGxaresd";
+  if(CURVIEW!=="tasks" && !$("view").classList.contains("all") &&
+      (TABLE_KEYS.includes(k) || ["Enter","ArrowDown","ArrowUp"].includes(k))) return;
   // 判据从「当前分区是不是 tasks」换成「任务表这会儿在不在视口里」。
   // 旧判据在摊开态(Shift+A)下整体失效,而摊开的用意正是「为了 Ctrl+F 全页搜」:
   // 那时人往下滚着看会话或仓库,任务表在几屏之外,按到 r 或 s 就在完全看不见的地方
@@ -265,6 +268,8 @@ document.addEventListener("keydown",e=>{
     return;   // 动作类的键(r/s/e/d/x/a)直接不受理:静默执行一个破坏性动作是最坏的结果
   }
   if(k==="/"){
+    const searchId={overview:'work-search',work:'work-search',automations:'automation-search',resources:'runtime-search',repos:'rpq',convos:'cv-search',llm:'lmq'}[CURVIEW];
+    if(searchId){e.preventDefault();if(CURVIEW==='overview')showView('work',true);$(searchId).focus();return;}
     // 过滤框在任务分区里。在别的分区按 / 时,preventDefault 顺手掐掉了浏览器的快速查找,
     // 而承诺的过滤框既没出现也没获得焦点,零反馈 :
     // 又一处「点这边、改那边,发生在看不见的地方」。先把人带过去,和 focusTask 一致。
@@ -441,6 +446,8 @@ $('runtime-search').addEventListener('input',event=>{RUNTIME_QUERY=event.target.
 $('runtime-state').addEventListener('change',event=>{RUNTIME_STATE=event.target.value;renderSkills();renderPlugins();});
 $('runtime-sort').addEventListener('change',event=>{RUNTIME_SORT=event.target.value;renderSkills();});
 $('rpissue').addEventListener('change',event=>{RP_ISSUE=event.target.value;renderRepoList();});
+ConsoleActions.start();
+startWorkPlatform();
 showView(location.hash.slice(1) || VIEWS[0], false);
 $("tlin").addEventListener("click",()=>tlZoom(0.7,0.5));
 $("tlout").addEventListener("click",()=>tlZoom(1.4,0.5));

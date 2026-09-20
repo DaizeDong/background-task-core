@@ -88,6 +88,7 @@ async function loadComponents(){
   catch(error){COMPONENTS={available:false,reason:error.message,tasks:[]};}
   finally{if(button) button.disabled=false;}
   renderPipelines(); renderCatalog();
+  if(typeof renderPlatformSignals==='function') renderPlatformSignals();
 }
 
 function renderPipelines(){

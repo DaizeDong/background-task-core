@@ -1,45 +1,4 @@
 // Classic script module; loaded in app.js dependency order.
-const VIEWS = ["overview", "pipelines", "tasks", "repos", "storage", "convos", "llm"];
-let CURVIEW = null;
-
-function showView(key, push){
-  if(VIEWS.indexOf(key) < 0) key = VIEWS[0];
-  CURVIEW = key;
-  if($("page-refresh-state")) $("page-refresh-state").textContent="";
-  if(key==="storage" && !CXL) loadCxList();
-  if(typeof updateViewHeading === "function") updateViewHeading(key);
-  document.querySelectorAll("section[data-view]").forEach(sec=>{
-    sec.hidden = sec.dataset.view !== key;
-  });
-  // 导航语境里 aria-current 的值是 "page",不是 "true";非当前项直接摘掉属性,
-  // 留一个 aria-current="false" 虽然合法,但读屏会把它念出来。
-  // 同时做 roving tabindex:整条侧栏在 Tab 序列里只占一格。这不是无障碍装饰 :
-  // 这个台子的表格已经是 j/k 驱动的,侧栏是全页唯一还要连按六下 Tab 才能越过的地方。
-  document.querySelectorAll(".nv").forEach(b=>{
-    const cur = b.dataset.view === key;
-    if(cur) b.setAttribute("aria-current", "page"); else b.removeAttribute("aria-current");
-    b.classList.toggle("active", cur);          // Tabler 画选中态看的是这个类
-    b.parentElement.classList.toggle("active", cur);
-    b.tabIndex = cur ? 0 : -1;
-  });
-  if(push && location.hash.slice(1) !== key) location.hash = key;
-  // 摊开态下所有分区都可见(#view.all 用 !important 压过 hidden),
-  // 于是「切分区」这个动作没有任何可见效果,只剩滚动归零。
-  // 这时正确的行为是滚到那一段,而不是滚到页顶 : 否则每一次跳转看起来都像坏了。
-  // 摊开态下「切分区」本来没有可见效果:所有分区都显示着,写 hidden 被 !important 压掉,
-  // 于是点侧栏只剩滚动归零,看起来像坏了。
-  // 试过三种滚到那一段的做法,没有一种稳:scrollIntoView 差 538px;自己算绝对位置
-  // 当时五个分区里只有两个落点对;交回浏览器原生锚点又和 .nv 上的 preventDefault 打架。
-  // 所以不滚了,直接收回摊开 : 点侧栏的本意就是「我要看这一类」,而摊开是「我暂时全都要看」。
-  // Ctrl+F 需要摊开时随时再按 Shift+A,那条路径没有被拿走。
-  $("view").classList.remove("all");
-  // 切分区时把滚动位置归零。不归零的话从一屏很长的分区切到一屏很短的,
-  // 看到的是一片空白,而那看起来像「这一类什么都没有」。
-  // (原来这里还有一行 $("view").scrollTop = 0。#view 从来不是滚动容器,那一行永远无效,
-  //  而它会让下一个人以为 #view 有独立滚动,任何基于这个假设的改动都会踩空。)
-  window.scrollTo(0, 0);
-}
-
 // 侧栏徽章。这是「合并」这件事的安全带:分区把东西收了起来,徽章负责让要人管的东西
 // 不用点进去也看得见。少了它,合并就是纯粹的藏。
 function setBadge(key, n, warn){
@@ -52,7 +11,7 @@ function setBadge(key, n, warn){
   el.className = "badge ms-auto " + (warn ? "bg-warning" : "bg-danger");
   // 一个只有数字的红块说不出自己是什么。加可读名字之后它才是「这一区有 N 项要人管」,
   // 而不是「这里有个红色的东西」。
-  el.title = `${n} 项要人管,点进去看`;
+  el.title = `${n} 项技术观察,点进去看`;
   el.setAttribute("aria-label", el.title);
 }
 
@@ -70,7 +29,8 @@ function updateBadges(){
   // 自检单独加,是因为它是「这张清单本身可不可信」那一层,不在清单里。
   let ov = todoN;
   if(SCK && !SCK.ok) ov += (SCK.broken || []).length || 1;
-  setBadge("overview", ov, false);
+  setBadge("diagnostics", ov, false);
+  if(typeof renderPlatformSignals === "function") { renderPlatformSignals(); renderAutomations(); }
 
   if(typeof DATA !== "undefined" && DATA && DATA.summary)
     setBadge("tasks", DATA.summary.bad || 0, false);

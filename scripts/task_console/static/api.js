@@ -10,6 +10,7 @@ let API_SEQUENCE=0;
 const API_READS=new Map();
 async function api(p,o){
   const read=!o?.method || o.method==='GET', sequence=++API_SEQUENCE;
+  if(!read && typeof ConsoleActions!=='undefined' && ConsoleActions.readOnly) throw new Error(ConsoleActions.reason);
   const record=state=>{if(read && (API_READS.get(p)?.sequence || 0)<=sequence)
     API_READS.set(p,{path:p,sequence,observedAt:new Date().toISOString(),...state});};
   record({pending:true});

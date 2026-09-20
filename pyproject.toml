@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "task-console"
 version = "0.1.0"
-description = "Read-only task declaration producer and local Windows console"
+description = "Local work, automation and resource console with guarded Windows task controls"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = ["fleet-guards>=0.1.0", "llmcall>=0.2.0"]

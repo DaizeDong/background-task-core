@@ -1,6 +1,7 @@
 // Ordered classic modules share the existing page state. Events start last.
 const CONSOLE_MODULES = [
   "api.js",
+  "actions.js",
   "panels/tasks.js",
   "panels/skills.js",
   "panels/plugins.js",
@@ -12,6 +13,9 @@ const CONSOLE_MODULES = [
   "panels/overview.js",
   "panels/pipelines.js",
   "panels/review.js",
+  "work-model.js",
+  "workbench.js",
+  "navigation.js",
   "operations.js",
   "events.js"
 ];

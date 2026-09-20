@@ -235,22 +235,7 @@ const C=[
    data-selname="${esc(r.name)}"${sel.has(r.name)?" checked":""}
    aria-label="选中 ${esc(r.name)}"></td>`,()=>0],
  ["sl","状态",r=>`<td><span class="st ${r.sk}">${esc(r.sl)}</span></td>`,r=>r.sl],
- ["ops","操作",r=>{
-   // 动作长在每一行上,而不是藏在展开态和键盘快捷键里。一个要先发现才能用的动作,
-   // 对一个每天只瞥一眼的维护台来说等于不存在。
-   const on=r.state!=="Disabled", run=r.state==="Running";
-   // 五个动作五个图形。停用和启用刻意不是「同一个图形换个颜色」:
-   // 它们是相反的操作,只靠颜色区分等于在最该分清的地方只留一条通道。
-   const nm=`data-name="${esc(r.name)}"`;
-   return `<td class="ops">`
-     +ibtn("i-play","立即运行",`data-act="run" ${nm}`)
-     +(run?ibtn("i-stop","停止",`data-act="stop" ${nm}`,"danger"):"")
-     +ibtn("i-retire","退役:停用 + 退出备份名单 + 退出健康清单",
-           `data-retire="${esc(r.name)}"`,"danger")
-     +(on?ibtn("i-pause","停用",`data-act="disable" ${nm}`,"danger")
-         :ibtn("i-on","启用",`data-act="enable" ${nm}`))
-     +`</td>`;
- },r=>r.state],
+ ["ops","操作",r=>`<td class="ops">${taskActionButtons(r,true)}</td>`,r=>r.state],
  // 说明折进任务名的第二行。它们本来就是一体的「这是什么」,而分成两列的代价是
  // 说明只剩 280px、每行都被截成半句话(「每日 22:00 的配置备份总…」)。
  // 合并之后说明可用宽度涨到 340px,而且不再和任务名争抢。
@@ -485,8 +470,11 @@ function renderBulk(){
 
 async function act(names, verb){
   if(busy||!names.length) return;
+  if(!ConsoleActions.allowWrite()) return;
   if(verb==="disable"&&!confirm(`停用 ${names.length} 个任务?\n\n${names.join("\n")}\n\n它们将不再按计划运行,直到重新启用。`)) return;
   busy=true;
+  renderAutomations();
+  render();
   let ok=0, fail=0;
   for(const n of names){
     try{
@@ -550,6 +538,7 @@ function focusCur(){
 
 
 async function retireTask(name){
+  if(!ConsoleActions.allowWrite()) return;
   let p;
   try{ p=await api("/api/retire/plan",{method:"POST",body:JSON.stringify({name})}); }
   catch(e){ toast(`${name}: ${e.message}`,"bad"); return; }
