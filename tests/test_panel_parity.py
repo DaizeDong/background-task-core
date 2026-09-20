@@ -153,7 +153,12 @@ def test_all_modules_are_allowlisted_and_loaded_once():
     names = json.loads(re.search(r"const CONSOLE_MODULES = (\[.*?\]);", module_source("app.js"), re.S).group(1))
     assert len(names) == len(set(names))
     styles = set(re.findall(r'href="/static/([^\"]+\.css)"', server.PAGE.read_text(encoding="utf-8")))
-    assert set(names) | {"app.js"} | styles == server.STATIC_FILES
+    html = server.PAGE.read_text(encoding="utf-8")
+    bootstrap = re.findall(r'src="/static/([^\"]+\.js)"', html)
+    assert len(bootstrap) == len(set(bootstrap))
+    assert not set(bootstrap) & set(names)
+    assert set(names) | set(bootstrap) | styles == server.STATIC_FILES
+    assert html.index('/static/theme.js') < html.index('/vendor/tabler/tabler.min.css')
     assert names[-1] == "events.js"
 
 

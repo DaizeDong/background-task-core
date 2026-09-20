@@ -130,9 +130,14 @@ const RP_KIND_WHY = {
 const RP_ID_LAB = {ok:"匹配", mismatch:"不匹配", foreign:"第三方", unchecked:"未检查"};
 let RP_SEL = null;          // 选中的仓名
 let RP_STATE = "";          // 状态条上点中的那一段,空串=不按状态过滤
+let RP_ISSUE = "";
 let RP_AUTOSEL = false;     // 首屏自动选中只做一次,之后不再抢人的选择
 
 function rpMatches(r, q, acc, kind, vis){
+  if(RP_ISSUE==="identity_mismatch" && r.identity?.state!=="mismatch") return false;
+  if(RP_ISSUE==="identity_unchecked" && r.identity?.state!=="unchecked") return false;
+  if(RP_ISSUE==="upstream" && r.unpushedKnown!==false) return false;
+  if(RP_ISSUE==="behind" && r.behindKnown!==false) return false;
   if(RP_STATE && r.state !== RP_STATE) return false;
   if(acc && r.owner !== acc) return false;
   if(kind && r.kind !== kind) return false;

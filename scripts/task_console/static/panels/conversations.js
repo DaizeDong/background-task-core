@@ -1,5 +1,5 @@
 // Classic script module; loaded in app.js dependency order.
-let CONVOS=null, CV_HUMAN_ONLY=false, CV_OPEN={};
+let CONVOS=null, CV_HUMAN_ONLY=false, CV_OPEN={}, CV_QUERY="";
 // 排序维度。后端按最近活动发,这里只重排,不重扫 ——
 // 换个顺序而已,没有理由再走一遍上千份转录。
 let CV_SORT="new";
@@ -40,7 +40,13 @@ function renderConvos(){
     // 读不动的必须报出来:悄悄跳过会让「没有这些对话」和「我没读到」变成同一个数字。
     +(S.unreadable?`<span style="color:var(--bad)">读不动 ${S.unreadable}</span>`:"");
 
-  const groups=CONVOS.groups.filter(g=>!CV_HUMAN_ONLY||g.humanish);
+  const query=CV_QUERY.trim().toLowerCase();
+  const matches=(g,r)=>(!CV_HUMAN_ONLY || r.humanSeen>=2) && (!query ||
+    [g.cwd,r.title,r.preview,r.file].join(" ").toLowerCase().includes(query));
+  const groups=CONVOS.groups.filter(g=>(!CV_HUMAN_ONLY||g.humanish) && (!query || g.shown.some(r=>matches(g,r))));
+  const delivered=CONVOS.groups.reduce((n,g)=>n+g.shown.length,0);
+  const matching=groups.reduce((n,g)=>n+g.shown.filter(r=>matches(g,r)).length,0);
+  $("cv-match").textContent=`匹配 ${matching}/${delivered} 条已加载记录 · 另有 ${Math.max(0,S.files-delivered)} 条未载入`;
 
   // 体积条的基准。取对数是因为跨度有四个数量级(几百字节到几个 G):线性标度下
   // 除了最大的两行,其余全部宽度归零,那等于把这一列画成空的。
@@ -73,14 +79,14 @@ function renderConvos(){
   else rest.sort((a,b)=>(b.newest||0)-(a.newest||0));
 
   const cvGroup=g=>{
-    const rows=g.shown.filter(r=>!CV_HUMAN_ONLY||r.humanSeen>=2);
+    const rows=g.shown.filter(r=>matches(g,r));
     // 这一屏唯一告诉人「你没看全」的地方,以前在最需要它准确的那个模式下报旧口径的数。
     // 现在把三个来源分开数:被筛掉的、后端就没送来的、以及**送来的那批没经过筛**这件事。
     // 最后一句不是啰嗦:后端截断在筛选之前发生,所以没列出的那些里有几场是真人对话,
     // 前端根本不知道 —— 编一个筛过的数出来会比报旧口径更糟。
     const cut=g.shown.length-rows.length;
     const unlisted=g.count-g.shown.length;
-    const open=CV_OPEN[g.cwd]?" open":"";
+    const open=CV_OPEN[g.cwd]!==false?" open":"";
     const cut2=g.cwd.search(/[\\/][^\\/]*$/);
     const head=cut2>0?g.cwd.slice(0,cut2+1):"", tail=cut2>0?g.cwd.slice(cut2+1):g.cwd;
     const b=g.bytes||0;
@@ -88,7 +94,7 @@ function renderConvos(){
     // 于是一个有序列表看起来像乱序的。newest 是 epoch **秒**。
     const ageH=g.newest?(Date.now()/1000-g.newest)/3600:null;
     return `<div class="cv-g${open}" data-cv="${esc(g.cwd)}">
-      <div class="cv-gh">
+      <button class="cv-gh" aria-expanded="${!!open}">
         <span class="caret">${open?"▼":"▶"}</span>
         <span class="dir" title="${esc(g.cwd)}"><span class="dp">${esc(head)}</span><span
           class="dn">${esc(tail)}</span></span>
@@ -96,29 +102,28 @@ function renderConvos(){
         <span class="cv-hm">${g.humanish?"👤"+g.humanish:""}</span>
         <span class="ag" title="最近一场的时间">${ageH==null?"–":cvAge(ageH)}</span>
         <span class="n">${CV_HUMAN_ONLY?rows.length+"/"+g.count:g.count} 场 · ${kb(b)}</span>
-      </div>
+      </button>
       <div class="cv-list">${rows.map(r=>`
         <div class="cv-r${r.humanSeen>=2?" human":""}" data-cvfile="${esc(r.file||"")}"
              title="点一下复制转录路径">
-          <span class="t" title="${esc(r.title)}">${esc(r.title)}</span>
+          <button class="t cv-copy" title="${esc(r.title)}">${esc(r.title)}</button>
           <span class="src ${esc(r.titleFrom)}" title="${esc(CV_SRC[r.titleFrom]||r.titleFrom)}">${
             CV_TAG[r.titleFrom]||"?"}</span>
           <span class="m">${r.humanSeen?"👤"+r.humanSeen+(r.partial?"+":""):""}</span>
           <span class="m">${cvAge(r.ageHours)} · ${kb(r.bytes)}</span>
           ${(r.preview&&r.preview!==r.title)?`<span class="pv" title="${esc(r.preview)}">${esc(r.preview)}</span>`:""}
         </div>`).join("")}
-        ${cut?`<div class="cv-more">另有 ${cut} 场被「只看真人」筛掉</div>`:""}
-        ${g.truncated?`<div class="cv-more">这个目录还有 ${unlisted} 场没列出${
-          CV_HUMAN_ONLY?"(这批没经过「只看真人」筛,其中几场是真人对话不知道)":""}</div>`:""}
+        ${cut?`<div class="cv-more">另有 ${cut} 场被当前条件筛掉</div>`:""}
+        ${g.truncated?`<div class="cv-more">这个目录还有 ${unlisted} 场没列出（未参与筛选）</div>`:""}
       </div></div>`;
   };
 
   // 折叠块本身要把总场数和总体积打在标题上:「这里有东西」不能因为收起来就消失,
   // 消失的只是 23 份逐字相同的路径前缀。
-  const ephOpen=CV_OPEN[CV_EPH_KEY]?" open":"";
+  const ephOpen=CV_OPEN[CV_EPH_KEY]!==false?" open":"";
   const ephN=eph.reduce((a,g)=>a+g.count,0), ephB=eph.reduce((a,g)=>a+(g.bytes||0),0);
   const ephHtml=eph.length?`<div class="cv-g${ephOpen}" data-cv="${esc(CV_EPH_KEY)}">
-      <div class="cv-gh">
+      <button class="cv-gh" aria-expanded="${!!ephOpen}">
         <span class="caret">${ephOpen?"▼":"▶"}</span>
         <span class="dir" title="一次性无头运行留下的临时目录,每个至多 2 场且没有真人多轮"
           ><span class="dn">临时会话目录 ${eph.length} 个</span></span>
@@ -126,10 +131,10 @@ function renderConvos(){
           style="width:${barW(ephB)}%"></i></span>
         <span class="cv-hm"></span><span class="ag"></span>
         <span class="n">${ephN} 场 · ${kb(ephB)}</span>
-      </div>
+      </button>
       <div class="cv-list">${eph.map(cvGroup).join("")}</div></div>`:"";
 
-  $("cvgroups").innerHTML=rest.map(cvGroup).join("")+ephHtml;
+  $("cvgroups").innerHTML=(rest.map(cvGroup).join("")+ephHtml) || '<p class="review-empty">没有匹配的已加载会话</p>';
 }
 
 // ================= 外壳:分区切换与徽章 ==============================================

@@ -1,5 +1,5 @@
 // Read-only projections of existing component observations. No execution or state store.
-let COMPONENTS = null, PIPELINE_KEY = "sync", PIPELINE_STEP = 0;
+let COMPONENTS = null, PIPELINE_QUERY="";
 const PIPELINE_DEFS = {
   sync: {title:"Claude → Codex 配置同步", name:"SyncClaudeToCodex",
     purpose:"查看配置是否写入，以及哪些能力仍需处理。"},
@@ -29,7 +29,7 @@ function pipelineSteps(key, components){
     ["开始时间",pipeTime(task.execution && task.execution.started_at)]] : [];
   if(key === "sync"){
     const catalog = components && components.catalog;
-    const source = unknown("读取来源", "汇集配置、技能和插件", "来源目录是独立采样，尚未与这次同步关联。");
+    const source = unknown("读取来源", "汇集配置、技能和插件", "独立采样，未关联本次运行。");
     if(catalog && catalog.available){
       source.label="已读取"; source.evidence=[["来源数",(catalog.records||[]).length],["采样时间",pipeTime(catalog.observed_at)],
         ["检查范围",catalogCoverageText(catalog.coverage)]];
@@ -44,20 +44,20 @@ function pipelineSteps(key, components){
         ["剩余差异",receipt.remaining_changes ?? "未记录"]];
       if(applied && receipt.remaining_changes===0){
         files.label="文件已对齐"; files.tone="ok";
-        files.detail="这次应用后的剩余差异为 0。能力兼容性请继续看下一环节。";
+        files.detail="应用完成，剩余差异 0；能力另行验收。";
       }else{
         files.label=receipt.status==="failed"?"写入失败":"待核对";
         files.tone=receipt.status==="failed"?"bad":"warn";
-        files.detail="这份收据尚不能证明应用后差异已归零。";
+        files.detail="收据未证明应用后差异归零。";
       }
     }
     const findings = receipt && Array.isArray(receipt.findings) ? receipt.findings : null;
     const capability = unknown("核对能力", "检查技能、连接和钩子", "没有独立的能力验收结论。");
-    const memory = unknown("导入记忆", "归档并投递授权增量", "导入和原生记忆召回是不同环节，召回效果仍需独立验证。");
+    const memory = unknown("导入记忆", "归档并投递授权增量", "原生记忆召回未验收。");
     if(findings){
       const rest=findings.filter(f=>f.area!=="memory"), mem=findings.filter(f=>f.area==="memory");
       capability.findings=rest; memory.findings=mem;
-      if(rest.length){capability.label=`${rest.length} 项待处理`;capability.tone="warn";capability.detail="同步报告仍有能力限制，展开问题查看具体对象。";}
+      if(rest.length){capability.label=`${rest.length} 项待处理`;capability.tone="warn";capability.detail="存在能力限制，见下方清单。";}
       if(mem.length){memory.label="部分完成";memory.tone="warn";}
       capability.evidence=memory.evidence=evidence;
     }
@@ -75,10 +75,10 @@ function pipelineSteps(key, components){
     return step;
   };
   return [
-    {...unknown("备份配置", "复制、检查差异并推送", "任务整体退出码不证明每个步骤成功；复制和推送尚无分阶段收据。"),evidence},
-    checkStep("整理记忆", "通过 llmcall 整理变更", ["changelog"], "这里检查整理产物的新鲜度。模型调用及降级结果尚未按运行标识关联。"),
-    checkStep("归档日志", "保存每日工作记录", ["journal"], "这里检查日志产物。尚未证明它由上面同一次任务运行生成。"),
-    checkStep("维护检查", "检查组件、记忆和变更", ["fleet-check","memory-doctor","diff-review"], "逐项展示现有检查结论；会话清理尚无独立收据。")
+    {...unknown("备份配置", "复制、检查差异并推送", "复制 / 推送缺少分阶段收据。"),evidence},
+    checkStep("整理记忆", "通过 llmcall 整理变更", ["changelog"], "产物新鲜度已检查；模型调用尚未按运行标识关联。"),
+    checkStep("归档日志", "保存每日工作记录", ["journal"], "日志产物已检查，未关联本次运行。"),
+    checkStep("维护检查", "检查组件、记忆和变更", ["fleet-check","memory-doctor","diff-review"], "检查结果如下；会话清理缺少独立收据。")
   ];
 }
 
@@ -91,41 +91,52 @@ async function loadComponents(){
 }
 
 function renderPipelines(){
-  const box=$("pipeline-body"); if(!box) return;
-  const def=PIPELINE_DEFS[PIPELINE_KEY], task=pipelineTask(PIPELINE_KEY,COMPONENTS);
-  const steps=pipelineSteps(PIPELINE_KEY,COMPONENTS);
-  PIPELINE_STEP=Math.min(PIPELINE_STEP,steps.length-1);
-  const chosen=steps[PIPELINE_STEP], receipt=task && task.last_run_v1;
-  $("pipeline-tabs").innerHTML=Object.entries(PIPELINE_DEFS).map(([key,value])=>
-    `<button data-pipeline="${key}" aria-pressed="${key===PIPELINE_KEY}">${esc(value.title)}</button>`).join("");
-  const unavailable=!COMPONENTS || !COMPONENTS.available;
-  const issue=unavailable?"组件证据不可用":!task?"任务尚未关联":pipeState(receipt && receipt.status || task.verdict);
-  const tone=unavailable || !task?"warn":pipeTone(receipt && receipt.status || task.verdict);
-  box.innerHTML=`<div class="pipeline-summary"><div><h2>${esc(def.title)}</h2><p>${esc(def.purpose)}</p></div>
-    <span class="review-status ${tone}">${esc(issue)}</span></div>
-    ${unavailable?`<p class="review-notice">${esc(COMPONENTS && COMPONENTS.reason || "正在读取组件证据")}</p>`:""}
-    <p class="pipeline-time">组件采样 ${esc(pipeTime(COMPONENTS && COMPONENTS.captured_at))} <span>最近运行 ${esc(pipeTime(task && task.execution && task.execution.started_at))}</span></p>
-    <div class="pipeline-layout"><ol class="pipeline-steps">${steps.map((step,i)=>`<li><button data-pipe-step="${i}" aria-pressed="${i===PIPELINE_STEP}">
-      <span class="step-number">${i+1}</span><span class="step-copy"><strong>${esc(step.title)}</strong><small>${esc(step.purpose)}</small></span>
-      <span class="review-status ${step.tone}">${esc(step.label)}</span></button></li>`).join("")}</ol>
-    <article class="pipeline-detail" aria-live="polite"><h3>${esc(chosen.title)}</h3><p>${esc(chosen.detail)}</p>
-      ${chosen.checks && chosen.checks.length?`<ul class="check-list">${chosen.checks.map(check=>`<li><span>${esc(({changelog:"记忆整理产物",journal:"日志归档","fleet-check":"组件合规","memory-doctor":"记忆检查","diff-review":"变更复核"})[check.check_id] || check.check_id)}</span><b class="${pipeTone(check.state)}">${esc(pipeState(check.state))}</b></li>`).join("")}</ul>`:""}
-      ${chosen.findings && chosen.findings.length?`<details class="pipeline-findings"><summary>待处理问题（${chosen.findings.length}）</summary><ul>${chosen.findings.map(f=>`<li><strong>${esc(({skills:"技能",agents:"Agent",hooks:"钩子",memory:"记忆",mcp:"MCP"})[f.area] || f.area)}</strong> ${esc(f.name || "")}<small>${esc(f.reason || catalogLabel(f.status))}</small></li>`).join("")}</ul></details>`:""}
-      <details class="evidence"><summary>查看证据</summary><dl>${(chosen.evidence||[]).map(([label,value])=>`<dt>${esc(label)}</dt><dd>${esc(value ?? "未记录")}</dd>`).join("") || "暂无证据"}</dl></details>
-      <div class="pipeline-actions">${task?`<button data-task="${esc(task.name)}">查看任务</button>`:""}<button data-goto="storage">查看来源目录</button></div>
-    </article></div>
-    <p class="pipeline-footnote">顺序表示流程职责。只有显式运行标识才能关联同一次执行；独立产物检查不表示整条流水线完成。</p>`;
+  const box=$("pipeline-body");if(!box) return;
+  $("pipeline-sample").textContent="组件采样 "+pipeTime(COMPONENTS && COMPONENTS.captured_at);
+  box.innerHTML=(!COMPONENTS || !COMPONENTS.available ? `<p class="review-notice">${esc(COMPONENTS && COMPONENTS.reason || "正在读取组件证据")}</p>`:"")+
+    Object.entries(PIPELINE_DEFS).map(([key,def])=>{
+      const task=pipelineTask(key,COMPONENTS), receipt=task && task.last_run_v1;
+      const status=task && (receipt && receipt.status || task.verdict);
+      const scheduled=typeof ROWS!=="undefined" ? ROWS.filter(row=>row.name===def.name) : [];
+      const row=scheduled.length===1 ? scheduled[0] : null;
+      const steps=pipelineSteps(key,COMPONENTS);
+      return `<div class="card pipeline-run" id="pipeline-${key}">
+        <div class="card-header"><h2 class="card-title">${esc(def.title)}</h2><div class="review-actions">
+          <span class="review-status ${task?pipeTone(status):"idle"}">${task?esc(pipeState(status)):"任务未关联"}</span>
+          ${task?`<button data-task="${esc(task.name)}">任务详情</button>`:""}
+          ${row?fixBtn("run",row.name):""}</div></div>
+        <div class="pipeline-metrics"><span>最近运行 <b>${esc(pipeTime(task && task.execution && task.execution.started_at))}</b></span>
+          <span>下次计划 <b>${esc(row ? pipeTime(row.nextRun) : "未读取")}</b></span><span>运行标识 <b>${esc(task && task.run_id || "未提供")}</b></span>
+          <span>任务标识 <b>${esc(task && task.task_id || "未关联")}</b></span>
+          ${receipt?`<span>模式 <b>${esc(receipt.mode || "未记录")}</b></span><span>本次改动 <b>${esc(receipt.change_count ?? "未记录")}</b></span><span>剩余差异 <b>${esc(receipt.remaining_changes ?? "未记录")}</b></span>`:""}
+        </div>
+        <div class="ops-scroll"><table class="ops-table pipeline-table"><thead><tr><th>环节</th><th>结果</th><th>证据</th></tr></thead><tbody>
+        ${steps.map((step,i)=>`<tr><th scope="row">${i+1}. ${esc(step.title)}</th><td><span class="review-status ${step.tone}">${esc(step.label)}</span></td>
+          <td><div>${esc(step.detail.replace("展开问题查看具体对象。","见下方问题清单。"))}</div>
+            ${(step.checks||[]).map(check=>`<span class="check-chip ${pipeTone(check.state)}">${esc(check.check_id)}: ${esc(pipeState(check.state))}</span>`).join("")}
+            <div class="pipeline-evidence">${(step.evidence||[]).filter(([label])=>!["任务","任务标识","运行标识","开始时间"].includes(label)).map(([label,value])=>`<span>${esc(label)} <b>${esc(value ?? "未记录")}</b></span>`).join("")}</div>
+          </td></tr>`).join("")}</tbody></table></div></div>`;
+    }).join("")+
+    `<div class="card"><div class="card-header"><h2 class="card-title">同步待处理项 <span id="pipeline-issue-count" class="n"></span></h2>
+    <div class="catalog-tools"><input id="pipeline-search" type="search" aria-label="搜索流水线问题" placeholder="搜索对象、类型或原因" value="${esc(PIPELINE_QUERY)}"><button data-goto="storage">组件来源</button></div></div>
+    <div id="pipeline-issues" class="ops-scroll"></div></div>`;
+  $("pipeline-search").addEventListener("input",event=>{PIPELINE_QUERY=event.target.value;renderPipelineIssues();});
+  renderPipelineIssues();
   const links=$("overview-pipelines");
-  if(links) links.innerHTML=Object.entries(PIPELINE_DEFS).map(([key,value])=>{
-    const t=pipelineTask(key,COMPONENTS), status=t && (t.last_run_v1 && t.last_run_v1.status || t.verdict);
-    return `<button data-open-pipeline="${key}"><span><strong>${esc(value.title)}</strong><small>${esc(value.purpose)}</small></span><span class="review-status ${t?pipeTone(status):"idle"}">${t?esc(pipeState(status)):"待验证"}</span></button>`;
+  if(links) links.innerHTML=Object.entries(PIPELINE_DEFS).map(([key,def])=>{
+    const task=pipelineTask(key,COMPONENTS), state=task && (task.last_run_v1 && task.last_run_v1.status || task.verdict);
+    return `<button data-open-pipeline="${key}"><strong>${esc(def.title)}</strong><span class="review-status ${task?pipeTone(state):"idle"}">${task?esc(pipeState(state)):"待验证"}</span></button>`;
   }).join("");
 }
-
+function renderPipelineIssues(){
+  const task=pipelineTask("sync",COMPONENTS), findings=task && task.last_run_v1 && task.last_run_v1.findings;
+  const query=PIPELINE_QUERY.trim().toLowerCase();
+  const rows=(Array.isArray(findings)?findings:[]).filter(f=>!query || JSON.stringify(f).toLowerCase().includes(query));
+  $("pipeline-issue-count").textContent=Array.isArray(findings)?`${rows.length}/${findings.length}`:"未提供收据";
+  $("pipeline-issues").innerHTML=rows.length?`<table class="ops-table"><thead><tr><th>类型</th><th>对象</th><th>状态 / 原因</th></tr></thead><tbody>${rows.map(f=>`<tr><td>${esc(catalogLabel(f.area))}</td><th scope="row">${esc(f.name || "未命名")}</th><td>${esc(f.reason || catalogLabel(f.status))}</td></tr>`).join("")}</tbody></table>`:
+    `<p class="review-empty">${Array.isArray(findings)?"没有匹配的待处理项":"缺少问题清单，能力状态待验证"}</p>`;
+}
 function pipelineClick(event){
-  const tab=event.target.closest("[data-pipeline],[data-open-pipeline]");
-  if(tab){PIPELINE_KEY=tab.dataset.pipeline || tab.dataset.openPipeline; PIPELINE_STEP=0;
-    if(tab.dataset.openPipeline) showView("pipelines",true); renderPipelines();}
-  const step=event.target.closest("[data-pipe-step]");
-  if(step){PIPELINE_STEP=Number(step.dataset.pipeStep);renderPipelines();}
+  const link=event.target.closest("[data-open-pipeline]");
+  if(link){showView("pipelines",true);$("pipeline-"+link.dataset.openPipeline)?.scrollIntoView({block:"start"});}
 }

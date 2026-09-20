@@ -180,6 +180,23 @@ def review_pipeline_case() -> dict:
     ]}
 
 
+def operations_case() -> dict:
+    """Small UI interactions fixture, generated independently of runtime data."""
+    conversations = []
+    for index, name in enumerate(("Acme project", "Sample project")):
+        conversations.append({"cwd": "/synthetic/" + name, "count": 3, "humanish": 1,
+            "bytes": 2048, "newest": 1_800_000_000, "truncated": True, "shown": [
+                {"title": name + " planning", "titleFrom": "rename", "file": f"/synthetic/{index}.jsonl",
+                 "humanSeen": 3, "partial": False, "ageHours": 1, "bytes": 1024,
+                 "preview": "synthetic searchable content"}]})
+    return {"conversations": {"available": True, "summary": {"files": 6, "humanish": 2,
+                "bytes": 4096, "groups": 2}, "groups": conversations},
+            "skills": [{"name": "Acme", "chars": 10, "archived": False},
+                       {"name": "Sample", "chars": 30, "archived": True}],
+            "repository": {"name": "acme", "state": "clean", "identity": {"state": "mismatch"},
+                           "unpushedKnown": False, "behindKnown": False}}
+
+
 def generate(output: Path) -> None:
     request = example_request()
     output.mkdir(parents=True, exist_ok=True)

@@ -160,7 +160,7 @@ document.addEventListener("click",e=>{
     return;
   }
   const cg=e.target.closest(".cv-gh");
-  if(cg){ const k=cg.parentElement.dataset.cv; CV_OPEN[k]=!CV_OPEN[k]; renderConvos(); return; }
+  if(cg){ const k=cg.parentElement.dataset.cv; CV_OPEN[k]=CV_OPEN[k]===false; renderConvos(); return; }
   if(e.target.id==="cvonly"){ CV_HUMAN_ONLY=e.target.checked; renderConvos(); return; }
   const rt=e.target.closest("button[data-retire]");
   if(rt){ e.stopPropagation(); retireTask(rt.dataset.retire); return; }
@@ -272,7 +272,7 @@ document.addEventListener("keydown",e=>{
     if(CURVIEW !== "tasks" && !$("view").classList.contains("all")) showView("tasks", true);
     $("q").focus(); $("q").select(); return;
   }
-  if(k==="R"){ load(); return; }
+  if(k==="R"){ refreshPage(); return; }
   // Shift+A:摊开或收回全部分区,只为让 Ctrl+F 能搜到全部内容。
   // 摊开时刻意不动 hash : hash 的含义是「我在看哪一类」,摊开是「我暂时全都要看」,
   // 两件事。混进一个状态里,刷新会回到一个你没选过的形态。
@@ -353,7 +353,7 @@ $("cxwhich").addEventListener("change",loadCxList);
 $("cxsort").addEventListener("change",()=>{ if(CXL) renderCxList(); });
 loadMaint();
 loadCodex();
-$("scktog").addEventListener("click",()=>$("sckd").classList.toggle("on"));
+$("scktog").addEventListener("click",()=>{const open=$("sckd").classList.toggle("on");$("scktog").textContent=open?"收起检查":"展开检查";});
 loadSelfcheck();
 $("rpreload").addEventListener("click",loadRepos);
 // 过滤只改看得见什么,不重新扫描 —— 扫一遍所有仓要一秒多,而每敲一个字符重扫一次
@@ -431,16 +431,16 @@ $("sidetoggle").addEventListener("click",()=>{
   try{ localStorage.setItem("tc.narrow", n?"1":"0"); }catch(e){}
 });
 try{ if(localStorage.getItem("tc.narrow")==="1") $("sidetoggle").click(); }catch(e){}
-// Tabler 靠 <html data-bs-theme> 切明暗,本页原来靠 data-theme 与 prefers-color-scheme。
-// 两套开关必须由一处驱动,否则会出现「卡片是暗的、表格是亮的」这种一半一半的状态。
-function syncTheme(){
-  const forced = document.documentElement.getAttribute("data-theme");
-  const dark = forced ? forced === "dark"
-    : matchMedia("(prefers-color-scheme: dark)").matches;
-  document.documentElement.setAttribute("data-bs-theme", dark ? "dark" : "light");
-}
-syncTheme();
-matchMedia("(prefers-color-scheme: dark)").addEventListener("change", syncTheme);
+ConsoleTheme.apply();
+$('theme-select').addEventListener('change',event=>ConsoleTheme.set(event.target.value));
+$('page-refresh').addEventListener('click',refreshPage);
+$('page-export').addEventListener('click',exportPage);
+$('review-search').addEventListener('input',event=>{REVIEW_QUERY=event.target.value;renderTodo();});
+$('cv-search').addEventListener('input',event=>{CV_QUERY=event.target.value;renderConvos();});
+$('runtime-search').addEventListener('input',event=>{RUNTIME_QUERY=event.target.value;renderSkills();renderPlugins();});
+$('runtime-state').addEventListener('change',event=>{RUNTIME_STATE=event.target.value;renderSkills();renderPlugins();});
+$('runtime-sort').addEventListener('change',event=>{RUNTIME_SORT=event.target.value;renderSkills();});
+$('rpissue').addEventListener('change',event=>{RP_ISSUE=event.target.value;renderRepoList();});
 showView(location.hash.slice(1) || VIEWS[0], false);
 $("tlin").addEventListener("click",()=>tlZoom(0.7,0.5));
 $("tlout").addEventListener("click",()=>tlZoom(1.4,0.5));
@@ -479,7 +479,7 @@ $("q").addEventListener("input",()=>{ if(DATA) render(); });
 load();
 
 $("pipeline-refresh").addEventListener("click",loadComponents);
-$("review-filter").addEventListener("change",event=>{REVIEW_FILTER=event.target.value;REVIEW_LIMIT=6;renderTodo();});
+$("review-filter").addEventListener("change",event=>{REVIEW_FILTER=event.target.value;renderTodo();});
 loadComponents();
 
 document.addEventListener("click",pipelineClick);

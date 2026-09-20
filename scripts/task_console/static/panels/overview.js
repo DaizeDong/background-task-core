@@ -5,6 +5,8 @@ let CURVIEW = null;
 function showView(key, push){
   if(VIEWS.indexOf(key) < 0) key = VIEWS[0];
   CURVIEW = key;
+  if($("page-refresh-state")) $("page-refresh-state").textContent="";
+  if(key==="storage" && !CXL) loadCxList();
   if(typeof updateViewHeading === "function") updateViewHeading(key);
   document.querySelectorAll("section[data-view]").forEach(sec=>{
     sec.hidden = sec.dataset.view !== key;

@@ -74,7 +74,7 @@ def test_catalog_search_keeps_unknown_auth_and_escapes_untrusted_names():
     assert '&lt;script&gt;synthetic&lt;/script&gt;' in result
     assert '<dt>认证</dt><dd>未检查</dd>' in result
     result = project("CATALOG_QUERY='no-such-synthetic-source';renderCatalog();document.getElementById('catalog-count').textContent", {'catalog':catalog})
-    assert result == '显示 0/0'
+    assert result == '显示 0/3'
 
 
 def test_selfcheck_and_components_agree_on_embedded_catalog(tmp_path):

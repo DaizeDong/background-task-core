@@ -80,19 +80,29 @@ function renderCodex(){
 
 // 逐份转录的清单。默认不加载:这一扫要走几千个文件,而这一屏别的东西不该等它。
 let CXL=null, CXSEL=new Set();
+let CX_REQUEST=0;
+const CX_PENDING=new Map();
 
 async function loadCxList(){
   const which=$("cxwhich").value;
+  const request=++CX_REQUEST;
   $("cxnote").textContent="扫描中";
-  try{ CXL=await api("/api/codex/list?which="+encodeURIComponent(which)); }
-  catch(e){ CXL={error:e.message}; }
+  CXL=null;CXSEL.clear();renderCxList();
+  if(!CX_PENDING.has(which)){
+    const pending=api("/api/codex/list?which="+encodeURIComponent(which))
+      .catch(error=>({error:error.message})).finally(()=>CX_PENDING.delete(which));
+    CX_PENDING.set(which,pending);
+  }
+  const result=await CX_PENDING.get(which);
+  if(request!==CX_REQUEST) return;
+  CXL=result;
   CXSEL=new Set();
   renderCxList();
 }
 
 function renderCxList(){
   const el=$("cxbody"); if(!el) return;
-  if(!CXL){ el.innerHTML=`<div class="mt-note">还没加载。</div>`; return; }
+  if(!CXL){ el.innerHTML=`<div class="mt-note">正在扫描会话存储</div>`; return; }
   if(CXL.error){ $("cxnote").textContent="失败";
     el.innerHTML=`<div class="warn-line">${esc(CXL.error)}</div>`; return; }
   if(!CXL.available){ $("cxnote").textContent="未检查";

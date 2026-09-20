@@ -6,6 +6,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <title>基建维护台</title>
+<script src="/static/theme.js"></script>
 <link rel="stylesheet" href="/vendor/tabler/tabler.min.css">
 <script src="/vendor/tabler/tabler.min.js" defer></script>
 <link rel="stylesheet" href="/static/styles.css">
@@ -63,22 +64,26 @@
 
 
 <header class="navbar sticky-top" id="bar"><div class="container-fluid">
-  <div class="view-heading"><h1 id="view-title">审查概览</h1><p id="view-purpose">先处理异常，再沿流水线核对证据。</p></div>
-  <button id="page-help" aria-label="查看键盘帮助">键盘帮助</button>
+  <div class="view-heading"><h1 id="view-title">审查概览</h1></div>
+  <div class="page-actions">
+    <span id="page-refresh-state" class="faint" role="status"></span>
+    <button id="page-refresh">刷新</button><button id="page-export" title="导出当前已加载的数据；调用记录仅含当前页">导出 JSON</button>
+    <select id="theme-select" aria-label="外观"><option value="system">跟随系统</option><option value="light">浅色</option><option value="dark">深色</option></select>
+    <button id="page-help" aria-label="查看键盘帮助">快捷键</button>
+  </div>
 </div></header>
 
 <div class="page-body">
 <div class="container-fluid" id="view">
   <section id="overview" data-view="overview" data-label="审查概览" hidden>
-<div id="sck"><span class="lab">数据来源</span><span class="dots" id="sckdots"></span><span class="sum" id="scksum">读取中</span><button id="scktog">查看检查</button></div>
-<div id="sckd"></div>
+<div class="module-section"><div class="tiles" id="tiles"></div></div>
 <div class="card review-pipelines"><div class="card-header"><h2 class="card-title">关键流水线</h2><a href="#pipelines">查看环节</a></div><div id="overview-pipelines">正在读取流水线证据</div></div>
 <div class="card" id="todo"><div class="card-header"><h2 class="card-title">需要处理 <span class="sub" id="todon"></span></h2>
-  <select id="review-filter" aria-label="待处理范围"><option value="all">全部对象</option><option value="tasks">任务与产物</option><option value="repos">仓库</option><option value="storage">存储</option></select></div>
+  <div class="catalog-tools"><input id="review-search" type="search" placeholder="搜索待处理对象" aria-label="搜索待处理对象"><select id="review-filter" aria-label="待处理范围"><option value="all">全部对象</option><option value="tasks">任务与产物</option><option value="repos">仓库</option><option value="storage">存储</option></select></div></div>
   <p id="review-count" class="review-caption">正在读取检查结论</p><div id="todod"></div></div>
 
-<details class="review-disclosure"><summary>全部指标与采集信息</summary><div class="tiles" id="tiles"></div><div id="warns"></div><div id="s-src"></div></details>
-<details class="review-disclosure"><summary>全部产物检查</summary><div class="card" id="frbox">
+
+<div class="module-section"><div class="card" id="frbox">
     <div class="card-header"><h3 class="card-title">产物新鲜度</h3></div>
     <div class="fr-head">
       <div class="fr-stack" id="frstack"></div>
@@ -88,17 +93,15 @@
     <div class="fr-board" id="frboard"></div>
     <div class="fr-list" id="frlist"></div>
   </div>
-  </details>
+  </div>
+<div class="card"><div id="sck"><span class="lab">数据来源</span><span class="dots" id="sckdots"></span><span class="sum" id="scksum">读取中</span><button id="scktog">收起检查</button></div>
+<div id="sckd" class="on"></div>
+<div id="warns"></div><div id="s-src"></div></div>
 </section>
 <section id="pipelines" data-view="pipelines" data-label="流水线" hidden>
-  <div class="pipeline-toolbar"><div id="pipeline-tabs" class="pipeline-tabs" aria-label="选择流水线"></div><button id="pipeline-refresh">刷新证据</button></div>
-  <div class="card" id="pipeline-body">正在读取组件证据</div>
-  <details class="review-disclosure"><summary>这些环节如何协作</summary><div class="pipeline-context">
-<p><b>配置：</b>Claude 配置与仓库 → 来源目录与策略 → 同步桥 → Codex。</p>
-<p><b>执行：</b>任务声明与本机绑定 → 控制台注册 → 系统计划任务 → 现有执行器。需要模型判断或 Agent 时统一走 llmcall。</p>
-<p><b>观测：</b>任务收据、产物与系统事件 → 健康检查 → 控制台。</p>
-<p><b>发布：</b>代码提交 → 测试与审查 → 构建运行包 → 安装版本 → 启动进程。推送代码不代表运行版本已更新。</p>
-<p class="faint">这里说明职责关系；具体运行结果以各环节证据为准。</p></div></details>
+  <div class="pipeline-toolbar"><span id="pipeline-sample" class="faint"></span><button id="pipeline-refresh">刷新证据</button></div>
+  <div id="pipeline-body">正在读取组件证据</div>
+
 </section>
   <section id="tasks" data-view="tasks" data-label="计划任务" hidden>
 <div class="task-summary"><span>任务 <b id="s-total">-</b></span><span>失败 <b id="s-bad">-</b></span><span>待处理 <b id="s-iss">-</b></span><span>停用 <b id="s-off">-</b></span></div>
@@ -112,10 +115,10 @@
   <span class="faint" id="cnt"></span>
 </div>
 <div class="card" id="dtbox">
-    <div class="card-header"><h3 class="card-title">任务列表 <span class="n">点击任务查看证据与操作</span></h3></div>
+    <div class="card-header"><h3 class="card-title">任务列表 </h3></div>
     <div class="pad" style="padding:0"><table class="g" id="tbl"></table></div>
   </div>
-<details class="review-disclosure"><summary>今天何时运行</summary><div class="card" id="tlbox">
+<div class="module-section"><div class="card" id="tlbox">
     <div class="card-header"><h3 class="card-title">今日时间轴
       <span class="n" id="tlnote"></span><span class="help" id="tlhelp"></span></h3><div class="card-actions"><span class="faint" id="tlrange"></span>
         <button id="tlout" title="缩小">-</button>
@@ -133,15 +136,15 @@
         <span class="faint">Ctrl/Shift+滚轮缩放(以指针为中心) · 按住拖动平移 · 双击回到整天</span>
       </div>
     </div>
-  </div></details>
-<details class="review-disclosure"><summary>历史健康记录</summary><div class="card" id="hmbox">
+  </div></div>
+<div class="module-section"><div class="card" id="hmbox">
     <div class="card-header"><h3 class="card-title">健康热力图 <span class="n" id="hmnote"></span></h3></div>
     <div class="pad"><table class="hm" id="heat"></table></div>
-  </div></details>
-<details class="review-disclosure"><summary>按分类查看统计</summary><div class="card" id="scbox">
+  </div></div>
+<div class="module-section"><div class="card" id="scbox">
     <div class="card-header"><h3 class="card-title">按分类汇总 <span class="n">点击分类筛选任务</span></h3></div>
     <div class="pad" style="padding:0"><table class="g" id="scores"></table></div>
-  </div></details>
+  </div></div>
   </section>
   <section id="repos" data-view="repos" data-label="仓库" hidden>
 <div class="card" id="rpbox">
@@ -156,6 +159,7 @@
         <select id="rpvis" aria-label="按可见性过滤"><option value="">全部可见性</option>
           <option value="pub">公开</option><option value="priv">私有</option>
           <option value="unk">未知</option></select>
+        <select id="rpissue" aria-label="仓库问题"><option value="">全部问题</option><option value="identity_mismatch">账号不匹配</option><option value="identity_unchecked">账号未检查</option><option value="upstream">无上游</option><option value="behind">落后未知</option></select>
         <span class="hit" id="rphit"></span>
       </div>
       <div class="rp-split">
@@ -168,40 +172,44 @@
 
   <section id="storage" data-view="storage" data-label="配置与存储" hidden>
 <div class="card catalog-card"><div class="pad" id="mt-catalog">正在读取组件来源</div></div>
-  <details class="review-disclosure"><summary>记忆与索引</summary><div class="card" id="membox">
+  <div class="module-section"><div class="card" id="membox">
     <div class="card-header"><h3 class="card-title">记忆与索引<span class="n" id="memnote">读取中</span></h3>
       <div class="card-actions"><button class="mini ib" id="memreload" title="重新读取记忆池"
         aria-label="重新读取记忆池"><svg class="ic"><use href="#i-refresh"/></svg></button></div></div>
     <div class="pad" id="mt-memory"></div>
-  </div></details>
+  </div></div>
 <div class="card" id="mtbox">
     <div class="card-header"><h3 class="card-title">技能、插件与存储<span class="n" id="mtnote">读取中</span></h3><div class="card-actions"><button class="mini ib" id="mtreload" title="重新读取" aria-label="重新读取"><svg class="ic"><use href="#i-refresh"/></svg></button></div></div>
-  <div class="mt-grid">
-      <details class="runtime-section"><summary>Claude 技能</summary><div class="mt-col" id="mt-skills"></div></details>
-      <details class="runtime-section"><summary>Claude 插件</summary><div class="mt-col" id="mt-plugins"></div></details>
+  <div class="catalog-tools runtime-tools">
+    <input type="search" id="runtime-search" aria-label="搜索技能和插件" placeholder="搜索技能 / 插件">
+    <select id="runtime-state" aria-label="技能和插件状态"><option value="">全部状态</option><option value="active">启用中</option><option value="inactive">归档 / 停用</option></select>
+    <select id="runtime-sort" aria-label="技能排序"><option value="name">按名称</option><option value="budget">按描述大小</option></select>
+  </div><div class="mt-grid">
+      <div class="runtime-section"><h3>Claude 技能</h3><div class="mt-col" id="mt-skills"></div></div>
+      <div class="runtime-section"><h3>Claude 插件</h3><div class="mt-col" id="mt-plugins"></div></div>
 
-      <details class="runtime-section"><summary>Codex 存储</summary><div class="mt-col" id="mt-codex"></div></details>
-      <details class="runtime-section"><summary>系统存储</summary><div class="mt-col" id="mt-sys"></div></details>
+      <div class="runtime-section"><h3>Codex 存储</h3><div class="mt-col" id="mt-codex"></div></div>
+      <div class="runtime-section"><h3>系统存储</h3><div class="mt-col" id="mt-sys"></div></div>
     </div>
   </div>
-  <details class="review-disclosure"><summary>清理会话存储</summary><div class="card" id="cxbox">
-    <div class="card-header"><h3 class="card-title">会话存储清理<span class="n" id="cxnote">未加载</span>
-      <span class="help" data-full="按大小或时间排,自己挑着删。刻意不做自动归档:归档只是把同一批字节挪到另一个目录,磁盘该满还是满,而且它会替你做出「这份还要不要」的判断。">说明</span></h3>
+  <div class="module-section"><div class="card" id="cxbox">
+    <div class="card-header"><h3 class="card-title">会话存储清理<span class="n" id="cxnote">等待扫描</span></h3>
       <div class="card-actions">
         <select id="cxwhich" aria-label="选一个会话库">
           <option value="sessions">会话</option><option value="archived_sessions">归档会话</option></select>
         <select id="cxsort" aria-label="排序">
           <option value="size">按大小</option><option value="old">最旧在前</option>
           <option value="new">最新在前</option></select>
-        <button class="mini" id="cxload">加载</button>
+        <button class="mini" id="cxload">刷新</button>
       </div></div>
-    <div class="pad" id="cxbody"><div class="mt-note">加载后按大小或时间选择记录。删除前会再次确认。</div></div>
-  </div></details>
+    <div class="pad" id="cxbody"><div class="mt-note">正在读取会话存储</div></div>
+  </div></div>
   </section>
   <section id="convos" data-view="convos" data-label="会话记录" hidden>
 <div class="card" id="cvbox">
     <div class="card-header"><h3 class="card-title">会话<span class="n" id="cvnote">读取中</span></h3><div class="card-actions"><button id="cvreload" title="重新扫描">↻</button></div></div>
     <div class="pad">
+      <div class="catalog-tools"><input id="cv-search" type="search" aria-label="搜索已加载会话" placeholder="搜索标题、项目、路径或内容"><span id="cv-match" class="faint"></span></div>
       <div class="cv-head" id="cvhead"></div>
       <div id="cvgroups"></div>
     </div>
@@ -211,7 +219,7 @@
 
   <section id="llm" data-view="llm" data-label="模型调用" hidden>
 
-  <details class="review-disclosure"><summary>调用路由与设置</summary><div class="card" id="lchain">
+  <div class="module-section"><div class="card" id="lchain">
     <div class="card-header"><h3 class="card-title">llmcall 路由<span class="n" id="lcnote">读取中</span></h3>
       <div class="card-actions"><button id="lcreload" title="重新读取">↻</button></div></div>
     <div class="pad">
@@ -224,25 +232,25 @@
         <span class="faint" id="lcpath"></span>
       </div>
     </div>
-  </div></details>
+  </div></div>
 
   <div class="card" id="luse">
     <div class="card-header"><h3 class="card-title">用量<span class="n" id="lunote"></span></h3></div>
     <div class="pad"><div class="l-wins" id="lwins"></div><div id="lledger" class="l-led"></div></div>
   </div>
 
-  <details class="review-disclosure"><summary>各服务的成功与失败</summary><div class="card" id="lrungs">
+  <div class="module-section"><div class="card" id="lrungs">
     <div class="card-header"><h3 class="card-title">服务调用统计<span class="n" id="lrnote"></span></h3></div>
     <div class="pad"><table class="l-rung" id="lrtab"></table>
       <div id="lrverify"></div>
       </div>
-  </div></details>
+  </div></div>
 
-  <details class="review-disclosure"><summary>连续降级记录</summary><div class="card" id="lruns">
+  <div class="module-section"><div class="card" id="lruns">
     <div class="card-header"><h3 class="card-title">连续降级记录<span class="n" id="lsnote"></span></h3></div>
     <div class="pad"><div id="lstab"></div>
       </div>
-  </div></details>
+  </div></div>
 
   <div class="card" id="lcalls">
     <div class="card-header"><h3 class="card-title">调用记录<span class="n" id="lmnote"></span></h3>

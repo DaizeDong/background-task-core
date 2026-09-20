@@ -6,11 +6,20 @@ const $ = id => document.getElementById(id);
 function toast(m,k){const d=document.createElement("div");d.className=k||"";d.textContent=m;
   $("toast").appendChild(d);setTimeout(()=>d.remove(),k==="bad"?9000:4200);}
 
+let API_SEQUENCE=0;
+const API_READS=new Map();
 async function api(p,o){
-  const r=await fetch(p,Object.assign({headers:{"X-Console-Token":TOKEN,"Content-Type":"application/json"}},o||{}));
-  const j=await r.json().catch(()=>({error:"响应不是 JSON"}));
-  if(!r.ok&&j.error) throw new Error(j.error);
-  return j;
+  const read=!o?.method || o.method==='GET', sequence=++API_SEQUENCE;
+  const record=state=>{if(read && (API_READS.get(p)?.sequence || 0)<=sequence)
+    API_READS.set(p,{path:p,sequence,observedAt:new Date().toISOString(),...state});};
+  record({pending:true});
+  try{
+    const r=await fetch(p,Object.assign({headers:{"X-Console-Token":TOKEN,"Content-Type":"application/json"}},o||{}));
+    const j=await r.json();
+    if(!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
+    record({pending:false,error:j.error || (j.available===false ? j.reason || '不可用' : null)});
+    return j;
+  }catch(error){record({pending:false,error:error.message});throw error;}
 }
 
 const kb = n => n==null ? "-" : n<1024 ? n+"B" : n<1048576 ? (n/1024).toFixed(0)+"K"

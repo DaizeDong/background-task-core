@@ -37,7 +37,8 @@ def scripts():
     loader = (root / "app.js").read_text(encoding="utf-8")
     names = json.loads(re.search(r"const CONSOLE_MODULES = (\[.*?\]);", loader, re.S).group(1))
     assert names and len(names) == len(set(names))
-    return [(root / name).read_text(encoding="utf-8") for name in names] + [loader]
+    bootstrap = re.findall(r'src="/static/([^\"]+\.js)"', html)
+    return [(root / name).read_text(encoding="utf-8") for name in names + bootstrap]
 
 
 def check(js: str):
@@ -100,7 +101,8 @@ def _page_style():
     """Read the stylesheet linked by the actual HTML shell."""
     html = open(PAGE, encoding="utf-8").read()
     assert 'href="/static/styles.css"' in html
-    blocks = [(Path(PAGE).parent / "static/styles.css").read_text(encoding="utf-8")]
+    names = re.findall(r'href="/static/([^\"]+\.css)"', html)
+    blocks = [(Path(PAGE).parent / "static" / name).read_text(encoding="utf-8") for name in names]
     css = chr(10).join(blocks)
     # 注释要剥掉:样式表里那段解释为什么不能写死高度的注释,本身就引用了 `button{height:22px}`
     # 这个反例,于是检查器把讲这条规则的话当成了这条规则。

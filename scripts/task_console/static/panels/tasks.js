@@ -1,12 +1,10 @@
 // Classic script module; loaded in app.js dependency order.
 
 let DATA=null, ROWS=[], VIEW=[], cur=0, sel=new Set(), sortKey="cat", asc=true, busy=false;
-// 调度卫生那六列几乎不变,平铺在每天都动的列旁边只会稀释后者。默认收起,一键展开。
-// 收起不是隐藏:按钮上一直印着它藏了几列,而且状态记在 localStorage 里,
-// 一个记不住的开关每次都要重按,等于没有。
+// Show all operational columns initially; retain explicit user choices.
 const HYGIENE = ["catchup","retries","timeout","artifact","inAllow","inHealth"];
-let HYG_OPEN = false;
-try{ HYG_OPEN = localStorage.getItem("tc.hyg") === "1"; }catch(e){}
+let HYG_OPEN = true;
+try{ HYG_OPEN = localStorage.getItem("tc.hyg") !== "0"; }catch(e){}
 const shownCols = () => HYG_OPEN ? C : C.filter(c => HYGIENE.indexOf(c[0]) < 0);
 // 时间轴可视窗口,单位分钟。整天是 [0,1440];缩放和拖动只改这两个数,所有位置都由它们算出来。
 let tlFrom=0, tlTo=1440;
@@ -24,7 +22,8 @@ async function load(){
     s.innerHTML='<option value="">全部大类</option>'+DATA.groups.map(g=>`<option>${esc(g.cat)}</option>`).join("");
     s.value=keep;
     render();
-  }catch(e){ DATA=null; ROWS=[]; updateBadges(); $("tbl").innerHTML=`<tbody><tr><td style="color:var(--bad);padding:10px">读取失败:${esc(e.message)}</td></tr></tbody>`; }
+    if(typeof renderPipelines==="function") renderPipelines();
+  }catch(e){ DATA=null; ROWS=[]; updateBadges(); if(typeof renderPipelines==="function") renderPipelines(); $("tbl").innerHTML=`<tbody><tr><td style="color:var(--bad);padding:10px">读取失败:${esc(e.message)}</td></tr></tbody>`; }
 }
 
 // 把渲染合并到一帧里。之前滚轮和拖动都是每个事件同步渲染一次,而浏览器一次拖动可以

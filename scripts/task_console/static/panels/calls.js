@@ -17,7 +17,7 @@ async function loadLLM(){
   catch(e){ LLM = {error: e.message}; }
   LCDRAFT = null;
   renderLLM();
-  loadCalls();
+  await loadCalls();
 }
 
 function renderLLM(){
@@ -133,8 +133,7 @@ function renderWins(){
   if(!L0.exists){
     $("lwins").innerHTML = '<div class="l-win l-unk"><h4>账本</h4>'
       + '<div class="big">未检查</div><div class="sub">'
-      + esc(L0.path || "路径未知") + " 不存在。这不是「今天没有调用」,"
-      + "是这一屏没有读到任何东西。</div></div>";
+      + esc(L0.path || "路径未知") + " 不存在，无法统计。</div></div>";
     $("lledger").innerHTML = "设 <code>TASK_CONSOLE_LLMCALL_LEDGER</code> 指向账本,"
       + "或确认调用基元真的在写它。";
     $("lunote").textContent = "账本不在";
@@ -151,7 +150,7 @@ function renderWins(){
       : ('<span class="ok">' + lnum(w.ok) + " 成</span> · "
          + (w.failed ? '<span class="bad">' + lnum(w.failed) + " 败</span>" : "0 败")
          + " · 廉价级 " + lpct(w.cheap_share)
-         + (w.avg_ms != null ? " · 均 " + lnum(w.avg_ms) + "ms" : "")
+         + (w.avg_ms != null ? " · 均 " + lnum(Math.round(w.avg_ms)) + "ms" : "")
          + (w.unstamped_excluded ? " · 另有 " + lnum(w.unstamped_excluded) + " 条无时间戳未计入" : ""));
     return '<div class="' + cls + '"><h4>' + esc(w.label) + "</h4>"
       + '<div class="big">' + esc(big) + "</div>"
@@ -159,7 +158,7 @@ function renderWins(){
   }).join("");
 
   const L = LLM.ledger || {};
-  $("lledger").innerHTML = "账本 " + esc(L.path || "?") + " · " + kb(L.bytes)
+  $("lledger").innerHTML = "已读取 " + kb(L.bytes)
     + " · " + lnum(L.parsed) + " 条可解析"
     + (L.malformed ? ' · <span class="bad">' + lnum(L.malformed) + " 条坏行</span>" : "")
     + " · 带时间戳 " + lnum(L.stamped) + " 条 / 无时间戳 " + lnum(L.unstamped) + " 条"
