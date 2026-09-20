@@ -72,7 +72,7 @@ function renderCodex(){
   const bad=[];
   if(CODEX.incomplete.length) bad.push(`${CODEX.incomplete.length} 项没扫全,总量偏小`);
   if(CODEX.unread.length) bad.push(`${CODEX.unread.length} 项读不了`);
-  el.innerHTML=`<div class="mt-t">第二套 agent <b>${kb(CODEX.bytes)}</b>
+  el.innerHTML=`<div class="mt-t">Codex 存储 <b>${kb(CODEX.bytes)}</b>
       <span class="sub">${CODEX.incomplete.length||CODEX.unread.length?"":"全部数到"}</span></div>
     ${bad.length?`<div class="warn-line">${esc(bad.join(" · "))}</div>`:""}
     <div class="mt-rows">${rows}</div>`;

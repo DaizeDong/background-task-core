@@ -10,6 +10,8 @@ const CONSOLE_MODULES = [
   "panels/conversations.js",
   "panels/calls.js",
   "panels/overview.js",
+  "panels/pipelines.js",
+  "panels/review.js",
   "events.js"
 ];
 (async function startConsole(){

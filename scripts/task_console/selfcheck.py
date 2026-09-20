@@ -67,6 +67,11 @@ SOURCES = (
 # 现在 tests/test_selfcheck.py 按 SOURCES ∪ OVERRIDES 与实际扫描结果**双向**对账,
 # 任何一边多一个少一个都会红。
 OVERRIDES = (
+    ("TASK_CONSOLE_RUNTIME_CONFIG", "控制器执行配置，不作为只读面板来源；动作接口在执行前校验完整绑定与权限。"),
+    ("TASK_CONSOLE_PRIVATE_ROOT", "控制器私有根目录，不作为面板数据读取入口；由控制器校验归属和数据边界。"),
+    ("TASK_CONSOLE_STATE_ROOT", "控制器状态目录绑定，仅执行接口读取；不作为只读面板的来源，由控制器检查完整绑定。"),
+    ("TASK_CONSOLE_VAULT_ROOT", "控制器凭据目录，仅执行接口使用；页面不读取凭据内容，控制器校验绑定和访问权限。"),
+    ("TASK_CONSOLE_REMINDER_DB", "可选的关联提醒数据，不是主面板依赖；未配置和读取失败由关联项目接口分别报告。"),
     ("TASK_CONSOLE_DB",
      "数据库位置。默认由 datadir 解析器从私有伴生仓算出来,环境变量只是覆盖 —— "
      "它没设是正常状态,列进面板会变成一条永远显示「未设」的噪音。"
@@ -165,6 +170,21 @@ def run(now: float | None = None, here: Path | None = None, env: dict | None = N
     rows = []
     for key, title, var, kind, max_age, required in SOURCES:
         raw = env.get(var) if var else None
+        if key == "source_catalog":
+            # Match the component endpoint: a catalog can be embedded in its snapshot.
+            try:
+                from . import component_status
+            except ImportError:
+                import component_status
+            catalog = component_status.read_configured(now, env=env)["catalog"]
+            bound = raw or env.get("TASK_CONSOLE_STATUS_SNAPSHOT")
+            rows.append({"key": key, "title": "组件来源目录", "env": var,
+                         "required": required, "path": bound,
+                         "state": OK if catalog.get("available") else (MISSING if bound else UNSET),
+                         "why": "独立来源目录" if raw and catalog.get("available") else
+                                "使用组件快照中的来源目录" if catalog.get("available") else
+                                catalog.get("reason", "来源目录不可用")})
+            continue
         if not raw:
             rows.append({"key": key, "title": title, "env": var, "state": UNSET,
                          "required": required, "path": None,

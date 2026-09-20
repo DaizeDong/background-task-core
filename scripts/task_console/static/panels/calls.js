@@ -1,6 +1,6 @@
 // Classic script module; loaded in app.js dependency order.
 let LLM=null, LCDRAFT=null, LMROWS=null, LMTOTAL=0, LMOPEN=null, LMBODY={};
-const LMQ = {offset:0, limit:50, provider:"", ok:"", q:"", caller:""};
+const LMQ = {offset:0, limit:20, provider:"", ok:"", q:"", caller:""};
 
 const lnum = n => n==null ? "—" : Number(n).toLocaleString("en-US");
 // 没量到 / 量到零 / 有值,三种要长得不一样。这个函数只负责前两种的区分。
@@ -42,8 +42,10 @@ function llmBadge(){
   const w = (LLM.windows || [])[1] || {};
   const c = LLM.chain || {};
   const bad = (LLM.ledger || {}).malformed || 0;
-  const n = (w.failed || 0) + bad;
+  const n = (w.failed || 0); // Undated/cumulative parse errors belong in ledger diagnostics.
   setBadge("llm", c.shadowed_by_env ? Math.max(n, 1) : n, true);
+  const badge=$("bg-llm");
+  if(badge){badge.textContent="7日";badge.title=`近 7 日失败 ${n} 次${c.shadowed_by_env ? "；路由被环境覆盖" : ""}`;badge.setAttribute("aria-label",badge.title);}
 }
 
 // ── 链顺序 ──

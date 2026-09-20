@@ -113,12 +113,12 @@ def test_catalog_panel_shows_sources_roles_auth_and_statistics():
     result = node("""
 const vm=require('node:vm');
 const elements={};
-const document={querySelector:()=>({content:'synthetic-token'}),getElementById:id=>elements[id] ||= {innerHTML:''}};
+const document={querySelector:()=>({content:'synthetic-token'}),createElement:()=>({}),getElementById:id=>elements[id] ||= {innerHTML:'',addEventListener:()=>{},appendChild:()=>{}}};
 const context=vm.createContext({document});
 """ + "\n".join("vm.runInContext(" + json.dumps(source) + ",context);" for source in sources)
         + "vm.runInContext(" + json.dumps("MAINT=" + json.dumps(data) + ";renderMaint();") + ",context);"
-        + "console.log(JSON.stringify(elements['mt-catalog'].innerHTML));")
-    for expected in ("3 个来源", "角色模板", "shared", "codex", "认证: 未检查", "MCP 连接: 1", "部分检查"):
+        + "console.log(JSON.stringify(elements['mt-catalog'].innerHTML+elements['catalog-results'].innerHTML));")
+    for expected in ("3 个来源", "角色模板", "shared", "codex", "<dt>认证</dt><dd>未检查</dd>", "MCP 连接 (1)", "部分检查"):
         assert expected in result
 
 
@@ -152,7 +152,8 @@ const context=vm.createContext({document,fetch});
 def test_all_modules_are_allowlisted_and_loaded_once():
     names = json.loads(re.search(r"const CONSOLE_MODULES = (\[.*?\]);", module_source("app.js"), re.S).group(1))
     assert len(names) == len(set(names))
-    assert set(names) | {"app.js", "styles.css"} == server.STATIC_FILES
+    styles = set(re.findall(r'href="/static/([^\"]+\.css)"', server.PAGE.read_text(encoding="utf-8")))
+    assert set(names) | {"app.js"} | styles == server.STATIC_FILES
     assert names[-1] == "events.js"
 
 

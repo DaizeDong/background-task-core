@@ -1,10 +1,11 @@
 // Classic script module; loaded in app.js dependency order.
-const VIEWS = ["overview", "tasks", "repos", "storage", "convos", "llm"];
+const VIEWS = ["overview", "pipelines", "tasks", "repos", "storage", "convos", "llm"];
 let CURVIEW = null;
 
 function showView(key, push){
   if(VIEWS.indexOf(key) < 0) key = VIEWS[0];
   CURVIEW = key;
+  if(typeof updateViewHeading === "function") updateViewHeading(key);
   document.querySelectorAll("section[data-view]").forEach(sec=>{
     sec.hidden = sec.dataset.view !== key;
   });
@@ -155,7 +156,7 @@ function renderTodo(){
   // 看不出哪一份是对的。
   if(typeof DATA !== "undefined" && DATA && Array.isArray(DATA.groups))
     DATA.groups.flatMap(g=>g.rows||[]).filter(r=>r.sk==="bad").forEach(r=>rows.push(
-      {v:"tasks", src:"任务", nm:r.name, task:r.name, why:r.sl || "上次运行失败", sev:3,
+      {v:"tasks", src:"任务", nm:r.name, task:r.name, description:r.desc, why:r.sl || "上次运行失败", sev:3,
        fix:"run"}));
 
   if(typeof DATA !== "undefined" && DATA && DATA.freshness && Array.isArray(DATA.freshness.tasks))
@@ -202,77 +203,10 @@ function renderTodo(){
       why:"索引 "+p+"%,逼近硬上限", sev:toneOf(MEM.verdict)==="bad"?3:2});
   }
 
-  rows.sort((a,b)=> b.sev-a.sev || a.src.localeCompare(b.src));
-  $("todon").textContent = rows.length ? rows.length + " 条" : "";
-  // 主表读不到时不能说「没有要人管的事」。collect.ps1 挂掉(任务计划服务坏了、
-  // 找不到 PowerShell、采集抛异常)时,默认打开的就是这一屏:六个指标格显示「未检查」,
-  // 而这块明确写着一句肯定的绿色结论,来自一次根本没发生的检查。
-  // 错误正文躺在另一个 hidden 的分区里,人要点进去才看得到。
-  const dataBroken = (typeof DATA === "undefined") || !DATA || !Array.isArray(DATA.groups);
-  if(dataBroken){
-    box.innerHTML = '<div class="rw" style="cursor:default">'
-      + '<span class="dot" style="background:var(--bad)"></span>'
-      + '<span class="src">任务</span>'
-      + '<span class="nm">读取失败</span>'
-      + '<span class="why">任务数据没读到,这张清单不完整。明细在「任务」分区</span></div>';
-    $("todon").textContent = "不完整";
-    // 读不到时返回 1:徽章上有个数比没有数好。一个空徽章在「没事」和「没查成」
-    // 之间不作区分,而这两件事恰好需要相反的反应。
-    return 1;
-  }
-  if(!rows.length){
-    box.innerHTML = '<div class="none">没有要人管的事</div>';
-    return 0;
-  }
-  // 任务与产物两类行都指向某个具体任务,所以带上任务名,点了直接过滤到它。
-  // 之前它们统一走 data-goto,而产物行的目标就是它自己所在的 overview,
-  // 于是点了 hash 不变、什么也不发生 : 一个指向自己的跳转,和一个坏掉的跳转,
-  // 在用的人那里是同一件事。
-  // 逐字相同的原因合并成一行。只按 (src, why, sev) 三元组逐字比,不做任何归类判断:
-  // 一旦开始判断「这两条算不算同一类」,就是在清单里第二次判定,而判定只能有一处
-  // —— 这块代码上面每一段注释讲的都是同一件事。
-  // 分隔符不能是空串：那样 ("A","1B") 和 ("A1","B") 会撞成同一个桶。
-  const SEP = String.fromCharCode(1);
-  const bucket = new Map();
-  // ⚠ fix 也要进分桶键。少了它,一组里可能混进一条没有一键通路的行,
-  // 而整组那个按钮是按第一条的 fix 画的 —— 于是按钮会替一条它处理不了的行做出承诺。
-  rows.forEach(r=>{ const k = r.src+SEP+r.why+SEP+r.sev+SEP+(r.fix||"");
-    if(!bucket.has(k)) bucket.set(k, []);
-    bucket.get(k).push(r); });
-  const out = [];
-  bucket.forEach(g=>{ if(g.length>=3) out.push({grp:g}); else g.forEach(r=>out.push(r)); });
-  out.sort((a,b)=>{ const x=a.grp?a.grp[0]:a, y=b.grp?b.grp[0]:b;
-    return y.sev-x.sev || x.src.localeCompare(y.src); });
-
-  box.innerHTML = out.map(o=>{
-    if(o.grp){
-      const g = o.grp, h = g[0];
-      return `<div class="rw grp">
-        <span class="dot" style="background:var(--${h.sev>=3?"bad":"warn"})"></span>
-        <span class="src">${esc(h.src)}</span>
-        <span class="why">${esc(h.why)} <b>${g.length}</b></span>
-        <span class="chips">${g.map(m=>`<button class="chip" ${m.task
-            ? `data-task="${esc(m.task)}"` : `data-goto="${m.v}"`
-          }>${esc(m.nm)}</button>`).join("")}${
-          // 整组一个按钮。逐个点十六次和「这一组我看过了,做吧」是两件事,
-          // 而后者才是这张清单该提供的。它仍然要过一次确认,并逐仓各自出计划。
-          h.fix ? `<button class="fix all" data-fixall="${h.fix}" data-args="${
-            esc(g.map(m=>m.task||m.nm).join(""))}"
-            title="${esc(FIX_LAB[h.fix])} 这 ${g.length} 个">${esc(FIX_LAB[h.fix])} ×${g.length}</button>` : ""
-        }</span></div>`;
-    }
-    const r = o;
-    return `<div class="rw" ${r.task
-      ? `data-task="${esc(r.task)}"` : `data-goto="${r.v}"`}>
-    <span class="dot" style="background:var(--${r.sev>=3?"bad":"warn"})"></span>
-    <span class="src">${esc(r.src)}</span>
-    <span class="nm" title="${esc(r.nm)}">${esc(r.nm)}</span>
-    <span class="why">${esc(r.why)}${fixBtn(r.fix, r.task||r.nm)}</span></div>`;
-  }).join("");
-  // 条数返回给徽章。清单是这一屏唯一在回答「有哪些事」的东西,徽章只是它的投影 ——
-  // 让徽章自己再数一遍,就是给同一个事实造第二个来源。
-  return rows.length;
+  const dataBroken = !DATA || !Array.isArray(DATA.groups);
+  return renderReviewQueue(rows, dataBroken);
 }
+
 const REPO_WHY = {dirty:"有未提交改动", unpushed:"有未推送提交",
                   detached:"游离 HEAD", error:"读不出来"};
 

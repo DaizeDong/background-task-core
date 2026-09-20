@@ -85,10 +85,11 @@ ICON = HERE / "icon.svg"
 VENDOR = HERE / "vendor"
 STATIC = HERE / "static"
 STATIC_FILES = {
-    "app.js", "api.js", "events.js", "styles.css",
+    "app.js", "api.js", "events.js", "styles.css", "review.css",
     "panels/tasks.js", "panels/skills.js", "panels/plugins.js",
     "panels/profile.js", "panels/repositories.js", "panels/storage.js",
     "panels/overview.js", "panels/conversations.js", "panels/calls.js",
+    "panels/pipelines.js", "panels/review.js",
 }
 
 NOT_RUN, RUNNING = 0x41303, 0x41301

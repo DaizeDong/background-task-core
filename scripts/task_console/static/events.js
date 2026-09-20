@@ -449,7 +449,7 @@ $("help").addEventListener("click",()=>$("help").hidden=true);
 $("refresh").addEventListener("click",load);
 function syncHygBtn(){
   const b=$("hygtog"); if(!b) return;
-  b.textContent = HYG_OPEN ? "收起卫生列" : "卫生列 +" + HYGIENE.length;
+  b.textContent = HYG_OPEN ? "收起保障配置" : "保障配置 +" + HYGIENE.length;
 }
 $("hygtog").addEventListener("click",()=>{
   HYG_OPEN = !HYG_OPEN;
@@ -477,3 +477,10 @@ syncHygBtn();
 $("q").addEventListener("input",()=>{ if(DATA) render(); });
 ["cat","only","hideoff"].forEach(id=>$(id).addEventListener("change",()=>{ if(DATA) render(); }));
 load();
+
+$("pipeline-refresh").addEventListener("click",loadComponents);
+$("review-filter").addEventListener("change",event=>{REVIEW_FILTER=event.target.value;REVIEW_LIMIT=6;renderTodo();});
+loadComponents();
+
+document.addEventListener("click",pipelineClick);
+document.addEventListener("click",reviewClick);

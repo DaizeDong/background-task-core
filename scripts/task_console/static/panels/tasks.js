@@ -24,7 +24,7 @@ async function load(){
     s.innerHTML='<option value="">全部大类</option>'+DATA.groups.map(g=>`<option>${esc(g.cat)}</option>`).join("");
     s.value=keep;
     render();
-  }catch(e){ $("tbl").innerHTML=`<tbody><tr><td style="color:var(--bad);padding:10px">读取失败:${esc(e.message)}</td></tr></tbody>`; }
+  }catch(e){ DATA=null; ROWS=[]; updateBadges(); $("tbl").innerHTML=`<tbody><tr><td style="color:var(--bad);padding:10px">读取失败:${esc(e.message)}</td></tr></tbody>`; }
 }
 
 // 把渲染合并到一帧里。之前滚轮和拖动都是每个事件同步渲染一次,而浏览器一次拖动可以

@@ -21,6 +21,8 @@ list, and the list is where the promise lives.
 
 Task creation and migration use the declaration, review and registration APIs described in [task registration](docs/task-registration.md). The web action table does not provide an unrestricted Scheduler shortcut. Registration records authority and recovery evidence before changing task definitions; the console keeps its existing review step for outgoing actions.
 
+The review overview groups outstanding checks by affected object and links to task or repository details. The pipeline view separates process steps from execution evidence: a zero-difference sync receipt does not prove capability parity, and a fresh backup artifact does not prove every step ran. Both views reuse the configured component snapshot; they introduce no scheduler or state store. Source search, type filters and expandable evidence keep large catalogs usable. Historical statistics and route settings remain available on their respective pages.
+
 ## Running it
 
 ```

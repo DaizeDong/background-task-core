@@ -80,12 +80,16 @@ def evaluate_snapshot(snapshot: dict, now=None) -> dict:
         obs = item.get("observations", item.get("report", {}))
         if not isinstance(obs, dict) or obs.get("schemaVersion", 1) != 1:
             raise ValueError("unsupported component read response")
-        tasks.append(health.evaluate_task(item["spec"], obs, now))
+        task = health.evaluate_task(item["spec"], obs, now)
+        task["name"] = item["spec"].get("name")
+        tasks.append(task)
     expected = max(len(inputs), snapshot.get("expected", len(inputs)))
     cov = health.coverage(sum(t["verdict"] != "unknown" for t in tasks), expected)
     return {"schemaVersion": 1, "read_only": True, "observed_at": health.epoch(now),
             "tasks": tasks, "coverage": cov, "catalog": catalog_view(snapshot.get("catalog")),
-            "authority": "observation_only", "reason_code": "zero_coverage" if not expected else None}
+            "authority": "observation_only", "captured_at": snapshot.get("observed_at"),
+            "authority_generation": snapshot.get("authority_generation"),
+            "reason_code": "zero_coverage" if not expected else None}
 
 
 def read_snapshot(path: str | Path) -> dict:
@@ -93,10 +97,11 @@ def read_snapshot(path: str | Path) -> dict:
         return json.load(stream)
 
 
-def read_configured(now=None) -> dict:
+def read_configured(now=None, env=None) -> dict:
     """Environment paths are startup/private bindings; HTTP supplies no path parameter."""
-    path = os.environ.get("TASK_CONSOLE_STATUS_SNAPSHOT")
-    catalog_path = os.environ.get("TASK_CONSOLE_CATALOG_SNAPSHOT")
+    env = os.environ if env is None else env
+    path = env.get("TASK_CONSOLE_STATUS_SNAPSHOT")
+    catalog_path = env.get("TASK_CONSOLE_CATALOG_SNAPSHOT")
     result = {"schemaVersion": 1, "read_only": True, "available": False,
               "tasks": [], "coverage": health.coverage(0, 0), "authority": "observation_only",
               "reason": "Component snapshot not configured; unchecked", "catalog": catalog_view(None)}

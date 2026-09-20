@@ -164,6 +164,22 @@ def console_page_fixture() -> dict:
                           "reason": "synthetic unchecked"}}
 
 
+def review_pipeline_case() -> dict:
+    """Synthetic receipts for UI evidence boundaries, never copied from a live run."""
+    return {"available": True, "tasks": [
+        {"component": "example-sync", "name": "SyncClaudeToCodex",
+         "task_id": "synthetic/sync", "verdict": "degraded", "run_id": None,
+         "last_run_v1": {"version": 1, "mode": "apply", "status": "degraded",
+                         "finished_at": "2020-01-01T00:01:00Z", "remaining_changes": 0,
+                         "findings": [{"area": "skills", "name": "synthetic-skill", "status": "blocked"},
+                                      {"area": "memory", "status": "partial"}]}},
+        {"component": "example-backup", "name": "SyncClaudeConfig",
+         "task_id": "synthetic/backup", "verdict": "healthy", "run_id": None,
+         "checks": [{"check_id": name, "state": "healthy"} for name in
+                    ("changelog", "journal", "fleet-check", "memory-doctor", "diff-review")]}
+    ]}
+
+
 def generate(output: Path) -> None:
     request = example_request()
     output.mkdir(parents=True, exist_ok=True)
