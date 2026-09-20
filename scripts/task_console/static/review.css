@@ -3,7 +3,8 @@
 body{font-size:14px;line-height:1.6}
 #side{--tblr-sidebar-width:12rem}
 #side .navbar-brand{font-size:16px;padding:24px 12px}
-#side .nav-link{padding:12px 14px;margin:3px 8px;min-height:44px}
+#side .nav-link{padding:12px 14px;margin:3px 8px;min-height:44px;color:var(--dim)}
+#side .nav-link.active{color:var(--ink);background:var(--cur)}
 #side .nav-link-title{white-space:nowrap}
 #side:not(.navbar-folded) .nav-link .badge{position:static;margin-left:auto;flex:none}
 #bar{white-space:normal;overflow:visible;padding:22px 28px;min-height:90px}
