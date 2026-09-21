@@ -695,14 +695,16 @@ def apply(plan, expected_revision, *, runtime=None, restore_approval=None):
             journal['restore'] = {'task_ids': plan['task_ids'], 'approval': plan['plan_revision']}
         if hasattr(runtime, 'prepare_inputs'):
             runtime.prepare_inputs(journal, bundle, selected, outputs)
+        # Publish the journal only after it can prove every original resource.
+        # A crash immediately after create must not leave recovery without the
+        # before-images needed to verify the unchanged Scheduler definitions.
+        journal["scheduler_before"] = {key: _secure(runtime, tx + ":scheduler:" + str(i), value)
+                                       for i, (key, value) in enumerate(before.items())}
+        journal["file_before"] = {key: _secure(runtime, tx + ":file:" + str(i), value)
+                                  for i, (key, value) in enumerate(file_before.items())}
         runtime.journal.create(tx, journal)
         runtime.checkpoint("journal_created")
         try:
-            journal["scheduler_before"] = {key: _secure(runtime, tx + ":scheduler:" + str(i), value)
-                                           for i, (key, value) in enumerate(before.items())}
-            journal["file_before"] = {key: _secure(runtime, tx + ":file:" + str(i), value)
-                                      for i, (key, value) in enumerate(file_before.items())}
-            _save(runtime, journal)
             if plan["intent"]["operation"] == "retire":
                 journal["retired_xml"] = {s["task_id"]: _secure(runtime, tx + ":retired:" + str(i), before[s["name"]])
                                           for i, s in enumerate(selected)}

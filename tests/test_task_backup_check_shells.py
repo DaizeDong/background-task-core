@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from test_export_restore_shells import CONFIG, environment, run
+from test_export_restore_shells import environment, run
 
 
 def summary():
@@ -13,11 +13,11 @@ def summary():
             'present_count': 2, 'disabled_count': 1, 'absent_count': 1, 'excluded_count': 1}
 
 
-def test_facade_uses_only_resolved_interpreter_and_binding(tmp_path):
+def test_facade_uses_only_resolved_interpreter_and_binding(tmp_path, config_source):
     env, _ = environment(tmp_path)
     (tmp_path / 'response.json').write_text(json.dumps(summary()))
     target = tmp_path / 'backup'
-    result = run(tmp_path, CONFIG / 'tools/check-task-backup.ps1', ['-BackupDirectory', str(target)], env)
+    result = run(tmp_path, config_source / 'tools/check-task-backup.ps1', ['-BackupDirectory', str(target)], env)
     assert result.returncode == 0, result.stdout + result.stderr
     assert json.loads(result.stdout) == summary()
     calls = [json.loads(line) for line in (tmp_path / 'calls.jsonl').read_text(encoding='utf-8-sig').splitlines()]
@@ -29,7 +29,7 @@ def test_facade_uses_only_resolved_interpreter_and_binding(tmp_path):
 
 
 @pytest.mark.parametrize('failure', ['unconfigured', 'resolver', 'nonzero', 'corrupt', 'failed', 'empty', 'partial', 'bool_count', 'missing_count'])
-def test_facade_refuses_failed_or_incomplete_evidence_without_leak(tmp_path, failure):
+def test_facade_refuses_failed_or_incomplete_evidence_without_leak(tmp_path, failure, config_source):
     env, _ = environment(tmp_path)
     response = summary()
     if failure == 'unconfigured':
@@ -52,25 +52,25 @@ def test_facade_refuses_failed_or_incomplete_evidence_without_leak(tmp_path, fai
         del response['excluded_count']
     payload = 'synthetic-secret-content' if failure == 'corrupt' else json.dumps(response)
     (tmp_path / 'response.json').write_text(payload)
-    result = run(tmp_path, CONFIG / 'tools/check-task-backup.ps1', ['-BackupDirectory', str(tmp_path / 'backup')], env)
+    result = run(tmp_path, config_source / 'tools/check-task-backup.ps1', ['-BackupDirectory', str(tmp_path / 'backup')], env)
     assert result.returncode != 0
     assert json.loads(result.stdout)['ok'] is False
     assert 'synthetic-secret-content' not in result.stdout + result.stderr
 
 
 @pytest.mark.parametrize('failure', [False, True])
-def test_actual_task_block_reports_declared_checked_and_excluded(tmp_path, failure):
+def test_actual_task_block_reports_declared_checked_and_excluded(tmp_path, failure, config_source):
     env, _ = environment(tmp_path)
     (tmp_path / 'response.json').write_text(json.dumps(summary()))
     if failure:
         env['SYNTHETIC_EXIT'] = '3'
-    source = (CONFIG / 'tools/check-drift.ps1').read_text(encoding='utf-8-sig')
+    source = (config_source / 'tools/check-drift.ps1').read_text(encoding='utf-8-sig')
     block = source.split('# ---------- 2. TASK ----------')[1].split('# ---------- 3. SURFACE ----------')[0]
     repo = tmp_path / 'config'
     for name in ('tools/check-task-backup.ps1', 'claude/scripts/task-console-binding.ps1', 'sync-from-local.ps1'):
         destination = repo / name
         destination.parent.mkdir(parents=True, exist_ok=True)
-        destination.write_bytes((CONFIG / name).read_bytes())
+        destination.write_bytes((config_source / name).read_bytes())
     harness = tmp_path / 'task-block.ps1'
     harness.write_text('''param([string]$RepoRoot)
 $ErrorActionPreference='Stop'
