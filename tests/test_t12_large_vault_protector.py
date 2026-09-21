@@ -21,21 +21,28 @@ from task_console.registration import Conflict
 LEGACY = r'''
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
-$ProgressPreference = 'SilentlyContinue'
 [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false)
+$stage = 'read'
 try {
   $r = [Console]::In.ReadToEnd() | ConvertFrom-Json
   if ($r.operation -eq 'protect') {
+    $stage = 'securestring-create'
     $s = ConvertTo-SecureString ([string]$r.text) -AsPlainText -Force
+    $stage = 'securestring-protect'
     $result = ConvertFrom-SecureString $s
   } else {
+    $stage = 'securestring-unprotect'
     $s = ConvertTo-SecureString ([string]$r.text)
     $p = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($s)
     try { $result = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($p) }
     finally { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($p) }
   }
   @{ok=$true; text=$result} | ConvertTo-Json -Compress
-} catch { @{ok=$false; code='protector_failed'} | ConvertTo-Json -Compress }
+} catch {
+  @{ok=$false; code='protector_failed'; stage=$stage;
+    error_type=$_.Exception.GetType().FullName; error_id=$_.FullyQualifiedErrorId
+  } | ConvertTo-Json -Compress
+}
 '''
 
 native = pytest.mark.skipif(os.name != 'nt', reason='Windows CurrentUser DPAPI')
@@ -218,10 +225,32 @@ def test_json_request_expansion_remains_bounded():
 
 
 @native
-def test_native_small_legacy_interoperability():
+def test_native_small_legacy_interoperability(monkeypatch):
+    from llmcall import process
+    original_run = process.run
+    captured = []
+
+    def record(*args, **kwargs):
+        result = original_run(*args, **kwargs)
+        captured.append(result)
+        return result
+
+    monkeypatch.setattr(process, 'run', record)
     data = json.dumps({'synthetic': 'quotes " \\ \u96ea \u0000'}).encode('ascii')
     protector = win.DPAPIProtector()
-    old = win.powershell(LEGACY, {'operation': 'protect', 'text': data.decode('ascii')})['text']
+    try:
+        old = win.powershell(LEGACY, {'operation': 'protect', 'text': data.decode('ascii')})['text']
+    except Conflict:
+        result = captured[-1]
+        try:
+            payload = json.loads(result.stdout_bytes.decode('utf-8-sig'))
+        except (ValueError, AttributeError):
+            payload = {}
+        # Only protocol diagnostics; never echo synthetic plaintext or ciphertext.
+        diagnostics = {key: payload.get(key) for key in ('code', 'stage', 'error_type', 'error_id')}
+        diagnostics.update(outcome=result.outcome, error=result.error, returncode=result.returncode,
+                           stderr_size=len(result.stderr_bytes or b''), stdout_size=len(result.stdout_bytes or b''))
+        pytest.fail('legacy transport: ' + json.dumps(diagnostics), pytrace=False)
     same_bytes(protector.unprotect(old.encode('ascii')), data)
     new = protector.protect(data)
     same_bytes(protector.unprotect(new), data)

@@ -95,8 +95,13 @@ def node(program):
     executable = shutil.which("node")
     if not executable:
         pytest.skip("Node is not installed; module behavior pending")
-    result = subprocess.run([executable, "-"], input=program, text=True, capture_output=True,
-                            encoding="utf-8", timeout=15)
+    try:
+        result = subprocess.run([executable, "-"], input=program, text=True, capture_output=True,
+                                encoding="utf-8", timeout=15)
+    except subprocess.TimeoutExpired as error:
+        pytest.fail('Node timeout: input_bytes=' + str(len(program.encode('utf8')))
+                    + ', stdout_bytes=' + str(len(error.stdout or b''))
+                    + ', stderr_bytes=' + str(len(error.stderr or b'')), pytrace=False)
     assert result.returncode == 0, result.stderr
     return json.loads(result.stdout)
 
