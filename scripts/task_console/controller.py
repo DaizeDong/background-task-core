@@ -122,7 +122,10 @@ class Controller:
     def action(self, name, verb, *, reason='', legacy=None):
         validate(name, verb, reason)
         from llmcall.process import execution_scope
-        with execution_scope(timeout=60) as control:
+        # Registration also verifies protected before-images, publishes projections,
+        # and commits authority. Multiple native round trips can exceed one minute.
+        budget = 60 if verb in ('run', 'stop') else 300
+        with execution_scope(timeout=budget) as control:
             if control.is_set():
                 raise ContractError('control_cancelled', 'runtime')
             callback = legacy

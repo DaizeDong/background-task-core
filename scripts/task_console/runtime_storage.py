@@ -204,6 +204,10 @@ class ProtectedVault:
             if value['binary']:
                 snapshot['value'] = base64.b64decode(snapshot['value'], validate=True)
             return snapshot
+        except Conflict as exc:
+            if exc.code in ('transport_timeout', 'transport_cancelled', 'transport_cleanup_failed'):
+                raise
+            raise Conflict('secure_reference_unavailable', 'vault') from None
         except Exception:
             raise Conflict('secure_reference_unavailable', 'vault') from None
 

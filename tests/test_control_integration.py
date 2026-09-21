@@ -233,6 +233,33 @@ def test_disabled_run_refuses_without_transport_action(tmp_path):
     assert not any(op == 'run' for op, _ in runtime.scheduler.transport.calls)
 
 
+def test_registration_can_finish_after_slow_native_preparation(tmp_path, monkeypatch):
+    from control_support import fixture_runtime
+    from task_console.controller import Controller
+    from task_console.registration import Conflict
+    from llmcall import process
+
+    runtime, _ = fixture_runtime(tmp_path, migrated=True, enabled=True)
+    clock = [0.0]
+    monkeypatch.setattr(process.time, 'monotonic', lambda: clock[0])
+    original_get = runtime.vault.get
+
+    def get(reference):
+        if process.current_control().is_set():
+            raise Conflict('transport_timeout', 'transport')
+        return original_get(reference)
+
+    def checkpoint(point):
+        if point == 'journal_created':
+            clock[0] = 65.0
+
+    monkeypatch.setattr(runtime.vault, 'get', get)
+    runtime.checkpoint = checkpoint
+    result = Controller(runtime).action('AcmeSync', 'disable')
+    assert result['ok'] and result['cleaned'], result
+    assert runtime.scheduler.read('AcmeSync')['value']['enabled'] is False
+
+
 def test_public_retire_has_no_unconfigured_bypass(monkeypatch):
     import retire
     from task_console.contracts import ContractError

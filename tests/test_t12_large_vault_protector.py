@@ -64,6 +64,25 @@ def memory_vault(monkeypatch, protector):
     return storage.ProtectedVault(Path('synthetic-vault'), '1' * 32, protector), objects
 
 
+@pytest.mark.parametrize('code', ['transport_timeout', 'transport_cancelled', 'transport_cleanup_failed'])
+def test_interrupted_vault_read_keeps_transport_diagnosis(monkeypatch, code):
+    class SyntheticProtector:
+        def protect(self, value): return value
+        def unprotect(self, value): return value
+
+    protector = SyntheticProtector()
+    vault, _ = memory_vault(monkeypatch, protector)
+    reference = vault.put('2' * 32 + ':0', {'state': 'present', 'value': 'synthetic'})
+
+    def interrupted(value):
+        raise Conflict(code, 'transport')
+
+    monkeypatch.setattr(protector, 'unprotect', interrupted)
+    with pytest.raises(Conflict) as raised:
+        vault.get(reference)
+    assert raised.value.code == code and raised.value.field == 'transport'
+
+
 @pytest.mark.parametrize('value', [None, 'text', 12, {}, b'\xff'])
 @pytest.mark.parametrize('method', ['protect', 'unprotect'])
 def test_wrong_input_type_or_encoding_refuses_before_transport(monkeypatch, value, method):
