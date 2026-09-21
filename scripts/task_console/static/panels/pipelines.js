@@ -91,6 +91,17 @@ async function loadComponents(){
   if(typeof renderPlatformSignals==='function') renderPlatformSignals();
 }
 
+function pipelineRunControl(key,row){
+  if(!row) return '';
+  if(row.state==='Disabled') return taskActionButtons(row);
+  const running=row.state==='Running', queued=row.state==='Queued';
+  const disabled=busy || ConsoleActions.readOnly || row.state!=='Ready';
+  const label=running?'正在运行':queued?'已排队':key==='sync'?'立即同步':'立即备份';
+  const reason=ConsoleActions.readOnly?ConsoleActions.reason:busy?'正在提交操作':
+    running?'本次仍在运行':queued?'等待执行':row.state==='Ready'?'立即运行整条流水线，保留原计划':'任务状态未确认';
+  return `<button class="mini task-control" data-act="run" data-name="${esc(row.name)}" ${disabled?'disabled':''} title="${esc(reason)}"><svg class="ic" aria-hidden="true"><use href="#i-play"/></svg>${label}</button>`;
+}
+
 function renderPipelines(){
   const box=$("pipeline-body");if(!box) return;
   $("pipeline-sample").textContent="读取时间 "+pipeTime(COMPONENTS && COMPONENTS.captured_at);
@@ -105,7 +116,7 @@ function renderPipelines(){
         <div class="card-header"><h2 class="card-title">${esc(def.title)}</h2><div class="review-actions">
           ${statusBadge(task?pipeState(status):'未找到对应任务',task?componentTone(status):'idle',undefined,'review-status')}
           ${task?`<button data-task="${esc(task.name)}">任务详情</button>`:""}
-          ${row?fixBtn("run",row.name):""}</div></div>
+          ${pipelineRunControl(key,row)}</div></div>
         <div class="pipeline-metrics"><span>最近运行 <b>${esc(pipeTime(task && task.execution && task.execution.started_at))}</b></span>
           <span>下次计划 <b>${esc(row ? pipeTime(row.nextRun) : "未读取")}</b></span><span>运行标识 <b>${esc(task && task.run_id || "未提供")}</b></span>
           <span>任务标识 <b>${esc(task && task.task_id || "未关联")}</b></span>

@@ -505,6 +505,7 @@ async function act(names, verb){
   if(verb==="disable"&&!confirm(`停用 ${names.length} 个任务？\n\n${names.join("\n")}\n\n它们将不再按计划启动，直到重新启用。正在运行的任务不会因此停止。`)) return;
   busy=true;
   renderAutomations();
+  if(typeof renderPipelines==='function') renderPipelines();
   render();
   let ok=0, fail=0;
   for(const n of names){
