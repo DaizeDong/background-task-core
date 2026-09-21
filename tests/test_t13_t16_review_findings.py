@@ -211,10 +211,10 @@ def render_components(components):
     if not node:
         pytest.skip("Node required for UI fixture checks")
     root = Path(__file__).resolve().parents[1] / "scripts/task_console/static"
-    program = "const element={innerHTML:''}; const document={querySelector:()=>({content:'synthetic'}),getElementById:()=>element};\n"
+    program = "const elements={}; const document={querySelector:()=>({content:'synthetic'}),getElementById:id=>elements[id] ||= {innerHTML:'',textContent:'',addEventListener:()=>{}}};\n"
     program += (root / "api.js").read_text("utf-8")
     program += (root / "panels/skills.js").read_text("utf-8")
-    program += "\nMAINT=" + json.dumps({"components": components}) + ";renderCatalog();console.log(element.innerHTML);"
+    program += "\nMAINT=" + json.dumps({"components": components}) + ";renderCatalog();console.log(Object.values(elements).map(element=>element.innerHTML).join(''));"
     result = subprocess.run([node, "-"], input=program, encoding="utf-8", capture_output=True, timeout=20)
     assert result.returncode == 0, result.stderr
     return result.stdout
@@ -227,7 +227,7 @@ def render_components(components):
 def test_collapsed_components_show_backend_tone_counts_and_state(checked, expected, state, tone):
     html = render_components({"available": True,
         "coverage": {"checked": checked, "expected": expected, "state": state, "tone": tone},
-        "tasks": [{"task_id": "example-" + verdict, "verdict": verdict, "state": status}
+        "tasks": [{"task_id": "example-" + verdict, "verdict": verdict, "execution": {"state": status}}
                   for verdict, status in [("healthy", "up"), ("unhealthy", "down"), ("unknown", "unknown")]]})
     visible = html.split("<details>", 1)[0]
     assert f"var(--{tone})" in visible

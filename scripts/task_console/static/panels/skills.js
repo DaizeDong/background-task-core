@@ -98,6 +98,9 @@ function renderCatalog(){
   const el=$("mt-catalog");if(!el) return;
   const components=catalogComponents(), catalog=components && components.catalog;
   const records=catalog && catalog.records || [], cov=components && components.coverage || {};
+  const tasks=components && components.tasks || [], coverageTone=['ok','warn','bad','idle'].includes(cov.tone)?cov.tone:'idle';
+  const problemCount=tasks.filter(task=>['unhealthy','degraded'].includes(task.verdict)).length;
+  const uncheckedCount=tasks.filter(task=>!task.verdict || task.verdict==='unknown').length;
   const clients=[...new Set(records.flatMap(catalogClients))].sort();
   const states=[["compatible:no","不兼容"],["compatible:unknown","兼容性未检查"],["authenticated:no","未认证"],["authenticated:unknown","认证未检查"],
     ...[...new Set(records.map(source=>source.sync && source.sync.state || "unknown"))].sort().map(state=>["sync:"+state,"同步: "+catalogLabel(state)])];
@@ -107,7 +110,7 @@ function renderCatalog(){
       <select id="catalog-client" aria-label="涉及客户端"><option value="">全部客户端</option>${clients.map(client=>`<option value="${esc(client)}"${client===CATALOG_CLIENT?" selected":""}>${esc(catalogLabel(client))}</option>`).join("")}</select>
       <select id="catalog-state" aria-label="组件状态"><option value="">全部状态</option>${states.map(([value,label])=>`<option value="${esc(value)}"${value===CATALOG_STATE?" selected":""}>${esc(label)}</option>`).join("")}</select><button data-reset-filters="catalog">清除筛选</button><span id="catalog-count"></span></div>
     <div id="catalog-results" class="ops-scroll"></div>
-    <div class="catalog-heading health-heading"><h2>自动化检查结果 <span>${esc(cov.checked ?? "?")}/${esc(cov.expected ?? "?")}</span></h2>
+    <div class="catalog-heading health-heading"><h2>自动化检查结果 <span style="color:var(--${coverageTone})">${esc(cov.checked ?? "?")}/${esc(cov.expected ?? "?")}</span></h2><span>异常 ${problemCount} · 未检查 ${uncheckedCount}</span>
       <select id="health-state" aria-label="健康检查状态"><option value="">全部结论</option>${["healthy","degraded","unhealthy","unknown"].map(state=>`<option value="${state}"${state===HEALTH_STATE?" selected":""}>${catalogLabel(state)}</option>`).join("")}</select></div>
     <div class="catalog-tools"><span class="faint">${esc(catalogCoverageText(catalog && catalog.coverage))}</span><span id="health-count"></span></div><div id="health-results" class="ops-scroll"></div>`;
   $("catalog-search").addEventListener("input",event=>{CATALOG_QUERY=event.target.value;renderCatalogResults();renderCatalogHealth();});

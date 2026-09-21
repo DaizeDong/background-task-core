@@ -195,7 +195,7 @@ def clean_temp_git(now: float | None = None) -> dict:
             continue
         sz = dir_size(d)["bytes"]
         try:
-            shutil.rmtree(d, onexc=_force_writable)
+            shutil.rmtree(d, onerror=lambda func, path, info: _force_writable(func, path, info[1]))
         except OSError as e:
             skipped.append(f"{item['name']} ({e.__class__.__name__})")
             continue

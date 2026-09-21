@@ -75,43 +75,23 @@ def test_backup_publishes_only_completed_snapshot(tmp_path, failure, config_sour
 
 
 def test_launcher_binds_installed_runtime_and_keeps_read_only_modes(tmp_path, config_source):
-    env, _ = environment(tmp_path)
-    harness = tmp_path / 'launch.ps1'
-    harness.write_text('''param([string]$Launcher, [string]$Mode)
-$ErrorActionPreference='Stop'
-$global:started=$false
-function Get-NetTCPConnection { param($LocalPort,$State,$ErrorAction) if ($global:started) { [pscustomobject]@{OwningProcess=1234} } }
-function Start-Process { param($FilePath,$WorkingDirectory,[switch]$PassThru,$WindowStyle,$ArgumentList,$RedirectStandardOutput,$RedirectStandardError)
- if ($PassThru) {
-  @{file=$FilePath; arguments=$ArgumentList; window=$WindowStyle; config=$env:TASK_CONSOLE_RUNTIME_CONFIG;
-    private=$env:TASK_CONSOLE_PRIVATE_ROOT; state=$env:TASK_CONSOLE_STATE_ROOT; vault=$env:TASK_CONSOLE_VAULT_ROOT;
-    python=$env:TASK_CONSOLE_PYTHON; status=$env:TASK_CONSOLE_STATUS_SNAPSHOT; catalog=$env:TASK_CONSOLE_CATALOG_SNAPSHOT} |
-    ConvertTo-Json -Compress | Set-Content -LiteralPath $env:SYNTHETIC_LAUNCH
-  $global:started=$true
-  [pscustomobject]@{Id=1234; HasExited=$false}
- }
-}
-function Start-Sleep { param($Milliseconds) }
-function Stop-Process { throw 'no actual process exists' }
-if ($Mode -eq 'status') { & $Launcher -Status }
-elseif ($Mode -eq 'stop') { & $Launcher -Stop }
-else { & $Launcher -Tab }
-''', encoding='utf-8')
-    env['SYNTHETIC_LAUNCH'] = str(tmp_path / 'launch.json')
-    launcher = str(config_source / 'claude/scripts/task-console.ps1')
-    result = run(tmp_path, harness, ['-Launcher', launcher], env)
-    assert result.returncode == 0, result.stdout + result.stderr
-    launch = json.loads((tmp_path / 'launch.json').read_text(encoding='utf-8-sig'))
-    assert launch['file'] == launch['python'] == env['TASK_CONSOLE_PYTHON']
+    import importlib.util
+    source = config_source / 'tools/tests/test_t19_frontdoor_binding.py'
+    spec = importlib.util.spec_from_file_location('launcher_contract', source)
+    contract = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(contract)
+    document = contract.fixture(tmp_path)
+    result = contract.invoke(tmp_path, document, parameters={'NoBrowser': True})
+    assert result['error'] is None, result
+    assert len(result['calls']) == 1
+    launch = result['calls'][0]
     assert launch['window'] == 'Hidden'
-    assert launch['arguments'] == ['-P', '-u', '-m', 'task_console.launch_server', '--port', '8787', '--no-browser']
-    for key in ('config', 'private', 'state', 'vault'):
-        assert launch[key]
-    assert launch['status'] == 'synthetic-status' and launch['catalog'] == 'synthetic-catalog'
-    before = (tmp_path / 'calls.jsonl').read_bytes()
-    for mode in ('status', 'stop'):
-        assert run(tmp_path, harness, ['-Launcher', launcher, '-Mode', mode], env).returncode == 0
-    assert (tmp_path / 'calls.jsonl').read_bytes() == before
+    assert launch['args'] == ['-P', '-u', '-m', 'task_console.launch_server', '--port', '8877', '--no-browser']
+    assert launch['environment'].items() >= document['environment'].items()
+    for parameter in ('Status', 'Stop'):
+        result = contract.invoke(tmp_path, document, parameters={parameter: True})
+        assert result['error'] is None and result['calls'] == [], result
+
 
 
 def test_installer_has_no_outer_scheduler_mutation(config_source):

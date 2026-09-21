@@ -27,10 +27,14 @@ def resolve_run_id(task_name, *, explicit=None, dry_run=False, scheduled=False,
     if run_id is None and (scheduled or marker) and not dry_run:
         if not re.fullmatch(r'[A-Za-z0-9_.-]+', task_name):
             raise ValueError('task-context: exact root task name required')
-        ps = str(Path(env.get('SystemRoot', r'C:\Windows')) / 'System32/WindowsPowerShell/v1.0/powershell.exe')
+        if __package__:
+            from .winps import powershell
+        else:
+            from winps import powershell
+        ps = env.get('TASK_CONSOLE_POWERSHELL') or powershell()
         result = (process or subprocess.run)(
             [ps, '-NoProfile', '-NonInteractive', '-File', str(Path(__file__).with_suffix('.ps1')),
-             '-QueryTaskName', task_name], capture_output=True, text=True, timeout=15,
+             '-QueryTaskName', task_name], stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=15,
             creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0), env=dict(env))
         if result.returncode:
             raise ValueError('task-context: Scheduler identity observation failed')

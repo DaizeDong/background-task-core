@@ -206,7 +206,7 @@ def test_nested_marker_distinguishes_submodules(tmp_path):
         _os.chmod(path, _stat.S_IWRITE)
         func(path)
 
-    shutil.rmtree(real_git, onexc=_force_writable)
+    shutil.rmtree(real_git, onerror=lambda func, path, info: _force_writable(func, path, info[1]))
     real_git.write_text("gitdir: ../.git/modules/b" + chr(10), encoding="utf-8")
     rows = {x["name"]: x for x in R.scan(root=str(tmp_path), now=NOW)["repos"]}
     assert rows["b"]["nested"] is True, (

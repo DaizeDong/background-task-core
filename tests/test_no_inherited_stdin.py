@@ -78,7 +78,9 @@ def test_every_subprocess_call_pins_stdin(fname):
     path = os.path.join(PKG, fname)
     for node in subprocess_calls(path):
         kw = {k.arg for k in node.keywords if k.arg}
-        assert "stdin" in kw, (
+        input_value = next((k.value for k in node.keywords if k.arg == 'input'), None)
+        piped_input = input_value is not None and not (isinstance(input_value, ast.Constant) and input_value.value is None)
+        assert "stdin" in kw or piped_input, (
             f"{fname}:{node.lineno} 的子进程调用没有显式给 stdin。"
             "在 pythonw 下它会继承一个无效句柄并永久挂起,而且看起来只是慢。")
         assert "creationflags" in kw, (

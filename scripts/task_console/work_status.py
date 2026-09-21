@@ -23,7 +23,7 @@ def read_configured(env=None):
         return dict(unavailable, reason="work_binding_invalid")
     try:
         result = subprocess.run([sys.executable, cli, "--db", database, "work-feed"],
-            capture_output=True, text=True, encoding="utf-8", timeout=20,
+            stdin=subprocess.DEVNULL, capture_output=True, text=True, encoding="utf-8", timeout=20,
             env=owner_environment(env),
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
         if result.returncode or len(result.stdout) > 16_000_000:

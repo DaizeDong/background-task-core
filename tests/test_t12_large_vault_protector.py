@@ -83,6 +83,48 @@ def test_interrupted_vault_read_keeps_transport_diagnosis(monkeypatch, code):
     assert raised.value.code == code and raised.value.field == 'transport'
 
 
+def test_decryption_reuses_exact_ciphertext_only_in_the_same_operation(monkeypatch):
+    from llmcall.process import execution_scope
+    calls = []
+    def convert(script, request):
+        calls.append(request['text'])
+        return {'text': request['text']}
+    monkeypatch.setattr(win, 'powershell', convert)
+    protector = win.DPAPIProtector()
+    first, changed = (bytes([i]).hex().encode('ascii') for i in range(2))
+    with execution_scope(timeout=30):
+        same_bytes(protector.unprotect(first), first)
+        same_bytes(protector.unprotect(first), first)
+        same_bytes(protector.unprotect(changed), changed)
+        assert len(calls) == 2
+    with execution_scope(timeout=30):
+        same_bytes(protector.unprotect(first), first)
+    assert len(calls) == 3
+
+
+def test_decryption_cache_preserves_cancellation_and_memory_bound(monkeypatch):
+    import threading
+    from llmcall.process import execution_scope
+    calls = []
+    def convert(script, request):
+        calls.append(request['text'])
+        return {'text': request['text']}
+    monkeypatch.setattr(win, 'powershell', convert)
+    protector = win.DPAPIProtector()
+    protector.CACHE_LIMIT = 2
+    cancel = threading.Event()
+    first, second = (bytes([i]).hex().encode('ascii') for i in range(2))
+    with execution_scope(timeout=30, cancel=cancel):
+        protector.unprotect(first)
+        protector.unprotect(second)
+        protector.unprotect(first)
+        assert len(calls) == 3 and protector._cache_size <= protector.CACHE_LIMIT
+        cancel.set()
+        with pytest.raises(Conflict, match='transport_cancelled'):
+            protector.unprotect(first)
+        assert len(calls) == 3
+
+
 @pytest.mark.parametrize('value', [None, 'text', 12, {}, b'\xff'])
 @pytest.mark.parametrize('method', ['protect', 'unprotect'])
 def test_wrong_input_type_or_encoding_refuses_before_transport(monkeypatch, value, method):

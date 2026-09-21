@@ -224,7 +224,10 @@ def test_older_journal_without_scheduler_step_still_defers_files_when_running(tm
     with pytest.raises(Crash):
         api().apply(plan, plan["input_revision"], runtime=runtime)
     tx, journal = next(reversed(runtime.journal.items.items()))
-    assert all(s["kind"] == "files" for s in journal["steps"])
+    # New journals prepare Scheduler deletion before publishing the first file.
+    # Model the old format only after proving those staged steps never ran.
+    assert all(s['phase'] == 'staged' for s in journal['steps'] if s['kind'] == 'scheduler')
+    journal['steps'] = [s for s in journal['steps'] if s['kind'] == 'files']
     journal.pop("scheduler_before")
     journal.pop("file_before")
     runtime.journal.save(tx, journal)

@@ -26,6 +26,8 @@ def merge_only_tree(repo, mode):
     merge = _run(repo, "commit-tree", merged_tree, "-p", first, "-p", side,
                  "-m", "synthetic merge").strip()
     _run(repo, "update-ref", "refs/heads/main", merge)
+    # An uninitialized submodule has an empty directory, not a deleted worktree path.
+    (repo / "vendor").mkdir()
     _run(repo, "config", "log.diffMerges", mode)
     _run(repo, "config", "diff.ignoreSubmodules", "all")
     _run(repo, "config", "diff.submodule", "log")

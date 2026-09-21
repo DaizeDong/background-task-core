@@ -1,5 +1,7 @@
 """Fixed, bounded COM/SecureString transport. Only explicit run requests start tasks."""
 import base64
+from collections import OrderedDict
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -38,7 +40,8 @@ def powershell(script, request, *, timeout=25):
     """Only bundled source is code. All caller values cross stdin as JSON data."""
     if os.name != 'nt':
         raise Conflict('windows_required', 'transport')
-    executable = Path(os.environ['SystemRoot']) / 'System32/WindowsPowerShell/v1.0/powershell.exe'
+    from . import winps
+    executable = winps.powershell()
     command = base64.b64encode(script.encode('utf-16-le')).decode('ascii')
     data = json.dumps(request, ensure_ascii=True, allow_nan=False).encode('ascii')
     if len(data) > LIMIT:
@@ -120,6 +123,12 @@ class DPAPIProtector:
     # Match _PROTECT; reserve 4096 bytes for DPAPI overhead and JSON framing.
     PLAIN_LIMIT = (LIMIT - 4096) // 4
     CIPHER_LIMIT = LIMIT - 1024
+    CACHE_LIMIT = 4 * LIMIT
+
+    def __init__(self):
+        self._cache = OrderedDict()
+        self._cache_size = 0
+        self._control = None
 
     @staticmethod
     def _validate(data, *, cipher):
@@ -153,7 +162,30 @@ class DPAPIProtector:
         return self._convert('protect', data)
 
     def unprotect(self, data):
-        return self._convert('unprotect', data)
+        # Vault.get still rereads and validates each file and plaintext envelope.
+        # Reuse only an already decrypted ciphertext within this operation.
+        from llmcall.process import current_control, remaining_timeout
+        control = current_control()
+        if control is not self._control:
+            self._cache.clear()
+            self._cache_size = 0
+            self._control = control
+        if control.is_set():
+            raise Conflict('transport_cancelled', 'transport')
+        if remaining_timeout(25) <= 0:
+            raise Conflict('transport_timeout', 'transport')
+        self._validate(data, cipher=True)
+        key = hashlib.sha256(data).digest()
+        if key in self._cache:
+            self._cache.move_to_end(key)
+            return self._cache[key]
+        value = self._convert('unprotect', data)
+        while self._cache and (len(self._cache) >= 64 or self._cache_size + len(value) > self.CACHE_LIMIT):
+            _, previous = self._cache.popitem(last=False)
+            self._cache_size -= len(previous)
+        self._cache[key] = value
+        self._cache_size += len(value)
+        return value
 
 
 _SCHEDULER = r'''
