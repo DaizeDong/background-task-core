@@ -24,6 +24,9 @@ $ProgressPreference = 'SilentlyContinue'
 [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false)
 $stage = 'read'
 try {
+  $stage = 'security-module'
+  Import-Module ([IO.Path]::Combine($PSHOME, 'Modules\Microsoft.PowerShell.Security\Microsoft.PowerShell.Security.psd1')) -ErrorAction Stop
+  $stage = 'read'
   $r = [Console]::In.ReadToEnd() | ConvertFrom-Json
   if ($r.operation -eq 'protect') {
     $stage = 'securestring-create'

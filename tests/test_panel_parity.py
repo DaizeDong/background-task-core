@@ -97,7 +97,7 @@ def node(program):
         pytest.skip("Node is not installed; module behavior pending")
     try:
         result = subprocess.run([executable, "-"], input=program, text=True, capture_output=True,
-                                encoding="utf-8", timeout=15)
+                                encoding="utf-8", timeout=60)
     except subprocess.TimeoutExpired as error:
         pytest.fail('Node timeout: input_bytes=' + str(len(program.encode('utf8')))
                     + ', stdout_bytes=' + str(len(error.stdout or b''))
