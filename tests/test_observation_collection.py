@@ -445,7 +445,8 @@ else:
         subprocess.Popen([sys.executable, '-I', '-B', '-c', child, heartbeat_path],
                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         end = time.monotonic() + 3
-        while not pathlib.Path(heartbeat_path).exists():
+        heartbeat = pathlib.Path(heartbeat_path)
+        while not heartbeat.exists() or heartbeat.stat().st_size == 0:
             if time.monotonic() > end: raise RuntimeError('heartbeat startup failed')
             time.sleep(0.01)
         if mode in ('stdout', 'stderr'):

@@ -21,6 +21,7 @@ from task_console.registration import Conflict
 LEGACY = r'''
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
+$ProgressPreference = 'SilentlyContinue'
 [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false)
 try {
   $r = [Console]::In.ReadToEnd() | ConvertFrom-Json

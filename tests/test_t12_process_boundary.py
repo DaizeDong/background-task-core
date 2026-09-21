@@ -34,7 +34,7 @@ def test_timeout_does_not_wait_for_stdin_reader_or_non_daemon_pipes():
     started = time.monotonic()
     # Cleanup shares the same deadline. Under load it may remain unconfirmed;
     # that must still return a failure promptly, never wait for the 30s reader.
-    with pytest.raises(reg.Conflict, match=r'^transport_(timeout|cleanup_failed)$'):
+    with pytest.raises(reg.Conflict, match=r'^transport_(timeout|cleanup_failed): transport$'):
         win.powershell('[Threading.Thread]::Sleep(30000)', {'text': 'x' * 1000000}, timeout=2)
     assert time.monotonic() - started < 4
 
