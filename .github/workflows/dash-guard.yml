@@ -1,0 +1,29 @@
+# dash-guard in CI: the house rule that published prose carries no en/em dash (the ASCII hyphen is
+# code syntax and is left alone). Style, not security, so it scans the current tree only.
+#
+# The steps live in style/ci/dash-guard/action.yml, one copy for the whole fleet. This gate is
+# style, not security, which is why it comes from a different submodule than the scanner:
+# nothing here keeps an identifier out of a public history.
+#
+# Most of this repository's prose is Chinese, and 破折号 is ordinary Chinese punctuation that the
+# guard cannot tell apart from an em dash in English. That is a real constraint on the writing and
+# not an oversight: a gate argued with once per document is a gate that gets switched off. The
+# first scan after this file was added found 179 lines across 39 files, which is what a submodule
+# that was pinned but never wired to anything looks like.
+name: dash-guard
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - uses: ./style/ci/dash-guard
