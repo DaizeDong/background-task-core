@@ -40,7 +40,7 @@ REQUIRED = {"obs", "judged", "ok", "bad", "stale", "neutral", "other",
             "health", "visibleRuns", "visibleRunsScope", "byDay"}
 
 # 一份合成的监控日志。措辞照真实格式写,但任务名与内容全是编的。
-# 最后一行 "DEGRADED" 是**判词表认不出来的措辞** —— other 这个桶存在的全部理由。
+# 最后一行 "DEGRADED" 是**判词表认不出来的措辞**, other 这个桶存在的全部理由。
 LOG = """\
 [2026-09-01 03:00:00]  AcmeSyncJob : OK last 9/1/2026 3:00:00 AM
 [2026-09-01 04:00:00]  AcmeSyncJob : OK last 9/1/2026 4:00:00 AM
@@ -186,7 +186,7 @@ def test_a_populated_run_event_table_gives_no_reason(both_paths, tmp_path):
 # --------------------------------------------------------------------------- 顶层字段
 # 上面几条比的是**每任务**的字段。顶层那一层一直没人比,而页面从顶层读的键
 # 一样多:available / reason / days / caveat / matched / source / lastIngest / ingest。
-# 实测:给数据库通路加 ingest 判定、日志通路不加,上面五条用例全绿 ——
+# 实测:给数据库通路加 ingest 判定、日志通路不加,上面五条用例全绿,
 # 于是回落一次,顶栏那段判定代码什么都不画,而那和「摄入器好好的」在屏幕上一样。
 TOP_REQUIRED = {"available", "reason", "days", "matched", "source", "caveat",
                 "lastIngest", "ingest"}

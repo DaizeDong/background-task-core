@@ -241,7 +241,7 @@ def scan_one(repo: Path, vis_table: dict, now: float) -> dict:
     #
     # ⚠ 这个字段存在的理由:上面那个 behind 来自 `# branch.ab`,而那一行比的是
     # HEAD 和**本地缓存的那份 origin/xxx**,不是真正的远端。扫描过程不 fetch,
-    # 所以一个从没 fetch 过的仓,behind 恒为 0 —— 而屏幕上它和「真的已同步」
+    # 所以一个从没 fetch 过的仓,behind 恒为 0, 而屏幕上它和「真的已同步」
     # 逐字一样。实测下来这不是边缘情况:一个只推不拉的仓永远不会写 FETCH_HEAD,
     # 而那种仓在任何以推送为主的工作流里都占多数,于是「落后 0」大面积失真。
     #
@@ -289,7 +289,7 @@ def scan_one(repo: Path, vis_table: dict, now: float) -> dict:
                 # behind 可不可信,由这里说了算,不让前端各自去推。
                 # ⚠ 没有 upstream 时 behind 本来就是 None(未知),那一档不受这条影响。
                 # ⚠ 两边都要是小时。第一版拿 `now - fetched_at`(秒)直接比
-                # BEHIND_TRUST_HOURS(24),于是任何超过 24 秒的缓存都被判成过期 ——
+                # BEHIND_TRUST_HOURS(24),于是任何超过 24 秒的缓存都被判成过期,
                 # 于是每一个仓都会显示「落后未知」。这个错的方向是「安全」的,
                 # 所以光读代码看不出来;而一个永远在喊的提示等于没有提示,
                 # 它还会顺带把真正该看的那几个一起淹掉。
@@ -354,7 +354,7 @@ def _classify(rows: list[dict]) -> None:
     for r in rows:
         r.setdefault("companionInScan", None)
         # 共享组件被多少个仓用。这是关系的另一半 : 「谁被谁引用」在页面上原来只有
-        # 一个类型标签在说,而「被 25 个仓用」和「被 1 个仓用」是完全不同的两件东西 ——
+        # 一个类型标签在说,而「被 25 个仓用」和「被 1 个仓用」是完全不同的两件东西,
         # 前者改一行会波及整片,后者基本是私事。
         rn = r.get("remoteName") or r.get("name")
         r["usedBy"] = used_by.get(rn, 0) if r.get("kind") == KIND_SHARED else None
@@ -445,12 +445,12 @@ def scan(root: str | None = None, now: float | None = None, workers: int = 10) -
              if d.is_dir() and (d / ".git").exists()]
     if not repos:
         # summary 的形状必须和正常分支一致。少给几个键不会报错,只会让前端把
-        # `undefined` 拼进副标题(实测:「无上游 undefined」)——
+        # `undefined` 拼进副标题(实测:「无上游 undefined」),
         # 一个 undefined 印在屏幕上比一个说不出来的空更糟,因为它看起来像一个值。
         return {"available": True, "root": str(base), "repos": [],
                 "summary": {"total": 0, "counts": {}, "attention": 0,
                             "unknownUpstream": 0,
-                            # 没有仓时这三个都是 0,但键必须在 —— 见上面那段注释,
+                            # 没有仓时这三个都是 0,但键必须在, 见上面那段注释,
                             # 缺一个键的后果是前端把 undefined 拼进副标题。
                             "staleBehind": 0,
                             "neverFetched": 0,
@@ -489,7 +489,7 @@ def scan(root: str | None = None, now: float | None = None, workers: int = 10) -
         try:
             _r["identity"] = _ident.judge(Path(_r["path"]), _r.get("owner"), idt, idt_reason)
         except Exception as e:
-            # 判定不了要说出来,不能让这一栏空着 —— 空着和「对得上」在屏幕上一样。
+            # 判定不了要说出来,不能让这一栏空着, 空着和「对得上」在屏幕上一样。
             _r["identity"] = {"state": _ident.UNCHECKED, "owner": _r.get("owner"),
                               "expect": None, "scope": None,
                               "why": "判定失败(%s)" % e.__class__.__name__}
@@ -514,7 +514,7 @@ def scan(root: str | None = None, now: float | None = None, workers: int = 10) -
             "attentionStates": [UNPUSHED, DIRTY, ERROR],
             # 可见性表读不出来时要说出来。原来它被吞成空表,于是所有仓的公开/私有标记
             # 一起消失,而那和「表里没登记这几个仓」长得一模一样。
-            # 「读到了但一条都没匹配上」同样要说 —— 那是匹配逻辑坏了,不是没登记,
+            # 「读到了但一条都没匹配上」同样要说, 那是匹配逻辑坏了,不是没登记,
             # 而这两件事在屏幕上原本长得一样(都是没有徽章、没有原因)。
             "visibilityReason": vis_reason or _vis_match_reason(out, vis),
             # 和上面同一个道理:身份表读不出来时,页面要说得出为什么整栏是「未检查」。
@@ -530,12 +530,12 @@ def scan(root: str | None = None, now: float | None = None, workers: int = 10) -
                                and not x.get("behindKnown")),
             "neverFetched": sum(1 for x in out if x.get("fetchedAt") is None),
             "behindTrustHours": BEHIND_TRUST_HOURS,
-            # 每组实际会显示多少个仓。页面用它画分组标题,而不是自己再数一遍 ——
+            # 每组实际会显示多少个仓。页面用它画分组标题,而不是自己再数一遍,
             # 前端数一遍就是同一个事实的第二个来源。
             #
             # ⚠ 伴生仓算进**它宿主所在的那个组**,因为它就画在那里。
             # 按 kind 直接数的话,三个组标题加起来会比「共 N」少掉伴生仓的数目,
-            # 而屏幕上没有任何一处解释那个差 —— 两个都自称权威的数字,
+            # 而屏幕上没有任何一处解释那个差, 两个都自称权威的数字,
             # 读的人只能自己去猜哪个漏了什么。加起来等于总数,就不需要解释。
             "kinds": _group_counts(out),
             "kindOrder": list(KIND_ORDER),
@@ -620,11 +620,11 @@ def status(name: str) -> dict:
 # 一次误击只会打开一份计划。
 #
 # 为什么值得做:伴生仓按设计天天在长数据,于是「有未提交改动」长期挂着十几条。
-# 那十几条每一条的处理方式逐字相同,而它们占着「要人管的事」清单里最大的一块 ——
+# 那十几条每一条的处理方式逐字相同,而它们占着「要人管的事」清单里最大的一块,
 # 一张清单如果长期有一半是同一件琐事,人就会开始整张不看,连同真正要紧的那几条一起。
 
 # 提交信息的字符闸。换行会让 `-m` 之后的内容变成另一段,反引号和 $ 在任何一层
-# 被交给 shell 时都会求值 —— 这里不经 shell,但一个能塞进任意字节的提交信息
+# 被交给 shell 时都会求值, 这里不经 shell,但一个能塞进任意字节的提交信息
 # 迟早会被别处读出来再执行。
 _MSG_BAD = set('\r\n\x00`$')
 _MSG_MAX = 200
@@ -699,7 +699,7 @@ def commit_push_plan(name: str) -> dict:
 
     rc, rem = _git(repo, "remote", "get-url", "origin", timeout=20)
     remote = rem.strip() if rc == 0 else None
-    # ⚠ _visibility 收的是 remote URL,不是 slug —— 它自己再算 owner/repo。
+    # ⚠ _visibility 收的是 remote URL,不是 slug, 它自己再算 owner/repo。
     # 传 slug 进去会让它二次解析、永远匹配不上,而那正是这个视图历史上
     # 「从来没有工作过」的原因,症状是每一行都安静地显示「未知」。
     vis = None
@@ -761,7 +761,7 @@ def commit_push(name: str, message: str, expect: list[str] | None = None,
         if expect is None:
             raise Refused("没有带上计划里的文件清单,拒绝提交", "no_plan")
         # 钉住读到的那一版。工作树在你看计划和点确认之间被别的自动化改过时,
-        # 这里必须整个拒绝而不是「顺手把新出现的也提交了」——
+        # 这里必须整个拒绝而不是「顺手把新出现的也提交了」,
         # 这个仓已经因为「长任务中途工作树被另一自动化改掉」出过一次事。
         if sorted(expect) != sorted(plan_paths):
             added = sorted(set(plan_paths) - set(expect))

@@ -196,7 +196,7 @@ def build(tasks: dict, runs_by_task: dict | None = None, now: datetime | None = 
             actual = [x for x in (r.get("todayRuns") or [])]
         # unknownTriggers 也算「这一行有东西」。
         # ⚠ 这个过滤条件原来只看 points / spans / eventDriven / actual 四项,拼出来的 row
-        # 里也没有 unknownTriggers 这个键 —— 而 expand() 上面那行注释白纸黑字写着
+        # 里也没有 unknownTriggers 这个键, 而 expand() 上面那行注释白纸黑字写着
         # 「认不出的类型照样出现在行里,像 eventDriven 那样」。注释断言的行为在代码里不存在,
         # 而它声称修好的正是同一个缺陷。
         # 后果:一个只配了 Monthly 触发器(或 CimClassName 解析出空 kind)的任务,

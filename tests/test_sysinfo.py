@@ -115,7 +115,7 @@ def test_dir_size_says_partial_when_it_stops_early(tmp_path):
     # 数到上限就必须说 partial。一个数了一半却报出确定数字的体积比不报还糟。
     capped = S.dir_size(tmp_path, cap=5)
     assert capped["partial"] is True
-    # ⚠ 这里原来写的是 `capped["files"] <= 12`,而全量返回的就是 12 ——
+    # ⚠ 这里原来写的是 `capped["files"] <= 12`,而全量返回的就是 12,
     # 0 到 12 的任何值都过,**唯一有信息量的那个数被整个放掉了**。
     # 把 cap 那段 break 删掉、只留 partial=True(也就是「数完全部 12 个还顺手打上标记」),
     # 那条断言照样绿。真正要钉的是「它确实提前停了」。

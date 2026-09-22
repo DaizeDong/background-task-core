@@ -35,7 +35,7 @@ _NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
 # allow-list 在一个 PowerShell 脚本里,形如 $TaskNames = @( 'A', 'B' )
 # 块正则只有一份,在 allowlist.py 里。这里曾经有自己的一份,和 server.py 那份对收尾括号
-# 缩进的处理不一致 —— 同一个文件,一边读得到一边读不到,而两边都自称权威。
+# 缩进的处理不一致, 同一个文件,一边读得到一边读不到,而两边都自称权威。
 from allowlist import BLOCK as TASKNAMES_BLOCK  # noqa: E402
 
 
@@ -45,7 +45,7 @@ def _env_path(var: str) -> Path | None:
 
 
 # 钉死的绝对路径。裸名 "powershell.exe" 交给 CreateProcess 时会按
-# 「应用程序目录 -> 当前目录 -> 系统目录 -> PATH」搜索 —— 也就是说当前目录里放一个同名的
+# 「应用程序目录 -> 当前目录 -> 系统目录 -> PATH」搜索, 也就是说当前目录里放一个同名的
 # 可执行文件就能顶替它,而这个模块正是**会改系统状态和改文件**的那一条路。
 # server.py 那边一直是钉路径的;两份实现在同一台机器上可能解析到不同的可执行文件,
 # 而没钉的偏偏是危险的这一份。
@@ -75,7 +75,7 @@ def _task_state(name: str) -> str | None:
         [_powershell(), "-NoProfile", "-Command",
          # ⚠ 必须钉 -TaskPath '\\'。act.ps1 三个动词全都钉了,并且在动手前重新枚举一次
          # collect.ps1 要求名字在册(而 collect 只枚举根路径、再剔掉厂商任务);
-         # **退役这条路一道都没有** —— 它能够到 \\Microsoft\\Windows\\** 底下的任务,
+         # **退役这条路一道都没有**, 它能够到 \\Microsoft\\Windows\\** 底下的任务,
          # 而 act.ps1 的注释写得很清楚:一个能够到那里的控制台,可以靠打一个名字
          # 停掉 Windows Update 或 Defender 的维护任务。
          # 退役比停用更重:它还会改两处登记文件。范围闸只多不少。
@@ -141,7 +141,7 @@ def plan(name: str, reason: str) -> dict:
         # **「我读不出这份清单」被当成了「这个任务本来就不在清单里」这个确定结论**,
         # 再写成 state='already'(无需改动)。而 blocked 只收集 missing-config,
         # 所以解析失败连 apply 都拦不住:退役会跳过这一步然后报告自己四步做完了。
-        # 本模块开头那段话说的正是这件事 —— 健康清单一旦解码失败,等于所有任务都没有被监控,
+        # 本模块开头那段话说的正是这件事, 健康清单一旦解码失败,等于所有任务都没有被监控,
         # 而界面看起来完全正常。
         try:
             data = json.loads(hp.read_text(encoding="utf-8-sig"))

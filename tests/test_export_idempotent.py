@@ -101,14 +101,14 @@ def test_a_failed_watermark_commit_does_not_duplicate_lines(db, monkeypatch):
     real_begin = CI.begin
     monkeypatch.setattr(CI, "begin", lambda con: (_ for _ in ()).throw(
         RuntimeError("database is locked")))
-    # begin() 现在在 try 里面,所以锁超时不再冒到调用方 —— 它被记成一次失败的导出。
+    # begin() 现在在 try 里面,所以锁超时不再冒到调用方, 它被记成一次失败的导出。
     # 这正是模块开头承诺的行为(「读不到的源会被记成一条失败的 ingest_run 行」),
     # 而以前 begin() 在 try 之外,异常直接穿出去、连账都没记。
     ok, n, msg = CI.export_run_events(db)
     assert ok is False and "locked" in msg, (ok, n, msg)
     monkeypatch.setattr(CI, "begin", real_begin)
 
-    # 文件里已经有这 4 行,而 meta 的水位线没动 —— 这正是那个危险状态。
+    # 文件里已经有这 4 行,而 meta 的水位线没动, 这正是那个危险状态。
     assert len(_lines(out)) == 4
     mark = db.execute("SELECT value FROM meta WHERE key='export_watermark'").fetchone()
     assert mark is None or mark["value"] in ("0:0", None), \

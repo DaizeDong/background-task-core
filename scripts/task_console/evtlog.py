@@ -216,7 +216,7 @@ def read(days: int = 30, max_events: int = 20000, now: _dt.datetime | None = Non
         "dropped": dropped,
         "truncated": len(rows) >= max_events,
         # 下面三个只有摄入器用:去重的水位线、日志被清空的探测器、通道里的记录总数。
-        # 它们和 runlog.ps1 输出里的同名键一一对应 —— 摄入器两条通路读同一组键,
+        # 它们和 runlog.ps1 输出里的同名键一一对应, 摄入器两条通路读同一组键,
         # 缺一个都会让它把「问不出来」当成一个值来用(maxRecordId 缺失会变成 0)。
         "maxRecordId": max((r["rid"] for r in rows if r.get("rid")), default=0),
         "oldestRecordId": oldest_rid,

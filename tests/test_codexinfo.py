@@ -328,7 +328,7 @@ def test_delete_refuses_a_junction_that_escapes_the_tree(codex_root, tmp_path):
 
     (codex_root / "sessions").mkdir(exist_ok=True)
     # ⚠ 「这个平台没有联接」和「这一次没建成」必须分开。
-    # 第一版无条件 skip,实测在一次全量里静默跳过了一次、重跑又过 ——
+    # 第一版无条件 skip,实测在一次全量里静默跳过了一次、重跑又过,
     # 一个偶尔跳过的用例比一个失败的更糟:它不报错地把覆盖降下来,
     # 而这条用例守的是一个不可逆删除接口唯一独当一面的闸。
     # 非 Windows 才是真的做不到;在 Windows 上 mklink /J 不需要管理员,

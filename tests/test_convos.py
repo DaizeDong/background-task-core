@@ -348,7 +348,7 @@ def test_a_complete_cache_entry_still_hits(tmp_path):
 # 服务器是 ThreadingHTTPServer,每个 /api/convos 请求一个线程。缓存原来是
 # `cpath.write_text(...)` 整文件覆盖、无锁、非原子:两个请求并发时两个线程各自把完整字典
 # 写进同一个路径,内容互相交叠;写到一半进程被关掉同样留下半个文件。
-# 而 _load_cache 把 ValueError 和 OSError 都吞成 {} —— **坏掉的缓存和「还没有缓存」
+# 而 _load_cache 把 ValueError 和 OSError 都吞成 {}, **坏掉的缓存和「还没有缓存」
 # 在行为上完全一致**:之后每次打开会话面板都是全量重读,响应从秒级回到十几秒,
 # 而页面上没有任何一处说缓存已经坏了,只有一个没人会盯的 cacheHits 在暗示。
 

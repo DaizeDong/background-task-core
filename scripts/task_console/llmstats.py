@@ -65,7 +65,7 @@ CALLER_LEGACY = "(早于此字段)"   # 根本没有 caller 这个键(账本里�
 #
 # 权威在 llmcall 仓里,而控制台不 import 它(两个仓不该互相依赖)。于是这个常量
 # 从写下的第一天起就在漂:实测过一次,llmcall 那边已经改成了另一个顺序,而页面
-# 顶着「内置默认」的徽章展示了一个 llmcall 实际不会用的链 —— 那个徽章看起来很权威,
+# 顶着「内置默认」的徽章展示了一个 llmcall 实际不会用的链, 那个徽章看起来很权威,
 # 而两份常量只在有人同时打开两个仓时才对得上号。
 #
 # 所以它的角色被降到最后一级:**只要账本里有过一条真实记录,就以记录为准**
@@ -203,7 +203,7 @@ def _resolve_bodies() -> dict:
         base = cfg if cfg.name == "data" else cfg / "data"
         cands.append((ENV_LLMCALL_CONFIG, base / "bodies"))
 
-    # 到此为止:没有任何一级是猜出来的家目录路径。理由见函数 docstring 第二段 ——
+    # 到此为止:没有任何一级是猜出来的家目录路径。理由见函数 docstring 第二段,
     # 那两级里嵌着机主私有伴生仓的名字,而这是一个公开仓。
 
     for src, p in cands:
@@ -786,7 +786,7 @@ def page(records, offset=0, limit=50, provider=None, ok=None, q=None, caller=Non
             "skipped": [n for n in known if n not in chain_set],
             # 原样透传,缺失就是 None。**不许替换成空数组:**「没有逐级明细」
             # 和「有明细但是空的」是两件事,而顶层的 error 只记最后一级的原因,
-            # 那一级往往正是因为预算被前面几级烧光才没真的试过 ——
+            # 那一级往往正是因为预算被前面几级烧光才没真的试过,
             # 一整段 chain budget exhausted 里,真正的病因一个字都没留下。
             "attempts_detail": r.get("attempts_detail"),
             "error": r.get("error"),
@@ -846,7 +846,7 @@ def _observed_chain(records=None):
                     tail.append((i, t))
     except OSError:
         # 读不到账本不是错误,只是「没有观测」。这里降级返回 None,
-        # 由调用方落到下一级去 —— 在这里抛会让一台没装 llmcall 的机器打不开页面。
+        # 由调用方落到下一级去, 在这里抛会让一台没装 llmcall 的机器打不开页面。
         return None, None
 
     for lineno, t in reversed(tail):
@@ -1051,7 +1051,7 @@ def body(i, records=None) -> dict:
     res = _resolve_bodies()
     d = res["dir"]
     if d is None or not d.is_dir():
-        # 显式覆盖设了却指到一个不存在的目录,也走这里 —— 但要把那个路径说出来,
+        # 显式覆盖设了却指到一个不存在的目录,也走这里, 但要把那个路径说出来,
         # 否则人会以为是伴生仓没装,而其实是那个环境变量填错了。
         where = f":{d}" if d is not None else ""
         return {"available": False, "reason_code": "uninitialised",

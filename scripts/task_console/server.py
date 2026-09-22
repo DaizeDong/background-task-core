@@ -127,7 +127,7 @@ def run_ps(script: Path, env_extra: dict[str, str] | None = None, timeout: int =
 # 而没有任何一处能看出自己走的是哪条通路。
 RUNLOG_DAYS = 30
 # 上限从 2 万提到 10 万。2 万是个凭感觉的数,实测下来它只覆盖 **3 天**
-# (2026-09-06 到今天),而返回的口径写着「最近 30 天」—— 一个七天没跑的任务
+# (2026-09-06 到今天),而返回的口径写着「最近 30 天」, 一个七天没跑的任务
 # 在这条通路上看起来就像从来没跑过。
 # 实测(EvtQuery,本机):上限 2 万 -> 20000 条 / 1.8s / 截断;
 # 上限 10 万 -> 54447 条 / 7.4s / 不截断,而 54450 就是这个通道当前保有的全部。
@@ -251,13 +251,13 @@ def load_runlog() -> dict:
             "windowDays": (None if truncated else RUNLOG_DAYS), "countScope": scope,
             "truncated": truncated,
             # 读到一半失败、以及解析不了的条数,两个都要带出去。
-            # ⚠ 这句以前写的是「读取器一直在数它们」—— **只有快路(evtlog)在数**。
+            # ⚠ 这句以前写的是「读取器一直在数它们」, **只有快路(evtlog)在数**。
             # 慢路 runlog.ps1 从来不产出 dropped / partial / truncated 三个键,
             # 于是 `raw.get("dropped") or 0` 把「这个读取器根本不数」变成了一个确定的 0:
             # 同一个页面字段在一条通路上是量出来的,在另一条通路上是缺失被当成了值。
             # 2026-09-09 已给慢路补上这三个计数,所以现在这句话对两条通路都成立。
             # 而这里原来把两个数都扔了:事件格式一变、大批事件被丢掉时,页面上只会看到
-            # 运行次数变少、成功率漂移,没有任何一处说明有多少条读不懂 ——
+            # 运行次数变少、成功率漂移,没有任何一处说明有多少条读不懂,
             # 一个看起来精确、实则不完整的数字,而它旁边正好还有个 count 给它背书。
             "partial": bool(raw.get("partial")),
             "dropped": int(raw.get("dropped") or 0),
@@ -314,7 +314,7 @@ def load_from_db():
     htasks = {}
     for task, c in totals.items():
         # ⚠ 同名不同义。这条通路上的 visibleRuns 是**运行日志里的真实启动数**(runs_by_day 求和),
-        # 而慢路上的同名字段是「轮询看得见的 LastRunTime 去重数」,严重低估 ——
+        # 而慢路上的同名字段是「轮询看得见的 LastRunTime 去重数」,严重低估,
         # history.py 记过 967 对 13800,差一个数量级。两个量共用一个名字,而随数据下发的
         # caveat 文案只描述其中一种,所以 /api 的消费方按哪一种读都可能是错的。
         # 这里显式声明本条通路的口径,让读的人不必去猜自己拿到的是哪一个。
@@ -326,7 +326,7 @@ def load_from_db():
             # 任何字段里,于是监控器换一种措辞之后,每一行会显示 health 0.0% 而
             # ok / bad / stale 全是 0 : **同一行里两个自称权威的数字互相矛盾,
             # 而没有任何字段说明观察去哪了**。history.py 那条通路 2026-09 就补上了这个桶,
-            # 而数据库这条主通路一直没有 —— 于是那次修复在实际走的通路上完全没生效。
+            # 而数据库这条主通路一直没有, 于是那次修复在实际走的通路上完全没生效。
             "other": c.get("other", 0),
             "health": c.get("health"),
             "visibleRuns": sum((runs_by_day.get(task) or {}).values()),
@@ -357,14 +357,14 @@ def load_from_db():
         # lastIngest 原来算完就被丢掉,而它正是区分「摄入器挂了」和「本来就没跑过」的唯一信号。
         "lastIngest": cov.get("lastIngest"),
         # 而光有时间戳还不够:没有人会读一眼时间然后在心里减出九天。判定在这里做完,
-        # 页面只负责搬结论 —— 页面自己再判一次就是同一条规则的第二份,两份一定会漂。
+        # 页面只负责搬结论, 页面自己再判一次就是同一条规则的第二份,两份一定会漂。
         "ingest": console_store.ingest_verdict(cov.get("lastIngest")),
         "matched": cov["health"]["rows"], "skipped": 0, "days": all_days, "tasks": htasks,
         "caveat": ("健康率来自每小时轮询的观察序列,不是每次运行的成功率:一个坏了一整天的任务贡献约 24 条"
                    "不健康观察而不是 1 条。「实成功率」那一列才是每次运行的,来自 Windows 运行日志。"),
     }
     # 运行数据这一半也要说原因。旁边 hist 那一半为同一情形写了三种具体原因,
-    # 而这里 reason 恒为 None —— 于是库可用但 run_event 是空表时,页面上只剩一句
+    # 而这里 reason 恒为 None, 于是库可用但 run_event 是空表时,页面上只剩一句
     # 没有原因的「无运行日志」,而那句话在「日志通道关着」「摄入器从没跑过」
     # 「摄入器停了」三种完全不同的处境下逐字相同。
     # 更糟的是 warnings 只在**回落路径**上才收 runs["reason"],所以这条路上
@@ -382,7 +382,7 @@ def load_from_db():
         # 数据库那条路的 count 是全表行数,不限日期,和上面回落路径那条不是一个量。
         "windowDays": None, "countScope": "库里全部",
         # ⚠ 这句里**不要再写排班**。它写错过两次、方向相反,理由见 load_from_db 的
-        # docstring;而这一句在 RUNLOG_OUT 的导出白名单里,会真的经 /api 到达页面 ——
+        # docstring;而这一句在 RUNLOG_OUT 的导出白名单里,会真的经 /api 到达页面,
         # 一个关于机器配置的断言从这里下发出去,就成了对外契约的一部分,
         # 而这个仓看不见那台机器的排班。摄入到底新不新鲜由 ingest_verdict 当场判,
         # 那个判据读的是数据自己的时间,不读任何人写下的承诺。
@@ -425,7 +425,7 @@ def load_health() -> tuple[dict, str | None]:
     # ⚠ 这一行以前会**静默吃掉**两种条目:漏写 name 的直接丢,重名的后者覆盖前者,
     # 两种都不计数、不产生任何 warning。而「产物新鲜度覆盖率」这个数
     # (freshness.py 里 coverage = judged/total)算的是**过滤之后**那份列表,
-    # 被吃掉的那部分同时从分子和分母里消失 —— 于是覆盖率对「清单条目被吃掉」
+    # 被吃掉的那部分同时从分子和分母里消失, 于是覆盖率对「清单条目被吃掉」
     # 这件事完全免疫,永远掉不下来。
     # 屏幕上:清单里写了 12 个、有一条把 "name" 打成了 "task",页面显示
     # 「0 · 覆盖 100% · 共 11」,绿色;那个任务的产物一个月不更新也永远不会出现在
@@ -457,13 +457,13 @@ def load_health() -> tuple[dict, str | None]:
 
 # 同一个任务名在清单里可以有多条声明:一个任务把几件事折叠进来之后,
 # 每件事各写一条,而监控器是 `foreach ($entry in $cfg.tasks)` **逐条**评估的。
-# ⚠ 控制台这边原来是 `{t["name"]: t for ...}`,**只留下最后一条** ——
+# ⚠ 控制台这边原来是 `{t["name"]: t for ...}`,**只留下最后一条**,
 # 于是它对同一个任务显示的阈值和产物,可能比监控器实际执行的那套**更松**:
 # 实测本机有一个任务写了三条(26h/26h/48h),控制台留下的正是 48h 那条,
 # 盯的还是另一个产物。屏幕上没有任何一处显示「这里还有两条声明」。
 # 合并规则一律取**更严**的那一侧:年龄上限取最小、豁免类的布尔取或
 # (它们都是「更不容易被判绿」的方向)、产物列全部。宁可界面比监控器严,
-# 不可比它松 —— 松的那一侧会让人以为已经查过了。
+# 不可比它松, 松的那一侧会让人以为已经查过了。
 _STRICTER_MIN = ("max_age_hours", "artifact_max_age_hours", "grace_hours")
 _STRICTER_OR = ("artifact_cannot_prove_success", "exit_code_is_authoritative")
 
@@ -481,7 +481,7 @@ def _merge_decls(decls: list[dict]) -> dict:
                 out[k] = v
     out["declCount"] = len(decls)
     # 原始那几条也留着。合并出来的这一份是给任务表用的(一个任务一行,取更严的一侧),
-    # 而产物新鲜度必须逐条评估 —— 一个任务把几件事折叠进来时,合并成一条就意味着
+    # 而产物新鲜度必须逐条评估, 一个任务把几件事折叠进来时,合并成一条就意味着
     # 坏了哪一件在屏幕上说不出来,而这正是折叠本身带来的那个盲区。
     # ⚠ 下划线开头:它不进页面载荷(下面那段是逐个字段取的),只给 build_freshness 用。
     out["_decls"] = list(decls)
@@ -510,7 +510,7 @@ def load_allowlist() -> tuple[set[str] | None, str | None]:
     except Exception as e:
         return None, f"读不了备份 allow-list: {e}"
     # 解析器只有一份(allowlist.py)。这里以前有自己的一份正则,**要求收尾括号顶格**,
-    # 而 retire.py 那份允许它缩进 —— 同一个文件,一边说读不到,一边照常改写它。
+    # 而 retire.py 那份允许它缩进, 同一个文件,一边说读不到,一边照常改写它。
     names, why = allowlist.parse_names(txt)
     if names is None:
         return None, f"{p}: {why}"
@@ -522,7 +522,7 @@ def status_of(t: dict) -> tuple[str, str]:
         return "disabled", "已停用"
     # ⚠ 读不到任务信息**不是**「失败」。collect.ps1 以前把 Get-ScheduledTaskInfo 的异常
     # 整个吞掉,于是 rcRaw 是 None,而下面那行 `rc in ok` 为假,直接返回
-    # ('bad', '失败 ' + (rcHex or '?')) —— **把「我没读到」编码成了一个确定的坏结论**。
+    # ('bad', '失败 ' + (rcHex or '?')), **把「我没读到」编码成了一个确定的坏结论**。
     # 屏幕上是一个红色的「失败 ?」,人会去查一个其实没失败的任务。
     if t.get("infoError"):
         return "unknown", "信息读不到"
@@ -648,7 +648,7 @@ def build_payload() -> dict:
             # 原来这里直接覆盖,于是同一个任务在表里出现两行、在两个大类的评分里各贡献一次分母,
             # 而顶部的「总数」按去重后的任务数算 : 同一屏上「总数 40」和「41/41 行」并存,
             # 所有数字都还在正常渲染,看不出哪一份是对的。
-            # 现在只认第一次归属(让所有计数对齐),并把重复归属**说出来** ——
+            # 现在只认第一次归属(让所有计数对齐),并把重复归属**说出来**,
             # 悄悄挑一个和悄悄算两遍一样坏,区别只是坏得安静。
             if n in assigned:
                 dup_cat.setdefault(n, [assigned[n]]).append(c["name"])
@@ -672,7 +672,7 @@ def build_payload() -> dict:
         t["desc"] = descs.get(t["name"]) or t.get("description") or None
         # 两个键名都要认,而且**只能有一份表**知道它们叫什么。
         # 这里以前是 `e.get("ok_codes", [])`,只认一个名字:声明成 ok_exit_codes 的任务
-        # 在这条渲染通路上被静默丢掉,而 freshness 那条认全 —— 同一个退出码,
+        # 在这条渲染通路上被静默丢掉,而 freshness 那条认全, 同一个退出码,
         # 任务表判红、新鲜度判绿,同一屏两个自称权威的结论,没有任何一处对账。
         t["okCodes"] = ",".join(str(x) for x in freshness.declared_ok_codes(e)) or None
         t["artifact"] = e.get("artifact")
@@ -813,7 +813,7 @@ def build_payload() -> dict:
 # 每个请求各解析一遍整个账本,人按一下翻页要等好几秒。
 #
 # 缓存键是 (路径, 字节数, mtime)。这三样对一个**只追加**的文件来说是可靠的:
-# 追加一行,后两样必变。刻意不用「缓存 N 秒」那种写法 ——
+# 追加一行,后两样必变。刻意不用「缓存 N 秒」那种写法,
 # 那会让刚发生的一次调用在页面上消失几秒,而「刚跑完但看不见」正是这台台子要防的形态。
 _LEDGER_CACHE: dict = {}
 
@@ -859,12 +859,12 @@ def llm_overview() -> dict:
     wins.append(life)
 
     # 手上已经有解析好的 recs 就传下去。不传的话 chain_config 会自己再去扫一遍账本
-    # 尾部 —— 结果一样,但那是同一份文件在同一个请求里被读了两次,
+    # 尾部, 结果一样,但那是同一份文件在同一个请求里被读了两次,
     # 而两次读之间文件可能已经变了,于是页面上的「最近一次调用」和明细表的最后一行
     # 会指向不同的记录,且没有任何东西说得出这一点。
     chain = llmstats.chain_config(recs)
     # verify 不是装饰。rungs 那张表的每一个数都建在「chain[attempts-1] 就是应答那一级」
-    # 这条判据上,而判据垮掉的时候那张表照样画得很漂亮 —— 一张建在坏判据上的漂亮的表,
+    # 这条判据上,而判据垮掉的时候那张表照样画得很漂亮, 一张建在坏判据上的漂亮的表,
     # 和一张对的表,在页面上长得一模一样。所以反例数要跟着表一起送上去。
     return {"ledger": meta, "windows": wins, "chain": chain,
             "rungs": llmstats.rungs(recs, chain.get("effective") or []),
@@ -883,7 +883,7 @@ class Handler(BaseHTTPRequestHandler):
     # ⚠ 这里以前是 `token = ""`,做的正好是上面那段注释否定的那件事:
     # `_authed` 是 `compare_digest(请求头 or "", self.token)`,token 还是 "" 时,
     # 一个**根本不带这个头**的请求会得到 compare_digest("", "") → True,直接过鉴权。
-    # 今天没被利用,只是因为 Host 闸恰好先开火(空集合拒掉一切)—— 也就是说令牌这道控制
+    # 今天没被利用,只是因为 Host 闸恰好先开火(空集合拒掉一切), 也就是说令牌这道控制
     # 在「没初始化」状态下靠的是另一道控制兜底,而两道控制的默认值方向相反。
     # 任何设好 allowed_hosts 却漏设 token 的用法(测试 fixture、复用 Handler、
     # 将来在 main() 之外多一条启动路径)都会让 /api/ 全线免鉴权,而页面表现完全正常。
@@ -1044,7 +1044,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(500, {"error": f"{type(e).__name__}: {e}"})
 
     def _authed(self) -> bool:
-        # token 是 None 表示这个 Handler 没被初始化过 —— 那不是「令牌是空串」,是「没有令牌」,
+        # token 是 None 表示这个 Handler 没被初始化过, 那不是「令牌是空串」,是「没有令牌」,
         # 而没有令牌时唯一安全的答案是拒绝。不要试图在这里生成一个:
         # 一个自己发明令牌的鉴权函数,会让「服务起来了」和「服务起来了但谁都进不去」都消失。
         if not self.token:
@@ -1070,7 +1070,7 @@ class Handler(BaseHTTPRequestHandler):
         return host.lower() in allowed
 
     # 两个入口都套一层兜底。没有它时,任何一个逃出去的异常由 socketserver 的
-    # handle_error 打印 traceback 然后**直接关连接** —— 而 log_message 被置空,
+    # handle_error 打印 traceback 然后**直接关连接**, 而 log_message 被置空,
     # 本地窗口里几乎什么都看不到,客户端拿到的是一个断掉的连接而不是一个错误。
     # 这几种都真的会发生:run_ps 的 subprocess.TimeoutExpired(枚举 90s / 动作 60s)、
     # json.loads(out)["tasks"] 的 ValueError / KeyError。
@@ -1318,7 +1318,7 @@ class Handler(BaseHTTPRequestHandler):
         # ⚠ act.ps1 一个字节都没输出时 res 是空字典,而 **err 完全不进响应**
         # (只有 JSON 解析失败那一支才用 out or err)。前端无条件读 r.message,
         # 于是右下角只弹出「<任务名>:undefined」四秒后消失,真正的错误文本
-        # (解释器找不到、被 ExecutionPolicy 挡下、脚本解析失败 —— 这几种都是
+        # (解释器找不到、被 ExecutionPolicy 挡下、脚本解析失败, 这几种都是
         # rc!=0 且 stdout 为空、stderr 有正文)停在 server 进程里从不外传。
         # 一个报错却不说错在哪的界面,和不报错差不多。
         if not res.get("message"):

@@ -32,7 +32,7 @@ TOKEN = "test-token-not-a-real-one"
 
 # ⚠ 这一行必须跑在任何 fixture 之前:它拍下 Handler **出厂时**的 token 默认值。
 # 下面那条用例要钉的正是「出厂默认值不能通过鉴权」,而如果用例自己去 setattr 一个哨兵,
-# 它测的就变成了「我刚设的那个值不能通过」—— 把默认值改回 "" 照样绿。
+# 它测的就变成了「我刚设的那个值不能通过」, 把默认值改回 "" 照样绿。
 # (投毒时实测过:第一版就是那个形状,四条投毒里唯独这条没红。)
 DEFAULT_TOKEN = S.Handler.token
 
@@ -314,10 +314,10 @@ def test_an_uninitialised_handler_refuses_everything(srv):
     而紧挨着它的 allowed_hosts 有四行注释专门解释自己为什么 fail-closed。
     """
     # ⚠ 这里曾经有一句 `assert not DEFAULT_TOKEN`。它对 "" 恒成立,而 "" 正是当年那个
-    # 出问题的默认值 —— 一句在它要防的那个值上恒真的断言,正是这一轮在清理的那一类。
+    # 出问题的默认值, 一句在它要防的那个值上恒真的断言,正是这一轮在清理的那一类。
     # 真正能失败的判据只有行为:**把 Handler 退回出厂状态,它必须拒绝一切**。
     # 两层控制哪一层还在都能让它成立(None 哨兵、或 _authed 里的 `if not self.token`),
-    # 而两层同时退回当年那个形态时它会红 —— 投毒验过。
+    # 而两层同时退回当年那个形态时它会红, 投毒验过。
     saved = S.Handler.token
     try:
         # 把 Handler 退回出厂状态,而不是退回一个我自己挑的哨兵。
@@ -330,11 +330,11 @@ def test_an_uninitialised_handler_refuses_everything(srv):
         S.Handler.token = saved
     # 正对照:恢复之后正常的令牌仍然能用,证明上面拒的不是「服务器本来就坏了」。
     # ⚠ 打 /api/selfcheck 而不是 /api/tasks。后者会真的枚举整台机器的计划任务
-    # (实测 3 秒,服务端给 90 秒),而这个客户端的 socket 超时只有 10 秒 ——
+    # (实测 3 秒,服务端给 90 秒),而这个客户端的 socket 超时只有 10 秒,
     # 机器上任务多一点、或者同时有别的 PowerShell 在跑,这条就红。
     # 实测同一份代码连跑两轮,一轮两条红(各卡满 10 秒)、一轮全过。
     # 这两条守的东西很重要,而它们原来用一个**跟被测控制毫无关系**的真机开销决定成败:
-    # 那正是「训练所有人忽略红灯」的那种红 —— 跟改动无关,复跑一次就好,
+    # 那正是「训练所有人忽略红灯」的那种红, 跟改动无关,复跑一次就好,
     # 于是下一次真的红也会被当成同一回事。
     # 这里要证明的只是「带对令牌能拿到 200」,任何一个要鉴权的端点都够。
     st, _ = call(srv, "GET", "/api/selfcheck", token=TOKEN)
@@ -597,7 +597,7 @@ def test_act_never_answers_with_an_undefined_message(srv, monkeypatch):
     def fake_run_ps(script, env_extra=None, timeout=90, args=None):
         if script == S.COLLECT:
             return 0, FAKE_TASKS, ""
-        # act.ps1: rc 非零、没有 stdout、只有 stderr —— 正是那几种真实故障的形状
+        # act.ps1: rc 非零、没有 stdout、只有 stderr, 正是那几种真实故障的形状
         return 1, "", "AcmeUnreadableStderrText"
 
     monkeypatch.setattr(S, "run_ps", fake_run_ps)
@@ -686,16 +686,16 @@ def test_the_server_still_answers_after_an_exception(srv, monkeypatch):
 # ---------- 每一条 /api/ 路由都必须自己查令牌 ----------
 #
 # 上面那几条 403 用例是**逐端点手写**的,于是新加一条路由、忘了写 `_authed()`,
-# 整个套件不会有任何东西变红 —— 这个仓最近一次加面板就新增了四条路由,
+# 整个套件不会有任何东西变红, 这个仓最近一次加面板就新增了四条路由,
 # 它们碰巧都写了,但那靠的是记性,不是控制。
 #
 # 令牌是这个服务器仅有的三道控制之一,而它挡的正是「你开着的任意一个网页 POST 到
 # 这个端口」。一条漏检的路由不会以任何方式显形:它照常返回正确的数据。
 #
 # 所以判据从「这几个端点会 403」改成「**源码里每一条 /api/ 分支都查了令牌**」,
-# 新路由自动进闸。这是静态判据,不是跑一遍 —— 跑一遍只能覆盖想得起来的那几条。
+# 新路由自动进闸。这是静态判据,不是跑一遍, 跑一遍只能覆盖想得起来的那几条。
 
-# 路由分支的四种写法都要认。漏掉任何一种,那些路由就静悄悄地不受这道闸管 ——
+# 路由分支的四种写法都要认。漏掉任何一种,那些路由就静悄悄地不受这道闸管,
 # 而第一版正则正是这么漏的:它只认 `path ==`,于是 POST 那几条(写成
 # `self.path.split("?", 1)[0] != "/api/act"`,既有 `self.` 前缀又是 `!=`)整类没进扫描,
 # 包括这个服务器上唯一能改机器状态的那条。**一个漏掉一半输入的扫描器,
@@ -738,7 +738,7 @@ def test_every_api_branch_checks_the_token():
     for n, (i, r) in enumerate(marks):
         end = marks[n + 1][0] if n + 1 < len(marks) else len(lines)
         window = "\n".join(lines[i:end])
-        # 委托给一个 _xxx() 处理器的分支,鉴权在那个处理器里 —— 跟进去看。
+        # 委托给一个 _xxx() 处理器的分支,鉴权在那个处理器里, 跟进去看。
         m = re.search(r"return self\.(_[a-z_]+)\(\)", window)
         if m:
             fn = m.group(1)

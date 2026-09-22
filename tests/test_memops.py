@@ -210,7 +210,7 @@ def test_a_real_memory_is_still_counted(tmp_path, monkeypatch):
 # ---------- 索引读不到 != 索引是空的 ----------
 # available 只表示**记忆池目录**读到了。MEMORY.md 不在或读不了时,
 # linePct / bytePct / indexLines / indexBytes 全是 None,而 available 仍然是 True。
-# 前端那一格原来写的是 `MEM.linePct||0` —— 于是印出**绿色的 0%** 和字面量「null/200 行」:
+# 前端那一格原来写的是 `MEM.linePct||0`, 于是印出**绿色的 0%** 和字面量「null/200 行」:
 # 一个查不成的东西被画成了最健康的样子。一个 None 说不出自己为什么是 None,所以要有原因。
 
 def test_a_missing_index_says_why(tmp_path, monkeypatch):
