@@ -11,7 +11,8 @@ function workActionButtons(item,compact=false){
   const controls=(actions.offers || []).slice(0,3).map((offer,index)=>{
     const disabled=readOnly || pending || !offer.enabled;
     const reason=readOnly?ConsoleActions.reason:pending?'正在提交':offer.reason || offer.description || '';
-    return `<button class="mini work-action${index===0?' primary':''}" data-work-item="${esc(item.id)}" data-work-action="${esc(offer.id)}" ${disabled?'disabled':''} title="${esc(reason)}"><span aria-hidden="true">▶</span> ${esc(offer.label)}</button>`;
+    const complete=offer.kind==='complete';
+    return `<button class="mini work-action${complete?' complete':index===0?' primary':''}" data-work-item="${esc(item.id)}" data-work-action="${esc(offer.id)}" ${disabled?'disabled':''} title="${esc(reason)}"><span aria-hidden="true">${complete?'✓':'▶'}</span> ${esc(offer.label)}</button>`;
   });
   if(current){
     const [label,tone]=WORK_ACTION_STATES[current.state] || ['状态待确认','idle'];
@@ -56,10 +57,13 @@ async function sendWorkAction(itemId,actionId,verb){
   const forget=()=>{WORK_ACTION_INTENTS.delete(key);try{sessionStorage.removeItem('tc.action.'+key);}catch(error){}};
   try{
     const reply=await api('/api/work/'+verb,{method:'POST',body:JSON.stringify(intent)});
-    if(reply.ok){forget();toast(verb==='stop'?'已请求停止':reply.status==='queued'?'已加入队列':reply.status==='task_requested'?'已提交任务，结果待确认':'已找到这次处理记录');}
+    if(reply.ok){forget();toast(verb==='stop'?'已请求停止':actionId==='complete' && reply.status==='done'?'待办已标记完成':reply.status==='queued'?'已加入队列':reply.status==='task_requested'?'已提交任务，结果待确认':'已找到这次处理记录');}
     else{if(reply.uncertain===false) forget();toast(reply.message || '未能提交，请刷新后重试','bad');}
     if(reply.wakeup===false && reply.status==='queued') toast('已排队，等待执行服务接手','bad');
-  }catch(error){toast('未收到确认。再次点击会核对原请求，不会重复创建工作。','bad');}
+  }catch(error){
+    if(error.requestRejected || error.payload?.uncertain===false){forget();toast(error.message,'bad');}
+    else toast(`${error.message}。未收到确认。再次点击会核对原请求，不会重复创建工作。`,'bad');
+  }
   finally{WORK_ACTION_PENDING.delete(itemId);await loadWork();if($('work-detail').open && WORK_DETAIL_ID===itemId) openWorkRecord(itemId,true);}
 }
 const submitWorkAction=(itemId,actionId)=>sendWorkAction(itemId,actionId,'action');
@@ -74,7 +78,8 @@ function startWorkActions(){
   });
   let timer;
   const refresh=async()=>{
-    if(!document.hidden && (WORK?.items || []).some(item=>['preparing','queued','running','dispatching','reconcile','task_requested'].includes(item.actions?.current?.state))){
+    const visible=['overview','work'].includes(CURVIEW) || $('view').classList.contains('all') || $('work-detail').open;
+    if(!document.hidden && visible && (WORK?.items || []).some(item=>['preparing','queued','running','dispatching','reconcile','task_requested'].includes(item.actions?.current?.state))){
       await loadWork();if($('work-detail').open && WORK_DETAIL_ID) openWorkRecord(WORK_DETAIL_ID,true);
     }
     timer=setTimeout(refresh,8000);

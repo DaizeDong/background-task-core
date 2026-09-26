@@ -1,5 +1,9 @@
 // Classic script module; loaded in app.js dependency order.
 document.addEventListener("click", e=>{
+  const launch=e.target.closest('[data-launch]');
+  if(launch){e.preventDefault();e.stopImmediatePropagation();openTaskLaunch(launch.dataset.launch);return;}
+  const deletion=e.target.closest('[data-delete]');
+  if(deletion){e.preventDefault();e.stopImmediatePropagation();if(!deletion.disabled) previewDeletion(deletion.dataset);return;}
   const reset=e.target.closest('[data-reset-filters]');
   if(reset){resetFilters(reset.dataset.resetFilters);return;}
   // ⚠ 这一段必须留在**这个**监听里,而且在最前面。
@@ -162,7 +166,7 @@ document.addEventListener("click",e=>{
     return;
   }
   const cg=e.target.closest(".cv-gh");
-  if(cg){ const k=cg.parentElement.dataset.cv; CV_OPEN[k]=CV_OPEN[k]===false; renderConvos(); return; }
+  if(cg){ const k=cg.parentElement.dataset.cv; CV_OPEN[k]=cg.getAttribute('aria-expanded')!=='true'; renderConvos(); return; }
   if(e.target.id==="cvonly"){ CV_HUMAN_ONLY=e.target.checked; renderConvos(); return; }
   const rt=e.target.closest("button[data-retire]");
   if(rt){ e.stopPropagation(); retireTask(rt.dataset.retire); return; }
@@ -285,6 +289,7 @@ document.addEventListener("keydown",e=>{
   // 两件事。混进一个状态里,刷新会回到一个你没选过的形态。
   if(k==="A"){
     const v=$("view"); const all=v.classList.toggle("all");
+    if(all){if(!LLM && !LLM_LOADING) loadLLM();if(!CXL) loadCxList();}
     if(!all) showView(CURVIEW, false);
     return;
   }
@@ -358,10 +363,7 @@ $("cxload").addEventListener("click",loadCxList);
 // 会让这个下拉用起来像卡住了。
 $("cxwhich").addEventListener("change",loadCxList);
 $("cxsort").addEventListener("change",()=>{ if(CXL) renderCxList(); });
-loadMaint();
-loadCodex();
 $("scktog").addEventListener("click",()=>{const open=$("sckd").classList.toggle("on");$("scktog").textContent=open?"收起检查":"展开检查";});
-loadSelfcheck();
 $("rpreload").addEventListener("click",loadRepos);
 // 过滤只改看得见什么,不重新扫描 —— 扫一遍所有仓要一秒多,而每敲一个字符重扫一次
 // 既慢又会让选中的那个仓在脚下换位置。
@@ -378,11 +380,7 @@ $("rplist").addEventListener("keydown", e=>{
   e.preventDefault();
   RP_SEL = row.dataset.rp; renderRepoList();
 });
-loadRepos();
-loadSys();
-loadMem();
 $("cvreload").addEventListener("click",loadConvos);
-loadConvos();
 
 // ── 调用屏的挂点 ──
 $("lcreload").addEventListener("click", loadLLM);
@@ -431,7 +429,7 @@ $("lclist").addEventListener("drop", e=>{
 });
 $("lclist").addEventListener("dragend", ()=>{ LCFROM = null; renderChain(); });
 
-loadLLM();
+// The full call ledger is loaded when the user opens that workspace.
 $("sidetoggle").addEventListener("click",()=>{
   const n=$("side").classList.toggle("navbar-folded");
   $("sidetoggle").textContent = n ? "\u00bb" : "\u00ab 收起";
@@ -444,13 +442,20 @@ $('page-refresh').addEventListener('click',refreshPage);
 $('page-export').addEventListener('click',exportPage);
 $('review-search').addEventListener('input',event=>{REVIEW_QUERY=event.target.value;renderTodo();});
 $('cv-search').addEventListener('input',event=>{CV_QUERY=event.target.value;renderConvos();});
-$('runtime-search').addEventListener('input',event=>{RUNTIME_QUERY=event.target.value;renderSkills();renderPlugins();});
-$('runtime-state').addEventListener('change',event=>{RUNTIME_STATE=event.target.value;renderSkills();renderPlugins();});
+$('runtime-search').addEventListener('input',event=>{RUNTIME_QUERY=event.target.value;renderSkills();renderClientPlugins();});
+$('runtime-state').addEventListener('change',event=>{RUNTIME_STATE=event.target.value;renderSkills();renderClientPlugins();});
 $('runtime-sort').addEventListener('change',event=>{RUNTIME_SORT=event.target.value;renderSkills();});
 $('rpissue').addEventListener('change',event=>{RP_ISSUE=event.target.value;renderRepoList();});
 ConsoleActions.start();
+startDeletionControls();
+$('launch-close').addEventListener('click',()=>$('launch-dialog').close());
+$('launch-copy').addEventListener('click',async()=>{
+  try{await navigator.clipboard.writeText($('launch-copy').dataset.command);toast('启动命令已复制');}
+  catch(error){toast('无法访问剪贴板，请在启动说明中手动复制命令','bad');}
+});
 startWorkPlatform();
 startWorkActions();
+if(typeof startIntegrations==='function') startIntegrations();
 showView(location.hash.slice(1) || VIEWS[0], false);
 $("tlin").addEventListener("click",()=>tlZoom(0.7,0.5));
 $("tlout").addEventListener("click",()=>tlZoom(1.4,0.5));
@@ -486,11 +491,9 @@ syncHygBtn();
 })();
 $("q").addEventListener("input",()=>{ if(DATA) render(); });
 ["cat","only","hideoff"].forEach(id=>$(id).addEventListener("change",()=>{ if(DATA) render(); }));
-load();
 
 $("pipeline-refresh").addEventListener("click",loadComponents);
 $("review-filter").addEventListener("change",event=>{REVIEW_FILTER=event.target.value;renderTodo();});
-loadComponents();
 
 document.addEventListener("click",pipelineClick);
 document.addEventListener("click",reviewClick);

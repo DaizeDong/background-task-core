@@ -4,8 +4,62 @@ from types import SimpleNamespace
 
 from test_operations_ui import run
 from test_panel_parity import get, synthetic_server
-from tools.make_fixtures import work_feed_case
+from tools.make_fixtures import work_feed_case, linked_work_case
+from tools.make_fixtures import consolidated_work_case, searchable_work_group_case
+from tools.make_fixtures import blocked_agent_case
+
+
+def test_queued_work_explains_cleanup_blocker_instead_of_ordinary_wait():
+    setup='const item='+json.dumps(blocked_agent_case())+';'
+    assert run('workLabel(item)',setup)=='队列受阻'
+    for compact in ('false','true'):
+        html=run('workItemRow(item,'+compact+')',setup)
+        assert '进程清理尚未确认' in html and '查看阻塞任务' in html
+        assert 'data-work-id="old-work"' in html
+    detail_setup=setup+'WORK={available:true,items:[item],events:[],sources:[],coverage:{}};$("work-detail").open=true;'
+    detail=run('openWorkRecord(item.id);$("work-detail-body").innerHTML',detail_setup)
+    assert '进程清理尚未确认' in detail and 'data-work-id="old-work"' in detail
+
+
+def test_reviewed_groups_preserve_history_alarms_and_filtered_orphans():
+    setup='const rows='+json.dumps(consolidated_work_case())+';'
+    result=run('groupWorkRows(rows)',setup)
+    assert len(result)==4
+    assert {r['id'] for r in result[0]['linked_records']}=={'old','alarm'}
+    filtered=run("groupWorkRows(rows.filter(r=>r.id==='alarm'),rows)",setup)
+    assert [r['id'] for r in filtered]==['alarm']
+    assert run("groupWorkRows(rows.filter(r=>r.state==='pending'),rows)[0].linked_records.length",setup)==2
 import work_status
+
+
+def test_default_work_list_hides_history_but_history_filter_restores_it():
+    setup = 'WORK=' + json.dumps(work_feed_case()) + ';'
+    assert run('selectedWorkRows().map(row=>row.id)', setup) == ['active', 'draft', 'reminder']
+    assert run("setWorkFilters({state:''});selectedWorkRows().length", setup) == 4
+
+
+def test_linked_execution_is_grouped_only_when_parent_is_in_same_selection():
+    setup = 'WORK=' + json.dumps(linked_work_case()) + ';'
+    rows = run('selectedWorkRows()', setup)
+    assert [row['id'] for row in rows] == ['draft', 'reminder']
+    assert rows[1]['linked_work'][0]['id'] == 'active'
+    assert run("setWorkFilters({role:'agent_work'});selectedWorkRows().map(r=>r.id)", setup) == ['active', 'draft']
+    assert run("setWorkFilters({query:'Acme active'});selectedWorkRows().map(r=>r.id)", setup) == ['reminder']
+    assert run("WORK.items[0].origin_item_id='missing';selectedWorkRows().length", setup) == 3
+    assert run("WORK.items[3].state='done';selectedWorkRows().map(r=>r.id)", setup) == ['active', 'draft']
+    html = run('renderWorkPlatform();$("work-list").innerHTML', setup)
+    assert 'data-work-id="active"' in html and '关联执行' in html
+
+
+def test_search_child_text_preserves_group_and_filter_boundaries():
+    setup='WORK='+json.dumps(searchable_work_group_case())+';'
+    assert run("setWorkFilters({query:'Leave for'});selectedWorkRows().map(r=>r.id)",setup)==['root']
+    assert run("setWorkFilters({role:'all',query:'prepared'});selectedWorkRows().map(r=>r.id)",setup)==['root']
+    assert run("setWorkFilters({query:'prepared'});selectedWorkRows().map(r=>r.id)",setup)==[]
+    assert run("setWorkFilters({role:'all',source:'example-mail',query:'prepared'});selectedWorkRows().map(r=>r.id)",setup)==['old']
+    assert run("setWorkFilters({query:'Separate task'});selectedWorkRows().map(r=>r.id)",setup)==['orphan']
+    assert run("setWorkFilters({query:'Cycle A'});selectedWorkRows().map(r=>r.id)",setup)==['cycle-a']
+    assert run("workProjection(WORK).tracked.map(r=>r.id)",setup)==['cycle-a','cycle-b','orphan','root']
 
 
 def test_work_projection_never_turns_failure_or_signal_into_a_decision():

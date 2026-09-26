@@ -20,6 +20,7 @@ MESSAGES = {
     'stale_recommendation': '待办已更新，请刷新后再操作',
     'request_conflict': '这次请求与原记录不一致，请刷新后重试',
     'another_action_active': '这条待办已有工作在处理',
+    'ERR_DEPENDENCY_UNMET': '前置待办尚未完成，请先处理前置事项',
     'action_schema_upgrade_required': '执行接口需要升级',
     'action_unavailable': '这项操作当前不可用，请刷新查看',
     'work_binding_invalid': '执行接口尚未连接',
@@ -107,6 +108,8 @@ def submit(request, *, stop=False, env=None):
             raise ActionError('read_only')
         if stop:
             return invoke('work-action-stop', request, env)
+        if request['action_id'] == 'complete':
+            return invoke('work-action', {'request': request, 'context': ''}, env)
         # Validate the configured executor before reserving a new action.
         runtime = controller.load_runtime(environ=env)
         if request['action_id'] == 'agent' and not env.get('TASK_CONSOLE_AGENT_TASK_ID'):

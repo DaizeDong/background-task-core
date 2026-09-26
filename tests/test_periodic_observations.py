@@ -226,12 +226,11 @@ function Start-Process { throw 'forbidden payload' }
 def test_periodic_cli_source_workers_and_existing_capture_only(live, monkeypatch, capsys, zero):
     config, path, bundle, _, _ = live
     repo = Path(observations.__file__).resolve().parents[2]
-    run_root = repo.parent
     harness = path.parent / 'capture.ps1'
     harness.write_text(CAPTURE_HARNESS, encoding='utf-8-sig')
     bootstrap = path.parent / 'source_worker.py'
-    roots = [str(run_root / p) for p in ('task-console/scripts', 'fleet-guards', 'llmcall',
-                                         'skill-smith/skills/skill-smith/scripts')]
+    # Exercise this checkout; dependencies come from the installed test interpreter.
+    roots = [str(repo / 'scripts')]
     bootstrap.write_text('import sys\nsys.path[:0] = ' + repr(roots) + '\n'
                          'from task_console import observations\n'
                          'assert observations.__file__ == ' + repr(observations.__file__) + '\n'

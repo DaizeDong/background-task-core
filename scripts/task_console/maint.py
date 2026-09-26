@@ -164,7 +164,7 @@ def read_skills() -> dict:
     if arch and arch.is_dir():
         for name in sorted(os.listdir(arch)):
             if (arch / name / "SKILL.md").is_file():
-                archived.append({"name": name, "chars": 0, "linked": False, "archived": True})
+                archived.append({"name": name, "chars": 0, "linked": _is_link(arch / name), "archived": True})
     from health import resource_verdict
     return {"available": True, "root": str(root), "archiveSet": bool(arch),
             "skills": live + archived, "liveCount": len(live),
@@ -225,54 +225,55 @@ def _claude() -> str | None:
 
 
 def read_plugins(timeout: int = 40) -> dict:
+    """Read the CLI's structured inventory; an empty JSON list is a verified zero."""
     exe = _claude()
     if not exe:
-        return {"available": False, "reason": "找不到 claude 可执行文件,插件这一栏是「未检查」。"}
+        return {"available": False, "reason": "找不到 claude 可执行文件，插件未检查"}
     try:
-        r = subprocess.run([exe, "plugin", "list"], capture_output=True, text=True,
-                           encoding="utf-8", errors="replace", timeout=timeout, stdin=subprocess.DEVNULL, creationflags=_NO_WINDOW)
-    except (OSError, subprocess.SubprocessError) as e:
-        return {"available": False, "reason": f"读插件清单失败: {e.__class__.__name__}"}
-    if r.returncode != 0:
-        return {"available": False, "reason": f"claude plugin list 退出 {r.returncode}"}
-    out, cur = [], None
-    lines = (r.stdout or "").splitlines()
-    for line in lines:
-        t = line.strip()
-        if t.startswith("❯"):
-            cur = {"name": t.lstrip("❯ ").strip(), "enabled": None}
-            out.append(cur)
-        elif cur is not None and t.startswith("Status:"):
-            cur["enabled"] = ("enabled" in t) or ("loaded" in t)
-    # 解析器是按 `claude plugin list` 当前的输出格式写的,而那个格式随时会变。
-    # 格式一变就会出现两种都不报错的坏法:
-    #   一是一条都没认出来 -> 显示「插件 0 共 0」,和一台真的没装插件的机器逐字相同;
-    #   二是认出了名字但没认出 Status -> 每个插件的 enabled 是 None,页面把 None 当假,
-    #      于是每一个都被画成「已禁用」并挂上一个「启用」按钮 : 一个看起来完全正常、
-    #      可以点的界面,描述的却是一台并不存在的机器,而且它邀请人去启用一个已经启用的插件。
-    # 两种都要说出来,而不是让「解析不出来」和「本来就是这样」长得一样。
-    # ⚠ 这个条件以前写的是 `if lines and not out` —— 它只在「有输出但一条都没认出来」时
-    # 开火,而 **stdout 整个为空时 `lines == []` 让它直接短路失效**,函数落到下面
-    # `return {"available": True, "plugins": []}`,也就是上面注释点名要防的那件事:
-    # 「插件 0 共 0」,和一台真的没装插件的机器逐字相同。
-    # 一个 TUI 程序在非 TTY / 重定向下把渲染写去 stderr,或者输出被吞,就是这个形状,
-    # 而它的退出码是 0。**判据要问的是「我认出了几条」,不是「有没有行」。**
-    if not out:
-        return {"available": False,
-                "reason": ("插件清单一条都没解析出来"
-                           + ("(claude plugin list 有输出但格式对不上)" if lines
-                              else "(claude plugin list 没有任何 stdout)"))}
-    unknown = [p["name"] for p in out if p["enabled"] is None]
-    if unknown:
-        return {"available": False, "plugins": out,
-                "reason": f"{len(unknown)} 个插件读不出启用状态(输出格式可能变了)"}
-    return {"available": True, "plugins": out}
+        result = subprocess.run([exe, "plugin", "list", "--json"], capture_output=True, text=True,
+                                encoding="utf-8", errors="replace", timeout=timeout,
+                                stdin=subprocess.DEVNULL, creationflags=_NO_WINDOW)
+        if result.returncode:
+            return {"available": False, "reason": f"插件清单退出 {result.returncode}"}
+        rows = json.loads(result.stdout)
+    except (OSError, subprocess.SubprocessError, ValueError) as error:
+        return {"available": False, "reason": f"插件清单格式或读取失败: {type(error).__name__}"}
+    if not isinstance(rows, list):
+        return {"available": False, "reason": "插件清单格式不是数组"}
+    plugins = []
+    for row in rows:
+        if (not isinstance(row, dict) or not isinstance(row.get("id"), str)
+                or not isinstance(row.get("enabled"), bool)
+                or row.get("scope") not in ("user", "project", "local", "managed")):
+            return {"available": False, "reason": "插件清单缺少名称、范围或启用状态"}
+        removal, removal_reason = None, "请在所属项目管理"
+        if row['scope'] == 'user':
+            if row['id'].endswith('@skills-dir'):
+                skill_name = row['id'].removesuffix('@skills-dir')
+                root = _root('TASK_CONSOLE_SKILLS')
+                if (root and SAFE_NAME.fullmatch(skill_name) and row.get('installPath')
+                        and Path(os.path.abspath(root / skill_name)) == Path(os.path.abspath(row['installPath']))):
+                    removal = {'kind': 'skill', 'name': skill_name, 'location': 'live'}
+                removal_reason = '由技能目录加载；请在所属技能目录删除'
+            else:
+                removal = {'kind': 'plugin', 'name': row['id'], 'location': 'user'}
+                removal_reason = ''
+        plugins.append({"name": row["id"], "enabled": row["enabled"], "scope": row["scope"],
+                        "removal": removal, "removalReason": removal_reason,
+                        "issues": [str(error) for error in row.get('errors', [])] if isinstance(row.get('errors'), list) else [],
+                        **{key: row.get(key) for key in ("version", "installPath", "installedAt", "lastUpdated")}})
+    return {"available": True, "plugins": plugins}
 
 
 def read_all() -> dict:
     import component_status
-    return {"skills": read_skills(), "memory": read_memory(), "plugins": read_plugins(),
-            "components": component_status.read_configured()}
+    from source_reads import read_many
+    sections = read_many({'skills': read_skills,
+                          'memory_summary': read_memory,
+                          'plugins': read_plugins,
+                          'components': component_status.read_configured})
+    sections['memory'] = sections.pop('memory_summary')
+    return sections
 
 
 def act(action: str, name: str, arg: str | None = None, *, controller=None) -> dict:
@@ -351,14 +352,28 @@ def act(action: str, name: str, arg: str | None = None, *, controller=None) -> d
     exe = _claude()
     if not exe:
         raise Refused("找不到 claude 可执行文件", "no_claude")
-    if not SAFE_NAME.match(name or ""):
+    if not SAFE_NAME.fullmatch(name or ""):
         raise Refused(f"插件名不合法: {name!r}", "bad_name")
     verb = "enable" if action == "plugin.enable" else "disable"
-    r = subprocess.run([exe, "plugin", verb, name], capture_output=True, text=True,
+    inventory = read_plugins()
+    if not inventory.get('available'):
+        raise Refused(inventory.get('reason') or '插件清单不可用', 'unavailable')
+    matches = [row for row in inventory['plugins'] if row['name'] == name and row['scope'] == 'user']
+    if len(matches) != 1:
+        raise Refused('无法唯一确认当前用户范围的插件，请刷新清单', 'missing_plugin')
+    enabled = verb == 'enable'
+    if matches[0]['enabled'] == enabled:
+        return {'ok': True, 'message': '插件已处于所选状态，无需重复修改'}
+    r = subprocess.run([exe, "plugin", verb, name, "--scope", "user"], capture_output=True, text=True,
                        encoding="utf-8", errors="replace", timeout=90, stdin=subprocess.DEVNULL, creationflags=_NO_WINDOW)
     if r.returncode != 0:
         raise Refused(f"claude plugin {verb} 退出 {r.returncode}: {(r.stderr or r.stdout or '').strip()[:200]}", "plugin_failed")
-    return {"ok": True, "out": (r.stdout or "").strip()[:400]}
+    refreshed = read_plugins()
+    verified = [row for row in refreshed.get('plugins', []) if row['name'] == name and row['scope'] == 'user']
+    if not refreshed.get('available') or len(verified) != 1 or verified[0]['enabled'] != enabled:
+        return {'ok': False, 'error': '命令已执行，但无法确认插件状态已更新；请刷新核对', 'uncertain': True}
+    return {"ok": True, "out": (r.stdout or "").strip()[:400],
+            "message": ('插件已启用' if enabled else '插件已禁用') + '；现有会话需重新加载插件或开启新会话'}
 
 
 if __name__ == "__main__":

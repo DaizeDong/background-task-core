@@ -34,7 +34,7 @@ def _read(path: str):
 
 def main(argv: list[str] | None = None, *, runtime=None) -> int:
     parser = _Parser(description=__doc__)
-    parser.add_argument("command", choices=["plan", "registration-plan", "runtime-status", "apply", "retire", "recover", "control", "retire-plan", "export", "restore-plan", "restore", "restore-recover", "adoption-plan", "adoption-apply", "adoption-resume"])
+    parser.add_argument("command", choices=["plan", "registration-plan", "creation-check", "runtime-status", "apply", "retire", "recover", "control", "retire-plan", "export", "restore-plan", "restore", "restore-recover", "adoption-plan", "adoption-apply", "adoption-resume"])
     parser.add_argument('--source-binding')
     parser.add_argument('--review-only', action='store_true')
     parser.add_argument('--approval-revision')
@@ -155,6 +155,12 @@ def main(argv: list[str] | None = None, *, runtime=None) -> int:
                 print(json.dumps(result, ensure_ascii=True, sort_keys=True))
                 # Unreadable authority still reports; a pending bootstrap explains it.
                 return 0 if result['authority'] == 'available' or bootstrap else 2
+            if args.command == 'creation-check':
+                if not args.task_id:
+                    raise ContractError('missing_field', 'task_id')
+                result = registration.creation_check(runtime, args.task_id)
+                print(json.dumps(result, ensure_ascii=True, sort_keys=True))
+                return 0
             if args.command == 'registration-plan':
                 if not args.task_id:
                     raise ContractError('missing_field', 'task_id')

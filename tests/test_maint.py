@@ -12,6 +12,7 @@ import os
 import sys
 
 import pytest
+from tools.make_fixtures import plugin_inventory_case
 
 sys.path.insert(0, os.path.join(
     os.path.dirname(os.path.dirname(__file__)), "scripts", "task_console"))
@@ -320,7 +321,9 @@ def test_unparseable_plugin_output_is_not_available(monkeypatch, tmp_path):
 def test_names_without_status_are_not_reported_as_disabled(monkeypatch):
     """认出了名字但没认出状态时,不能把每个都画成「已禁用」并邀请人去启用。"""
     monkeypatch.setattr(M, "_claude", lambda: "claude")
-    monkeypatch.setattr(M.subprocess, "run", lambda *a, **k: _R("❯ alpha\n❯ beta\n"))
+    row = plugin_inventory_case()[0]
+    del row["enabled"]
+    monkeypatch.setattr(M.subprocess, "run", lambda *a, **k: _R(json.dumps([row])))
     got = M.read_plugins()
     assert got["available"] is False, got
     assert "启用状态" in got["reason"], got["reason"]
@@ -331,10 +334,58 @@ def test_a_well_formed_listing_is_still_available(monkeypatch):
     没有这一条,把 read_plugins 改成「永远 available False」也能让上面两条通过。"""
     monkeypatch.setattr(M, "_claude", lambda: "claude")
     monkeypatch.setattr(M.subprocess, "run",
-                        lambda *a, **k: _R("❯ alpha\n  Status: enabled\n❯ beta\n  Status: disabled\n"))
+                        lambda *a, **k: _R(json.dumps(plugin_inventory_case())))
     got = M.read_plugins()
     assert got["available"] is True, got
     assert [p["enabled"] for p in got["plugins"]] == [True, False]
+
+
+def test_plugin_toggle_targets_user_scope_explicitly(monkeypatch):
+    calls = []
+    monkeypatch.setattr(M, "_claude", lambda: "synthetic-cli")
+    def execute(command, **kwargs):
+        calls.append(command)
+        return _R("{}")
+    monkeypatch.setattr(M, "subprocess", type("Commands", (), {"run": staticmethod(execute), "DEVNULL": -3}))
+    name = plugin_inventory_case()[0]["id"]
+    inventories = iter([{"available": True, "plugins": [{"name": name, "scope": "user", "enabled": False}]},
+                        {"available": True, "plugins": [{"name": name, "scope": "user", "enabled": True}]}])
+    monkeypatch.setattr(M, "read_plugins", lambda: next(inventories))
+    assert M.act("plugin.enable", name)["ok"]
+    assert calls == [["synthetic-cli", "plugin", "enable", name, "--scope", "user"]]
+
+
+def test_plugin_toggle_cannot_claim_success_when_cli_did_not_change_state(monkeypatch):
+    name = plugin_inventory_case()[0]['id']
+    monkeypatch.setattr(M, '_claude', lambda: 'synthetic-cli')
+    monkeypatch.setattr(M.subprocess, 'run', lambda *a, **kw: _R('success'))
+    monkeypatch.setattr(M, 'read_plugins', lambda: {'available': True, 'plugins': [
+        {'name': name, 'scope': 'user', 'enabled': False}]})
+    result = M.act('plugin.enable', name)
+    assert result['ok'] is False
+    assert '确认' in result['error']
+
+
+def test_plugin_toggle_refuses_a_stale_or_project_only_target(monkeypatch):
+    name = plugin_inventory_case()[0]['id']
+    monkeypatch.setattr(M, '_claude', lambda: 'synthetic-cli')
+    monkeypatch.setattr(M.subprocess, 'run', lambda *a, **kw: pytest.fail('must refuse before execution'))
+    monkeypatch.setattr(M, 'read_plugins', lambda: {'available': True, 'plugins': [
+        {'name': name, 'scope': 'project', 'enabled': False}]})
+    with pytest.raises(M.Refused, match='用户'):
+        M.act('plugin.enable', name)
+
+
+def test_directory_plugins_expose_skill_removal_and_preserve_loading_errors(monkeypatch, tmp_path):
+    root = tmp_path / 'skills'
+    monkeypatch.setenv('TASK_CONSOLE_SKILLS', str(root))
+    monkeypatch.setattr(M, '_claude', lambda: 'synthetic-cli')
+    row = plugin_inventory_case()[0]
+    row.update(id='acme@skills-dir', installPath=str(root / 'acme'), errors=['synthetic load failure'])
+    monkeypatch.setattr(M.subprocess, 'run', lambda *a, **kw: _R(json.dumps([row])))
+    plugin = M.read_plugins()['plugins'][0]
+    assert plugin['removal'] == {'kind': 'skill', 'name': 'acme', 'location': 'live'}
+    assert plugin['issues'] == ['synthetic load failure']
 
 
 # ---------- 读不出来的 skill 描述不能按 0 计入预算 ----------

@@ -180,8 +180,8 @@ def clean_temp_git(now: float | None = None) -> dict:
     root = Path(os.path.expanduser(cache))
     if not root.is_dir():
         raise Refused(f"目录不存在: {root}", "missing_src")
-    removed, freed, skipped = [], 0, []
-    for item in temp_git_leftovers(root, now):
+    removed, freed, skipped, failures = [], 0, [], []
+    for item in temp_git_leftovers(root, now, failures):
         if not item["deletable"]:
             # 太新的不动:一个正在进行中的克隆看起来和一个废弃的一模一样。
             skipped.append(item["name"])
@@ -197,9 +197,11 @@ def clean_temp_git(now: float | None = None) -> dict:
         try:
             shutil.rmtree(d, onerror=lambda func, path, info: _force_writable(func, path, info[1]))
         except OSError as e:
-            skipped.append(f"{item['name']} ({e.__class__.__name__})")
+            failures.append(f"{item['name']} ({e.__class__.__name__})")
             continue
         removed.append(item["name"])
         freed += sz
-    return {"ok": True, "removed": len(removed), "freedBytes": freed,
-            "skipped": len(skipped), "names": removed[:20]}
+    message = f'已清理 {len(removed)} 个目录，保留 {len(skipped)} 个不符合清理条件的目录'
+    return {"ok": not failures, "removed": len(removed), "freedBytes": freed,
+            "skipped": len(skipped), "names": removed[:20], "message": message,
+            **({'partial': True, 'error': '清理未全部完成: ' + '；'.join(failures[:5])} if failures else {})}

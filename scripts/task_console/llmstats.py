@@ -301,6 +301,21 @@ def read(limit=None):
     else:
         keep = []
 
+    # JSON lines otherwise allocate the same keys and short labels for every row.
+    # Pools belong to this read, are bounded, and preserve every field and value.
+    shared = {}
+
+    def reuse(value):
+        if not isinstance(value, str) or len(value) > 160:
+            return value
+        if len(shared) < 2048:
+            return shared.setdefault(value, value)
+        return shared.get(value, value)
+
+    def shared_object(pairs):
+        return {reuse(key): value for key, value in pairs}
+
+    decoder = json.JSONDecoder(object_pairs_hook=shared_object)
     lineno = 0
     try:
         with p.open("r", encoding="utf-8", errors="replace") as f:
@@ -311,7 +326,7 @@ def read(limit=None):
                     meta["blank"] += 1
                     continue
                 try:
-                    rec = json.loads(s)
+                    rec = decoder.decode(s)
                 except ValueError:
                     meta["malformed"] += 1
                     continue
@@ -320,6 +335,11 @@ def read(limit=None):
                     # 不能因为 json.loads 没报错就放它进结果。
                     meta["malformed"] += 1
                     continue
+                for field in ("provider", "mode", "caller"):
+                    if field in rec:
+                        rec[field] = reuse(rec[field])
+                if isinstance(rec.get("chain"), list):
+                    rec["chain"] = [reuse(value) for value in rec["chain"]]
                 meta["parsed"] += 1
                 rec[INDEX_KEY] = lineno
                 ts = _ts_of(rec)

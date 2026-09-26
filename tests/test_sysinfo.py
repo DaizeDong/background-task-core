@@ -54,6 +54,27 @@ def test_recent_leftovers_are_skipped(tmp_path, monkeypatch):
     assert d.is_dir()
 
 
+def test_cleanup_reports_delete_failure_instead_of_success(tmp_path, monkeypatch):
+    monkeypatch.setenv('TASK_CONSOLE_PLUGIN_CACHE', str(tmp_path))
+    directory = mk(tmp_path, 'temp_git_1_acme', age_h=50)
+    def denied(*args, **kwargs):
+        raise PermissionError('synthetic locked file')
+    monkeypatch.setattr(S.shutil, 'rmtree', denied)
+    result = S.clean_temp_git(now=NOW)
+    assert result['ok'] is False and result['partial'] is True
+    assert result['removed'] == 0 and directory.exists()
+    assert 'PermissionError' in result['error']
+
+
+def test_cleanup_scan_failure_is_not_an_empty_success(tmp_path, monkeypatch):
+    monkeypatch.setenv('TASK_CONSOLE_PLUGIN_CACHE', str(tmp_path))
+    def denied(*args, **kwargs):
+        raise PermissionError('synthetic denied scan')
+    monkeypatch.setattr(S.os, 'scandir', denied)
+    result = S.clean_temp_git(now=NOW)
+    assert result['ok'] is False and result['removed'] == 0
+
+
 @pytest.mark.parametrize("name", [
     "temp_git", "temp_git_", "temp_gitXX_1_a", "tempgit_1_a",
     "temp_git_abc_x", "atemp_git_1_a", "temp_git_1_a_b_c/x",

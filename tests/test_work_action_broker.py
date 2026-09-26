@@ -129,3 +129,32 @@ def test_exact_task_mapping_rejects_unregistered_ids(monkeypatch):
     assert work_actions._run_task('synthetic/exact',runtime)['ok']
     with pytest.raises(work_actions.ActionError):work_actions._run_task('AcmeTask',runtime)
     assert calls==[('AcmeTask','run')]
+
+
+def test_manual_completion_does_not_require_executor_or_read_session_context(monkeypatch):
+    monkeypatch.setattr(work_actions.controller, 'load_runtime', lambda **kw: pytest.fail('completion must not require a scheduler'))
+    monkeypatch.setattr(work_actions, '_context', lambda *args: pytest.fail('completion must not read conversations'))
+    seen = []
+    monkeypatch.setattr(work_actions, 'invoke', lambda verb, payload, env: seen.append((verb, payload)) or {'ok': True, 'status': 'done', 'action': {}})
+    payload = dict(request(), action_id='complete')
+    assert work_actions.submit(payload, env={})['status'] == 'done'
+    assert seen == [('work-action', {'request': payload, 'context': ''})]
+
+
+def test_manual_completion_still_respects_readonly(monkeypatch):
+    monkeypatch.setattr(work_actions, 'invoke', lambda *args: pytest.fail('read-only mutation'))
+    reply = work_actions.submit(dict(request(), action_id='complete'), env={'TASK_CONSOLE_READ_ONLY': '1'})
+    assert not reply['ok'] and reply['code'] == 'read_only'
+
+
+def test_manual_completion_offer_survives_missing_executor(tmp_path, monkeypatch):
+    cli = tmp_path / 'owner.py'
+    cli.touch()
+    feed = work_feed_case()
+    item = work_action_case()
+    item['actions']['offers'].append({'id': 'complete', 'kind': 'complete', 'label': '标记完成', 'enabled': True})
+    feed['items'] = [item]
+    monkeypatch.setattr(subprocess, 'run', lambda *a, **kw: SimpleNamespace(returncode=0, stdout=json.dumps(feed)))
+    reply = work_status.read_configured({'TASK_CONSOLE_REMINDER_CLI': str(cli), 'TASK_CONSOLE_REMINDER_DB': str(tmp_path / 'db')})
+    actions = reply['items'][0]['actions']
+    assert actions['available'] and not actions['offers'][0]['enabled'] and actions['offers'][1]['enabled']

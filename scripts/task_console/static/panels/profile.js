@@ -81,6 +81,7 @@ function renderCodex(){
 // 逐份转录的清单。默认不加载:这一扫要走几千个文件,而这一屏别的东西不该等它。
 let CXL=null, CXSEL=new Set();
 let CX_REQUEST=0;
+let CX_DELETING=false;
 const CX_PENDING=new Map();
 
 async function loadCxList(){
@@ -163,6 +164,7 @@ function cxSelSummary(){
 }
 
 async function cxDelete(){
+  if(CX_DELETING || !ConsoleActions.allowWrite()) return;
   const rels=[...CXSEL];
   if(!rels.length) return;
   const byRel={}; (CXL.items||[]).forEach(i=>byRel[i.rel]=i);
@@ -173,6 +175,7 @@ async function cxDelete(){
       +rels.slice(0,8).map(r=>"  "+r).join("\n")
       +(rels.length>8?`\n  …还有 ${rels.length-8} 份`:"")
       +`\n\n删除后无法恢复。继续？`)) return;
+  CX_DELETING=true;
   try{
     const r=await api("/api/codex/delete",{method:"POST",body:JSON.stringify({rels})});
     if(r.error && !Number.isInteger(r.deleted)){ toast('未能确认删除结果：'+r.error,"bad");await loadCxList();return; }
@@ -184,5 +187,6 @@ async function cxDelete(){
     }
     await loadCxList();
     loadCodex(); loadSys();
-  }catch(e){ toast(e.message,"bad"); }
+  }catch(e){ toast(e.message,"bad");await loadCxList(); }
+  finally{CX_DELETING=false;}
 }

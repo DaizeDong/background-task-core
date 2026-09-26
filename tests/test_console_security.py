@@ -716,7 +716,7 @@ _ROUTE_RE = re.compile(
 def _api_route_literals():
     """server.py 里每一条 /api/ 路由的字面量,按它在 do_GET / do_POST 里出现的顺序。"""
     src = open(S.__file__.replace(".pyc", ".py"), encoding="utf-8").read()
-    return src, _ROUTE_RE.findall(src)
+    return src, _ROUTE_RE.findall(src) + list(S.integrations.ROUTES)
 
 
 def test_the_route_scanner_finds_the_routes():
@@ -765,13 +765,27 @@ def test_the_token_check_scanner_can_actually_fire():
     """
     src, _ = _api_route_literals()
     poisoned = src.replace(
-        '        if path == "/api/sys":\n            if not self._authed():\n'
+        '        if path == "/api/hours":\n            if not self._authed():\n'
         '                return self._json(403, {"error": "bad token"})\n',
-        '        if path == "/api/sys":\n', 1)
+        '        if path == "/api/hours":\n', 1)
     assert poisoned != src, "投毒没有命中,这条负对照什么都没证明"
-    assert "/api/sys" in poisoned
+    assert "/api/hours" in poisoned
     lines = poisoned.splitlines()
-    i = next(n for n, ln in enumerate(lines) if '"/api/sys"' in ln and _ROUTE_RE.search(ln))
+    i = next(n for n, ln in enumerate(lines) if '"/api/hours"' in ln and _ROUTE_RE.search(ln))
     nxt = next((n for n in range(i + 1, len(lines))
                 if _ROUTE_RE.search(lines[n])), len(lines))
     assert "_authed()" not in "\n".join(lines[i:nxt]), "投毒之后那段窗口里还有 _authed(),判据测不到它"
+
+
+@pytest.mark.parametrize('path', list(S.integrations.ROUTES) + ['/api/integrations'])
+def test_registered_read_routes_require_auth_before_calling_provider(srv, path):
+    assert call(srv, 'GET', path)[0] == 403
+
+
+def test_registered_read_dispatch_auth_negative_control():
+    src, _ = _api_route_literals()
+    block = src.split('if path in integrations.ROUTES:', 1)[1].split("if path == '/api/work/context':", 1)[0]
+    assert 'if not self._authed():' in block
+    poisoned = block.replace('if not self._authed():', 'if False:', 1)
+    assert poisoned != block
+    assert 'self._authed()' not in poisoned

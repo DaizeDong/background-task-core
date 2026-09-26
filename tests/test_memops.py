@@ -119,8 +119,15 @@ def test_biggest_entries_are_listed_largest_first(tmp_path, monkeypatch):
 def fake_archiver(tmp_path, rc=0):
     p = tmp_path / "fake_archiver.py"
     p.write_text(
-        "import sys\n"
+        "import sys, pathlib, shutil\n"
         "print('ARGS ' + ' '.join(sys.argv[1:]))\n"
+        f"if {rc}: sys.exit({rc})\n"
+        "root=pathlib.Path(sys.argv[sys.argv.index('--memory-dir')+1])\n"
+        "verb,slug=sys.argv[-2:]\n"
+        "live,cold=root/(slug+'.md'),root/'archive'/(slug+'.md')\n"
+        "src,dst=(live,cold) if verb=='--archive' else (cold,live)\n"
+        "dst.parent.mkdir(parents=True,exist_ok=True)\n"
+        "shutil.move(src,dst)\n"
         f"sys.exit({rc})\n", encoding="utf-8")
     return p
 
@@ -136,10 +143,36 @@ def test_archive_forwards_explicit_slug_to_the_existing_archiver(tmp_path, monke
 
 
 def test_restore_is_the_other_allowed_verb(tmp_path, monkeypatch):
-    root = pool(tmp_path, entries=("a",))
+    root = pool(tmp_path, cold=("a",))
     monkeypatch.setenv("TASK_CONSOLE_MEMORY", str(root))
     monkeypatch.setenv("TASK_CONSOLE_MEMORY_ARCHIVER", str(fake_archiver(tmp_path)))
     assert "--restore a" in M.act("restore", "a")["out"]
+
+
+def test_missing_memory_is_refused_before_a_silent_archiver_skip(tmp_path, monkeypatch):
+    root = pool(tmp_path)
+    monkeypatch.setenv('TASK_CONSOLE_MEMORY', str(root))
+    monkeypatch.setenv('TASK_CONSOLE_MEMORY_ARCHIVER', str(fake_archiver(tmp_path)))
+    with pytest.raises(Refused, match='不存在'):
+        M.act('archive', 'acme')
+
+
+def test_archive_never_overwrites_an_existing_cold_record(tmp_path, monkeypatch):
+    root = pool(tmp_path, entries=('acme',), cold=('acme',))
+    monkeypatch.setenv('TASK_CONSOLE_MEMORY', str(root))
+    monkeypatch.setenv('TASK_CONSOLE_MEMORY_ARCHIVER', str(fake_archiver(tmp_path)))
+    with pytest.raises(Refused, match='已存在'):
+        M.act('archive', 'acme')
+
+
+def test_archiver_exit_zero_without_a_move_is_not_success(tmp_path, monkeypatch):
+    root = pool(tmp_path, entries=('acme',))
+    script = tmp_path / 'no_move.py'
+    script.write_text('print("synthetic no-op")', encoding='utf-8')
+    monkeypatch.setenv('TASK_CONSOLE_MEMORY', str(root))
+    monkeypatch.setenv('TASK_CONSOLE_MEMORY_ARCHIVER', str(script))
+    result = M.act('archive', 'acme')
+    assert result['ok'] is False
 
 
 @pytest.mark.parametrize("verb", ["delete", "reindex", "list", "", "archive;rm"])

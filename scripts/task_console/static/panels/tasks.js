@@ -349,12 +349,12 @@ const C=[
 ];
 
 function detail(r){
-  const tail=s=>esc(String(s==null?"":s).split("\\").pop().replace(/"$/,""));
   const rcs=r.runs?Object.keys(r.runs.rcs||{}).map(k=>k+"x"+r.runs.rcs[k]).join(", "):"";
   const dl=[
    ["用途",r.desc?esc(r.desc):'<span class="u">没有用途说明</span>'],
    ["运行计划",esc(taskSchedule(r,true))],
-   ["命令",`${tail(r.exec)} ${tail(r.args)}`],
+   ["命令",`<code>${esc(r.exec)} ${esc(r.args)}</code>`],
+   ["工作目录",esc(r.cwd || '未设置')],
    ["身份",`${esc(r.userId)} · ${esc(r.runLevel)} · ${esc(r.multi)}`],
    ["退出码",`${esc(r.rcHex)||"-"}${r.okCodes?` <span class="faint">声明 ${esc(r.okCodes)} 也算正常</span>`:""}`],
    ["产物",r.artifact?`${esc(r.artifact)} · ${esc(r.artifactMax)}h`:"未声明"],

@@ -101,6 +101,22 @@ def test_a_broken_required_source_flips_the_overall_verdict(bundle, tmp_path):
     assert "health" in bad["broken"]
 
 
+def test_missing_runtime_dependency_is_visible_even_when_paths_exist(bundle, tmp_path, monkeypatch):
+    import importlib
+    actual = importlib.import_module
+    def missing(name, *args, **kwargs):
+        if name == 'yaml':
+            raise ImportError('synthetic missing dependency')
+        return actual(name, *args, **kwargs)
+    health = tmp_path / 'health.json'
+    health.write_text('{}', encoding='utf-8')
+    monkeypatch.setattr(importlib, 'import_module', missing)
+    result = run(bundle, TASK_CONSOLE_HEALTH=str(health))
+    assert result['ok'] is False
+    assert row(result, 'runtime_yaml')['state'] == SC.MISSING
+    assert 'PyYAML' in row(result, 'runtime_yaml')['why']
+
+
 def test_missing_bundled_file_flips_it_too(tmp_path):
     # 随包文件缺了是安装坏了,不是没配。它没有环境变量可以「不设」。
     for _k, _t, fname in SC.BUNDLED[1:]:
@@ -133,8 +149,8 @@ def test_probed_counts_only_sources_actually_read(bundle, tmp_path):
     res = run(bundle, TASK_CONSOLE_HEALTH=str(good))
     # 没配的来源不算「探到了」。把它们算进去会让覆盖率虚高,而覆盖率虚高正是
     # 这类面板最容易骗人的地方。
-    assert res["probed"] == len(SC.BUNDLED) + 1
-    assert res["total"] == len(SC.SOURCES) + len(SC.BUNDLED)
+    assert res["probed"] == len(SC.BUNDLED) + 1 + (2 if os.name == 'nt' else 1)
+    assert res["total"] == len(SC.SOURCES) + len(SC.BUNDLED) + (2 if os.name == 'nt' else 1)
     assert res["probed"] < res["total"]
 
 

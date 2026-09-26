@@ -1,6 +1,7 @@
 // Classic script module; loaded in app.js dependency order.
 let LLM=null, LCDRAFT=null, LMROWS=null, LMTOTAL=0, LMOPEN=null, LMBODY={};
 let LM_REQUEST=0;
+let LLM_LOADING=null;
 const LMQ = {offset:0, limit:20, provider:"", ok:"", q:"", caller:""};
 
 const lnum = n => n==null ? "—" : Number(n).toLocaleString("en-US");
@@ -13,12 +14,17 @@ function lts(t){
   return d.getFullYear()+"-"+p(d.getMonth()+1)+"-"+p(d.getDate())+" "+p(d.getHours())+":"+p(d.getMinutes());
 }
 
-async function loadLLM(){
+function loadLLM(){
+  if(LLM_LOADING) return LLM_LOADING;
+  $("lcnote").textContent='正在读取完整调用账本…';
+  LLM_LOADING=(async()=>{
   try{ LLM = await api("/api/llmcall"); $("lcnote").textContent=""; }
   catch(e){ LLM = {error: e.message}; }
   LCDRAFT = null;
   renderLLM();
   await loadCalls();
+  })().finally(()=>{LLM_LOADING=null;});
+  return LLM_LOADING;
 }
 
 function renderLLM(){
@@ -232,10 +238,10 @@ function renderRuns(){
   // 永远是最长的那几段。所以每类只画前 LRUN_TOP 段,并且**把没画的那些数出来** ——
   // 一张悄悄截断的表和一张本来就这么短的表,看起来一模一样。
   $("lstab").innerHTML =
-    (dead.length ? '<div class="l-sub"><b>调用失败</b>：未获得回答</div>'
-                   + runRows(dead.slice(0, LRUN_TOP), max) + more(dead) : "")
-    + (down.length ? '<div class="l-sub"><b>备用服务应答</b>：由调用顺序中靠后的服务回答</div>'
-                     + runRows(down.slice(0, LRUN_TOP), max) + more(down) : "");
+    (dead.length ? '<div class="l-run-group"><div class="l-sub"><b>调用失败</b>：未获得回答</div>'
+                   + runRows(dead.slice(0, LRUN_TOP), max) + more(dead) + '</div>' : "")
+    + (down.length ? '<div class="l-run-group"><div class="l-sub"><b>备用服务应答</b>：由调用顺序中靠后的服务回答</div>'
+                     + runRows(down.slice(0, LRUN_TOP), max) + more(down) + '</div>' : "");
 }
 
 const LRUN_TOP = 12;

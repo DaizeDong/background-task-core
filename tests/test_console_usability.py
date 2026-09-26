@@ -29,7 +29,7 @@ def test_source_shortcut_clears_hidden_filters_and_reset_restores_default():
       setWorkFilters();
       return {sourceCount,query:WORK_QUERY,state:WORK_STATE,source:WORK_SOURCE,role:WORK_ROLE,hidden:$('work-reset').hidden};
     })()""",setup_feed())
-    assert result=={'sourceCount':9,'query':'','state':'','source':'','role':'work','hidden':True}
+    assert result=={'sourceCount':9,'query':'','state':'unfinished','source':'','role':'work','hidden':True}
 
 
 def test_missing_source_remains_visible_and_unloaded_activity_has_no_dead_button():

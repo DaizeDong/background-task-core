@@ -48,6 +48,30 @@ def example_request() -> dict:
     }
 
 
+def add_creation_candidate(request):
+    """A second declaration for the same synthetic action under a different name."""
+    original = 'acme-maintenance/sync'
+    duplicate = 'acme-maintenance/sync-copy'
+    task = deepcopy(request['components'][0]['tasks'][0])
+    task['id'] = 'sync-copy'
+    request['components'][0]['tasks'].append(task)
+    binding = deepcopy(request['bindings']['tasks'][original])
+    binding['name'] = 'AcmeSyncCopy'
+    request['bindings']['tasks'][duplicate] = binding
+    return original, duplicate
+
+
+def legacy_creation_xml(user_id='AcmeService'):
+    """A pre-registration task has no embedded declaration in its XML."""
+    from xml.sax.saxutils import escape
+    return '''<Task xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+<Principals><Principal id="Author"><UserId>''' + escape(user_id) + '''</UserId>
+<LogonType>InteractiveToken</LogonType><RunLevel>LeastPrivilege</RunLevel></Principal></Principals>
+<Actions Context="Author"><Exec><Command>C:/Acme/runtime/python.exe</Command>
+<Arguments>C:/Acme/source/sync.py --check</Arguments>
+<WorkingDirectory>C:/Acme/source</WorkingDirectory></Exec></Actions></Task>'''
+
+
 def work_action_case():
     """A synthetic todo with an owner-issued action offer."""
     return {"id": "acme-todo", "title": "Prepare Acme report", "state": "pending",
@@ -56,6 +80,79 @@ def work_action_case():
                         "offers": [{"id": "agent", "kind": "agent", "label": "整理报告",
                                     "description": "根据待办内容处理", "enabled": True}],
                         "links": [], "current": None}}
+
+
+def launch_case():
+    """Registered task actions, including paths and arguments that must not be shortened."""
+    return {"name": "Acme's sync", "taskPath": "\\Acme\\", "state": "Ready",
+            "actions": [{"exec": "C:\\Acme Tools\\python.exe", "args": '-B "C:\\Acme\\sync.py" --check',
+                         "cwd": "C:\\Acme"}, {"exec": "C:\\Acme\\verify.exe", "args": "--full", "cwd": ""}],
+            "userId": "AcmeService", "runLevel": "LeastPrivilege", "multi": "IgnoreNew",
+            "catchup": True, "refuseOnBattery": True, "stopOnBattery": False,
+            "triggers": "daily 03:15", "timeout": "PT7M", "retries": 2}
+
+
+def skill_delete_case(root):
+    """Create a disposable skill; real user files are never used by deletion tests."""
+    skill = Path(root) / "acme-skill"
+    skill.mkdir(parents=True)
+    (skill / "SKILL.md").write_text("---\nname: acme-skill\ndescription: Synthetic tool\n---\n", encoding="utf-8")
+    (skill / "guide.txt").write_text("Synthetic guide\n", encoding="utf-8")
+    return skill
+
+
+def plugin_delete_case():
+    return {"name": "acme@example", "scope": "user", "version": "1.0", "enabled": True}
+
+
+def plugin_inventory_case():
+    return [{"id": "acme@example", "scope": "user", "enabled": True},
+            {"id": "sample@example", "scope": "user", "enabled": False}]
+
+
+def plugin_cli_sandbox(root):
+    """An isolated CLI configuration containing synthetic plugins and no credentials."""
+    root = Path(root)
+    installed = root / 'plugins/cache/example/acme/1.0.0'
+    linked = root / 'skills/sample'
+    for path, name in ((installed, 'acme'), (linked, 'sample')):
+        (path / '.claude-plugin').mkdir(parents=True)
+        (path / '.claude-plugin/plugin.json').write_text(json.dumps({
+            'name': name, 'version': '1.0.0', 'description': 'Generated test plugin'}), encoding='utf-8')
+        (path / 'SKILL.md').write_text('---\nname: '+name+'\ndescription: Generated test skill\n---\n', encoding='utf-8')
+    (root / 'plugins/installed_plugins.json').write_text(json.dumps({'version': 2, 'plugins': {
+        'acme@example': [{'scope': 'user', 'installPath': str(installed), 'version': '1.0.0',
+                         'installedAt': '2030-01-01T00:00:00Z', 'lastUpdated': '2030-01-01T00:00:00Z'}]}}), encoding='utf-8')
+    (root / 'settings.json').write_text(json.dumps({'enabledPlugins': {
+        'acme@example': True, 'sample@skills-dir': True}}), encoding='utf-8')
+    return root
+
+
+def maintenance_sandbox(root):
+    """Synthetic state for exercising real maintenance writers in an isolated root."""
+    root = plugin_cli_sandbox(root)
+    (root / 'skills-archive').mkdir()
+    (root / 'memory/archive').mkdir(parents=True)
+    (root / 'memory/acme.md').write_text('---\nname: Acme\ndescription: Synthetic note\ntype: project\nmetadata:\n  status: active\n---\nGenerated content.\n', encoding='utf-8')
+    (root / 'memory/MEMORY.md').write_text('- [Acme](acme.md): synthetic note\n', encoding='utf-8')
+    (root / 'sessions').mkdir()
+    (root / 'sessions/acme.jsonl').write_text('{"type":"synthetic"}\n', encoding='utf-8')
+    (root / 'temp-cache/temp_git_1_acme').mkdir(parents=True)
+    (root / 'temp-cache/temp_git_1_acme/content.txt').write_text('synthetic cache', encoding='utf-8')
+    return root
+
+
+def integration_feed_case():
+    feed = work_feed_case()
+    feed['sources'] = [{'source': 'example-mail', 'role': 'signal', 'state': 'notified', 'count': 1},
+                       {'source': 'example-mail', 'role': 'tracked_item', 'state': 'pending', 'count': 2}]
+    return feed
+
+
+def integration_origins_case():
+    feed = integration_feed_case()
+    feed['sources'].append({'source': 'example-manual', 'role': 'tracked_item', 'state': 'done', 'count': 2})
+    return feed
 
 
 def work_feed_case():
@@ -69,6 +166,12 @@ def work_feed_case():
                      'execution':{'state':state,'evidence':'summary_only'} if role=='agent_work' else None})
     return {'schemaVersion':1,'available':True,'items':rows,'events':[],'sources':[],
             'coverage':{'total':5,'returned':5,'roles':{'agent_work':3,'tracked_item':1,'signal':1}}}
+
+
+def linked_work_case():
+    feed = work_feed_case()
+    feed['items'][0]['origin_item_id'] = 'reminder'
+    return feed
 
 
 def usability_case():
@@ -261,10 +364,33 @@ def generate(output: Path) -> None:
                  "machine.console.example.json": request["machine"], "baseline.example.json": request["baseline"],
                  "installations.request.example.json": installation_request()}
     for name, data in documents.items():
-        (output / name).write_text(json.dumps(data, ensure_ascii=True, indent=2) + "\n", encoding="utf-8")
+        (output / name).write_bytes((json.dumps(data, ensure_ascii=True, indent=2) + "\n").encode("utf-8"))
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--out", type=Path, default=Path(__file__).resolve().parents[1] / "examples" / "console")
     generate(parser.parse_args().out)
+def consolidated_work_case():
+    """Synthetic history, independent alarms and missing/cyclic parents."""
+    return [
+        {'id':'root','role':'tracked_item','title':'Collect synthetic parcel','state':'pending'},
+        {'id':'old','role':'signal','title':'Parcel prepared','state':'cancelled','group_parent_id':'root'},
+        {'id':'alarm','role':'tracked_item','title':'Leave for collection','state':'pending','group_parent_id':'root'},
+        {'id':'orphan','role':'tracked_item','title':'Separate task','state':'pending','group_parent_id':'missing'},
+        {'id':'cycle-a','role':'tracked_item','title':'Cycle A','state':'pending','group_parent_id':'cycle-b'},
+        {'id':'cycle-b','role':'tracked_item','title':'Cycle B','state':'pending','group_parent_id':'cycle-a'},
+    ]
+
+
+def searchable_work_group_case():
+    """Synthetic parent whose text differs from its earlier steps and alarm."""
+    rows = consolidated_work_case()
+    for row in rows:
+        row['source'] = 'example-mail' if row['role'] == 'signal' else 'example-schedule'
+    return {'available': True, 'items': rows, 'events': [], 'sources': [], 'coverage': {}}
+
+
+def blocked_agent_case():
+    return {'id':'queued-work','role':'agent_work','title':'Acme queued work','state':'pending',
+            'execution':{'state':'queued','queue_reason':'cleanup_unconfirmed','blocked_by':['old-work']}}

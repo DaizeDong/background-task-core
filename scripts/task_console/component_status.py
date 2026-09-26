@@ -67,7 +67,7 @@ def evaluate_snapshot(snapshot: dict, now=None) -> dict:
                                                            artifacts.get(path, {}).get("reason", "missing captured artifact")))
         result["read_only"] = True
         result["coverage"] = health.coverage(result["summary"]["judged"], result["summary"]["total"])
-        result["catalog"] = catalog_view(snapshot.get("catalog"))
+        result["catalog"] = read_catalog(lambda: snapshot.get("catalog"))
         result["authority"] = "observation_only"
         return result
     inputs = snapshot.get("tasks", [])
@@ -86,7 +86,7 @@ def evaluate_snapshot(snapshot: dict, now=None) -> dict:
     expected = max(len(inputs), snapshot.get("expected", len(inputs)))
     cov = health.coverage(sum(t["verdict"] != "unknown" for t in tasks), expected)
     return {"schemaVersion": 1, "read_only": True, "observed_at": health.epoch(now),
-            "tasks": tasks, "coverage": cov, "catalog": catalog_view(snapshot.get("catalog")),
+            "tasks": tasks, "coverage": cov, "catalog": read_catalog(lambda: snapshot.get("catalog")),
             "authority": "observation_only", "captured_at": snapshot.get("observed_at"),
             "authority_generation": snapshot.get("authority_generation"),
             "reason_code": "zero_coverage" if not expected else None}
@@ -95,6 +95,15 @@ def evaluate_snapshot(snapshot: dict, now=None) -> dict:
 def read_snapshot(path: str | Path) -> dict:
     with Path(path).expanduser().open(encoding="utf-8-sig") as stream:
         return json.load(stream)
+
+
+def read_catalog(reader):
+    """Catalog evidence cannot invalidate independently captured task evidence."""
+    try:
+        return catalog_view(reader())
+    except (OSError, ValueError, TypeError, KeyError, AttributeError) as exc:
+        return {**catalog_view(None), 'reason': f'Catalog read failed: {type(exc).__name__}',
+                'coverage': {'status': 'partial'}, 'reason_code': 'query_failed'}
 
 
 def read_configured(now=None, env=None) -> dict:
@@ -111,11 +120,7 @@ def read_configured(now=None, env=None) -> dict:
         except (OSError, ValueError, TypeError, KeyError) as exc:
             result.update(reason=f"Component snapshot read failed: {type(exc).__name__}", reason_code="query_failed")
     if catalog_path:
-        try:
-            result["catalog"] = catalog_view(read_snapshot(catalog_path))
-        except (OSError, ValueError, TypeError, KeyError) as exc:
-            result["catalog"] = {**catalog_view(None), "reason": f"Catalog read failed: {type(exc).__name__}",
-                                 "coverage": {"status": "partial"}, "reason_code": "query_failed"}
+        result['catalog'] = read_catalog(lambda: read_snapshot(catalog_path))
     return result
 
 

@@ -247,6 +247,8 @@ function rpListRow(r, sub){
       tabindex="0" role="button" title="${esc(r.path)}">
     <i class="dot d-${r.state}" title="${esc(RP_LAB[r.state]||r.state)}"></i>
     <span class="n">${esc(label)}</span>
+    <span class="rp-state">${esc(RP_LAB[r.state]||r.state)}</span>
+    <span class="rp-changes">${r.state==='error'?'未检查改动':esc(r.dirty ?? 0)+' 个改动'} · ${r.unpushedKnown?esc(r.ahead ?? 0)+' 个未推送':'未推送数未知'}</span>
     <span class="acc${cls}" title="${esc(accTitle)}">${esc(mono)}</span>
     <span class="vis ${v.cls}" title="${esc(v.t)}">${v.g}</span></div>`;
 }

@@ -5,6 +5,7 @@ from pathlib import Path
 
 from test_panel_parity import node, module_source
 from tools.make_fixtures import operations_case, catalog_snapshot, review_pipeline_case
+from tools.make_fixtures import launch_case
 import component_status
 
 
@@ -21,6 +22,12 @@ const context=vm.createContext({document,localStorage:{getItem:()=>null},setTime
     program += f"vm.runInContext({json.dumps(setup)},context);\n"
     program += "Promise.resolve(vm.runInContext(" + json.dumps(expression) + ",context)).then(result=>console.log(JSON.stringify(result)));"
     return node(program)
+
+
+def test_navigation_reads_only_the_opened_page_once():
+    result=run("(async()=>{await loadPageOnce('resources');await loadPageOnce('resources');return reads;})()",
+               "let reads=[];PAGE_READS.resources=[async()=>reads.push('resources')];PAGE_READS.convos=[async()=>reads.push('convos')];")
+    assert result == ['resources']
 
 
 def test_theme_persists_follows_system_and_survives_denied_storage():
@@ -55,6 +62,47 @@ def test_runtime_filters_preserve_inactive_rows_and_sort_by_cost():
     assert run("RUNTIME_SORT='budget';runtimeRows(sample,'skill').map(row=>row.chars)", setup) == [30, 10]
 
 
+def test_launch_details_preserve_every_action_and_quote_scheduler_name():
+    result = run("[taskLaunchHtml(sample),taskStartCommand(sample)]", "const sample=" + json.dumps(launch_case()) + ";")
+    assert "C:\\Acme Tools\\python.exe" in result[0]
+    assert "--check" in result[0] and "verify.exe" in result[0] and "--full" in result[0]
+    assert "AcmeService" in result[0] and "补跑" in result[0] and "电池" in result[0]
+    assert result[1] == "Start-ScheduledTask -TaskPath '\\Acme\\' -TaskName 'Acme''s sync'"
+
+
+def test_operation_result_does_not_turn_accepted_or_partial_into_completed():
+    result = run("[operationOutcome('/api/act',{verb:'run'},{ok:true,status:'run_requested'}),operationOutcome('/api/codex/delete',{},sample),operationOutcome('/api/act',{},null,new Error('network lost'))]", "const sample=" + json.dumps({"ok": False, "deleted": 1, "error": "synthetic error"}) + ";")
+    assert "尚未确认" in result[0]["message"]
+    assert result[0]["tone"] == "warn"
+    assert "1" in result[1]["message"] and "synthetic error" in result[1]["message"]
+    assert result[1]["tone"] == "bad"
+    assert "未确认" in result[2]["message"]
+
+
+def test_operation_timer_stops_and_history_does_not_retain_request_secrets():
+    result = run("""(()=>{
+      for(let i=0;i<20;i++){
+        const operation=ConsoleActions.begin('/api/maintenance/delete',{body:JSON.stringify({token:'synthetic-secret'})});
+        ConsoleActions.finish(operation,{ok:true,deleted:1});
+      }
+      return {timer:ConsoleActions.timer,count:ConsoleActions.operations.length,serialized:JSON.stringify(ConsoleActions.operations)};
+    })()""")
+    assert result["timer"] is None and result["count"] == 8
+    assert "synthetic-secret" not in result["serialized"]
+
+
+def test_completion_operation_is_success_while_queued_work_remains_pending():
+    result = run("""(()=>{
+      const operation=ConsoleActions.begin('/api/work/action',{body:JSON.stringify({action_id:'complete'})});
+      ConsoleActions.finish(operation,{ok:true,status:'done',action:{kind:'complete',state:'done'}});
+      return {operation,queued:operationOutcome('/api/work/action',{action_id:'agent'},{ok:true,status:'queued'})};
+    })()""")
+    assert result['operation']['tone'] == 'ok'
+    assert '标记完成' in result['operation']['label']
+    assert '已标记完成' in result['operation']['message']
+    assert result['queued']['tone'] == 'warn'
+
+
 def test_catalog_filters_do_not_confuse_unknown_auth_with_healthy():
     catalog = component_status.catalog_view(catalog_snapshot())
     setup = "COMPONENTS=" + json.dumps({"catalog": catalog}) + ";"
@@ -63,15 +111,17 @@ def test_catalog_filters_do_not_confuse_unknown_auth_with_healthy():
     assert run("CATALOG_CLIENT='shared';COMPONENTS.catalog.records.filter(catalogMatches).length", setup) == 1
 
 
-def test_conversation_search_is_scoped_and_groups_start_open():
+def test_conversation_search_is_scoped_and_groups_start_collapsed():
     setup = "CONVOS=" + json.dumps(operations_case()["conversations"]) + ";"
     result = run("renderConvos();[$('cvgroups').innerHTML,$('cv-match').textContent]", setup)
-    assert result[0].count('class="cv-g open"') == 2
+    assert result[0].count('class="cv-g open"') == 0
     assert "另有 4 条未载入" in result[1]
-    result = run("CV_QUERY='acme';renderConvos();[$('cvgroups').innerHTML,$('cv-match').textContent]", setup)
+    result = run("CV_OPEN[CONVOS.groups[0].cwd]=false;CV_QUERY='acme';renderConvos();[$('cvgroups').innerHTML,$('cv-match').textContent]", setup)
     assert "Acme project planning" in result[0] and "Sample project planning" not in result[0]
+    assert result[0].count('class="cv-g open"') == 1
     assert "匹配 1/2" in result[1]
     assert "未参与筛选" in result[0]
+    assert 'class="cv-g open"' not in run("CV_QUERY='acme';renderConvos();CV_QUERY='';renderConvos();$('cvgroups').innerHTML", setup)
 
 
 def test_client_filter_includes_explicit_entrypoint_clients():

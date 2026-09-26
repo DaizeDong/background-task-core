@@ -19,6 +19,7 @@ missing 和 unset 分开是有代价的(多一个状态),但合并的代价更�
 
 from __future__ import annotations
 
+import importlib
 import os
 import time
 from pathlib import Path
@@ -203,6 +204,18 @@ def run(now: float | None = None, here: Path | None = None, env: dict | None = N
         state, info = _probe(here / fname, "file", None, now)
         rows.append(dict({"key": key, "title": title, "env": None, "state": state,
                           "required": True}, **info))
+
+    dependencies = [('yaml', 'PyYAML', '记忆归档运行依赖')]
+    if os.name == 'nt':
+        dependencies.append(('win32evtlog', 'pywin32', 'Windows 事件日志快速读取'))
+    for module, package, title in dependencies:
+        try:
+            importlib.import_module(module)
+            state, why = OK, f'{package} 已加载'
+        except Exception as error:
+            state, why = MISSING, f'{package} 加载失败 ({type(error).__name__})；请修复控制台安装环境'
+        rows.append({'key': 'runtime_' + module, 'title': title, 'env': None, 'path': None,
+                     'required': True, 'state': state, 'why': why})
 
     counts: dict[str, int] = {}
     for r in rows:

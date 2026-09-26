@@ -64,3 +64,51 @@ rules. UI capability hints never grant authority.
 - Preview does not send mutations. Synthetic action tests verify the existing control path.
 - Owner reads cannot create or migrate a database; malformed/older sources fail visibly.
 - Real machine records and browser captures stay outside public repositories.
+
+## Console interfaces
+
+`integrations.py` registers the console's read adapters: their endpoint, owner,
+purpose, dependencies and existing action entrypoints. `/api/integrations` and
+the **Console integrations** view expose that registry. The client plugin
+inventory remains a separate adapter; installing a client plugin does not
+register a console adapter.
+
+The framework owns HTTP authentication, navigation and read isolation. Shared
+work and task services own records and guarded operations. Business producers
+write through the work owner's API. The console never executes a command or
+opens a path supplied by a source record. To add an adapter, declare it in
+`ADAPTERS`, supply a bounded read function, and exercise authentication,
+unconfigured, empty, failed and recovery states. Parameterized reads and writes
+remain explicit guarded routes.
+
+`source_reads.py` shares concurrent reads per adapter, with at most eight
+callers, and retains observation metadata only. Independent sources in an
+aggregate use up to four request-scoped workers, released when the request
+finishes. Groups accept leaf readers to avoid nested worker pools. Successful
+payloads are not cached by time. Readers still own their I/O deadlines.
+Mutations invalidate earlier in-flight reads, including uncertain
+write responses. Aggregated resource sections isolate failures independently;
+catalog failures do not replace task evidence.
+
+The integration inventory's connection status describes a read, not business
+health. Source counts are grouped by source identity across roles and states.
+Signal sources and other record-origin labels are displayed separately; origin
+labels are collapsed initially and do not represent installed plugins. Existing records
+do not prove current producer installation or liveness. Without work service
+access, source coverage is unavailable, not zero. Without business records,
+the framework and other configured adapters remain usable.
+
+The classic frontend still shares core state. `OPTIONAL_PANELS` explicitly
+identifies panels with guarded entrypoints and no core initialization side
+effects. Their asset failure leaves a local error and core navigation working;
+a missing required module still stops initialization visibly. New panels must
+meet that boundary before being marked optional.
+
+Initial page reads run when the user opens that view. Explicit refresh repeats
+its reads; navigating to another view does not scan unrelated resource stores.
+The script loader preloads a window of four assets while preserving sequential
+execution. Downloads overlap without allowing dependent modules to run before
+their prerequisites succeed; preload links and script tags use the same URL.
+A failed script download gets one retry after 150 ms. Syntax and runtime
+errors are not replayed, and repeated download failures keep the same visible
+core or optional-panel failure boundary.

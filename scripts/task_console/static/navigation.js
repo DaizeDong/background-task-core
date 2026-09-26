@@ -3,7 +3,7 @@ const VIEW_GROUPS={
   overview:{label:'工作台',views:{overview:'工作台'}},
   work:{label:'工作记录',views:{work:'工作与结果',convos:'会话',llm:'模型调用'}},
   automations:{label:'自动化',views:{automations:'任务开关',pipelines:'同步与备份',tasks:'运行详情'}},
-  resources:{label:'资源',views:{resources:'技能、插件与记忆',repos:'代码仓库',storage:'存储清理'}},
+  resources:{label:'资源',views:{integrations:'控制台接入',resources:'客户端技能与记忆',repos:'代码仓库',storage:'存储清理'}},
   diagnostics:{label:'诊断',views:{diagnostics:'技术问题与数据来源'}}
 };
 const VIEWS=Object.values(VIEW_GROUPS).flatMap(group=>Object.keys(group.views));
@@ -26,8 +26,7 @@ function showView(key,push){
   $('view-tabs').innerHTML=tabs.map(([id,label])=>`<a href="#${id}" data-open-view="${id}" ${key===id?'aria-current="page"':''}>${esc(label)}</a>`).join('');
   $('view-title').textContent=definition.label;
   document.title=definition.views[key]+' · 本机工作台';
-  if(key==='storage' && !CXL) loadCxList();
-  if(['overview','work'].includes(key) && !WORK && !WORK_LOADING) loadWork();
+  loadPageOnce(key);
   if(key==='automations') renderAutomations();
   if(push && location.hash.slice(1)!==key) location.hash=key;
   $('view').classList.remove('all');window.scrollTo(0,0);

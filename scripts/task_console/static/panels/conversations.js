@@ -1,5 +1,5 @@
 // Classic script module; loaded in app.js dependency order.
-let CONVOS=null, CV_HUMAN_ONLY=false, CV_OPEN={}, CV_QUERY="";
+let CONVOS=null, CV_HUMAN_ONLY=false, CV_OPEN={}, CV_QUERY="", CV_OPEN_QUERY="";
 // 排序维度。后端按最近活动发,这里只重排,不重扫 ——
 // 换个顺序而已,没有理由再走一遍上千份转录。
 let CV_SORT="new";
@@ -41,6 +41,7 @@ function renderConvos(){
     +(S.unreadable?`<span style="color:var(--bad)">读取失败 ${S.unreadable} 场</span>`:"");
 
   const query=CV_QUERY.trim().toLowerCase();
+  if(query!==CV_OPEN_QUERY){CV_OPEN={};CV_OPEN_QUERY=query;}
   const matches=(g,r)=>(!CV_HUMAN_ONLY || r.humanSeen>=2) && (!query ||
     [g.cwd,r.title,r.preview,r.file].join(" ").toLowerCase().includes(query));
   const groups=CONVOS.groups.filter(g=>(!CV_HUMAN_ONLY||g.humanish) && (!query || g.shown.some(r=>matches(g,r))));
@@ -86,7 +87,7 @@ function renderConvos(){
     // 前端根本不知道 —— 编一个筛过的数出来会比报旧口径更糟。
     const cut=g.shown.length-rows.length;
     const unlisted=g.count-g.shown.length;
-    const open=CV_OPEN[g.cwd]!==false?" open":"";
+    const open=(CV_OPEN[g.cwd] ?? !!query)?" open":"";
     const cut2=g.cwd.search(/[\\/][^\\/]*$/);
     const head=cut2>0?g.cwd.slice(0,cut2+1):"", tail=cut2>0?g.cwd.slice(cut2+1):g.cwd;
     const b=g.bytes||0;
@@ -120,7 +121,7 @@ function renderConvos(){
 
   // 折叠块本身要把总场数和总体积打在标题上:「这里有东西」不能因为收起来就消失,
   // 消失的只是 23 份逐字相同的路径前缀。
-  const ephOpen=CV_OPEN[CV_EPH_KEY]!==false?" open":"";
+  const ephOpen=(CV_OPEN[CV_EPH_KEY] ?? !!query)?" open":"";
   const ephN=eph.reduce((a,g)=>a+g.count,0), ephB=eph.reduce((a,g)=>a+(g.bytes||0),0);
   const ephHtml=eph.length?`<div class="cv-g${ephOpen}" data-cv="${esc(CV_EPH_KEY)}">
       <button class="cv-gh" aria-expanded="${!!ephOpen}">

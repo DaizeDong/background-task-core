@@ -6,7 +6,7 @@ function resetFilters(scope){
   if(scope==='tasks'){clear(['q','cat']);$('only').checked=false;$('hideoff').checked=false;if(DATA) render();}
   if(scope==='repos'){clear(['rpq','rpacc','rpkind','rpvis','rpissue']);RP_STATE='';RP_ISSUE='';renderRepos();}
   if(scope==='catalog'){CATALOG_QUERY='';CATALOG_KIND='';CATALOG_CLIENT='';CATALOG_STATE='';HEALTH_STATE='';renderCatalog();}
-  if(scope==='runtime'){clear(['runtime-search','runtime-state']);RUNTIME_QUERY='';RUNTIME_STATE='';renderSkills();renderPlugins();}
+  if(scope==='runtime'){clear(['runtime-search','runtime-state']);RUNTIME_QUERY='';RUNTIME_STATE='';renderSkills();renderClientPlugins();}
   if(scope==='convos'){clear(['cv-search']);CV_QUERY='';CV_HUMAN_ONLY=false;renderConvos();}
   if(scope==='llm'){clearTimeout(LMQT);clear(['lmq','lmprov','lmcaller','lmok']);Object.assign(LMQ,{q:'',provider:'',caller:'',ok:'',offset:0});LMOPEN=null;loadCalls();}
   if(scope==='diagnostics'){clear(['review-search']);$('review-filter').value='all';REVIEW_QUERY='';REVIEW_FILTER='all';renderTodo();}
@@ -15,12 +15,20 @@ function resetFilters(scope){
 const PAGE_READS={
   overview:[loadWork,load,loadComponents],
   work:[loadWork],automations:[load],
+  integrations:[()=>typeof loadIntegrations==='function'?loadIntegrations():Promise.reject(new Error('接入面板加载失败'))],
   resources:[loadComponents,loadMaint,loadMem],
   diagnostics:[load,loadComponents,loadSelfcheck,loadRepos,loadSys,loadMem,loadConvos],
   pipelines:[loadComponents,load],tasks:[load],repos:[loadRepos],
   storage:[loadComponents,loadMaint,loadMem,loadSys,loadCodex,loadCxList],
   convos:[loadConvos],llm:[loadLLM]
 };
+const PAGE_INITIAL_READS=new Map();
+function loadPageOnce(view){
+  if(!PAGE_INITIAL_READS.has(view)){
+    PAGE_INITIAL_READS.set(view,Promise.allSettled((PAGE_READS[view]||[]).map(load=>load())));
+  }
+  return PAGE_INITIAL_READS.get(view);
+}
 async function refreshPage(){
   if(PAGE_REFRESHING) return;
   PAGE_REFRESHING=true;
@@ -42,6 +50,7 @@ function pageSnapshot(view){
     overview:()=>({work:WORK,tasks:DATA,components:COMPONENTS}),
     work:()=>({work:WORK,filters:{query:WORK_QUERY,role:WORK_ROLE,state:WORK_STATE,source:WORK_SOURCE}}),
     automations:()=>({tasks:DATA,filters:{query:AUTO_QUERY,state:AUTO_STATE}}),
+    integrations:()=>({integrations:typeof INTEGRATIONS==='undefined'?null:INTEGRATIONS}),
     resources:()=>({components:catalogComponents(),maintenance:MAINT,memory:MEM}),
     diagnostics:()=>({tasks:DATA,components:COMPONENTS,selfcheck:SCK,repositories:REPOS,system:SYS,memory:MEM}),
     pipelines:()=>({components:COMPONENTS,tasks:DATA}),

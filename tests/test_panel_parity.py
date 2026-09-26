@@ -131,15 +131,76 @@ def test_loader_failure_is_visible_and_stops_initialization():
     result = node("""
 const vm=require('node:vm');
 const failure={hidden:true,textContent:''}, requested=[];
-const document={getElementById:()=>failure,documentElement:{dataset:{}},createElement:()=>({}),
-head:{appendChild:s=>{requested.push(s.src);s.onerror();}}};
+const document={getElementById:()=>failure,documentElement:{dataset:{}},createElement:()=>({remove:()=>{}}),
+head:{appendChild:s=>{if(s.src){requested.push(s.src);s.onerror();}}}};
 const window={addEventListener:()=>{}};
-""" + "vm.runInNewContext(" + json.dumps(module_source("app.js")) + ",{document,window});"
+""" + "vm.runInNewContext(" + json.dumps(module_source("app.js")) + ",{document,window,setTimeout:fn=>fn()});"
         + "setImmediate(()=>console.log(JSON.stringify({failure,requested,ready:document.documentElement.dataset.consoleReady||false}))); ")
     assert result["failure"]["hidden"] is False
     assert result["failure"]["textContent"].startswith("Console module failed:")
-    assert result["requested"] == ["/static/api.js"]
+    assert result["requested"] == ["/static/api.js", "/static/api.js"]
     assert result["ready"] is False
+
+
+@pytest.mark.parametrize('missing', ['panels/plugins.js', 'panels/integrations.js'])
+def test_optional_panel_failure_preserves_core_initialization(missing):
+    result = node("""
+const vm=require('node:vm');
+const elements={}, requested=[];
+const document={getElementById:id=>elements[id] ||= {hidden:true,textContent:''},documentElement:{dataset:{}},createElement:()=>({remove:()=>{}}),
+head:{appendChild:s=>{if(s.src){requested.push(s.src);s.src.endsWith(MISSING)?s.onerror():s.onload();}}}};
+const window={addEventListener:()=>{}};
+""".replace('MISSING', json.dumps(missing)) + 'vm.runInNewContext(' + json.dumps(module_source('app.js')) + ',{document,window,setTimeout:fn=>fn()});'
+        + 'setImmediate(()=>console.log(JSON.stringify({elements,requested,ready:document.documentElement.dataset.consoleReady||false})));')
+    assert result['ready'] == 'true'
+    assert '/static/events.js' in result['requested']
+    target = 'mt-plugins' if missing.endswith('plugins.js') else 'integration-list'
+    assert '加载失败' in result['elements'][target]['textContent']
+
+
+def test_loader_prepares_downloads_ahead_without_executing_dependencies():
+    result = node("""
+const vm=require('node:vm');
+const elements={}, prepared=[], scripts=[];
+const document={getElementById:id=>elements[id] ||= {hidden:true,textContent:''},documentElement:{dataset:{}},
+createElement:tag=>({tag,remove:()=>{}}),head:{appendChild:s=>{if(s.tag==='link')prepared.push(s);else scripts.push(s);}}};
+const window={addEventListener:()=>{}};
+""" + 'vm.runInNewContext(' + json.dumps(module_source('app.js')) + ',{document,window,setTimeout:fn=>fn()});'
+        + """
+const before={prepared:prepared.map(s=>({href:s.href,rel:s.rel,as:s.as})),scripts:scripts.map(s=>s.src)};
+scripts[0].onerror();
+scripts[1].onerror();
+setImmediate(()=>console.log(JSON.stringify({before,after:scripts.map(s=>s.src),failure:elements['module-error']})));
+""")
+    prepared = result['before']['prepared']
+    assert 2 <= len(prepared) <= 4
+    assert all(item['rel'] == 'preload' and item['as'] == 'script' for item in prepared)
+    assert '/static/actions.js' in {item['href'] for item in prepared}
+    assert result['before']['scripts'] == ['/static/api.js']
+    assert result['after'] == ['/static/api.js', '/static/api.js']
+    assert result['failure']['hidden'] is False
+
+
+def test_transient_script_download_failure_recovers_without_duplicate_execution():
+    result = node("""
+const vm=require('node:vm');
+const elements={}, requests=[], executed=[];
+let failed=false;
+const document={getElementById:id=>elements[id] ||= {hidden:true,textContent:''},documentElement:{dataset:{}},
+createElement:tag=>({tag,remove:()=>{}}),head:{appendChild:s=>{
+  if(s.tag!=='script')return;
+  requests.push(s.src);
+  if(!failed){failed=true;s.onerror();return;}
+  executed.push(s.src);s.onload();
+}}};
+const window={addEventListener:()=>{}};
+""" + 'vm.runInNewContext(' + json.dumps(module_source('app.js')) + ',{document,window,setTimeout:fn=>fn()});'
+        + "setImmediate(()=>console.log(JSON.stringify({requests,executed,ready:document.documentElement.dataset.consoleReady||false,failure:elements['module-error']})));")
+    assert result['ready'] == 'true'
+    assert result['failure']['hidden'] is True
+    assert result['requests'].count('/static/api.js') == 2
+    assert result['executed'].count('/static/api.js') == 1
+    assert result['executed'][-1] == '/static/events.js'
 
 
 def test_api_reads_bootstrap_and_sends_token_only_in_header():

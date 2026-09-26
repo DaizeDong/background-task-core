@@ -20,6 +20,8 @@ import json
 import os
 import sys
 import time
+import threading
+from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 
@@ -110,6 +112,55 @@ def test_a_ledger_with_no_timestamps_reports_excluded_not_zero(ledger, monkeypat
 
 
 # ── 缓存 ────────────────────────────────────────────────────────────────────
+
+def test_simultaneous_cold_reads_parse_the_ledger_once(ledger, monkeypatch):
+    _write(ledger, [_rec(100)])
+    entered, release = threading.Event(), threading.Event()
+    reads = []
+    original = llmstats.read
+
+    def slow_read():
+        reads.append(1)
+        entered.set()
+        assert release.wait(3)
+        return original()
+
+    monkeypatch.setattr(llmstats, "read", slow_read)
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        first = pool.submit(server.llm_records)
+        assert entered.wait(3)
+        others = [pool.submit(server.llm_records) for _ in range(3)]
+        time.sleep(0.05)
+        release.set()
+        results = [first.result()] + [future.result() for future in others]
+    assert len(reads) == 1
+    assert all(result[0] is results[0][0] for result in results)
+    assert len(results[0][0]) == 1
+
+
+def test_partial_read_error_is_not_cached_forever(ledger, monkeypatch):
+    _write(ledger, [_rec(100)])
+    original = llmstats.read
+    records, meta = original()
+    replies = iter([([], dict(meta, read_error="synthetic read failure")), (records, meta)])
+    monkeypatch.setattr(llmstats, "read", lambda: next(replies))
+    assert server.llm_records()[1]["read_error"]
+    assert server.llm_records()[0] == records
+
+
+def test_repeated_json_strings_share_storage_without_losing_record_fields(ledger):
+    records = [_rec(100), _rec(200)]
+    for row in records:
+        row.update(extra={"nested": [1, None, "unchanged"]}, caller="acme_sync.py")
+    _write(ledger, records)
+    actual, meta = llmstats.read()
+    assert meta["parsed"] == 2
+    assert actual == [dict(row, **{llmstats.INDEX_KEY: i + 1}) for i, row in enumerate(records)]
+    first_key = next(key for key in actual[0] if key == "prompt_chars")
+    second_key = next(key for key in actual[1] if key == "prompt_chars")
+    assert first_key is second_key
+    assert actual[0]["provider"] is actual[1]["provider"]
+    assert actual[0]["chain"][0] is actual[1]["chain"][0]
 
 def test_an_appended_call_is_visible_immediately(ledger, monkeypatch):
     """追加一行之后,下一次读必须看得见它。

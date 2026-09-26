@@ -43,7 +43,14 @@ work, invoke a model or upgrade a database. `TASK_CONSOLE_READ_ONLY=1` disables 
 The owner reserves and deduplicates requests transactionally. The console only dispatches the
 owner-selected exact task ID through the existing Controller. A failed queue wake preserves the
 queued work. Uncertain task dispatch stays unconfirmed and is never automatically replayed.
-The original todo remains open until its owner records completion separately.
+Agent or task execution leaves the original todo open until its owner records completion.
+For active human todos, the owner also offers `complete` (标记完成). This records the user's
+manual completion, sets progress to 100 and ends reminders without creating Agent work or
+starting a scheduled task. Only the owner CLI/database binding is required for this action.
+The owner stores its receipt and state transition in one transaction, preserving dependency
+checks. An active execution disables completion until it ends or is stopped. Signal records
+and terminal todos do not offer completion. Duplicate request IDs return the original receipt;
+stale revisions are rejected. The browser refreshes the work feed after acknowledgement.
 
 Old conversations supply bounded reference context only when an exact UUID is recorded. This does
 not resume a provider-native session. Existing todos without exact links can still use their own

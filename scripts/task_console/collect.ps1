@@ -100,6 +100,12 @@ foreach ($t in $all) {
     triggersRaw = $trgRaw
     exec        = $t.Actions[0].Execute
     args        = $t.Actions[0].Arguments
+    cwd         = if ($t.Actions[0].PSObject.Properties['WorkingDirectory']) { $t.Actions[0].WorkingDirectory } else { $null }
+    taskPath    = if ($t.PSObject.Properties['TaskPath']) { $t.TaskPath } else { $null }
+    actions     = @($t.Actions | ForEach-Object { [ordered]@{
+      exec = $_.Execute; args = $_.Arguments
+      cwd = if ($_.PSObject.Properties['WorkingDirectory']) { $_.WorkingDirectory } else { $null }
+    } })
     catchup     = [bool]$s.StartWhenAvailable
     retries     = [int]$s.RestartCount
     timeout     = "$($s.ExecutionTimeLimit)"

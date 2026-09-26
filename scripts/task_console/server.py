@@ -49,6 +49,8 @@ import codexinfo
 import component_status
 import work_status
 import work_actions
+import integrations
+import source_reads
 import console_store
 import convos
 import evtlog
@@ -56,6 +58,7 @@ import freshness
 import history
 import llmstats
 import maint
+import deletion
 import memops
 import repos as repos_mod
 import retire as retire_mod
@@ -88,7 +91,7 @@ VENDOR = HERE / "vendor"
 STATIC = HERE / "static"
 STATIC_FILES = {
     "app.js", "api.js", "events.js", "theme.js", "operations.js", "styles.css", "review.css",
-    "panels/tasks.js", "panels/skills.js", "panels/plugins.js",
+    "panels/tasks.js", "panels/skills.js", "panels/plugins.js", "panels/integrations.js",
     "panels/profile.js", "panels/repositories.js", "panels/storage.js",
     "panels/overview.js", "panels/conversations.js", "panels/calls.js",
     "panels/pipelines.js", "panels/review.js",
@@ -841,21 +844,27 @@ def build_payload() -> dict:
 # 追加一行,后两样必变。刻意不用「缓存 N 秒」那种写法 ——
 # 那会让刚发生的一次调用在页面上消失几秒,而「刚跑完但看不见」正是这台台子要防的形态。
 _LEDGER_CACHE: dict = {}
+_LEDGER_LOCK = threading.Lock()
 
 
 def llm_records():
     """读账本,带失效缓存。返回 (records, meta)。"""
-    p = llmstats.ledger_path()
-    try:
-        st = os.stat(p)
-        key = (str(p), st.st_size, st.st_mtime_ns)
-    except OSError:
-        key = (str(p), None, None)
-    if _LEDGER_CACHE.get("key") == key:
-        return _LEDGER_CACHE["recs"], _LEDGER_CACHE["meta"]
-    recs, meta = llmstats.read()
-    _LEDGER_CACHE.update(key=key, recs=recs, meta=meta)
-    return recs, meta
+    with _LEDGER_LOCK:
+        p = llmstats.ledger_path()
+        try:
+            st = os.stat(p)
+            key = (str(p), st.st_size, st.st_mtime_ns)
+        except OSError:
+            key = (str(p), None, None)
+        if _LEDGER_CACHE.get("key") == key:
+            return _LEDGER_CACHE["recs"], _LEDGER_CACHE["meta"]
+        recs, meta = llmstats.read()
+        # Failed reads remain retryable even if the file's size and mtime do not change.
+        if not meta.get("read_error"):
+            _LEDGER_CACHE.update(key=key, recs=recs, meta=meta)
+        else:
+            _LEDGER_CACHE.clear()
+        return recs, meta
 
 
 def llm_overview() -> dict:
@@ -943,6 +952,8 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def _json(self, code: int, obj):
+        if self.command == 'POST' and self._host_ok() and self._authed():
+            source_reads.boundary.invalidate()
         self._send(code, json.dumps(obj, ensure_ascii=False).encode("utf-8"),
                    "application/json; charset=utf-8")
 
@@ -1052,6 +1063,32 @@ class Handler(BaseHTTPRequestHandler):
         except Exception as e:
             return self._json(500, {"error": f"{type(e).__name__}: {e}"})
 
+    def _maintenance_delete(self):
+        if not self._authed():
+            self._drain()
+            return self._json(403, {"error": "bad token"})
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+            if not 0 < length <= 8192 or self.headers.get("Transfer-Encoding"):
+                self.close_connection = True
+                return self._json(400, {"error": "invalid request size"})
+            body = json.loads(self.rfile.read(length))
+            if not isinstance(body, dict):
+                return self._json(400, {"error": "request must be an object"})
+            if self.path.split("?", 1)[0].endswith("/plan"):
+                if any(not isinstance(body.get(key), str) for key in ("kind", "name", "location")):
+                    return self._json(400, {"error": "kind, name and location must be strings"})
+                result = deletion.plan(body["kind"], body["name"], body["location"])
+            else:
+                result = deletion.apply(body.get("token"))
+            return self._json(200, result)
+        except maint.Refused as error:
+            return self._json(409, {"error": str(error), "code": error.code})
+        except (ValueError, UnicodeError):
+            return self._json(400, {"error": "invalid JSON request"})
+        except Exception as error:
+            return self._json(500, {"error": f"{type(error).__name__}: {error}"})
+
     def _maint_act(self):
         """维护动作。和 /api/act 分开是刻意的:两张动作表混在一起,加一个 skill 动作
         就等于同时扩大了任务动作的表面,而没有人会在评审时注意到这一点。"""
@@ -1125,7 +1162,12 @@ class Handler(BaseHTTPRequestHandler):
         return self._guard(self._do_GET, "GET " + self.path.split("?", 1)[0])
 
     def do_POST(self):
-        return self._guard(self._do_POST, "POST " + self.path.split("?", 1)[0])
+        try:
+            return self._guard(self._do_POST, "POST " + self.path.split("?", 1)[0])
+        finally:
+            # Includes uncertain writes: a lost response is not proof of no change.
+            if self._host_ok() and self._authed():
+                source_reads.boundary.invalidate()
 
     def _do_GET(self):
         if not self._host_ok():
@@ -1149,14 +1191,17 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(404, {"error": "not found"})
             ctype = "text/css; charset=utf-8" if rel.endswith(".css") else "text/javascript; charset=utf-8"
             return self._send(200, body, ctype)
-        if path == "/api/components":
+        if path == '/api/integrations':
             if not self._authed():
                 return self._json(403, {"error": "bad token"})
-            return self._json(200, component_status.read_configured())
-        if path == "/api/work":
+            return self._json(200, integrations.read_configured())
+        if path in integrations.ROUTES:
             if not self._authed():
                 return self._json(403, {"error": "bad token"})
-            return self._json(200, work_status.read_configured())
+            try:
+                return self._json(200, integrations.ROUTES[path].read(globals()))
+            except Exception as error:
+                return self._json(500, {'error': f'{type(error).__name__}: {error}'})
         if path == '/api/work/context':
             if not self._authed():
                 return self._json(403, {'error': 'bad token'})
@@ -1181,20 +1226,6 @@ class Handler(BaseHTTPRequestHandler):
                                         "tasks": console_store.health_by_hour(con, a, b)})
             finally:
                 con.close()
-        if path == "/api/mem":
-            if not self._authed():
-                return self._json(403, {"error": "bad token"})
-            try:
-                return self._json(200, memops.read())
-            except Exception as e:
-                return self._json(500, {"error": f"{type(e).__name__}: {e}"})
-        if path == "/api/codex":
-            if not self._authed():
-                return self._json(403, {"error": "bad token"})
-            try:
-                return self._json(200, codexinfo.read())
-            except Exception as e:
-                return self._json(500, {"error": f"{type(e).__name__}: {e}"})
         if path == "/api/codex/list":
             if not self._authed():
                 return self._json(403, {"error": "bad token"})
@@ -1202,13 +1233,6 @@ class Handler(BaseHTTPRequestHandler):
             which = (q.get("which") or ["sessions"])[0]
             try:
                 return self._json(200, codexinfo.list_transcripts(which))
-            except Exception as e:
-                return self._json(500, {"error": f"{type(e).__name__}: {e}"})
-        if path == "/api/llmcall":
-            if not self._authed():
-                return self._json(403, {"error": "bad token"})
-            try:
-                return self._json(200, llm_overview())
             except Exception as e:
                 return self._json(500, {"error": f"{type(e).__name__}: {e}"})
         if path == "/api/llmcall/calls":
@@ -1247,27 +1271,6 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 recs, _ = llm_records()
                 return self._json(200, llmstats.body(int(raw), recs))
-            except Exception as e:
-                return self._json(500, {"error": f"{type(e).__name__}: {e}"})
-        if path == "/api/sys":
-            if not self._authed():
-                return self._json(403, {"error": "bad token"})
-            try:
-                return self._json(200, sysinfo.read())
-            except Exception as e:
-                return self._json(500, {"error": f"{type(e).__name__}: {e}"})
-        if path == "/api/convos":
-            if not self._authed():
-                return self._json(403, {"error": "bad token"})
-            try:
-                return self._json(200, convos.scan())
-            except Exception as e:
-                return self._json(500, {"error": f"{type(e).__name__}: {e}"})
-        if path == "/api/repos":
-            if not self._authed():
-                return self._json(403, {"error": "bad token"})
-            try:
-                return self._json(200, repos_mod.scan())
             except Exception as e:
                 return self._json(500, {"error": f"{type(e).__name__}: {e}"})
         if path.startswith("/vendor/"):
@@ -1309,25 +1312,11 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, ICON.read_bytes(), "image/svg+xml")
             except OSError:
                 return self._json(404, {"error": "no icon"})
-        if path == "/api/selfcheck":
-            if not self._authed():
-                return self._json(403, {"error": "bad token"})
-            try:
-                return self._json(200, selfcheck.run())
-            except Exception as e:
-                return self._json(500, {"error": f"{type(e).__name__}: {e}"})
         if path == "/api/maint":
             if not self._authed():
                 return self._json(403, {"error": "bad token"})
             try:
                 return self._json(200, maint.read_all())
-            except Exception as e:
-                return self._json(500, {"error": f"{type(e).__name__}: {e}"})
-        if path == "/api/tasks":
-            if not self._authed():
-                return self._json(403, {"error": "bad token"})
-            try:
-                return self._json(200, build_payload())
             except Exception as e:
                 return self._json(500, {"error": f"{type(e).__name__}: {e}"})
         return self._json(404, {"error": "not found"})
@@ -1361,6 +1350,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._codex_delete()
         if self.path.split("?", 1)[0] == "/api/maint/act":
             return self._maint_act()
+        if self.path.split("?", 1)[0] in ("/api/maintenance/plan", "/api/maintenance/delete"):
+            return self._maintenance_delete()
         if self.path.split("?", 1)[0] == "/api/llmcall/chain":
             return self._llm_chain()
         if self.path.split("?", 1)[0] != "/api/act":

@@ -102,16 +102,17 @@ def test_installer_has_no_outer_scheduler_mutation(config_source):
     assert '$TaskNames = @(' not in source and 'Export-ScheduledTask' not in source
 
 
-def test_linked_reader_requires_real_owner_attestation(monkeypatch):
+def test_linked_reader_requires_real_owner_attestation(monkeypatch, reminder_source):
     import importlib.util
     import sqlite3
     import uuid
-    monkeypatch.syspath_prepend(str(RUN / 'schedule-reminder/skills/schedule-reminder/scripts'))
-    monkeypatch.syspath_prepend(str(RUN / 'task-console/scripts'))
+    console_source = Path(__file__).resolve().parents[1]
+    monkeypatch.syspath_prepend(str(reminder_source / 'skills/schedule-reminder/scripts'))
+    monkeypatch.syspath_prepend(str(console_source / 'scripts'))
     import store
     import reminder_link_review as owner
     from task_console import linked_items
-    spec = importlib.util.spec_from_file_location('synthetic_link_fixtures', RUN / 'task-console/tools/make_fixtures.py')
+    spec = importlib.util.spec_from_file_location('synthetic_link_fixtures', console_source / 'tools/make_fixtures.py')
     fixtures = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(fixtures)
     root = Path(os.environ['TEMP']) / ('link-seam-' + uuid.uuid4().hex)

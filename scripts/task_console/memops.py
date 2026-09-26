@@ -167,8 +167,14 @@ def act(verb: str, slug: str) -> dict:
         raise Refused(f"归档器不存在: {sp}", "missing_src")
     if verb not in ("archive", "restore"):
         raise Refused(f"不支持的记忆动作: {verb!r}", "bad_action")
-    if not SAFE_NAME.match(slug or ""):
+    if not SAFE_NAME.fullmatch(slug or ""):
         raise Refused(f"slug 不合法: {slug!r}", "bad_name")
+    live, cold = root / f'{slug}.md', root / 'archive' / f'{slug}.md'
+    src, dst = (live, cold) if verb == 'archive' else (cold, live)
+    if not src.is_file():
+        raise Refused(f'源记忆不存在，请刷新核对: {slug}', 'missing_src')
+    if os.path.lexists(dst):
+        raise Refused(f'目标记忆已存在，拒绝覆盖: {slug}', 'dst_exists')
     cmd = [sys.executable, str(sp), "--memory-dir", str(root), f"--{verb}", slug]
     try:
         r = subprocess.run(cmd, capture_output=True, text=True,
@@ -178,4 +184,7 @@ def act(verb: str, slug: str) -> dict:
     if r.returncode != 0:
         raise Refused(f"归档器退出 {r.returncode}: "
                       f"{(r.stderr or r.stdout or '').strip()[:200]}", "archiver_failed")
-    return {"ok": True, "out": (r.stdout or "").strip()[:400]}
+    if src.exists() or not dst.is_file():
+        return {'ok': False, 'error': '归档器已执行，但文件状态未确认；请刷新核对', 'uncertain': True}
+    return {"ok": True, "out": (r.stdout or "").strip()[:400],
+            "message": '记忆已归档' if verb == 'archive' else '记忆已恢复；请补回 MEMORY.md 索引链接'}

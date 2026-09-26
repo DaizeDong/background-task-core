@@ -319,6 +319,10 @@ def _assemble(runtime, intent):
             from .export_restore import validate_restore_target
             spec['enabled'] = validate_restore_target(bundle, intent, spec, snapshot, scheduler=runtime.scheduler)
         _budget(spec)
+        if snapshot['state'] == 'absent' and intent['operation'] == 'apply':
+            from .creation import inspect
+            if inspect(runtime, bundle, specs, task_id)['matches']:
+                raise Conflict('equivalent_task_exists', task_id)
         before[spec["name"]] = snapshot
         selected.append(spec)
     baselines = {"files": {p: fingerprint(s) for p, s in file_before.items()},
@@ -359,6 +363,19 @@ def build_plan(runtime, task_ids, *, operation="apply", migrate=False, approve_e
     if type(migrate) is not bool or type(approve_enable) is not bool or not isinstance(reason, str):
         raise Conflict("invalid_intent", "intent")
     return _assemble(_use(runtime), intent)[0]
+
+
+def creation_check(runtime, task_id):
+    """Find an existing declared action before a skill proposes a new Scheduler identity."""
+    from .creation import inspect
+    runtime = _use(runtime)
+    with runtime.locks.hold(['authority']):
+        if runtime.journal.pending(['authority']):
+            raise Conflict('pending_transaction', 'authority')
+        bundle = deepcopy(runtime.load())
+        _authority(bundle)
+        specs = {spec['task_id']: spec for spec in _compile(bundle)['task_specs']}
+        return inspect(runtime, bundle, specs, task_id)
 
 
 def _outputs(bundle, compiled, selected, before, intent, tx, *, linked=None):
