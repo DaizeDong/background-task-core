@@ -677,7 +677,7 @@ td.ops .mini.danger:hover{border-color:var(--bad);color:var(--bad)}
 .cv-bar.zero{background:repeating-linear-gradient(45deg,var(--line2) 0 3px,transparent 3px 6px)}
 .cv-list{padding:0 0 4px 18px;display:none}
 .cv-g.open .cv-list{display:block}
-.cv-r{display:grid;grid-template-columns:1fr auto auto auto;gap:8px;align-items:baseline;
+.cv-r{display:grid;grid-template-columns:minmax(0,1fr) auto auto auto auto;gap:8px;align-items:baseline;
   font-size:var(--fs-body);padding:3px 0;border-top:1px solid var(--line2)}
 .cv-r .t{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 /* 标题和正文是两样东西。改过名之后标题不再透露这场对话在说什么,所以两行都留。 */

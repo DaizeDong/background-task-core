@@ -34,7 +34,31 @@ Windows only. It reads the Windows Task Scheduler; there is nothing to read anyw
 | Memory pool | a memory directory | see index headroom and broken links; archive an entry |
 | Plugins | `claude plugin list` | enable or disable one |
 | Disk | a plugin cache and a session directory | delete abandoned clone staging directories |
+| Conversations | Claude Code transcripts under `TASK_CONSOLE_SESSIONS` | list sessions and copy a path; open one as its conversation chain across compactions and branches; export any range to Markdown; fork a new session from any node |
 | Calls | the LLM-call primitive's append-only ledger | see today's and this week's usage, which rung answered, how long the degraded stretches were, and reorder the fallback chain |
+
+The conversation chain is read from the whole transcript, not from `parentUuid` alone. Parallel
+tool calls make a node look like it has two children, and those are one reply, not a branch. A
+compaction boundary has no parent, so the walk continues into the earlier history through the
+boundary's recorded predecessor, and when it has to guess it says so. A fork writes a new
+session file next to the source, holding only the context the model had at that node, and gives
+back a `claude --resume` command. It never modifies the source file, never overwrites an existing
+file and refuses to write inside a git worktree. Line numbers in these responses are physical
+lines in the file (`lineIndex`, blank and unreadable lines included); byte positions are
+`byteOffset` / `byteLength`.
+
+On the page, the chain is a drill-down inside the conversations view, not a new sidebar entry:
+clicking a session opens it below the list (the row still has a button that copies the path),
+and `#convos/<session id>` links straight to it, with `/<subagent id>` and `/leaf=<uuid>` for a
+subagent transcript or a non-default branch, so Back returns to the previous branch. Turns start
+collapsed and a turn's steps are only rendered when it is expanded, because a long session runs
+to tens of thousands of nodes. With focus on the chain, `j` / `k` move, Enter expands, `[` and `]`
+set the export range and Esc closes; those keys never reach the task table. Export returns the
+Markdown inside JSON and the page saves it itself, because the token only travels in a request
+header. The panel is optional (`static/panels/convchain.js`): if it fails to load, its card says
+so, the rest of the console keeps working, and a session row falls back to copying the path.
+In read-only preview the export and fork buttons are disabled with the preview's reason, since
+the server refuses every POST there.
 
 Five states, not two, for freshness. `LastTaskResult` is an HRESULT, not an exit code: one value
 means "currently running" and another means "has never run". Treating non-zero as failure marks

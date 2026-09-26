@@ -789,3 +789,162 @@ def test_registered_read_dispatch_auth_negative_control():
     poisoned = block.replace('if not self._authed():', 'if False:', 1)
     assert poisoned != block
     assert 'self._authed()' not in poisoned
+
+
+# ---------- 对话链:四条路由 ----------
+# 这四条读的是会话转录,其中一条(fork)会往会话目录里写一份新文件。
+# 客户端给的只有 id,所以控制是两层:令牌/Host(和别的路由一样),加上「id 先按形状拒绝,
+# 再碰文件系统」。后一层单独测,而且要证明拒绝发生时**文件系统一次都没被碰过**:
+# 只断言 400 的话,一个先 glob 再发现不对的实现也是 400。
+# 全部是合成 id 和 tmp_path 里现造的转录。
+
+_CV_SID = "11111111-1111-4111-8111-111111111111"
+_CV_U = "00000000-0000-4000-8000-000000000001"
+_CV_U2 = "00000000-0000-4000-8000-000000000002"
+_CV_ROUTES = [
+    ("GET", f"/api/convo/chain?id={_CV_SID}", None),
+    ("GET", f"/api/convo/node?id={_CV_SID}&u={_CV_U}", None),
+    ("POST", "/api/convo/export", {"id": _CV_SID, "to": _CV_U}),
+    ("POST", "/api/convo/fork", {"id": _CV_SID, "at": _CV_U}),
+]
+
+
+def test_the_route_scanner_sees_all_four_convo_routes():
+    """四条都得进令牌通扫。单引号写的路由字面量不进那个正则,会静悄悄地逃过扫描。"""
+    _src, routes = _api_route_literals()
+    assert {"/api/convo/chain", "/api/convo/node", "/api/convo/export",
+            "/api/convo/fork"} <= set(routes)
+
+
+@pytest.mark.parametrize("method,path,body", _CV_ROUTES)
+def test_convo_routes_without_token_are_403(srv, method, path, body):
+    st, _ = call(srv, method, path, body=body)
+    assert st == 403
+
+
+@pytest.mark.parametrize("method,path,body", _CV_ROUTES)
+def test_convo_routes_reject_a_rebinding_host(srv, method, path, body):
+    st, _ = call(srv, method, path, host="attacker.example:80", token=TOKEN, body=body)
+    assert st == 400
+
+
+@pytest.fixture
+def _no_fs(monkeypatch):
+    """记下 convtree 有没有被叫到文件系统那一步,以及路由有没有越过自己的形状闸。
+
+    四个 API 自己入口处也判形状,所以只 spy 文件系统的话,路由层那一道被拿掉也照样绿。
+    把四个 API 也换成 spy,钉住的是「路由自己先拒绝」这一层。"""
+    import convtree
+    seen = []
+
+    def spy(*a, **k):
+        seen.append(a)
+        raise AssertionError("形状不对的 id 走过了路由的形状闸")
+    for name in ("locate", "_base", "chain", "node", "export_md", "fork"):
+        monkeypatch.setattr(convtree, name, spy)
+    return seen
+
+
+# 每条钉自己那道闸的码:「码在这几个里面」放开任何一道都不会红。
+@pytest.mark.parametrize("method,path,body,code", [
+    ("GET", "/api/convo/chain?id=..%2F..%2Fsecret", None, "bad_id"),
+    ("GET", "/api/convo/chain?id=not-a-uuid", None, "bad_id"),
+    ("GET", "/api/convo/chain", None, "bad_id"),
+    ("GET", f"/api/convo/chain?id={_CV_SID}&sub=..%2F..%2Fx", None, "bad_sub"),
+    ("GET", f"/api/convo/chain?id={_CV_SID}&leaf=..%2Fx", None, "bad_leaf"),
+    ("GET", f"/api/convo/node?id={_CV_SID}&u=..%2F..%2Fx", None, "bad_uuid"),
+    ("GET", f"/api/convo/node?id={_CV_SID}", None, "bad_uuid"),
+    ("GET", "/api/convo/node?id=%2A&u=" + _CV_U, None, "bad_id"),
+    ("GET", f"/api/convo/chain?id={_CV_SID}&path=..%2Fx", None, "bad_query"),
+    ("GET", f"/api/convo/chain?id={_CV_SID}&id={_CV_SID}", None, "bad_query"),
+    ("POST", "/api/convo/export", {"id": "../../x", "to": _CV_U}, "bad_id"),
+    ("POST", "/api/convo/export", {"id": _CV_SID, "to": "../x"}, "bad_uuid"),
+    ("POST", "/api/convo/export", {"id": _CV_SID}, "bad_uuid"),
+    ("POST", "/api/convo/export", {"id": _CV_SID, "to": _CV_U, "leaf": "x"}, "bad_leaf"),
+    ("POST", "/api/convo/export", {"id": _CV_SID, "to": _CV_U, "tools": "yes"}, "bad_body"),
+    ("POST", "/api/convo/fork", {"id": "..\\..\\x", "at": _CV_U}, "bad_id"),
+    ("POST", "/api/convo/fork", {"id": _CV_SID, "at": "*"}, "bad_uuid"),
+    ("POST", "/api/convo/fork", {"id": _CV_SID, "at": _CV_U, "sub": "../x"}, "bad_sub"),
+    ("POST", "/api/convo/fork", {"id": _CV_SID, "at": _CV_U, "path": "x"}, "bad_body"),
+    ("POST", "/api/convo/fork", [_CV_SID], "bad_body"),
+])
+def test_convo_bad_input_is_400_before_touching_the_filesystem(srv, _no_fs, method, path,
+                                                              body, code):
+    st, data = call(srv, method, path, token=TOKEN, body=body)
+    assert (st, json.loads(data)["code"]) == (400, code), data[:200]
+    assert _no_fs == [], "拒绝之前已经碰过文件系统"
+
+
+def test_convo_subagent_fork_is_refused_before_the_filesystem(srv, monkeypatch):
+    """子代理的转录只读。这一道在 convtree.fork 里(不是形状闸),所以只 spy 文件系统。"""
+    import convtree
+    seen = []
+    monkeypatch.setattr(convtree, "locate", lambda *a, **k: seen.append(a))
+    st, data = call(srv, "POST", "/api/convo/fork", token=TOKEN,
+                    body={"id": _CV_SID, "at": _CV_U, "sub": "abc"})
+    assert (st, json.loads(data)["code"]) == (400, "no_sub_fork") and seen == []
+
+
+def test_convo_good_shape_does_reach_the_module(srv, monkeypatch, tmp_path):
+    """正对照:形状对的 id 真的走到了 convtree。否则上面那组 400 可能只是
+    「这条路由对什么都回 400」。根目录指向一个空目录,于是答案是 not_found。"""
+    monkeypatch.setenv("TASK_CONSOLE_SESSIONS", str(tmp_path))
+    for method, path, body in _CV_ROUTES:
+        st, data = call(srv, method, path, token=TOKEN, body=body)
+        assert (st, json.loads(data)["code"]) == (400, "not_found"), path
+
+
+def test_convo_unset_root_is_not_checked_not_an_error(srv, monkeypatch):
+    """读侧没配根目录是「未检查」(200 + available:false),写侧是硬失败(400 unavailable)。"""
+    monkeypatch.setenv("TASK_CONSOLE_SESSIONS", "")
+    for path in (f"/api/convo/chain?id={_CV_SID}", f"/api/convo/node?id={_CV_SID}&u={_CV_U}"):
+        st, data = call(srv, "GET", path, token=TOKEN)
+        assert st == 200 and json.loads(data)["available"] is False, path
+    st, data = call(srv, "POST", "/api/convo/fork", token=TOKEN, body={"id": _CV_SID, "at": _CV_U})
+    assert (st, json.loads(data)["code"]) == (400, "unavailable")
+
+
+def test_convo_fork_round_trip_over_http(srv, monkeypatch, tmp_path):
+    """整条 HTTP 路径走一遍:合成转录 → 链 → 节点 → 导出 → 分叉;新文件在同一个项目目录,
+    源文件一个字节不变。"""
+    d = tmp_path / "proj-a"
+    d.mkdir()
+    lines = [
+        {"type": "user", "uuid": _CV_U, "parentUuid": None, "sessionId": _CV_SID,
+         "cwd": "C:/work/example", "message": {"role": "user", "content": "hello"}},
+        {"type": "assistant", "uuid": _CV_U2, "parentUuid": _CV_U,
+         "sessionId": _CV_SID, "cwd": "C:/work/example",
+         "message": {"id": "m1", "role": "assistant", "content": [{"type": "text", "text": "hi"}]}},
+    ]
+    src = d / f"{_CV_SID}.jsonl"
+    src.write_text("".join(json.dumps(x) + "\n" for x in lines), encoding="utf-8")
+    before = src.read_bytes()
+    monkeypatch.setenv("TASK_CONSOLE_SESSIONS", str(tmp_path))
+    st, data = call(srv, "GET", f"/api/convo/chain?id={_CV_SID}&leaf=&sub=", token=TOKEN)
+    assert st == 200 and json.loads(data)["leaf"] == _CV_U2
+    st, data = call(srv, "GET", f"/api/convo/node?id={_CV_SID}&u={_CV_U2}", token=TOKEN)
+    assert st == 200 and json.loads(data)["text"] == "hi"
+    st, data = call(srv, "POST", "/api/convo/export", token=TOKEN,
+                    body={"id": _CV_SID, "to": _CV_U2, "tools": True, "thinking": False})
+    assert st == 200 and "hello" in json.loads(data)["text"]
+    st, data = call(srv, "POST", "/api/convo/fork", token=TOKEN, body={"id": _CV_SID, "at": _CV_U2})
+    assert st == 200, data[:300]
+    r = json.loads(data)
+    assert (d / f"{r['newId']}.jsonl").is_file() and src.read_bytes() == before
+
+
+def test_convo_post_body_has_a_size_cap(srv, _no_fs):
+    """两条对话链 POST 的正文只有几个 id。超过上限的直接 413,不解析、不碰文件系统。"""
+    big = {"id": _CV_SID, "at": _CV_U, "to": _CV_U, "leaf": "x" * (S.CONVO_BODY_MAX + 10)}
+    for path in ("/api/convo/export", "/api/convo/fork"):
+        st, data = call(srv, "POST", path, token=TOKEN, body=big)
+        assert (st, json.loads(data)["code"]) == (413, "too_large"), path
+    assert _no_fs == []
+
+
+def test_convo_post_body_just_under_the_cap_is_parsed(srv, _no_fs):
+    """正对照:同样大、只是没超上限的正文照常解析(这里走到形状闸,回 400 bad_id)。
+    没有它,上面那条可能只是「什么正文都 413」。"""
+    ok = {"id": "x" * (S.CONVO_BODY_MAX - 200), "at": _CV_U}
+    st, data = call(srv, "POST", "/api/convo/fork", token=TOKEN, body=ok)
+    assert (st, json.loads(data)["code"]) == (400, "bad_id")

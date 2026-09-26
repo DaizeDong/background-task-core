@@ -5,6 +5,7 @@ let CONVOS=null, CV_HUMAN_ONLY=false, CV_OPEN={}, CV_QUERY="", CV_OPEN_QUERY="";
 let CV_SORT="new";
 // 临时目录折叠块的展开键。用一个不可能是路径的字符串,免得和真目录撞。
 const CV_EPH_KEY="::eph::";
+const CV_SESSION_ID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 // 标题从哪来。改过名的单独一种颜色:那是唯一一个人明确说过「这场对话叫这个」的地方,
 // 别的都是推断出来的,看的人有权知道自己在看哪一种。
 const CV_TAG={rename:"自命名","ai-title":"自动标题",summary:"摘要","first-message":"首条消息",slug:"代号",id:"会话号"};
@@ -104,16 +105,20 @@ function renderConvos(){
         <span class="ag" title="最近一场的时间">${ageH==null?"–":cvAge(ageH)}</span>
         <span class="n">${CV_HUMAN_ONLY?rows.length+"/"+g.count:g.count} 场 · ${kb(b)}</span>
       </button>
-      <div class="cv-list">${rows.map(r=>`
-        <div class="cv-r${r.humanSeen>=2?" human":""}" data-cvfile="${esc(r.file||"")}"
-             title="点击复制会话文件路径">
+      <div class="cv-list">${rows.map(r=>{
+        // 能开对话链的行:可选面板已载入,且会话号是 UUID 形状(别的文件名后端也不收)。
+        const chain=typeof openConvoChain==="function" && CV_SESSION_ID.test(String(r.id||""));
+        return `
+        <div class="cv-r${r.humanSeen>=2?" human":""}" data-cvfile="${esc(r.file||"")}"${chain?` data-cvid="${esc(r.id)}"`:""}
+             title="${chain?"点击打开对话链":"点击复制会话文件路径"}">
           <button class="t cv-copy" title="${esc(r.title)}">${esc(r.title)}</button>
           <span class="src ${esc(r.titleFrom)}" title="${esc(CV_SRC[r.titleFrom]||r.titleFrom)}">${
             CV_TAG[r.titleFrom]||"?"}</span>
           <span class="m">${r.humanSeen?"👤"+r.humanSeen+(r.partial?"+":""):""}</span>
           <span class="m">${cvAge(r.ageHours)} · ${kb(r.bytes)}</span>
+          ${chain?ibtn("i-copy","复制会话文件路径",`data-cvcopy="${esc(r.file||"")}"`):"<span></span>"}
           ${(r.preview&&r.preview!==r.title)?`<span class="pv" title="${esc(r.preview)}">${esc(r.preview)}</span>`:""}
-        </div>`).join("")}
+        </div>`;}).join("")}
         ${cut?`<div class="cv-more">另有 ${cut} 场被当前条件筛掉</div>`:""}
         ${g.truncated?`<div class="cv-more">这个目录还有 ${unlisted} 场没列出（未参与筛选）</div>`:""}
       </div></div>`;

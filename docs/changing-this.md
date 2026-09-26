@@ -104,7 +104,8 @@
 
 ## 三 · 前端的坑
 
-`console.html` 是单文件、无构建步骤、四千多行。它的坑有一个共同点:
+前端没有构建步骤:`console.html` 是外壳,脚本是 `static/` 下由 `static/app.js` 按序载入的
+一组经典脚本,共享一个全局作用域。它的坑有一个共同点:
 **看不出来,只能量出来。**
 
 ### 量 computed style,不要靠看
@@ -262,8 +263,19 @@
 1. 后端读侧模块 `scripts/task_console/<name>.py`,纯读、不 import 被观察的那个仓。
 2. `server.py`:`import`、GET 路由、必要时 POST 路由与它的 `Refused` 处理。
    **每条 `/api/` 分支都要 `_authed()`** —— 这条现在有通扫闸盯着,漏了会红。
-3. `console.html`:侧栏一项、`VIEWS` 数组、`<section data-view>` 和它的 `data-label`、
-   CSS、渲染函数、loader、启动时调用、事件委托挂点(注意上面说的监听顺序)。
+3. 前端是模块化的,不再是一个 `console.html` 里的大脚本:
+   `static/panels/<name>.js` 一个文件,登记进 `static/app.js` 的 `CONSOLE_MODULES`
+   (顺序即依赖顺序,`events.js` 永远最后),新样式表单开一个 `static/<name>.css`
+   并在 `console.html` 里 `<link>`;两者都要进 `server.py` 的 `STATIC_FILES`,
+   否则服务端 404(`test_panel_parity` 要求三处集合完全相等)。分区的名字在
+   `static/navigation.js` 的 `VIEW_GROUPS`,首次读取挂在 `static/operations.js` 的 `PAGE_READS`。
+   要标成 `OPTIONAL_PANELS` 的面板有三条硬要求:载入时不碰 DOM(只定义全局,挂点放进
+   一个 `start<Name>()`,由 `events.js` 用 `typeof` 守卫调用);它的容器写死在静态 HTML 里,
+   载入失败时 `app.js` 才有地方写「加载失败」;所有异步路径自己 catch,
+   漏出去的 rejection 会点亮整页的「Console module failed」。别的模块调用它时一律 `typeof` 守卫,
+   它没载入时调用方要退回原来的行为(会话行退回「复制路径」就是这么做的)。
+   一个分区里的下钻用 `#<分区>/<参数>` 的地址:`showView` 只按第一个 `/` 切,
+   参数交给面板自己的路由函数(`convoChainRoute` 是现成的例子)。
 4. ★ 侧栏徽章:`setBadge()`。不加的话这一屏「有事」时没人知道,而页面看起来很正常。
 5. ★ 总清单 `renderTodo()` 里的对应项,如果这一屏会产出「要人管的事」。
 6. ★ 新读的环境变量要同时进 `scripts/task_console/README.md` 的表**和**

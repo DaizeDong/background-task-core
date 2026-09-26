@@ -3,7 +3,7 @@ const ConsoleActions={
   operations:[], timer:null, disabled:new WeakSet(),
   get readOnly(){return document.querySelector('meta[name="console-read-only"]')?.content==='true';},
   reason:'只读预览：操作请使用正式控制台',
-  selector:'[data-work-action],[data-work-stop],[data-act],[data-retire],[data-mt],[data-delete],[data-rpact]:not([data-rpact="copy"]):not([data-rpact="web"]),[data-fix],[data-fixall],[data-bulk]:not([data-bulk="clear"]),#lcsave,#cxdel,#delete-confirm',
+  selector:'[data-work-action],[data-work-stop],[data-act],[data-retire],[data-mt],[data-delete],[data-rpact]:not([data-rpact="copy"]):not([data-rpact="web"]),[data-fix],[data-fixall],[data-bulk]:not([data-bulk="clear"]),[data-ctfork],[data-ctexport],#lcsave,#cxdel,#delete-confirm',
   allowWrite(){if(!this.readOnly) return true;toast(this.reason,'bad');return false;},
   begin(path,options){
     let body={};try{body=JSON.parse(options.body || '{}');}catch(error){}
@@ -57,7 +57,7 @@ function operationLabel(path,body){
     'skill.archive':'归档技能','skill.restore':'恢复技能','plugin.enable':'启用插件','plugin.disable':'禁用插件',
     'memory.archive':'归档记忆','memory.restore':'恢复记忆','clean.tempgit':'清理临时目录',
     'repo.fetch':'获取远程更新','repo.reveal':'打开目录','repo.status':'查看改动','repo.commitpush':'提交并推送','task.retire':'停用并移出清单'};
-  const endpoints={'/api/codex/delete':'删除所选转录','/api/maintenance/delete':'删除或卸载','/api/llmcall/chain':'保存调用顺序','/api/work/action':'提交工作','/api/work/stop':'停止工作'};
+  const endpoints={'/api/codex/delete':'删除所选转录','/api/maintenance/delete':'删除或卸载','/api/llmcall/chain':'保存调用顺序','/api/work/action':'提交工作','/api/work/stop':'停止工作','/api/convo/fork':'分叉会话','/api/convo/export':'导出 Markdown'};
   return (labels[body.action || body.verb] || endpoints[path] || '执行操作')+(body.name?' · '+body.name:'');
 }
 function operationOutcome(path,body,reply,error){
@@ -72,6 +72,8 @@ function operationOutcome(path,body,reply,error){
     return {tone:'warn',message:result.message || messages[result.status] || '请求已受理，执行结果尚未确认'};
   }
   if(path.endsWith('/plan')) return {tone:'ok',message:'预览已就绪，等待确认'};
+  if(path==='/api/convo/fork') return {tone:'ok',message:'已新建会话 '+String(result?.newId || '').slice(0,8)+'，原会话未改动'};
+  if(path==='/api/convo/export') return {tone:'ok',message:'已生成 '+(result?.filename || 'Markdown 文件')};
   return {tone:'ok',message:result?.message || (result?.deleted!=null?`已删除 ${result.deleted} 项`:'操作已完成')};
 }
 const taskStateLabel=state=>({Ready:'已启用',Disabled:'已停用',Running:'正在运行',Queued:'已排队'}[state] || '状态未确认');

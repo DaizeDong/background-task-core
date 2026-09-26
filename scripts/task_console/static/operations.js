@@ -57,7 +57,7 @@ function pageSnapshot(view){
     tasks:()=>({tasks:DATA,visibleTaskNames:VIEW.map(row=>row.name)}),
     repos:()=>({repositories:REPOS,filters:{query:value('rpq'),account:value('rpacc'),kind:value('rpkind'),visibility:value('rpvis'),state:RP_STATE,issue:RP_ISSUE}}),
     storage:()=>({components:catalogComponents(),maintenance:MAINT,memory:MEM,system:SYS,codex:CODEX,cleanup:CXL,cleanupLibrary:value('cxwhich')}),
-    convos:()=>({conversations:CONVOS,filters:{query:CV_QUERY,humanOnly:CV_HUMAN_ONLY,sort:CV_SORT}}),
+    convos:()=>({conversations:CONVOS,filters:{query:CV_QUERY,humanOnly:CV_HUMAN_ONLY,sort:CV_SORT},chain:typeof convoChainSnapshot==='function'?convoChainSnapshot():null}),
     llm:()=>({usage:LLM,calls:LMROWS,total:LMTOTAL,query:{...LMQ}})
   };
   return {schemaVersion:1,view,exportedAt:new Date().toISOString(),scope:'loaded_snapshot',

@@ -14,6 +14,7 @@
 <link rel="stylesheet" href="/static/review.css">
 <link rel="stylesheet" href="/static/workbench.css">
 <link rel="stylesheet" href="/static/work-actions.css">
+<link rel="stylesheet" href="/static/convchain.css">
 </head>
 <body>
 <div id="module-error" role="alert" hidden>页面加载失败，请刷新重试。</div>
@@ -271,6 +272,22 @@
       <div class="catalog-tools"><input id="cv-search" type="search" aria-label="搜索已加载会话" placeholder="搜索标题、项目、路径或内容"><button data-reset-filters="convos">清除筛选</button><span id="cv-match" class="faint"></span></div>
       <div class="cv-head" id="cvhead"></div>
       <div id="cvgroups"></div>
+    </div>
+  </div>
+  <!-- 对话链:会话列表的下钻,不是一个新分区。由可选面板 panels/convchain.js 渲染;
+       容器写在静态 HTML 里,那个模块载入失败时 app.js 才有地方写「加载失败」。
+       放在 #cvgroups 外面,于是会话列表重扫重画时它不会被一起冲掉。 -->
+  <div class="card" id="chbox" hidden>
+    <div class="card-header"><h3 class="card-title">对话链<span class="n" id="chnote"></span></h3>
+      <div class="card-actions"><button class="mini" id="chclose" title="关闭对话链(Esc)" aria-label="关闭对话链">关闭</button></div></div>
+    <div class="pad">
+      <div class="ch-crumb" id="chcrumb"></div>
+      <div class="ch-head" id="chhead"></div>
+      <div id="chwarn"></div>
+      <div class="ch-split">
+        <div class="ch-list" id="chlist" tabindex="0" role="listbox" aria-label="对话链节点。j / k 移动,Enter 展开,[ ] 设起止,Esc 关闭"></div>
+        <div class="ch-side"><div class="ch-act" id="chact"></div><div class="ch-det" id="chdet"></div></div>
+      </div>
     </div>
   </div>
   </section>

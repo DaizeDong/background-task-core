@@ -1,0 +1,115 @@
+/* 对话链:会话屏的下钻卡片,由 panels/convchain.js 渲染。
+   左边是整条逻辑链,按轮收起;右边是选中节点的全文和动作。
+   ⚠ 一轮默认收起、步骤只在展开时才渲染,这不是审美:一份长会话的显示链有上万个节点,
+   全部平铺进 DOM 会让每一次按 j 都卡住。收起时每轮只有一行。
+   两栏各自滚动:min-height:0 让网格项能比内容矮,外层 overflow:hidden 不滚,
+   否则真正在滚的是外面那层,往下翻链的时候右边的详情会整块滑走。 */
+#chbox .pad{padding:8px var(--section-inset,12px) 10px}
+.ch-crumb{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:var(--fs-meta);
+  color:var(--dim);margin-bottom:4px;min-width:0}
+/* 子代理下拉框按最长的那一项撑宽,不收住的话窄屏上它比卡片还宽。
+   label 是 flex 项,默认 min-width:auto 不肯缩,所以两层都要放开。 */
+.ch-crumb label{display:flex;gap:6px;align-items:center;min-width:0;max-width:100%}
+.ch-crumb select{min-width:0;max-width:100%;flex:1 1 auto;font-size:var(--fs-meta)}
+.ch-crumb code{font-family:var(--mono);overflow-wrap:anywhere}
+.ch-head{display:flex;flex-wrap:wrap;gap:3px 12px;align-items:baseline;font-size:var(--fs-meta);
+  color:var(--dim);margin-bottom:6px;min-width:0}
+.ch-head .ttl{font-size:var(--fs-lead);color:var(--ink);font-weight:600;min-width:0;overflow-wrap:anywhere}
+.ch-head .cwd{font-family:var(--mono);color:var(--faint);overflow-wrap:anywhere;min-width:0}
+.ch-head .alt{color:var(--amber)}
+.ch-head .bad{color:var(--bad)}
+.ch-split{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);gap:1px;
+  background:var(--line2);border:1px solid var(--line2);height:max(320px, calc(100vh - 260px));overflow:hidden}
+/* ⚠ contain:strict 和行上的 content-visibility 是量出来的:一条上万节点的链展开一轮几百步后,
+   右栏换内容会触发整个网格连同左栏重新排版,每按一次 j 都要几十毫秒。两栏各自隔离之后
+   只重排自己。strict 含尺寸隔离,所以两栏的高度必须来自外面的网格;
+   窄屏改成上下排、高度跟内容走时要把它放松,否则两栏会塌成零高。 */
+.ch-list{background:var(--panel);overflow:auto;min-width:0;min-height:0;outline:none;contain:strict}
+.ch-list:focus-visible{box-shadow:inset 0 0 0 2px var(--cyan)}
+.ch-side{background:var(--panel);overflow:auto;min-width:0;min-height:0;padding:0 10px 10px;contain:strict}
+.ch-t,.ch-s,.ch-cmp,.ch-sum{content-visibility:auto;contain-intrinsic-size:auto 26px}
+@media (max-width:760px){
+  .ch-split{grid-template-columns:minmax(0,1fr);height:auto;overflow:visible}
+  /* 窄屏上计数徽章会把用户那句话挤到只剩几个字。徽章是次要信息,步数留着。 */
+  .ch-cnt .ch-bd{display:none}
+  .ch-list{max-height:55vh;height:55vh;contain:layout paint}
+  .ch-side{contain:none}
+  .ch-t{grid-template-columns:12px minmax(0,auto) minmax(0,1fr) auto}
+  .ch-t .ts{display:none}
+}
+.ch-empty,.ch-hint{padding:10px;color:var(--faint);font-size:var(--fs-meta)}
+/* 一轮一行:编号、用户那句话、计数、时间。 */
+.ch-t{display:grid;grid-template-columns:12px auto minmax(0,1fr) auto auto;gap:6px;
+  align-items:baseline;padding:4px 8px 4px 4px;border-top:1px solid var(--line2);
+  cursor:pointer;font-size:var(--fs-body)}
+.ch-t .caret{color:var(--faint);font-size:var(--fs-chip)}
+.ch-t .no{color:var(--faint);font-family:var(--mono);font-size:var(--fs-meta);font-variant-numeric:tabular-nums}
+.ch-t .pv{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink)}
+.ch-t .pv.none{color:var(--faint);font-style:italic}
+.ch-t .ts,.ch-s .ts,.ch-cmp .ts{color:var(--faint);font-size:var(--fs-meta);
+  font-variant-numeric:tabular-nums;white-space:nowrap}
+.ch-cnt{display:inline-flex;gap:7px;font-size:var(--fs-chip);color:var(--dim);white-space:nowrap}
+.ch-cnt .fk{color:var(--amber)}
+.ch-steps{border-left:1px solid var(--line);margin:0 0 4px 22px}
+.ch-s{display:grid;grid-template-columns:16px auto minmax(0,1fr) auto;gap:6px;
+  align-items:baseline;padding:2px 8px 2px 4px;cursor:pointer;font-size:var(--fs-meta)}
+.ch-s .g{text-align:center}
+.ch-s .nm{color:var(--cyan);font-family:var(--mono);white-space:nowrap;max-width:13em;
+  overflow:hidden;text-overflow:ellipsis}
+.ch-s .pv{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--dim)}
+.ch-s .pv.faint{color:var(--faint);font-style:italic}
+.ch-s .x{grid-column:3 / -1;display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.ch-miss{color:var(--warn);font-size:var(--fs-chip)}
+/* 各类节点的字形颜色。用户那句话是主线,所以唯一一个加粗的是它。 */
+.ch-hu .pv{color:var(--ink);font-weight:500}
+.ch-tx .g{color:var(--ok)}
+.ch-th .pv{font-style:italic;color:var(--faint)}
+.ch-tl .g{color:var(--cyan)}
+.ch-rs .g,.ch-um .pv,.ch-sy .pv,.ch-at .pv{color:var(--faint)}
+.ch-sm .g,.ch-cp .g{color:var(--amber)}
+/* 压缩边界是整行的分隔线,不是一个普通节点:它之前的内容模型已经看不到原文了。 */
+.ch-cmp{display:flex;align-items:center;gap:8px;padding:5px 8px;font-size:var(--fs-meta);
+  color:var(--amber);cursor:pointer;border-top:1px solid var(--line2);min-width:0}
+.ch-cmp .ln{flex:1 1 12px;border-top:1px dashed var(--amber);opacity:.6;min-width:8px}
+.ch-cmp .lb{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.ch-sum{padding:3px 8px 5px 30px;font-size:var(--fs-meta);color:var(--dim);cursor:pointer;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ch-t:hover,.ch-s:hover,.ch-cmp:hover,.ch-sum:hover{background:var(--cur)}
+/* 选中、范围、起止。范围只在人明确设过起点或终点时才着色:
+   默认范围是「开头到选中」,那时整条链都会被染一遍,等于没画。 */
+.ch-rng{background:var(--cur)}
+.ch-on,.ch-on:hover{background:var(--sel);box-shadow:inset 3px 0 0 var(--cyan)}
+.ch-a{border-top:2px solid var(--amber)}
+.ch-b{border-bottom:2px solid var(--amber)}
+/* 分叉菜单。当前那条分支不可点但照样列出来:看得见自己在哪一条上,才知道别的是什么。 */
+.ch-fk{margin:2px 8px 6px 28px;border:1px solid var(--line);background:var(--panel2);font-size:var(--fs-meta)}
+.ch-fk .hd{padding:4px 8px;color:var(--dim)}
+.ch-fk button{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:8px;width:100%;
+  min-height:28px;text-align:left;border:0;border-top:1px solid var(--line2);border-radius:0;
+  background:transparent;font-size:var(--fs-meta);color:var(--ink)}
+.ch-fk button:hover:not(:disabled){background:var(--cur)}
+.ch-fk .pv{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ch-fk .sz{color:var(--faint);font-variant-numeric:tabular-nums;white-space:nowrap}
+.ch-fk .act{color:var(--cyan)}
+.ch-fk .alt{color:var(--amber)}
+/* 右栏。动作条钉在顶上:详情可能是几万字,动作不该被挤到底下去找。 */
+.ch-act{position:sticky;top:0;z-index:1;background:var(--panel);border-bottom:1px solid var(--line);
+  padding:8px 0 6px;display:flex;flex-direction:column;gap:6px;font-size:var(--fs-meta)}
+.ch-row{display:flex;gap:6px;flex-wrap:wrap;align-items:center;min-width:0}
+.ch-row code,.ch-det code,.ch-fres code{font-family:var(--mono);overflow-wrap:anywhere}
+.ch-row label{display:inline-flex;gap:4px;align-items:center;cursor:pointer}
+.ch-fres{border:1px solid var(--line);background:var(--panel2);padding:6px 8px;
+  display:flex;flex-direction:column;gap:4px;min-width:0}
+.ch-fres.bad{border-color:var(--bad);color:var(--bad)}
+.ch-det{padding-top:8px;font-size:var(--fs-meta);min-width:0}
+.ch-det h5{margin:8px 0 2px;font-size:var(--fs-meta);font-weight:600;color:var(--dim)}
+.ch-kv{display:grid;grid-template-columns:auto minmax(0,1fr);gap:1px 10px;margin:0}
+.ch-kv dt{color:var(--faint);font-weight:400}
+.ch-kv dd{margin:0;font-family:var(--mono);overflow-wrap:anywhere}
+.ch-flags{display:flex;gap:5px;flex-wrap:wrap;margin:4px 0}
+.ch-flags span{border:1px solid var(--line);border-radius:2px;padding:0 4px;color:var(--dim);font-size:var(--fs-chip)}
+.ch-pre{white-space:pre-wrap;overflow-wrap:anywhere;font-family:var(--mono);font-size:var(--fs-meta);
+  color:var(--ink);background:var(--panel2);border:1px solid var(--line2);padding:6px 8px;margin:2px 0 6px;
+  max-height:60vh;overflow:auto}
+.ch-pre.bad{border-color:var(--bad)}
+.ch-det details>summary{cursor:pointer;color:var(--dim);margin:6px 0 2px}

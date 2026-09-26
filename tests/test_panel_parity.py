@@ -142,7 +142,7 @@ const window={addEventListener:()=>{}};
     assert result["ready"] is False
 
 
-@pytest.mark.parametrize('missing', ['panels/plugins.js', 'panels/integrations.js'])
+@pytest.mark.parametrize('missing', ['panels/plugins.js', 'panels/integrations.js', 'panels/convchain.js'])
 def test_optional_panel_failure_preserves_core_initialization(missing):
     result = node("""
 const vm=require('node:vm');
@@ -154,7 +154,8 @@ const window={addEventListener:()=>{}};
         + 'setImmediate(()=>console.log(JSON.stringify({elements,requested,ready:document.documentElement.dataset.consoleReady||false})));')
     assert result['ready'] == 'true'
     assert '/static/events.js' in result['requested']
-    target = 'mt-plugins' if missing.endswith('plugins.js') else 'integration-list'
+    target = {'panels/plugins.js': 'mt-plugins', 'panels/integrations.js': 'integration-list',
+              'panels/convchain.js': 'chbox'}[missing]
     assert '加载失败' in result['elements'][target]['textContent']
 
 

@@ -153,12 +153,18 @@ document.addEventListener("click",e=>{
     renderBulk(); $("cnt") && render();
     return;
   }
+  // 行上的复制按钮必须在「整行打开对话链」之前判:按钮长在行里面,顺序反过来它永远轮不到。
+  const cvc=e.target.closest("[data-cvcopy]");
   const cvr=e.target.closest(".cv-r[data-cvfile]");
-  if(cvr && cvr.dataset.cvfile){
+  // 整行打开对话链。只传会话 id,不传路径:路径由服务端在会话根下解析。
+  // 对话链是可选面板,没载入时整行退回原来的「复制路径」。
+  if(!cvc && cvr && cvr.dataset.cvid && typeof openConvoChain==='function'){ openConvoChain(cvr.dataset.cvid); return; }
+  const cvp=cvc ? cvc.dataset.cvcopy : cvr && cvr.dataset.cvfile;
+  if(cvp){
     // 复制而不是「打开」:浏览器里没有安全的方式去开一个本地文件,
     // 而路径粘到终端里就能用。navigator.clipboard 在非 https 下可能不可用,
     // 所以失败时把路径显示出来让人自己选,而不是静默什么也不发生。
-    const p = cvr.dataset.cvfile;
+    const p = cvp;
     const ok = () => toast("路径已复制:" + p.slice(-52));
     if(navigator.clipboard && navigator.clipboard.writeText){
       navigator.clipboard.writeText(p).then(ok, ()=>toast(p, "bad"));
@@ -456,6 +462,7 @@ $('launch-copy').addEventListener('click',async()=>{
 startWorkPlatform();
 startWorkActions();
 if(typeof startIntegrations==='function') startIntegrations();
+if(typeof startConvoChain==='function') startConvoChain();
 showView(location.hash.slice(1) || VIEWS[0], false);
 $("tlin").addEventListener("click",()=>tlZoom(0.7,0.5));
 $("tlout").addEventListener("click",()=>tlZoom(1.4,0.5));

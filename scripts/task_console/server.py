@@ -53,6 +53,7 @@ import integrations
 import source_reads
 import console_store
 import convos
+import convtree
 import evtlog
 import freshness
 import history
@@ -94,9 +95,19 @@ STATIC_FILES = {
     "panels/tasks.js", "panels/skills.js", "panels/plugins.js", "panels/integrations.js",
     "panels/profile.js", "panels/repositories.js", "panels/storage.js",
     "panels/overview.js", "panels/conversations.js", "panels/calls.js",
-    "panels/pipelines.js", "panels/review.js",
+    "panels/pipelines.js", "panels/review.js", "panels/convchain.js", "convchain.css",
     "navigation.js", "actions.js", "work-model.js", "workbench.js", "workbench.css", "work-actions.js", "work-actions.css",
 }
+
+# 对话链两条 POST 的正文只有几个 id 和两个开关,几百字节。
+CONVO_BODY_MAX = 8192
+# 超限但不离谱的正文先读掉再回 413(见 _drain 为什么);再大的直接断开,
+# 不为一个明显不对的请求读几个 G。
+CONVO_DRAIN_MAX = CONVO_BODY_MAX * 16
+CONVO_CHAIN_KEYS = frozenset(("id", "leaf", "sub"))
+CONVO_NODE_KEYS = frozenset(("id", "u", "sub"))
+CONVO_EXPORT_KEYS = frozenset(("id", "to", "from", "leaf", "sub", "tools", "thinking"))
+CONVO_FORK_KEYS = frozenset(("id", "at", "leaf", "sub"))
 
 NOT_RUN, RUNNING = 0x41303, 0x41301
 VERBS = ("enable", "disable", "run", "stop")
@@ -1040,6 +1051,98 @@ class Handler(BaseHTTPRequestHandler):
         except Exception as e:
             return self._json(500, {"error": f"{type(e).__name__}: {e}"})
 
+    def _convo_query(self, allowed):
+        """对话链 GET 的查询串:键在白名单里,每个键只给一次。返回 dict 或 None(已回 400)。
+
+        重复的键不取第一个:`id=a&id=b` 被默默读成 a,而日志和人看到的是两个值。"""
+        q = parse_qs(urlparse(self.path).query, keep_blank_values=True)
+        if not set(q) <= allowed or any(len(v) != 1 for v in q.values()):
+            self._json(400, {"error": "查询参数不对", "code": "bad_query"})
+            return None
+        return {k: (v[0] or None) for k, v in q.items()}
+
+    def _convo_body(self, allowed):
+        """两个对话链 POST 共用的读体。返回 body 或 None(已经回过 4xx)。
+        鉴权留在各自的处理器里第一行:路由鉴权通扫是按处理器正文找 `_authed()` 的。"""
+        if self.headers.get("Transfer-Encoding"):
+            self.close_connection = True
+            self._json(400, {"error": "invalid request size", "code": "bad_size"})
+            return None
+        try:
+            n = int(self.headers.get("Content-Length") or 0)
+        except (TypeError, ValueError):
+            n = -1
+        if n > CONVO_BODY_MAX:
+            if n <= CONVO_DRAIN_MAX:
+                self._drain()
+            else:
+                self.close_connection = True
+            self._json(413, {"error": f"请求体超过 {CONVO_BODY_MAX} 字节", "code": "too_large"})
+            return None
+        if n <= 0:
+            self.close_connection = True
+            self._json(400, {"error": "invalid request size", "code": "bad_size"})
+            return None
+        try:
+            body = json.loads(self.rfile.read(n))
+        except (ValueError, UnicodeError):
+            self._json(400, {"error": "invalid JSON request", "code": "bad_json"})
+            return None
+        if not isinstance(body, dict) or not set(body) <= allowed:
+            self._json(400, {"error": "请求体不是对象,或带了不认识的键", "code": "bad_body"})
+            return None
+        for k in ("tools", "thinking"):
+            if k in body and not isinstance(body[k], bool):
+                self._json(400, {"error": f"{k} 必须是 true/false", "code": "bad_body"})
+                return None
+        return body
+
+    def _convo_export(self):
+        """把显示链上的一段导出成 Markdown。只读,文本放在 JSON 里由页面自己存成文件:
+        令牌只走请求头,一个裸 <a href> 下载带不上它。"""
+        if not self._authed():
+            self._drain()
+            return self._json(403, {"error": "bad token"})
+        body = self._convo_body(CONVO_EXPORT_KEYS)
+        if body is None:
+            return None
+        try:
+            # 形状闸在碰文件系统之前:规则只有 convtree.shape 这一份。
+            convtree.shape(body.get("id"), sub=body.get("sub"), leaf=body.get("leaf"),
+                           required=("to",), to=body.get("to"), frm=body.get("from"))
+            return self._json(200, convtree.export_md(
+                body.get("id"), body.get("to"), frm=body.get("from") or None,
+                leaf=body.get("leaf") or None, sub=body.get("sub") or None,
+                include_tools=body.get("tools") is True,
+                include_thinking=body.get("thinking") is True))
+        except maint.Refused as e:
+            return self._json(400, {"error": str(e), "code": e.code})
+        except Exception as e:
+            return self._json(500, {"error": f"{type(e).__name__}: {e}"})
+
+    def _convo_fork(self):
+        """在一个节点处分叉出新会话文件。写的是一份新文件,独占创建,源转录只读。
+
+        不进 /api/maint/act 那张动作表:那张表的每个动作收一个名字,这个收的是
+        (会话, 节点, 叶子) 三个 id,塞进去等于让表里每个动作都多一种参数形状。
+        """
+        if not self._authed():
+            self._drain()
+            return self._json(403, {"error": "bad token"})
+        body = self._convo_body(CONVO_FORK_KEYS)
+        if body is None:
+            return None
+        try:
+            convtree.shape(body.get("id"), sub=body.get("sub"), leaf=body.get("leaf"),
+                           required=("at",), at=body.get("at"))
+            return self._json(200, convtree.fork(body.get("id"), body.get("at"),
+                                                 leaf=body.get("leaf") or None,
+                                                 sub=body.get("sub") or None))
+        except maint.Refused as e:
+            return self._json(400, {"error": str(e), "code": e.code})
+        except Exception as e:
+            return self._json(500, {"error": f"{type(e).__name__}: {e}"})
+
     def _llm_chain(self):
         """改降级链的顺序。
 
@@ -1312,6 +1415,33 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, ICON.read_bytes(), "image/svg+xml")
             except OSError:
                 return self._json(404, {"error": "no icon"})
+        if path == "/api/convo/chain":
+            if not self._authed():
+                return self._json(403, {"error": "bad token"})
+            q = self._convo_query(CONVO_CHAIN_KEYS)
+            if q is None:
+                return None
+            try:
+                convtree.shape(q.get("id"), sub=q.get("sub"), leaf=q.get("leaf"))
+                return self._json(200, convtree.chain(q.get("id"), leaf=q.get("leaf"),
+                                                      sub=q.get("sub")))
+            except maint.Refused as e:
+                return self._json(400, {"error": str(e), "code": e.code})
+            except Exception as e:
+                return self._json(500, {"error": f"{type(e).__name__}: {e}"})
+        if path == "/api/convo/node":
+            if not self._authed():
+                return self._json(403, {"error": "bad token"})
+            q = self._convo_query(CONVO_NODE_KEYS)
+            if q is None:
+                return None
+            try:
+                convtree.shape(q.get("id"), sub=q.get("sub"), required=("u",), u=q.get("u"))
+                return self._json(200, convtree.node(q.get("id"), q.get("u"), sub=q.get("sub")))
+            except maint.Refused as e:
+                return self._json(400, {"error": str(e), "code": e.code})
+            except Exception as e:
+                return self._json(500, {"error": f"{type(e).__name__}: {e}"})
         if path == "/api/maint":
             if not self._authed():
                 return self._json(403, {"error": "bad token"})
@@ -1354,6 +1484,10 @@ class Handler(BaseHTTPRequestHandler):
             return self._maintenance_delete()
         if self.path.split("?", 1)[0] == "/api/llmcall/chain":
             return self._llm_chain()
+        if self.path.split("?", 1)[0] == "/api/convo/export":
+            return self._convo_export()
+        if self.path.split("?", 1)[0] == "/api/convo/fork":
+            return self._convo_fork()
         if self.path.split("?", 1)[0] != "/api/act":
             self._drain()
             return self._json(404, {"error": "not found"})

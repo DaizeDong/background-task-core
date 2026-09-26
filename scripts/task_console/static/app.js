@@ -10,6 +10,7 @@ const CONSOLE_MODULES = [
   "panels/repositories.js",
   "panels/storage.js",
   "panels/conversations.js",
+  "panels/convchain.js",
   "panels/calls.js",
   "panels/overview.js",
   "panels/pipelines.js",
@@ -25,7 +26,8 @@ const CONSOLE_MODULES = [
 // The remaining classic modules still form the core's shared dependency graph.
 const OPTIONAL_PANELS = {
   'panels/plugins.js': 'mt-plugins',
-  'panels/integrations.js': 'integration-list'
+  'panels/integrations.js': 'integration-list',
+  'panels/convchain.js': 'chbox'
 };
 (async function startConsole(){
   const failure = document.getElementById("module-error");

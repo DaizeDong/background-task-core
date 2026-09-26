@@ -15,7 +15,10 @@ showing a confident number that stopped moving.
 The page can act, and every verb it has is listed in one closed table in `maint.py`. **That table
 is the authority; this file does not keep a second copy of it**, because a prose list of
 capabilities drifts the moment a verb is added and the drift is silent — the reader trusts the
-list, and the list is where the promise lives.
+list, and the list is where the promise lives. The conversation view has one write of its own
+outside that table: it can fork a saved session at any node into a new transcript file next to
+the original, with exclusive create, never modifying the original; its limits are in
+[the console README](scripts/task_console/README.md).
 
 Task creation and migration use the declaration, review and registration APIs described in [task registration](docs/task-registration.md). The web action table does not provide an unrestricted Scheduler shortcut. Registration records authority and recovery evidence before changing task definitions; the console keeps its existing review step for outgoing actions.
 
