@@ -21,7 +21,7 @@ async function refreshConsoleToken(rejectedToken){
   })();
   try{await API_TOKEN_REFRESH;}finally{API_TOKEN_REFRESH=null;}
 }
-const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const $ = id => document.getElementById(id);
 
 // Presentation only: callers supply the owner's label and its display tone.

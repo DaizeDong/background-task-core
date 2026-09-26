@@ -99,11 +99,13 @@ STATIC_FILES = {
     "navigation.js", "actions.js", "work-model.js", "workbench.js", "workbench.css", "work-actions.js", "work-actions.css",
 }
 
-# 对话链两条 POST 的正文只有几个 id 和两个开关,几百字节。
+# 对话链唯一的 POST(分叉)的正文只有几个 id,几百字节。
 CONVO_BODY_MAX = 8192
 # 超限但不离谱的正文先读掉再回 413(见 _drain 为什么);再大的直接断开,
 # 不为一个明显不对的请求读几个 G。
 CONVO_DRAIN_MAX = CONVO_BODY_MAX * 16
+# 任何被拒绝的请求,_drain 最多替它读掉这么多正文(见 _drain)。
+DRAIN_MAX = 1 << 20
 CONVO_CHAIN_KEYS = frozenset(("id", "leaf", "sub"))
 CONVO_NODE_KEYS = frozenset(("id", "u", "sub"))
 CONVO_EXPORT_KEYS = frozenset(("id", "to", "from", "leaf", "sub", "tools", "thinking"))
@@ -979,6 +981,11 @@ class Handler(BaseHTTPRequestHandler):
             n = int(self.headers.get("Content-Length") or 0)
         except (TypeError, ValueError):
             n = 0
+        # 它在鉴权之前就会跑:一个没有令牌的请求自称多大就读多大,等于让任何人
+        # 让服务器陪它读几个 G。超过上限的不读,直接断开。
+        if n > DRAIN_MAX:
+            self.close_connection = True
+            return
         if n > 0:
             try:
                 self.rfile.read(n)
@@ -1062,7 +1069,7 @@ class Handler(BaseHTTPRequestHandler):
         return {k: (v[0] or None) for k, v in q.items()}
 
     def _convo_body(self, allowed):
-        """两个对话链 POST 共用的读体。返回 body 或 None(已经回过 4xx)。
+        """对话链 POST(分叉)的读体。返回 body 或 None(已经回过 4xx)。
         鉴权留在各自的处理器里第一行:路由鉴权通扫是按处理器正文找 `_authed()` 的。"""
         if self.headers.get("Transfer-Encoding"):
             self.close_connection = True
@@ -1091,34 +1098,7 @@ class Handler(BaseHTTPRequestHandler):
         if not isinstance(body, dict) or not set(body) <= allowed:
             self._json(400, {"error": "请求体不是对象,或带了不认识的键", "code": "bad_body"})
             return None
-        for k in ("tools", "thinking"):
-            if k in body and not isinstance(body[k], bool):
-                self._json(400, {"error": f"{k} 必须是 true/false", "code": "bad_body"})
-                return None
         return body
-
-    def _convo_export(self):
-        """把显示链上的一段导出成 Markdown。只读,文本放在 JSON 里由页面自己存成文件:
-        令牌只走请求头,一个裸 <a href> 下载带不上它。"""
-        if not self._authed():
-            self._drain()
-            return self._json(403, {"error": "bad token"})
-        body = self._convo_body(CONVO_EXPORT_KEYS)
-        if body is None:
-            return None
-        try:
-            # 形状闸在碰文件系统之前:规则只有 convtree.shape 这一份。
-            convtree.shape(body.get("id"), sub=body.get("sub"), leaf=body.get("leaf"),
-                           required=("to",), to=body.get("to"), frm=body.get("from"))
-            return self._json(200, convtree.export_md(
-                body.get("id"), body.get("to"), frm=body.get("from") or None,
-                leaf=body.get("leaf") or None, sub=body.get("sub") or None,
-                include_tools=body.get("tools") is True,
-                include_thinking=body.get("thinking") is True))
-        except maint.Refused as e:
-            return self._json(400, {"error": str(e), "code": e.code})
-        except Exception as e:
-            return self._json(500, {"error": f"{type(e).__name__}: {e}"})
 
     def _convo_fork(self):
         """在一个节点处分叉出新会话文件。写的是一份新文件,独占创建,源转录只读。
@@ -1429,6 +1409,32 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(400, {"error": str(e), "code": e.code})
             except Exception as e:
                 return self._json(500, {"error": f"{type(e).__name__}: {e}"})
+        if path == "/api/convo/export":
+            # 导出是读:不写任何文件,Markdown 装在 JSON 里由页面自己存。做成 POST 的话,
+            # 只读预览里导不了,每次导出还会记一条「操作」、让所有读缓存失效。
+            if not self._authed():
+                return self._json(403, {"error": "bad token"})
+            q = self._convo_query(CONVO_EXPORT_KEYS)
+            if q is None:
+                return None
+            flags = {}
+            for k in ("tools", "thinking"):
+                v = q.get(k)
+                if v not in (None, "0", "1"):
+                    return self._json(400, {"error": f"{k} 只能是 0 或 1", "code": "bad_query"})
+                flags[k] = v == "1"
+            try:
+                # 形状闸在碰文件系统之前:规则只有 convtree.shape 这一份。
+                convtree.shape(q.get("id"), sub=q.get("sub"), leaf=q.get("leaf"),
+                               required=("to",), to=q.get("to"), frm=q.get("from"))
+                return self._json(200, convtree.export_md(
+                    q.get("id"), q.get("to"), frm=q.get("from"), leaf=q.get("leaf"),
+                    sub=q.get("sub"), include_tools=flags["tools"],
+                    include_thinking=flags["thinking"]))
+            except maint.Refused as e:
+                return self._json(400, {"error": str(e), "code": e.code})
+            except Exception as e:
+                return self._json(500, {"error": f"{type(e).__name__}: {e}"})
         if path == "/api/convo/node":
             if not self._authed():
                 return self._json(403, {"error": "bad token"})
@@ -1484,8 +1490,6 @@ class Handler(BaseHTTPRequestHandler):
             return self._maintenance_delete()
         if self.path.split("?", 1)[0] == "/api/llmcall/chain":
             return self._llm_chain()
-        if self.path.split("?", 1)[0] == "/api/convo/export":
-            return self._convo_export()
         if self.path.split("?", 1)[0] == "/api/convo/fork":
             return self._convo_fork()
         if self.path.split("?", 1)[0] != "/api/act":

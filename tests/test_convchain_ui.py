@@ -115,18 +115,21 @@ def test_range_endpoints_off_the_new_branch_are_dropped():
 
 
 def test_export_request_carries_range_leaf_and_boolean_switches():
+    """导出是一次 GET:只读预览里也能导,也不记成一次「操作」。设了起点没设终点时导到链尾。"""
     chain = chain_case()
-    frm, last = chain["turns"][0]["steps"][1]["u"], chain["turns"][3]["steps"][-1]["u"]
+    frm, last = chain["turns"][0]["steps"][1]["u"], chain["turns"][-1]["steps"][-1]["u"]
     expr = (f"CH_FROM='{frm}';CH_SEL='h:3';CH_LEAF='{uid(7)}';CH_XT=true;"
             "chExport().then(()=>sent)")
-    extra = ("let sent=null;api=async(path,options)=>{sent={path,body:JSON.parse(options.body)};"
+    extra = ("let sent=null;api=async(path,options)=>{const [p,q]=path.split('?');"
+             "sent={path:p,method:(options||{}).method||'GET',"
+             "query:Object.fromEntries(q.split('&').map(x=>x.split('=').map(decodeURIComponent)))};"
              "return {filename:'x.md',text:'',nodes:1,turns:1};};"
              "var URL={createObjectURL:()=>'blob:x',revokeObjectURL(){}};var Blob=function(){};"
              "document.createElement=()=>({click(){},remove(){}});document.body={appendChild(){}};")
     sent = run(expr, setup(chain, extra))
-    assert sent["path"] == "/api/convo/export"
-    assert sent["body"] == {"id": SID, "to": last, "from": frm, "leaf": uid(7),
-                            "tools": True, "thinking": False}
+    assert sent["path"] == "/api/convo/export" and sent["method"] == "GET"
+    assert sent["query"] == {"id": SID, "to": last, "from": frm, "leaf": uid(7),
+                             "tools": "1", "thinking": "0"}
 
 
 def test_subagent_view_cannot_fork_and_fork_controls_are_guarded():
@@ -136,8 +139,11 @@ def test_subagent_view_cannot_fork_and_fork_controls_are_guarded():
     html = run("CH_SEL='s:0:1';chRenderAct();$('chact').innerHTML", setup(chain))
     assert 'data-ctfork="at" title' in html
     selector = run("ConsoleActions.selector", STUB)
-    assert "[data-ctfork]" in selector and "[data-ctexport]" in selector, \
-        "只读预览和进行中的操作必须能禁用这两个 POST 按钮"
+    assert "[data-ctfork]" in selector, "只读预览和进行中的操作必须能禁用分叉这个 POST 按钮"
+    # 导出是读:不进写操作的选择器,只读预览里照样能点。
+    assert "export" not in selector
+    html = run("CH_SEL='s:0:1';chRenderAct();$('chact').innerHTML", setup(chain))
+    assert 'data-chexport="md"' in html and "data-ctexport" not in html
 
 
 def test_deep_link_is_parsed_and_back_to_the_list_closes_the_chain():
@@ -186,3 +192,133 @@ const context=vm.createContext({document});
         "console.log(JSON.stringify([touched,vm.runInContext('typeof startConvoChain',context)]));"
     from test_panel_parity import node
     assert node(program) == [0, "function"]
+
+
+def test_page_refresh_rereads_an_open_chain_and_keeps_the_selection():
+    """会话屏的「刷新」也重读开着的链;没开链时一个请求都不发。"""
+    chain = chain_case()
+    keep = chain["turns"][3]["steps"][2]["u"]
+    extra = ("let calls=[];api=async(path)=>{calls.push(path);return JSON.parse(JSON.stringify(CH));};"
+             "CURVIEW='convos';var location={hash:''};var history={pushState(){}};"
+             "$('chlist').querySelector=()=>({scrollIntoView(){},id:'x'});")
+    closed = run("reloadConvoChain().then(()=>calls.length)", setup(chain, extra))
+    assert closed == 0, "没开链时刷新不许去读转录"
+    got = run(f"$('chbox').hidden=false;CH_LEAF='{uid(2)}';CH_OPEN[3]=true;CH_SEL='s:3:2';"
+              "reloadConvoChain().then(()=>[calls,chSelU(),!!CH_OPEN[3]])", setup(chain, extra))
+    assert got[0] == [f"/api/convo/chain?id={SID}&leaf={uid(2)}"]
+    assert got[1] == keep and got[2] is True
+    assert "reloadConvoChain" in module_source("operations.js"), "刷新按钮要经过 PAGE_READS 才会重读链"
+
+
+
+# ---------- 审查修复 ----------
+
+def test_token_counts_and_times_from_the_transcript_are_escaped():
+    """转录是外来数据。后端把 token 数压成整数之外,前端自己也不把非数字当数画。"""
+    chain = chain_case()
+    chain["turns"][1].update(preTokens="<img src=x onerror=alert(1)>", postTokens=9000)
+    chain["turns"][0]["ts"] = "<svg onload='x"
+    chain["turns"][0]["human"]["ts"] = "<svg onload='x"
+    chain["turns"][0]["steps"][1]["ts"] = "<b>x"
+    html = run("CH_OPEN[0]=true;chRenderList();$('chlist').innerHTML", setup(chain))
+    assert "<img" not in html and "<svg" not in html and "<b>" not in html
+    assert "⟂ 自动压缩 · ?→9k tokens" in html
+    assert run("esc(\"a'b\")", STUB) == "a&#39;b"
+
+
+def test_a_start_without_an_end_exports_to_the_end_of_the_chain():
+    chain = chain_case()
+    start = chain["turns"][3]["steps"][0]["u"]
+    got = run(f"CH_SEL='s:3:0';CH_FROM='{start}';[chRange(),CH_ORDER.length-1]", setup(chain))
+    assert got[0][1] == got[1] and got[0][0] < got[0][1]
+    html = run(f"CH_SEL='s:3:0';CH_FROM='{start}';chRenderAct();$('chact').innerHTML", setup(chain))
+    assert "到链尾" in html
+    # 设了终点就用终点。
+    end = chain["turns"][3]["steps"][2]["u"]
+    got = run(f"CH_FROM='{start}';CH_TO='{end}';chRange()", setup(chain))
+    assert got[1] - got[0] == 2
+
+
+def test_the_fork_button_names_the_node_it_forks_at():
+    chain = chain_case()
+    last0 = chain["turns"][0]["steps"][-1]["u"]
+    html = run("CH_SEL='h:0';chRenderAct();$('chact').innerHTML", setup(chain))
+    assert f"在本轮结尾 {last0[:8]} 处分叉" in html
+    one = chain["turns"][0]["steps"][1]["u"]
+    html = run("CH_SEL='s:0:1';chRenderAct();$('chact').innerHTML", setup(chain))
+    assert f"从 {one[:8]} 处分叉" in html
+
+
+def test_branch_alternatives_show_where_each_one_starts_and_ends():
+    chain = chain_case()
+    u = chain["turns"][0]["steps"][1]["u"]
+    alts = [{"u": uid(500 + i), "size": 3, "leaf": uid(600 + i), "leafLineIndex": 10 + i,
+             "preview": "same question", "active": i == 0, "ts": "2030-01-02T03:04:05Z",
+             "firstKind": "human", "firstPreview": "same question", "leafTs": "2030-01-02T03:04:05Z",
+             "leafKind": "text", "leafPreview": f"distinct ending {i}"} for i in range(2)]
+    chain["turns"][0]["forks"] = [{"u": u, "lineIndex": 2, "alternatives": alts}]
+    chain["turns"][0]["steps"][1]["fork"] = 2
+    html = run(f"CH_OPEN[0]=true;CH_FKOPEN='{u}';chRenderList();$('chlist').innerHTML", setup(chain))
+    assert "distinct ending 0" in html and "distinct ending 1" in html
+
+
+def test_a_collapsed_turn_shows_its_last_reply():
+    chain = chain_case()
+    chain["turns"][0]["reply"] = {"u": uid(3), "ts": None, "preview": "synthetic final reply"}
+    html = run("chRenderList();$('chlist').innerHTML", setup(chain))
+    assert "synthetic final reply" in html and 'class="rp"' in html
+
+
+def test_buttons_inside_the_card_hand_focus_back_to_the_chain():
+    """⑂ 菜单、设为起点等按钮会整块重画,焦点掉回 <body> 后 j/k 被全局吞掉、Esc 抛错。"""
+    chain = chain_case()
+    u = chain["turns"][0]["steps"][1]["u"]
+    chain["turns"][0]["forks"] = [{"u": u, "lineIndex": 2, "alternatives": []}]
+    extra = ("let focused=0;$('chlist').focus=()=>{focused++};$('chbox').hidden=false;"
+             "const btn=(attr,val)=>({closest:sel=>sel==='['+attr+']'?{dataset:{[attr.slice(5).replace(/-(.)/g,(m,c)=>c.toUpperCase())]:val},disabled:false}:null});")
+    got = run(f"CH_SEL='s:0:1';chClick({{target:btn('data-chfk','{u}')}});"
+              "chClick({target:btn('data-chact','from')});[focused,CH_FKOPEN,CH_FROM]", setup(chain, extra))
+    assert got == [2, u, u]
+
+
+def test_subagent_picker_filters_and_names_the_spawning_turn():
+    subs = [{"agentId": "a1synthetic", "description": "alpha task", "agentType": "general", "gz": False,
+             "toolUseId": None, "file": "x"},
+            {"agentId": "a2synthetic", "description": "beta task", "agentType": None, "gz": True,
+             "toolUseId": None, "file": "y"}]
+    chain = chain_case(subagents=subs)
+    chain["turns"][3]["steps"][1].update(agentId="a2synthetic", agentFile=True)
+    all_ = run("chSubOptions('')", setup(chain))
+    assert "共 2 个" in all_ and "#1 · beta task (gz)" in all_
+    some = run("chSubOptions('alpha')", setup(chain))
+    assert "筛出 1 / 2 个" in some and "a1synthetic" in some and "a2synthetic" not in some
+    head = run("chRenderHead();$('chcrumb').innerHTML", setup(chain))
+    assert 'id="chsubq"' in head and 'id="chsubs"' in head
+
+
+def test_rows_say_the_chain_can_be_opened():
+    rows = [{"id": SID, "title": "Synthetic A", "titleFrom": "rename", "file": "/synthetic/a.jsonl",
+             "humanSeen": 2, "partial": False, "ageHours": 1, "bytes": 10, "preview": ""}]
+    convos = {"available": True, "summary": {"files": 1, "humanish": 1, "bytes": 10, "groups": 1},
+              "groups": [{"cwd": "/synthetic/p", "count": 1, "humanish": 1, "bytes": 10,
+                          "newest": 1, "truncated": False, "shown": rows}]}
+    base = STUB + "CONVOS=" + json.dumps(convos) + ";CV_OPEN['/synthetic/p']=true;"
+    assert "对话链 ›" in run("renderConvos();$('cvgroups').innerHTML", base)
+    assert "对话链 ›" not in run("renderConvos();$('cvgroups').innerHTML", base + "openConvoChain=undefined;")
+
+
+def test_escape_before_the_task_data_loaded_does_not_throw():
+    """events.js 的全局 Esc 以前无条件 render(),而 DATA 在第一次读回来之前是 null。"""
+    from test_panel_parity import module_source as src
+    ev = src("events.js")
+    assert 'if(k==="Escape"){ sel.clear(); if(DATA) render(); return; }' in ev
+
+
+def test_clicking_another_turn_header_drops_the_old_fork_result():
+    """点标题行时 chClick 先改了 CH_SEL 再叫 chSelect,上一个节点的分叉结果就一直挂着,
+    看起来像是在说新选的这一轮。"""
+    chain = chain_case()
+    extra = ("$('chbox').hidden=false;"
+             "const hdr=k=>({closest:sel=>sel==='[data-chk]'?{dataset:{chk:k},classList:{contains:()=>false}}:null});")
+    got = run("CH_SEL='h:0';CH_FRES={newId:'x'};chClick({target:hdr('h:3')});[CH_SEL,CH_FRES]", setup(chain, extra))
+    assert got == ["h:3", None]

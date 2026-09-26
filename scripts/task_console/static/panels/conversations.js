@@ -115,7 +115,7 @@ function renderConvos(){
           <span class="src ${esc(r.titleFrom)}" title="${esc(CV_SRC[r.titleFrom]||r.titleFrom)}">${
             CV_TAG[r.titleFrom]||"?"}</span>
           <span class="m">${r.humanSeen?"👤"+r.humanSeen+(r.partial?"+":""):""}</span>
-          <span class="m">${cvAge(r.ageHours)} · ${kb(r.bytes)}</span>
+          <span class="m">${cvAge(r.ageHours)} · ${kb(r.bytes)}${chain?' · <span class="cv-open">对话链 ›</span>':""}</span>
           ${chain?ibtn("i-copy","复制会话文件路径",`data-cvcopy="${esc(r.file||"")}"`):"<span></span>"}
           ${(r.preview&&r.preview!==r.title)?`<span class="pv" title="${esc(r.preview)}">${esc(r.preview)}</span>`:""}
         </div>`;}).join("")}

@@ -181,7 +181,9 @@ def test_real_branch_reports_alternatives(tmp_path):
     assert len(forks) == 1 and forks[0]["u"] == U(3)
     alts = {a["u"]: a for a in forks[0]["alternatives"]}
     assert alts[U(4)] == {"u": U(4), "size": 2, "leaf": U(5), "leafLineIndex": 4,
-                          "preview": "abandoned follow-up", "active": False}
+                          "preview": "abandoned follow-up", "active": False,
+                          "ts": ts(4), "firstKind": "human", "firstPreview": "abandoned follow-up",
+                          "leafTs": ts(5), "leafKind": "text", "leafPreview": "abandoned answer"}
     assert alts[U(6)]["active"] is True and alts[U(6)]["leaf"] == U(7)
     assert U(4) not in path_uuids(r)
     step = next(s for t in r["turns"] for s in t["steps"] if s["u"] == U(3))
@@ -861,7 +863,8 @@ def test_fork_outside_any_worktree_is_allowed(tmp_path):
 
 
 @pytest.mark.parametrize("cwd", ["C:/work/a$(calc)b", "C:/work/a`b", "C:/work/it's",
-                                 "C:/work/a\nb"])
+                                 "C:/work/a\nb", "C:/x\u2019; calc; \u2018",
+                                 "C:/work/Bob\u2019s notes", "C:/work/a\u201bb"])
 def test_resume_command_never_embeds_a_hostile_cwd(tmp_path, cwd):
     recs = [human(1, None, "q"), asst(2, U(1), "m1", text("a"))]
     for x in recs:
@@ -995,6 +998,11 @@ def test_line_index_is_the_physical_line_even_with_blank_and_bad_lines(tmp_path)
     ({"sid": SID, "at": 5}, "bad_uuid"),
     ({"sid": SID, "required": ("to",), "to": None}, "bad_uuid"),
     ({"sid": SID, "required": ("u",)}, "bad_uuid"),
+    # 整串匹配:`$` 会放过结尾的一个换行。
+    ({"sid": SID + "\n"}, "bad_id"),
+    ({"sid": SID, "sub": "abc\n"}, "bad_sub"),
+    ({"sid": SID, "leaf": U(1) + "\n"}, "bad_leaf"),
+    ({"sid": SID, "u": U(1) + "\n"}, "bad_uuid"),
 ])
 def test_shape_names_the_exact_gate(kw, code):
     with pytest.raises(Refused) as ei:
@@ -1024,3 +1032,282 @@ def test_bad_leaf_shape_is_refused_before_the_filesystem(monkeypatch):
         with pytest.raises(Refused) as ei:
             fn()
         assert ei.value.code == "bad_leaf"
+
+
+
+# ---------- 审查修复:压缩后直接挂在被保留消息上 ----------
+
+def _kinds(r):
+    return [(t["type"], t.get("kind")) for t in r["turns"]]
+
+
+def test_chain_shows_the_compaction_when_the_walk_crosses_into_preserved_messages(tmp_path):
+    """压缩后第一条消息挂在被保留的 U4 上:上溯不踩边界行。分叉在这里从边界开始,
+    链上却看不出压缩过,两边说的不是同一条链。"""
+    write(tmp_path, _compacted(lp=U(7), post_parent=U(4)))
+    r = T.chain(SID, root=str(tmp_path))
+    assert path_uuids(r) == [U(1), U(2), U(3), U(4), U(5), U(6), U(8), U(9)]
+    assert r["compactions"] == 1
+    assert ("marker", "compact") in _kinds(r) and ("marker", "summary") in _kinds(r)
+    # U4 下面「直接挂回来的 U8」和「经由边界接出去的那支」是同一支,不是分叉。
+    assert r["forks"] == 0
+
+
+def test_chain_after_rewinding_to_a_preserved_message_shows_the_compaction(tmp_path):
+    recs = [human(1, None, "q1"), asst(2, U(1), "m1", text("a1")),
+            human(3, U(2), "abandoned q"), asst(4, U(3), "m2", text("abandoned a")),
+            boundary(5, U(4), U(6), [U(2), U(3), U(4)]), summary(6, U(5)),
+            human(7, U(6), "after"), asst(8, U(7), "m3", text("after a")),
+            human(9, U(2), "rewound q"), asst(10, U(9), "m4", text("rewound a"))]
+    write(tmp_path, recs)
+    r = T.chain(SID, root=str(tmp_path))
+    assert path_uuids(r) == [U(1), U(2), U(5), U(6), U(9), U(10)]
+    assert r["compactions"] == 1
+    fk = next(f for t in r["turns"] for f in t["forks"] if f["u"] == U(2))
+    assert {a["u"]: a["active"] for a in fk["alternatives"]} == {U(3): False, U(9): True}
+
+
+def test_a_branch_that_was_compacted_later_is_reachable_from_its_fork_point(tmp_path):
+    """A2 被压缩保留(边界 B3 以 A2 为前驱),摘要下面聊了一支(H5),之后人又回退到 A2
+    另起一支(H7)。只数 children 的话 A2 只有一个孩子,摘要下面那支在任何菜单里都找不到。
+    H7 写在压缩之后,所以它那条链上也要看得见这次压缩。"""
+    recs = [human(1, None, "q"), asst(2, U(1), "m1", text("a")),
+            boundary(3, U(2), U(4), [U(1), U(2)]), summary(4, U(3)),
+            human(5, U(4), "compacted side"), asst(6, U(5), "m2", text("c")),
+            human(7, U(2), "other side"), asst(8, U(7), "m3", text("o"))]
+    write(tmp_path, recs)
+    r = T.chain(SID, root=str(tmp_path))
+    assert path_uuids(r) == [U(1), U(2), U(3), U(4), U(7), U(8)]
+    assert r["compactions"] == 1 and r["forks"] == 1
+    fk = next(f for t in r["turns"] for f in t["forks"] if f["u"] == U(2))
+    alts = {a["u"]: a for a in fk["alternatives"]}
+    assert alts[U(3)]["leaf"] == U(6) and alts[U(3)]["active"] is False
+    assert alts[U(7)]["active"] is True
+    # 切过去:边界那一支变成当前。
+    T._CACHE.clear()
+    r2 = T.chain(SID, leaf=U(6), root=str(tmp_path))
+    fk2 = next(f for t in r2["turns"] for f in t["forks"] if f["u"] == U(2))
+    assert {a["u"]: a["active"] for a in fk2["alternatives"]} == {U(7): False, U(3): True}
+
+
+def test_fork_takes_the_latest_compaction_that_kept_the_message(tmp_path):
+    """U3/U4 被两次压缩都保留了(B1=U5, B2=U9)。U11 写在 B2 之后、挂在 U4 上。
+    它接着的是 B2 的摘要 U10;取文件里第一个边界的话,分叉拿到的是早被概括掉的 S1。"""
+    recs = [human(1, None, "old"), asst(2, U(1), "m1", text("old a")),
+            human(3, U(2), "kept"), asst(4, U(3), "m2", text("kept a")),
+            boundary(5, U(4), U(6), [U(3), U(4)]), summary(6, U(5), "first summary"),
+            human(7, U(6), "mid"), asst(8, U(7), "m3", text("mid a")),
+            boundary(9, U(8), U(10), [U(3), U(4)]), summary(10, U(9), "second summary"),
+            human(11, U(4), "after second"), asst(12, U(11), "m4", text("fresh"))]
+    write(tmp_path, recs)
+    r = T.fork(SID, U(12), root=str(tmp_path))
+    assert _fork_uuids(tmp_path, r) == [U(9), U(10), U(3), U(4), U(11), U(12)]
+    assert r["fromBoundary"] == U(9)
+    c = T.chain(SID, root=str(tmp_path))
+    assert U(9) in path_uuids(c) and U(10) in path_uuids(c)
+
+
+# ---------- 一个工具调用,两份结果 ----------
+
+def _two_results():
+    return [human(1, None, "q"), asst(2, U(1), "m1", tool("t1")),
+            result(3, U(2), "t1", "first"), asst(4, U(3), "m2", text("after first")),
+            result(5, U(2), "t1", "second"), asst(6, U(5), "m3", text("after second"))]
+
+
+def test_a_tool_use_answered_on_two_branches_gets_only_its_own_result(tmp_path):
+    write(tmp_path, _two_results())
+    r = T.chain(SID, root=str(tmp_path))
+    assert path_uuids(r) == [U(1), U(2), U(5), U(6)]
+    assert r["forks"] == 1
+    fk = next(f for t in r["turns"] for f in t["forks"] if f["u"] == U(2))
+    assert {a["u"]: a["active"] for a in fk["alternatives"]} == {U(3): False, U(5): True}
+    f = T.fork(SID, U(6), root=str(tmp_path))
+    out = _read(tmp_path / "proj-a" / f"{f['newId']}.jsonl")
+    got = [b["tool_use_id"] for o in out if isinstance((o.get("message") or {}).get("content"), list)
+           for b in o["message"]["content"] if b.get("type") == "tool_result"]
+    assert got == ["t1"]
+
+
+def test_the_other_result_is_the_one_shown_on_the_other_branch(tmp_path):
+    write(tmp_path, _two_results())
+    r = T.chain(SID, leaf=U(4), root=str(tmp_path))
+    assert path_uuids(r) == [U(1), U(2), U(3), U(4)]
+
+
+def test_an_unwalked_tool_use_keeps_only_the_earliest_of_two_results(tmp_path):
+    """正对照的另一半:两份结果都不在走过的链上(分叉点就是 tool_use 本身)时取最早的一份,
+    而不是两份都拿。"""
+    write(tmp_path, _two_results())
+    r = T.fork(SID, U(2), leaf=U(6), root=str(tmp_path))
+    assert _fork_uuids(tmp_path, r) == [U(1), U(2), U(3)]
+
+
+def test_a_result_written_after_the_next_message_is_left_out_and_reported(tmp_path):
+    """A2 的结果 R5 写在 H3/A4 之后,而且上溯是从 A2 直接走进 H3 的。补进来的话它被排在
+    A4 之后:tool_use 后面先跟着一条用户消息,结果隔了两行才来。"""
+    recs = [human(1, None, "q"), asst(2, U(1), "m1", tool("t1")),
+            human(3, U(2), "interjection"), asst(4, U(3), "m2", text("a")),
+            result(5, U(2), "t1")]
+    write(tmp_path, recs)
+    c = T.chain(SID, leaf=U(4), root=str(tmp_path))
+    assert path_uuids(c) == [U(1), U(2), U(3), U(4)]
+    r = T.fork(SID, U(4), root=str(tmp_path), leaf=U(4))
+    assert _fork_uuids(tmp_path, r) == [U(1), U(2), U(3), U(4)]
+    assert any("没有对应的结果" in w for w in r["warnings"])
+
+
+def test_a_parallel_result_is_still_filled_in(tmp_path):
+    """负对照:并行调用的另一份结果不在上溯路径上,但上溯是经过结果离开这一组的,
+    它必须照旧补进来。「离开这一组」判宽了,并行调用会丢结果。"""
+    write(tmp_path, _parallel())
+    r = T.chain(SID, root=str(tmp_path))
+    assert path_uuids(r) == [U(1), U(2), U(3), U(4), U(5), U(6)]
+    f = T.fork(SID, U(6), root=str(tmp_path))
+    assert not any("没有对应的结果" in w for w in f["warnings"])
+
+
+# ---------- 接不回摘要的分叉 ----------
+
+def test_fork_refuses_when_the_relinked_walk_never_reaches_the_summary(tmp_path):
+    """U7 挂在只出现在 allUuids 里的 U2 上,而 U2 的原始父链一路回到 U1,永远走不到摘要。
+    以前的做法是把边界硬塞在最前面:分叉里没有摘要,还夹着从未被保留的 U1。"""
+    recs = [human(1, None, "q1"), asst(2, U(1), "m1", text("a1")),
+            human(3, U(2), "q2"), asst(4, U(3), "m2", text("a2")),
+            boundary(5, U(4), U(6), [U(3), U(4)], all_uuids=[U(1), U(2), U(3), U(4)]),
+            summary(6, U(5)), human(7, U(2), "after"), asst(8, U(7), "m3", text("x"))]
+    src = write(tmp_path, recs)
+    with pytest.raises(Refused) as ei:
+        T.fork(SID, U(8), root=str(tmp_path))
+    assert ei.value.code == "unrelinkable"
+    assert [p.name for p in (tmp_path / "proj-a").iterdir()] == [src.name]
+
+
+def test_fork_whose_summary_is_not_linked_to_the_boundary_says_so(tmp_path):
+    """正对照:摘要的父指针断了,但上溯走到了摘要。这时补上边界仍是对的,只是要说出来。"""
+    recs = _compacted(lp=U(7), post_parent=U(4))
+    recs[5]["parentUuid"] = U(77)
+    write(tmp_path, recs)
+    r = T.fork(SID, U(9), root=str(tmp_path))
+    assert _fork_uuids(tmp_path, r)[0] == U(5)
+    assert any("没有接回边界" in w for w in r["warnings"])
+
+
+# ---------- 外来数据的形状 ----------
+
+def test_token_counts_that_are_not_integers_never_reach_the_page(tmp_path):
+    recs = _compacted(lp=U(7))
+    recs[4]["compactMetadata"]["preTokens"] = "<img src=x onerror=alert(1)>"
+    recs[4]["compactMetadata"]["postTokens"] = True
+    write(tmp_path, recs)
+    r = T.chain(SID, root=str(tmp_path))
+    m = next(t for t in r["turns"] if t.get("kind") == "compact")
+    assert m["preTokens"] is None and m["postTokens"] is None
+    assert "<img" not in json.dumps(r, ensure_ascii=False)
+    n = T.node(SID, U(5), root=str(tmp_path))
+    assert n["compactMetadata"]["preTokens"] is None
+    # 正对照:整数原样通过。
+    T._CACHE.clear()
+    write(tmp_path, _compacted(lp=U(7)))
+    m = next(t for t in T.chain(SID, root=str(tmp_path))["turns"] if t.get("kind") == "compact")
+    assert (m["preTokens"], m["postTokens"]) == (999000, 42000)
+
+
+@pytest.mark.parametrize("cm", [["not", "a", "dict"], "a string", 7])
+def test_a_malformed_compact_metadata_breaks_only_its_own_line(tmp_path, cm):
+    recs = _compacted(lp=U(7))
+    recs[4]["compactMetadata"] = cm
+    write(tmp_path, recs)
+    r = T.chain(SID, root=str(tmp_path))
+    assert r["available"] and U(9) in path_uuids(r)
+    assert T.fork(SID, U(9), root=str(tmp_path))["newId"]
+
+
+def test_task_notifications_are_not_user_turns(tmp_path):
+    recs = [human(1, None, "real question"), asst(2, U(1), "m1", text("answer")),
+            human(3, U(2), "<task-notification> <task-id>abc</task-id> done"),
+            asst(4, U(3), "m2", text("noted"))]
+    write(tmp_path, recs)
+    r = T.chain(SID, root=str(tmp_path))
+    turns = [t for t in r["turns"] if t["type"] == "turn"]
+    assert len(turns) == 1
+    assert turns[0]["reply"]["preview"] == "noted"
+
+
+# ---------- 恢复命令进对的项目目录 ----------
+
+def test_resume_cd_goes_to_the_directory_that_owns_the_project_folder(tmp_path):
+    """会话中途 cd 进了子目录。分叉文件写在会话开始时那个目录对应的项目目录里;
+    照分叉点的 cwd 拼命令,claude 会去子目录对应的项目目录里找,找不到。"""
+    start, sub = "C:/work/example-project", "C:/work/example-project/sub-dir"
+    recs = [human(1, None, "q"), asst(2, U(1), "m1", text("a")),
+            human(3, U(2), "q2"), asst(4, U(3), "m2", text("a2"))]
+    recs[2]["cwd"] = recs[3]["cwd"] = sub
+    write(tmp_path, recs, proj="C--work-example-project")
+    r = T.fork(SID, U(4), root=str(tmp_path))
+    assert r["cwd"] == start
+    assert r["command"] == f"cd '{start}'; claude --resume {r['newId']}"
+    assert not any("项目目录" in w for w in r["warnings"])
+
+
+def test_resume_cd_follows_the_project_folder_even_when_it_is_the_later_directory(tmp_path):
+    """负对照:项目目录对应的是子目录时,选的就是子目录。「永远取第一个 cwd」过不了这条。"""
+    sub = "C:/work/example-project/sub-dir"
+    recs = [human(1, None, "q"), asst(2, U(1), "m1", text("a")),
+            human(3, U(2), "q2"), asst(4, U(3), "m2", text("a2"))]
+    recs[2]["cwd"] = recs[3]["cwd"] = sub
+    write(tmp_path, recs, proj="C--work-example-project-sub-dir")
+    r = T.fork(SID, U(2), root=str(tmp_path))
+    assert r["cwd"] == sub
+
+
+def test_resume_cd_that_matches_no_project_folder_is_reported(tmp_path):
+    write(tmp_path, [human(1, None, "q"), asst(2, U(1), "m1", text("a"))], proj="unrelated")
+    r = T.fork(SID, U(2), root=str(tmp_path))
+    assert r["cwd"] == CWD
+    assert any("项目目录 unrelated" in w for w in r["warnings"])
+
+
+# ---------- 导出总量上限 ----------
+
+def test_export_is_capped_and_says_where_it_stopped(tmp_path, monkeypatch):
+    recs = [human(1, None, "q" * 50)]
+    for n in range(2, 12):
+        recs.append(asst(n, U(n - 1), f"m{n}", text("x" * 100)))
+    write(tmp_path, recs)
+    monkeypatch.setattr(T, "EXPORT_MAX", 250)
+    r = T.export_md(SID, U(11), root=str(tmp_path))
+    assert r["truncated"] is True
+    assert "导出在节点" in r["text"] and r["text"].count("x" * 100) < 10
+    monkeypatch.setattr(T, "EXPORT_MAX", 10_000_000)
+    r = T.export_md(SID, U(11), root=str(tmp_path))
+    assert r["truncated"] is False and r["text"].count("x" * 100) == 10
+
+
+# ---------- 主会话目录是指向根外的目录联接 ----------
+
+def test_a_main_session_behind_a_junction_out_of_the_root_is_refused(tmp_path):
+    _winapi = pytest.importorskip("_winapi")
+    root = tmp_path / "root"
+    root.mkdir()
+    outside = tmp_path / "outside"
+    src = write(outside, [human(1, None, "q"), asst(2, U(1), "m1", text("a"))], proj="p")
+    try:
+        _winapi.CreateJunction(str(outside / "p"), str(root / "proj-j"))
+    except (OSError, AttributeError) as e:
+        pytest.skip(f"建不了目录联接: {e}")
+    with pytest.raises(Refused) as ei:
+        T.chain(SID, root=str(root))
+    assert ei.value.code == "outside_root"
+    with pytest.raises(Refused) as ei:
+        T.fork(SID, U(2), root=str(root))
+    assert ei.value.code == "outside_root"
+    assert [p.name for p in (outside / "p").iterdir()] == [src.name]
+    # 正对照:同一份转录放在根里就读得到。
+    write(root, [human(1, None, "q")], proj="proj-real")
+    T._CACHE.clear()
+    import shutil
+    os.rmdir(root / "proj-j")      # 删联接本身,不碰根外的目标
+    assert T.chain(SID, root=str(root))["available"] is True
+    assert src.is_file()
+    shutil.rmtree(root / "proj-real")

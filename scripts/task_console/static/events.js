@@ -299,7 +299,8 @@ document.addEventListener("keydown",e=>{
     if(!all) showView(CURVIEW, false);
     return;
   }
-  if(k==="Escape"){ sel.clear(); render(); return; }
+  // DATA 在任务数据第一次读回来之前是 null:别的分区里按 Esc 不该抛 TypeError。
+  if(k==="Escape"){ sel.clear(); if(DATA) render(); return; }
   if(k==="j"||k==="ArrowDown"){ e.preventDefault(); cur=Math.min(cur+1,VIEW.length-1); render(); focusCur(); return; }
   if(k==="k"||k==="ArrowUp"){ e.preventDefault(); cur=Math.max(cur-1,0); render(); focusCur(); return; }
   if(k==="g"){ cur=0; render(); focusCur(); return; }

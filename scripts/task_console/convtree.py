@@ -50,6 +50,7 @@ PREVIEW = 200
 FIELD_MAX = 200_000
 RAW_MAX = 2 << 20          # 超过这个大小的行永远不整行下发
 RESULT_MD_MAX = 2000
+EXPORT_MAX = 16_000_000    # 一次导出的正文总字符数;超过就截断,并在文件里写明截在哪
 BIG_FORK_BYTES = 1_500_000
 META_MAX = 64 << 10        # 子代理 meta 是几行 JSON;大过这个的不是 meta
 RESPONSE_MAX = 2 << 20     # 一个节点的工具输入和结果加起来最多下发这么多
@@ -113,13 +114,13 @@ class _Containment:
 
 
 def _check_id(sid) -> str:
-    if not isinstance(sid, str) or not UUID_RE.match(sid):
+    if not isinstance(sid, str) or not UUID_RE.fullmatch(sid):
         raise Refused(f"会话 id 不是 UUID 形状: {str(sid)[:60]!r}", "bad_id")
     return sid
 
 
 def _check_uuid(u, what: str = "节点") -> str:
-    if not isinstance(u, str) or not UUID_RE.match(u):
+    if not isinstance(u, str) or not UUID_RE.fullmatch(u):
         raise Refused(f"{what} uuid 形状不对: {str(u)[:60]!r}", "bad_uuid")
     return u
 
@@ -127,7 +128,7 @@ def _check_uuid(u, what: str = "节点") -> str:
 def _check_sub(sub):
     if sub is None or sub == "":
         return None
-    if not isinstance(sub, str) or not AGENT_RE.match(sub):
+    if not isinstance(sub, str) or not AGENT_RE.fullmatch(sub):
         raise Refused(f"子代理 id 形状不对: {str(sub)[:60]!r}", "bad_sub")
     return sub
 
@@ -135,7 +136,7 @@ def _check_sub(sub):
 def _check_leaf(leaf):
     if leaf is None or leaf == "":
         return None
-    if not isinstance(leaf, str) or not UUID_RE.match(leaf):
+    if not isinstance(leaf, str) or not UUID_RE.fullmatch(leaf):
         raise Refused(f"leaf 形状不对: {str(leaf)[:60]!r}", "bad_leaf")
     return leaf
 
@@ -288,8 +289,11 @@ def _classify(o: dict):
         return "text", _clip(pick.get("text") or ""), None, tids, ()
     if t == "system":
         if o.get("subtype") == "compact_boundary":
-            cm = o.get("compactMetadata") or {}
-            return ("compact", _clip(f"{cm.get('trigger') or '?'} · {cm.get('preTokens')}→{cm.get('postTokens')}"),
+            # 一行坏掉的元数据(列表、字符串)只能坏它自己,不能让整场会话 500。
+            cm = o.get("compactMetadata")
+            cm = cm if isinstance(cm, dict) else {}
+            return ("compact", _clip(f"{_s(cm.get('trigger')) or '?'} · "
+                                     f"{_tokens(cm.get('preTokens'))}→{_tokens(cm.get('postTokens'))}"),
                     None, (), ())
         return "system", _clip(f"{o.get('subtype') or ''} {_s(o.get('content')) or ''}".strip()), None, (), ()
     if t == "attachment":
@@ -298,13 +302,18 @@ def _classify(o: dict):
     return "system", _clip(str(t)), None, (), ()
 
 
+def _tokens(v):
+    """token 数只认整数。转录是外来数据:一个字符串在这里原样放过去,到了页面就是一段 HTML。"""
+    return v if isinstance(v, int) and not isinstance(v, bool) else None
+
+
 def _slim_cm(cm):
     if not isinstance(cm, dict):
         return None
     pm = cm.get("preservedMessages") if isinstance(cm.get("preservedMessages"), dict) else {}
     lst = lambda v: [x for x in v if isinstance(x, str)] if isinstance(v, list) else []
-    return {"trigger": cm.get("trigger"), "preTokens": cm.get("preTokens"),
-            "postTokens": cm.get("postTokens"),
+    return {"trigger": _s(cm.get("trigger")), "preTokens": _tokens(cm.get("preTokens")),
+            "postTokens": _tokens(cm.get("postTokens")),
             "uuids": lst(pm.get("uuids")), "allUuids": lst(pm.get("allUuids")),
             "anchorUuid": _s(pm.get("anchorUuid"))}
 
@@ -314,7 +323,7 @@ class Index:
     __slots__ = ("path", "gz", "bytes", "lines", "bad", "E", "by", "children", "mids",
                  "results", "roots", "dangling", "pred", "title", "aiTitle", "customTitle",
                  "replacements", "agentOf", "size", "maxk", "firstHuman", "ms", "dupUuids",
-                 "predinv", "subs", "tail", "guessed", "noMid")
+                 "predinv", "subs", "tail", "guessed", "noMid", "owner")
 
 
 def _build(path: Path, gz: bool) -> Index:
@@ -415,6 +424,14 @@ def _build(path: Path, gz: bool) -> Index:
     ix.agentOf = agent_of
     ix.noMid = no_mid
 
+    # 哪些边界保留了哪条消息(uuids 和 allUuids 都算)。上溯时认「跨进了被保留消息」要用它。
+    owner = collections.defaultdict(list)
+    for e in E:
+        if e["kind"] == "compact" and e["cm"]:
+            for u in dict.fromkeys(e["cm"]["uuids"] + e["cm"]["allUuids"]):
+                owner[u].append(e["k"])
+    ix.owner = owner
+
     # 每个压缩边界的前驱。这是静态的(只看文件,不看叶子),所以建索引时算一次。
     ix.pred, ix.guessed = {}, set()
     for e in E:
@@ -438,6 +455,33 @@ def _is_descendant_raw(ix: Index, k: int, anc: int) -> bool:
         p = ix.E[k]["p"]
         k = ix.by.get(p) if p else None
     return False
+
+
+def _crossed(ix: Index, e: dict, nk: int):
+    """从 e 上一步走到它的父节点 nk,是不是跨过了一个压缩边界。是就返回那个边界,不是返回 None。
+
+    判据:nk 是某个边界 B 保留下来的消息,而且 B 写在 nk 和 e 之间。这时 e 是压缩之后
+    写下的,它看到的上下文是「B 的摘要 + 被保留消息」,不是 nk 之前的整段原始历史。
+    一条消息被两次压缩都保留过时取**写得最晚**的那个边界:e 之前最近的那次压缩
+    才是它真正接着的上下文,更早那次的摘要已经被后一次概括掉了。
+    """
+    E = ix.E
+    ni, ei = E[nk]["i"], e["i"]
+    best = None
+    for b in ix.owner.get(E[nk]["u"], ()):
+        bi = E[b]["i"]
+        if ni < bi < ei and (best is None or bi > E[best]["i"]):
+            best = b
+    return best
+
+
+def _summary_of(ix: Index, b: int):
+    """边界 b 的压缩摘要:优先 anchorUuid,没有就取 b 下面第一条摘要行。"""
+    E = ix.E
+    a = ix.by.get((E[b]["cm"] or {}).get("anchorUuid") or "")
+    if a is not None and E[a]["kind"] == "summary":
+        return a
+    return next((c for c in ix.children.get(b, ()) if E[c]["kind"] == "summary"), None)
 
 
 def _predecessor(ix: Index, b: int):
@@ -561,7 +605,7 @@ def _path(ix: Index, leafk: int) -> tuple[list, dict, int, set]:
     跨段按行号排会把被保留的消息(它们写在边界之前)和压缩后的内容搅在一起。
     """
     E = ix.E
-    seq, seen, cycles = [], set(), 0
+    seq, seen, cycles, inserted = [], set(), 0, set()
     k = leafk
     while k is not None:
         if k in seen:
@@ -574,24 +618,49 @@ def _path(ix: Index, leafk: int) -> tuple[list, dict, int, set]:
             k = ix.pred.get(k)
             continue
         p = e["p"]
-        k = ix.by.get(p) if p else None
-    walked = set(seq)
+        nk = ix.by.get(p) if p else None
+        if nk is not None:
+            # 压缩后的第一条消息也可能直接挂在一条被保留的消息上,上溯就不会踩到边界行。
+            # 不把边界和摘要补进来,链上看不出这里压缩过,前文像是模型全都看到了,
+            # 而分叉(_fork_chain)在同一处是会从边界开始的:两边说的不是同一条链。
+            b = _crossed(ix, e, nk)
+            if b is not None:
+                for m in (_summary_of(ix, b), b):
+                    if m is not None and m not in seen:
+                        seen.add(m)
+                        inserted.add(m)
+                        seq.append(m)
+        k = nk
+    # 补进来的边界和摘要不算「走过」:上溯是从被保留消息旁边绕过去的,没有经过它们。
+    # 算进去的话,那个边界自己接出去的另一支(摘要下面另起的对话)在分叉菜单里也亮「当前」。
+    walked = set(seq) - inserted
     seq.reverse()
     segof, seg = {}, 0
     for k in seq:
         if E[k]["kind"] == "compact":
             seg += 1
         segof[k] = seg
-    _complete(ix, segof)
+    _complete(ix, segof, walked)
     order = sorted(segof, key=lambda k: (segof[k], E[k]["i"]))
     return order, segof, cycles, walked
 
 
-def _complete(ix: Index, segof: dict) -> None:
+def _group(ix: Index, k: int) -> list:
+    e = ix.E[k]
+    return ix.mids.get(e["mid"], [k]) if e["t"] == "assistant" and e["mid"] else [k]
+
+
+def _complete(ix: Index, segof: dict, walked: set) -> None:
     """回复组补全:同一 message.id 的所有块,和被纳入的每个 tool_use 的结果。
 
     并行工具调用在 parentUuid 上长成一个 1→2 的假分叉,叶子那一侧的上溯会跳过另一块
     和它的结果。不补全的话,一次调了三个工具的回复在链上只剩一个。
+
+    walked 是上溯真正走过的节点。结果只补**一份**:同一个工具调用在文件里有两份结果时
+    (两条分支各答了一次),走过的那份优先,都没走过就取写得最早的那份。两份都补的话,
+    链上混进另一条分支的结果,分叉出来的文件里一个 tool_use 跟着两个 tool_result。
+    上溯如果从这一组直接走进了一条别的消息(没经过结果),没走过的结果就是写在
+    后面的另一条分支,不补:补进来它会被排在那条消息之后。
     """
     E = ix.E
     for k in list(segof):
@@ -600,11 +669,25 @@ def _complete(ix: Index, segof: dict) -> None:
             for m in ix.mids.get(e["mid"], ()):
                 if not E[m]["side"] or e["side"]:
                     segof.setdefault(m, segof[k])
+    wchild = collections.defaultdict(list)
+    for w in walked:
+        p = E[w]["p"]
+        pk = ix.by.get(p) if p else None
+        if pk is not None:
+            wchild[pk].append(w)
     for k in list(segof):
-        for tid in E[k]["tids"]:
-            for r in ix.results.get(tid, ()):
-                if not E[r]["side"] or E[k]["side"]:
-                    segof.setdefault(r, segof[k])
+        e = E[k]
+        if not e["tids"]:
+            continue
+        left = any(E[w]["kind"] in ("human", "text", "tool", "thinking")
+                   and not (e["mid"] and E[w]["mid"] == e["mid"])
+                   for g in _group(ix, k) for w in wchild.get(g, ()))
+        for tid in e["tids"]:
+            rs = [r for r in ix.results.get(tid, ()) if not E[r]["side"] or e["side"]]
+            on = [r for r in rs if r in walked]
+            pick = on or ([] if left else rs[:1])
+            for r in pick:
+                segof.setdefault(r, segof[k])
 
 
 def _fork_at(ix: Index, k: int, walked: set):
@@ -614,27 +697,45 @@ def _fork_at(ix: Index, k: int, walked: set):
     会让伪分叉那一组永远亮着「当前」。"""
     E = ix.E
     ch = ix.children.get(k, ())
-    if len(ch) < 2:
+    # 以 k 为前驱的压缩边界也是 k 的孩子:压缩之前的那一支从这里接出去。
+    # 只数 children 的话,一个压缩前分出去、后来又被压缩的分支在任何菜单里都找不到。
+    pb = ix.predinv.get(k, ())
+    if len(ch) + len(pb) < 2:
         return None
     e = E[k]
     is_asst = e["t"] == "assistant" and bool(e["mid"])
-    grp = ix.mids.get(e["mid"], [k]) if is_asst else [k]
+    grp = _group(ix, k)
     tids = {t for g in grp for t in E[g]["tids"]}
+    # 同一个工具调用在 k 下面被答了两次:那是两条分支,不是并行调用的另一半。
+    answers = collections.Counter(r for c in ch if E[c]["kind"] == "result"
+                                  for r in set(E[c]["rids"]) if r in tids)
     pseudo, real = [], []
+    viab = {b: [b] for b in pb}
     for c in ch:
         ce = E[c]
-        if (is_asst and ce["mid"] == e["mid"]) or \
-                (ce["kind"] == "result" and any(r in tids for r in ce["rids"])):
+        # 压缩之后直接挂回 k(k 是被保留的消息)的那条,和经由边界接出去的是同一支,
+        # 前提是边界那一侧自己没有再聊下去(摘要下面没有任何用户消息)。聊过的话,
+        # 按 Claude Code 加载时的重链,两边都是 k 的孩子:那是回退重写,真分叉。
+        b = _crossed(ix, ce, k)
+        if b is not None and b in viab and ix.firstHuman[b] is None:
+            viab[b].append(c)
+        elif is_asst and ce["mid"] == e["mid"]:
             pseudo.append(c)
+        elif ce["kind"] == "result" and any(r in tids for r in ce["rids"]):
+            if any(answers[r] > 1 for r in ce["rids"] if r in tids):
+                real.append(c)
+            else:
+                pseudo.append(c)
         else:
             real.append(c)
+    nreal = len(real) + len(viab)
     # 已经有两支以上真分支时,那组同回复的块如果既不在走过的链上、里面也没有任何
     # 用户消息,它就不是一条能「切过去」的对话,只是被放弃那次回复的残块。
     # 列出来的话,菜单里会多一个点了只能停在一个工具调用上的「分支」。
-    if (pseudo and len(real) >= 2 and not any(c in walked for c in pseudo)
+    if (pseudo and nreal >= 2 and not any(c in walked for c in pseudo)
             and all(ix.firstHuman[c] is None for c in pseudo)):
         pseudo = []
-    branches = [[c] for c in real] + ([pseudo] if pseudo else [])
+    branches = [[c] for c in real] + list(viab.values()) + ([pseudo] if pseudo else [])
     if len(branches) < 2:
         return None
     alts = []
@@ -642,9 +743,15 @@ def _fork_at(ix: Index, k: int, walked: set):
         leafk = max((ix.maxk[c] for c in br), key=lambda x: E[x]["i"])
         fhs = [ix.firstHuman[c] for c in br if ix.firstHuman[c] is not None]
         fh = min(fhs, key=lambda x: E[x]["i"]) if fhs else None
+        # 人常常把同一句话重发一遍,几条分支的第一条用户消息一字不差。所以再给出
+        # 每支从哪一刻开始、它自己的第一条和最后一条写的是什么,菜单里才分得开。
+        f0 = min(br, key=lambda x: E[x]["i"])
         alts.append({"u": E[br[0]]["u"], "size": sum(ix.size[c] for c in br),
                      "leaf": E[leafk]["u"], "leafLineIndex": E[leafk]["i"],
                      "preview": E[fh]["pv"] if fh is not None else None,
+                     "ts": E[f0]["ts"], "firstKind": E[f0]["kind"], "firstPreview": E[f0]["pv"],
+                     "leafTs": E[leafk]["ts"], "leafKind": E[leafk]["kind"],
+                     "leafPreview": E[leafk]["pv"],
                      "active": any(c in walked for c in br)})
     return {"u": e["u"], "lineIndex": e["i"], "alternatives": alts}
 
@@ -667,7 +774,7 @@ def _subagents(loc: dict, sid: str) -> tuple[list, int]:
         name = f.name
         stem = name[len("agent-"):]
         stem = stem[:-len(".jsonl.gz")] if stem.endswith(".jsonl.gz") else stem[:-len(".jsonl")]
-        if not AGENT_RE.match(stem):
+        if not AGENT_RE.fullmatch(stem):
             bad += 1
             continue
         meta = f.with_name(f"agent-{stem}.meta.json")
@@ -769,7 +876,7 @@ def chain(sid, leaf=None, sub=None, root=None) -> dict:
             continue
         if e["kind"] == "human" or cur is None:
             cur = {"type": "turn", "k": tno, "u": e["u"], "ts": e["ts"], "human": None,
-                   "steps": [], "counts": {}, "forks": []}
+                   "reply": None, "steps": [], "counts": {}, "forks": []}
             tno += 1
             turns.append(cur)
             if e["kind"] == "human":
@@ -792,6 +899,9 @@ def chain(sid, leaf=None, sub=None, root=None) -> dict:
         if fk:
             st["fork"] = len(fk["alternatives"])
             cur["forks"].append(fk)
+        if e["kind"] == "text" and e["pv"]:
+            # 收起的一轮只有一行:那一行除了问了什么,还要看得出最后答了什么。
+            cur["reply"] = {"u": e["u"], "ts": e["ts"], "preview": e["pv"]}
         cur["steps"].append(st)
         cur["counts"][e["kind"]] = cur["counts"].get(e["kind"], 0) + 1
 
@@ -990,6 +1100,37 @@ def _range(order, E, to, frm):
     return a, b
 
 
+def _read_slim(ix: Index, ks):
+    """导出要的每一行,读回来立刻压成 Markdown 用得到的那几段,原始行随即丢掉。
+
+    整行留着的话,一次勾了工具的整链导出要把几百兆原文同时攥在内存里。按偏移顺序读
+    (gz 也只能这样读),累计超过 EXPORT_MAX 就停:返回 (瘦记录, 没读到的那些行或 None)。
+    """
+    out, used, cut = {}, 0, None
+    todo = sorted(ks, key=lambda x: ix.E[x]["off"])
+    with _open_bin(ix.path, ix.gz) as fh:
+        for n, k in enumerate(todo):
+            if used > EXPORT_MAX:
+                cut = set(todo[n:])
+                break
+            e = ix.E[k]
+            fh.seek(e["off"])
+            c = _content(_obj(fh.read(e["n"]), e["u"]))
+            res = []
+            for r in c["results"]:
+                txt = r["text"] or ""
+                if len(txt) > RESULT_MD_MAX:
+                    txt = txt[:RESULT_MD_MAX] + f"\n… (截断,原文 {len(r['text'])} 字符)"
+                res.append(txt)
+            sc = {"text": c["text"], "thinking": c["thinking"], "results": res,
+                  "tools": [{"name": t["name"], "short": t["short"]} for t in c["tools"]],
+                  "omitted": "omitted" in c["truncatedFields"]}
+            used += (len(sc["text"] or "") + len(sc["thinking"] or "") + sum(map(len, res))
+                     + sum(len(t["short"]) + 40 for t in sc["tools"]))
+            out[k] = sc
+    return out, cut
+
+
 def export_md(sid, to, frm=None, leaf=None, sub=None, include_tools=False,
               include_thinking=False, root=None) -> dict:
     """显示链上 [frm, to] 这一段的 Markdown。只读。"""
@@ -1006,7 +1147,7 @@ def export_md(sid, to, frm=None, leaf=None, sub=None, include_tools=False,
     want = [k for k in ks if E[k]["kind"] in ("human", "text", "summary", "compact")
             or (include_tools and E[k]["kind"] in ("tool", "result"))
             or (include_thinking and E[k]["kind"] == "thinking")]
-    raws = _read_lines(ix, want)
+    slim, cut_at = _read_slim(ix, want)
     title = _fallback_title(ix, sid)
     first, last = E[ks[0]], E[ks[-1]]
     cwd = last["cwd"] or first["cwd"]
@@ -1022,9 +1163,13 @@ def export_md(sid, to, frm=None, leaf=None, sub=None, include_tools=False,
         e = E[k]
         if e["kind"] == "human":
             turns += 1
-        if k not in raws:
+        if cut_at is not None and k in cut_at:
+            out += ["", f"> (导出在节点 `{e['u'][:8]}` 处截断:整段超过 {EXPORT_MAX // 1_000_000} "
+                    "百万字符的上限。缩小范围,或不勾选工具调用和思考后再导出)", ""]
+            break
+        if k not in slim:
             continue
-        c = _content(_obj(raws[k], e["u"]))
+        c = slim[k]
         ts = _local_ts(e["ts"])
         if e["kind"] == "compact":
             cm = e["cm"] or {}
@@ -1052,16 +1197,13 @@ def export_md(sid, to, frm=None, leaf=None, sub=None, include_tools=False,
                     out += [f"> 🔧 {t['name']}: {t['short']}", ""]
             elif e["kind"] == "result":
                 for r in c["results"]:
-                    txt = r["text"] or ""
-                    if len(txt) > RESULT_MD_MAX:
-                        txt = txt[:RESULT_MD_MAX] + f"\n… (截断,原文 {len(r['text'])} 字符)"
-                    out += [_fence(txt), ""]
-            if "omitted" in c["truncatedFields"]:
+                    out += [_fence(r), ""]
+            if c["omitted"]:
                 out += ["> (这一行还有更多工具内容,超过单行下发上限,没有导出)", ""]
     name = f"{_slug(title) or sid[:8]}-{first['u'][:8]}-{last['u'][:8]}.md"
     name = re.sub(r"[^A-Za-z0-9._-]", "-", name)
     return {"filename": name, "text": "\n".join(out).rstrip() + "\n", "nodes": len(ks),
-            "turns": turns}
+            "turns": turns, "truncated": cut_at is not None}
 
 
 # ---------------------------------------------------------------- API 4: fork
@@ -1099,8 +1241,8 @@ def _relinked_parent(ix: Index, b: int):
     return parent, P, anc
 
 
-def _fork_chain(ix: Index, atk: int) -> tuple[list, int | None, list]:
-    """节点 at 那一刻模型真正拿到的上下文,按链顺序。返回 (链, 边界, 实际带上的被保留消息)。
+def _fork_chain(ix: Index, atk: int) -> tuple[list, int | None, list, list]:
+    """节点 at 那一刻模型真正拿到的上下文,按链顺序。返回 (链, 边界, 实际带上的被保留消息, 警告)。
 
     第一步只判「在哪个边界停」:沿原始 parentUuid 上溯,直接走到边界 B,或者从边界之后
     一步跨进 B 的被保留消息(uuids 或 allUuids,它们写在 B 之前)。后一种不拦的话,
@@ -1115,11 +1257,7 @@ def _fork_chain(ix: Index, atk: int) -> tuple[list, int | None, list]:
     重链只认 uuids,补进去的块 Claude Code 看不到,而且会被按行号排到错的位置。
     """
     E = ix.E
-    owner = collections.defaultdict(list)
-    for e in E:
-        if e["kind"] == "compact" and e["cm"]:
-            for u in dict.fromkeys(e["cm"]["uuids"] + e["cm"]["allUuids"]):
-                owner[u].append(e["k"])
+    notes = []
     seen, endb = set(), None
     k = atk
     while k is not None and k not in seen:
@@ -1130,10 +1268,7 @@ def _fork_chain(ix: Index, atk: int) -> tuple[list, int | None, list]:
             break
         nk = ix.by.get(e["p"]) if e["p"] else None
         if nk is not None:
-            for b in owner.get(E[nk]["u"], ()):
-                if E[nk]["i"] < E[b]["i"] < e["i"]:
-                    endb = b
-                    break
+            endb = _crossed(ix, e, nk)
             if endb is not None:
                 break
         k = nk
@@ -1152,9 +1287,17 @@ def _fork_chain(ix: Index, atk: int) -> tuple[list, int | None, list]:
         k = parent(k)
     walk.reverse()
     if endb is not None and (not walk or walk[0] != endb):
-        # 重链没走到边界(摘要的父链断了)。边界照样放在最前面:没有它,
+        anc_k = ix.by.get((E[endb]["cm"] or {}).get("anchorUuid") or "")
+        if anc_k is None or anc_k not in walk:
+            # 连摘要都没走到:上溯从被保留消息旁边溜进了压缩前的历史。把边界硬塞在
+            # 最前面拼出来的,是一段摘要缺席、夹着从未被保留的旧消息的上下文,
+            # 不是模型在这个节点真正拿到过的东西。宁可不分叉,也不静默写出它。
+            raise Refused(f"从这个节点上溯接不回压缩边界 {E[endb]['u'][:8]} 的摘要,"
+                          "拼不出模型在这里真正看到的上下文,拒绝分叉", "unrelinkable")
+        # 走到了摘要,只是摘要的父链没接回边界。边界照样放在最前面:没有它,
         # 这份分叉在 Claude Code 眼里就不是一份压缩过的会话。
         walk.insert(0, endb)
+        notes.append(f"压缩摘要没有接回边界 {E[endb]['u'][:8]},已把边界补在分叉最前面")
 
     # 分开「头」和「尾」:头是边界、摘要、被保留消息以及写在边界之前的一切,
     # 尾是边界之后真正聊出来的那一段。只有尾补回复组、按行号排。
@@ -1168,7 +1311,7 @@ def _fork_chain(ix: Index, atk: int) -> tuple[list, int | None, list]:
     head, tail = walk[: cut + 1], walk[cut + 1:]
     onwalk = set(walk)
     segof = {k: 0 for k in tail}
-    _complete(ix, segof)
+    _complete(ix, segof, onwalk)
     extra = {k for k in segof if k not in onwalk}
     if endb is not None:
         extra = {k for k in extra if E[k]["i"] > E[endb]["i"]}
@@ -1181,7 +1324,15 @@ def _fork_chain(ix: Index, atk: int) -> tuple[list, int | None, list]:
              if not E[k]["tids"]
              or all(any(r in have for r in ix.results.get(t, ())) for t in E[k]["tids"])}
     rest = sorted(set(tail) | extra, key=lambda k: E[k]["i"])
-    return head + rest, endb, [k for k in head if k in set(P)]
+    out = head + rest
+    # 分叉里还剩下没有结果的工具调用(结果写在另一条分支上、写在后面的消息之后,
+    # 或者根本没写):照实说,不替它编一个结果。分叉点本身是工具调用、结果还没来时也算。
+    got = {r for k in out for r in E[k]["rids"]}
+    open_ = [t for k in out for t in E[k]["tids"] if t not in got]
+    if open_:
+        notes.append(f"{len(open_)} 个工具调用在分叉里没有对应的结果"
+                     "(结果不在这条链上),恢复后模型会看到它们没有返回")
+    return out, endb, [k for k in head if k in set(P)], notes
 
 
 def _trim_preserved(o: dict, kept: list) -> None:
@@ -1231,7 +1382,7 @@ def fork(sid, at, leaf=None, sub=None, root=None) -> dict:
     atk = ix.by.get(at)
     if atk is None or atk not in set(order):
         raise Refused("分叉点不在当前显示的链上", "not_on_path")
-    ks, endb, pres_used = _fork_chain(ix, atk)
+    ks, endb, pres_used, notes = _fork_chain(ix, atk)
     raws = _read_lines(ix, ks)
     kept_pres = [E[k]["u"] for k in pres_used]
 
@@ -1258,7 +1409,7 @@ def fork(sid, at, leaf=None, sub=None, root=None) -> dict:
             last_ua = E[k]["u"]
     if last_ua is None:
         raise Refused("分叉出的链里没有任何用户或助手消息,Claude Code 恢复不了它", "empty_fork")
-    warnings = []
+    warnings = list(notes)
     if ix.replacements:
         merged, badr = [], 0
         with _open_bin(ix.path, ix.gz) as fh:
@@ -1285,11 +1436,8 @@ def fork(sid, at, leaf=None, sub=None, root=None) -> dict:
     if endb is None and emitted_bytes > BIG_FORK_BYTES:
         warnings.append(f"分叉里没有压缩边界而且有 {emitted_bytes // 1024} KB,"
                         "大概率超出模型上下文")
-    cwd = E[atk]["cwd"] or next((E[k]["cwd"] for k in reversed(ks) if E[k]["cwd"]), None)
-    if not cwd:
-        warnings.append("转录里没有记录目录,恢复前要自己 cd 到原来的目录")
-
     d = loc["main"].parent
+    cwd = _resume_cwd(ix, ks, atk, d.name, warnings)
     repo = _enclosing_worktree(d)
     if repo is not None:
         raise Refused(f"会话目录在一个 git 工作树里({repo}),分叉写出的是真实对话内容,"
@@ -1332,6 +1480,34 @@ def fork(sid, at, leaf=None, sub=None, root=None) -> dict:
             "warnings": warnings}
 
 
+def _project_key(cwd: str) -> str:
+    """Claude Code 给一个工作目录起的项目目录名:每个非字母数字字符换成 `-`。"""
+    return re.sub(r"[^A-Za-z0-9]", "-", cwd)
+
+
+def _resume_cwd(ix: Index, ks: list, atk: int, proj: str, warnings: list):
+    """恢复命令里 cd 到哪。
+
+    `claude --resume <id>` 只在「当前目录对应的项目目录」里找会话文件,而分叉文件写在
+    源转录所在的项目目录里。一场会话中途 cd 过的话,分叉点那一行记的 cwd 可以是另一个
+    目录,照它拼的命令会到一个找不到这份文件的项目目录里去找。所以挑编码后正好等于
+    项目目录名的那个 cwd:先看分叉点,再从链尾往前,最后是整份转录。一个都对不上时
+    退到转录里第一个记录的目录,并且照实说。"""
+    E = ix.E
+    cands = [E[atk]["cwd"]] + [E[k]["cwd"] for k in reversed(ks)] + [e["cwd"] for e in E]
+    for c in dict.fromkeys(c for c in cands if c):
+        if _project_key(c) == proj:
+            return c
+    first = next((e["cwd"] for e in E if e["cwd"]), None)
+    if not first:
+        warnings.append("转录里没有记录目录,恢复前要自己 cd 到原来的目录")
+    else:
+        warnings.append(f"转录里记录的目录没有一个对应分叉文件所在的项目目录 {proj},"
+                        "命令里用的是会话开始时的目录;claude --resume 找不到时,"
+                        "要先进到那个项目目录对应的工作目录")
+    return first
+
+
 def _enclosing_worktree(d: Path):
     """d 或它的任一上级里有 .git(目录或文件,子模块和 worktree 的 .git 是文件)就返回那一级。
 
@@ -1351,7 +1527,9 @@ def _enclosing_worktree(d: Path):
 # 这些字符在 PowerShell 或 POSIX shell 的单引号外面、或者单引号本身里有意义。
 # 目录名里出现任何一个就不拼 cd:给人一条「粘贴运行」的命令,它就必须在两种 shell 里
 # 都只是一个 cd,而不是 $( ) 或反引号里的另一条命令。
-_UNSAFE_CWD = re.compile(r"['`$\x00-\x1f\x7f]")
+# U+2018..U+201B 在 PowerShell 里和 ' 一样是单引号定界符:`Bob’s notes` 会提前关掉引号,
+# 后面的内容就成了下一条命令。
+_UNSAFE_CWD = re.compile(r"['`$\x00-\x1f\x7f\u2018-\u201b]")
 
 
 def _resume_command(cwd, new: str, warnings: list) -> str:

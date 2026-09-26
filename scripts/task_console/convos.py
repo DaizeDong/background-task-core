@@ -96,7 +96,9 @@ def _looks_injected(text: str) -> bool:
     """系统注入的伪用户消息:提醒块、命令回显、钩子输出。它们不是人打的字。"""
     t = text.lstrip()
     return t.startswith(("<system-reminder", "<command-name", "<command-message",
-                         "<local-command", "Caveat:", "[Request interrupted"))
+                         "<local-command", "Caveat:", "[Request interrupted",
+                         # 后台任务结束时由运行框架塞进来的通知,形状是纯字符串,但不是人打的字。
+                         "<task-notification"))
 
 
 def read_titles(path: Path) -> dict:

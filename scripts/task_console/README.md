@@ -40,10 +40,15 @@ Windows only. It reads the Windows Task Scheduler; there is nothing to read anyw
 The conversation chain is read from the whole transcript, not from `parentUuid` alone. Parallel
 tool calls make a node look like it has two children, and those are one reply, not a branch. A
 compaction boundary has no parent, so the walk continues into the earlier history through the
-boundary's recorded predecessor, and when it has to guess it says so. A fork writes a new
-session file next to the source, holding only the context the model had at that node, and gives
-back a `claude --resume` command. It never modifies the source file, never overwrites an existing
-file and refuses to write inside a git worktree. Line numbers in these responses are physical
+boundary's recorded predecessor, and when it has to guess it says so. A message written after a
+compaction can also hang directly on a message the compaction kept; the chain then shows the
+boundary and summary at that step, so it agrees with what a fork would hand the model. A fork
+writes a new session file next to the source, holding only the context the model had at that
+node, and gives back a `claude --resume` command whose `cd` is the directory that owns the
+project folder the file was written to (a session that changed directory midway would otherwise
+resume in a folder that does not have the file). It never modifies the source file, never
+overwrites an existing file, refuses to write inside a git worktree, and refuses a node whose
+walk cannot reach the compaction summary rather than write a context the model never saw. Line numbers in these responses are physical
 lines in the file (`lineIndex`, blank and unreadable lines included); byte positions are
 `byteOffset` / `byteLength`.
 
@@ -52,13 +57,19 @@ clicking a session opens it below the list (the row still has a button that copi
 and `#convos/<session id>` links straight to it, with `/<subagent id>` and `/leaf=<uuid>` for a
 subagent transcript or a non-default branch, so Back returns to the previous branch. Turns start
 collapsed and a turn's steps are only rendered when it is expanded, because a long session runs
-to tens of thousands of nodes. With focus on the chain, `j` / `k` move, Enter expands, `[` and `]`
-set the export range and Esc closes; those keys never reach the task table. Export returns the
-Markdown inside JSON and the page saves it itself, because the token only travels in a request
-header. The panel is optional (`static/panels/convchain.js`): if it fails to load, its card says
+to tens of thousands of nodes. A compaction boundary is a divider row showing the token counts
+before and after; clicking it expands the summary the model continued from. Where the file
+branches, the node carries a menu of the alternatives, and choosing one reloads the chain along
+that branch. A subagent opens read-only with a link back to the node it was opened from; it can
+be exported but not forked. The page's refresh button re-reads an open chain too, keeping the
+selection, the expanded turns and the range. With focus on the chain, `j` / `k` move, Enter expands, `[` and `]`
+set the export range and Esc closes; those keys never reach the task table. With only a start
+set, the range runs to the end of the chain. Export is a GET that returns the Markdown inside
+JSON and the page saves it itself, because the token only travels in a request header; one
+export is capped at 16 million characters and the file says where it was cut. The panel is optional (`static/panels/convchain.js`): if it fails to load, its card says
 so, the rest of the console keeps working, and a session row falls back to copying the path.
-In read-only preview the export and fork buttons are disabled with the preview's reason, since
-the server refuses every POST there.
+In read-only preview the fork button is disabled with the preview's reason, since the server
+refuses every POST there; export is a read and keeps working.
 
 Five states, not two, for freshness. `LastTaskResult` is an HRESULT, not an exit code: one value
 means "currently running" and another means "has never run". Treating non-zero as failure marks

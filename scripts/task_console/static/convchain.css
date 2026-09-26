@@ -11,6 +11,7 @@
    label 是 flex 项,默认 min-width:auto 不肯缩,所以两层都要放开。 */
 .ch-crumb label{display:flex;gap:6px;align-items:center;min-width:0;max-width:100%}
 .ch-crumb select{min-width:0;max-width:100%;flex:1 1 auto;font-size:var(--fs-meta)}
+.ch-crumb input{min-width:0;width:16em;max-width:100%;font-size:var(--fs-meta)}
 .ch-crumb code{font-family:var(--mono);overflow-wrap:anywhere}
 .ch-head{display:flex;flex-wrap:wrap;gap:3px 12px;align-items:baseline;font-size:var(--fs-meta);
   color:var(--dim);margin-bottom:6px;min-width:0}
@@ -32,7 +33,9 @@
   .ch-split{grid-template-columns:minmax(0,1fr);height:auto;overflow:visible}
   /* 窄屏上计数徽章会把用户那句话挤到只剩几个字。徽章是次要信息,步数留着。 */
   .ch-cnt .ch-bd{display:none}
-  .ch-list{max-height:55vh;height:55vh;contain:layout paint}
+  /* 高度跟内容走、封顶 55vh:两轮的短会话不该在手机上留出半屏空白。 */
+  .ch-list{height:auto;min-height:120px;max-height:45vh;contain:layout paint}
+  .ch-t .rp{grid-column:2 / -1}
   .ch-side{contain:none}
   .ch-t{grid-template-columns:12px minmax(0,auto) minmax(0,1fr) auto}
   .ch-t .ts{display:none}
@@ -46,6 +49,9 @@
 .ch-t .no{color:var(--faint);font-family:var(--mono);font-size:var(--fs-meta);font-variant-numeric:tabular-nums}
 .ch-t .pv{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink)}
 .ch-t .pv.none{color:var(--faint);font-style:italic}
+/* 收起时的第二行:这一轮最后一条回复。 */
+.ch-t .rp{grid-column:3 / -1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  color:var(--faint);font-size:var(--fs-meta)}
 .ch-t .ts,.ch-s .ts,.ch-cmp .ts{color:var(--faint);font-size:var(--fs-meta);
   font-variant-numeric:tabular-nums;white-space:nowrap}
 .ch-cnt{display:inline-flex;gap:7px;font-size:var(--fs-chip);color:var(--dim);white-space:nowrap}
@@ -90,6 +96,7 @@
 .ch-fk button:hover:not(:disabled){background:var(--cur)}
 .ch-fk .pv{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ch-fk .sz{color:var(--faint);font-variant-numeric:tabular-nums;white-space:nowrap}
+.ch-fk .sub{grid-column:2 / -1;color:var(--faint);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ch-fk .act{color:var(--cyan)}
 .ch-fk .alt{color:var(--amber)}
 /* 右栏。动作条钉在顶上:详情可能是几万字,动作不该被挤到底下去找。 */
@@ -113,3 +120,5 @@
   max-height:60vh;overflow:auto}
 .ch-pre.bad{border-color:var(--bad)}
 .ch-det details>summary{cursor:pointer;color:var(--dim);margin:6px 0 2px}
+/* 会话列表里能打开对话链的那一行,明写一个入口:只靠行的 title 提示,没人知道这里能点开。 */
+.cv-open{color:var(--cyan);white-space:nowrap}

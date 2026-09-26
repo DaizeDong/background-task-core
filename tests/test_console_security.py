@@ -804,7 +804,7 @@ _CV_U2 = "00000000-0000-4000-8000-000000000002"
 _CV_ROUTES = [
     ("GET", f"/api/convo/chain?id={_CV_SID}", None),
     ("GET", f"/api/convo/node?id={_CV_SID}&u={_CV_U}", None),
-    ("POST", "/api/convo/export", {"id": _CV_SID, "to": _CV_U}),
+    ("GET", f"/api/convo/export?id={_CV_SID}&to={_CV_U}", None),
     ("POST", "/api/convo/fork", {"id": _CV_SID, "at": _CV_U}),
 ]
 
@@ -857,11 +857,15 @@ def _no_fs(monkeypatch):
     ("GET", "/api/convo/node?id=%2A&u=" + _CV_U, None, "bad_id"),
     ("GET", f"/api/convo/chain?id={_CV_SID}&path=..%2Fx", None, "bad_query"),
     ("GET", f"/api/convo/chain?id={_CV_SID}&id={_CV_SID}", None, "bad_query"),
-    ("POST", "/api/convo/export", {"id": "../../x", "to": _CV_U}, "bad_id"),
-    ("POST", "/api/convo/export", {"id": _CV_SID, "to": "../x"}, "bad_uuid"),
-    ("POST", "/api/convo/export", {"id": _CV_SID}, "bad_uuid"),
-    ("POST", "/api/convo/export", {"id": _CV_SID, "to": _CV_U, "leaf": "x"}, "bad_leaf"),
-    ("POST", "/api/convo/export", {"id": _CV_SID, "to": _CV_U, "tools": "yes"}, "bad_body"),
+    ("GET", f"/api/convo/export?id=..%2F..%2Fx&to={_CV_U}", None, "bad_id"),
+    ("GET", f"/api/convo/export?id={_CV_SID}&to=..%2Fx", None, "bad_uuid"),
+    ("GET", f"/api/convo/export?id={_CV_SID}", None, "bad_uuid"),
+    ("GET", f"/api/convo/export?id={_CV_SID}&to={_CV_U}&leaf=x", None, "bad_leaf"),
+    ("GET", f"/api/convo/export?id={_CV_SID}&to={_CV_U}&tools=yes", None, "bad_query"),
+    ("GET", f"/api/convo/export?id={_CV_SID}&to={_CV_U}&path=x", None, "bad_query"),
+    # 形状闸是整串匹配:结尾多一个换行的 id 不是 UUID(以前 `$` 放它过去)。
+    ("GET", f"/api/convo/export?id={_CV_SID}%0A&to={_CV_U}", None, "bad_id"),
+    ("GET", f"/api/convo/chain?id={_CV_SID}&sub=abc%0A", None, "bad_sub"),
     ("POST", "/api/convo/fork", {"id": "..\\..\\x", "at": _CV_U}, "bad_id"),
     ("POST", "/api/convo/fork", {"id": _CV_SID, "at": "*"}, "bad_uuid"),
     ("POST", "/api/convo/fork", {"id": _CV_SID, "at": _CV_U, "sub": "../x"}, "bad_sub"),
@@ -924,8 +928,8 @@ def test_convo_fork_round_trip_over_http(srv, monkeypatch, tmp_path):
     assert st == 200 and json.loads(data)["leaf"] == _CV_U2
     st, data = call(srv, "GET", f"/api/convo/node?id={_CV_SID}&u={_CV_U2}", token=TOKEN)
     assert st == 200 and json.loads(data)["text"] == "hi"
-    st, data = call(srv, "POST", "/api/convo/export", token=TOKEN,
-                    body={"id": _CV_SID, "to": _CV_U2, "tools": True, "thinking": False})
+    st, data = call(srv, "GET", f"/api/convo/export?id={_CV_SID}&to={_CV_U2}&tools=1&thinking=0",
+                    token=TOKEN)
     assert st == 200 and "hello" in json.loads(data)["text"]
     st, data = call(srv, "POST", "/api/convo/fork", token=TOKEN, body={"id": _CV_SID, "at": _CV_U2})
     assert st == 200, data[:300]
@@ -934,11 +938,10 @@ def test_convo_fork_round_trip_over_http(srv, monkeypatch, tmp_path):
 
 
 def test_convo_post_body_has_a_size_cap(srv, _no_fs):
-    """两条对话链 POST 的正文只有几个 id。超过上限的直接 413,不解析、不碰文件系统。"""
-    big = {"id": _CV_SID, "at": _CV_U, "to": _CV_U, "leaf": "x" * (S.CONVO_BODY_MAX + 10)}
-    for path in ("/api/convo/export", "/api/convo/fork"):
-        st, data = call(srv, "POST", path, token=TOKEN, body=big)
-        assert (st, json.loads(data)["code"]) == (413, "too_large"), path
+    """分叉 POST 的正文只有几个 id。超过上限的直接 413,不解析、不碰文件系统。"""
+    big = {"id": _CV_SID, "at": _CV_U, "leaf": "x" * (S.CONVO_BODY_MAX + 10)}
+    st, data = call(srv, "POST", "/api/convo/fork", token=TOKEN, body=big)
+    assert (st, json.loads(data)["code"]) == (413, "too_large")
     assert _no_fs == []
 
 
@@ -948,3 +951,45 @@ def test_convo_post_body_just_under_the_cap_is_parsed(srv, _no_fs):
     ok = {"id": "x" * (S.CONVO_BODY_MAX - 200), "at": _CV_U}
     st, data = call(srv, "POST", "/api/convo/fork", token=TOKEN, body=ok)
     assert (st, json.loads(data)["code"]) == (400, "bad_id")
+
+
+def test_convo_export_is_a_read_that_works_in_read_only_preview(srv, monkeypatch, tmp_path):
+    """导出不写任何东西。做成 POST 时只读预览导不了,每次导出还让读缓存全部失效。
+    负对照:同一个只读预览里分叉(真的写文件)照样 403。"""
+    d = tmp_path / "proj-a"
+    d.mkdir()
+    (d / f"{_CV_SID}.jsonl").write_text(json.dumps(
+        {"type": "user", "uuid": _CV_U, "parentUuid": None, "sessionId": _CV_SID,
+         "message": {"role": "user", "content": "hello"}}) + "\n", encoding="utf-8")
+    monkeypatch.setenv("TASK_CONSOLE_SESSIONS", str(tmp_path))
+    monkeypatch.setenv("TASK_CONSOLE_READ_ONLY", "1")
+    invalidated = []
+    monkeypatch.setattr(S.source_reads.boundary, "invalidate", lambda: invalidated.append(1))
+    st, data = call(srv, "GET", f"/api/convo/export?id={_CV_SID}&to={_CV_U}", token=TOKEN)
+    assert st == 200 and "hello" in json.loads(data)["text"]
+    assert invalidated == []
+    st, _ = call(srv, "POST", "/api/convo/fork", token=TOKEN, body={"id": _CV_SID, "at": _CV_U})
+    assert st == 403
+    st, _ = call(srv, "POST", "/api/convo/export", token=TOKEN, body={"id": _CV_SID, "to": _CV_U})
+    assert st == 403
+
+
+def test_a_rejected_request_does_not_read_an_unbounded_body(srv):
+    """鉴权之前的 _drain 以前照着客户端自称的 Content-Length 读到底。自称 1 GB、一个字节
+    都不发的请求,会让服务器线程一直等下去。现在超过上限就不读,直接回拒绝并断开。"""
+    import socket
+    s = socket.create_connection(("127.0.0.1", srv), timeout=10)
+    try:
+        s.sendall((f"POST /api/convo/fork HTTP/1.1\r\nHost: 127.0.0.1:{srv}\r\n"
+                   "Content-Type: application/json\r\nContent-Length: 1000000000\r\n\r\n").encode())
+        s.settimeout(5)
+        head = s.recv(64)
+    finally:
+        s.close()
+    assert head.startswith(b"HTTP/1.") and b" 403 " in head
+
+
+def test_a_rejected_request_under_the_drain_cap_is_still_drained(srv):
+    """正对照:正文不大时照旧先读掉再回 403(见 _drain 为什么),连接不被重置。"""
+    st, _ = call(srv, "POST", "/api/convo/fork", body={"id": _CV_SID, "at": _CV_U, "pad": "x" * 5000})
+    assert st == 403

@@ -20,7 +20,7 @@ const PAGE_READS={
   diagnostics:[load,loadComponents,loadSelfcheck,loadRepos,loadSys,loadMem,loadConvos],
   pipelines:[loadComponents,load],tasks:[load],repos:[loadRepos],
   storage:[loadComponents,loadMaint,loadMem,loadSys,loadCodex,loadCxList],
-  convos:[loadConvos],llm:[loadLLM]
+  convos:[loadConvos,()=>typeof reloadConvoChain==='function'?reloadConvoChain():undefined],llm:[loadLLM]
 };
 const PAGE_INITIAL_READS=new Map();
 function loadPageOnce(view){
