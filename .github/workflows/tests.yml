@@ -43,7 +43,7 @@ jobs:
       # convos.py and work_context.py import it at module top. Pinned to the commit that is 0.1.0,
       # not a moving branch, so a change over there cannot turn this build red or green on its own.
       - name: Install convo-chain
-        run: python -m pip install --quiet --no-deps "convo-chain @ git+https://github.com/DaizeDong/convo-chain@3c1607672ba01961741680eaed9ba5cff27712dd"
+        run: python -m pip install --quiet --no-deps "convo-chain @ git+https://github.com/DaizeDong/convo-chain@b7a7c3b79c6c488d5bebd773f2a2481ba059dc34"
 
       # The Task Scheduler Operational channel is OFF by default on Windows, runners included.
       #

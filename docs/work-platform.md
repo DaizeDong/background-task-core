@@ -90,8 +90,11 @@ opens a path supplied by a source record. To add an adapter, declare it in
 `ADAPTERS`, supply a bounded read function, and exercise authentication,
 unconfigured, empty, failed and recovery states. Parameterized reads and writes
 remain explicit guarded routes. A library dependency gets an informational row
-with layer `library` and no endpoint: it is listed, reports whether it imports and
-which version, and is never discovered or routed.
+with layer `library` and no endpoint: it is listed with the installed version, and
+is never discovered or routed. The row is not a health check. `convo-chain` is
+imported at module level by the server, the session list and the work-context
+reader, so without it the console does not start at all; the precondition lives
+at install time (the runtime lock must carry its wheel), not in this row.
 
 `source_reads.py` shares concurrent reads per adapter, with at most eight
 callers, and retains observation metadata only. Independent sources in an

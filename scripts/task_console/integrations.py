@@ -66,12 +66,19 @@ ROUTES = {adapter.endpoint: adapter for adapter in ADAPTERS if adapter.endpoint}
 
 
 def _library_state(adapter):
-    """库依赖只答「这个进程里能不能按固定名导入、是哪一版」,不代表任何生产者的健康。"""
+    """库依赖这一行只是登记:报出进程里装的是哪一版,不是健康检查,也不代表任何生产者的健康。
+
+    convo-chain 是硬依赖:server.py、convos.py、work_context.py 都在模块顶层导入它,缺了它控制台
+    根本起不来(ImportError),不会退化成「面板不可用」。所以生产上这一行不会有机会显示
+    unavailable;下面的 except 只是防止这个函数本身把整个集成视图带崩。真正的前置条件在
+    安装阶段:运行时锁里没有 convo-chain 的 wheel 行,就不能装由这个版本构建的 generation。
+    """
     try:
         version = getattr(importlib.import_module(adapter.module), adapter.reader)
     except Exception as error:
         return {'state': 'unavailable', 'reason': f'{type(error).__name__}: {error}'}
-    return {'state': 'ready', 'reason': f'已安装 {version},进程内导入的库依赖'}
+    return {'state': 'ready',
+            'reason': f'已安装 {version};仅作登记:这是硬依赖,缺了它控制台起不来,这里不做健康检查'}
 
 
 def read_configured():

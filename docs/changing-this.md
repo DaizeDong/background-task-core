@@ -266,6 +266,9 @@
    work-feed、SMITH 目录)只走它们的 CLI 或快照。判据是控制台借的是对方的**规则**(库),
    还是读的是对方的**产物**(生产者)。库不读 `TASK_CONSOLE_*`,根目录之类由路由显式传进去;
    它在 `integrations.py` 的 `ADAPTERS` 里是一行 `library` 层、没有 endpoint 的登记。
+   那一行**不是健康检查**:`convo-chain` 在 server、convos、work_context 顶层导入,缺了控制台
+   直接起不来,不会退化成一块面板不可用。所以真正的前置条件在安装阶段:运行时锁里没有它的
+   wheel 行,就不能装由这个版本构建的 generation(它不在 PyPI 上,别的安装路径都解析不到)。
 2. `server.py`:`import`、GET 路由、必要时 POST 路由与它的 `Refused` 处理
    (逻辑在库里的,接库自己带 `code` 的错误类型,比如对话链的 `ConvoChainError`)。
    **每条 `/api/` 分支都要 `_authed()`** —— 这条现在有通扫闸盯着,漏了会红。

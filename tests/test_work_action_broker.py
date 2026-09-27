@@ -105,6 +105,43 @@ def test_context_uses_exact_session_identity_and_refuses_missing_or_ambiguous(tm
         read_session_context(session,str(tmp_path))
 
 
+def test_context_counts_only_typed_user_lines_as_user_messages(tmp_path):
+    """A user line is a person's words only if its content is a plain string (convo-chain's
+    typed_text). A skill body or an injected block arrives as a list of content blocks; the old
+    reader joined those text blocks and handed them to the agent as `user:` messages."""
+    session = '11111111-2222-4333-8444-666666666666'
+    path = tmp_path / 'acme-project' / (session + '.jsonl')
+    path.parent.mkdir(parents=True)
+    rows = [
+        {'sessionId': session, 'type': 'user', 'uuid': 'u1',
+         'message': {'content': 'Prepare the Acme summary from synthetic inputs.'}},
+        {'sessionId': session, 'type': 'user', 'uuid': 'u2',
+         'message': {'content': [{'type': 'text', 'text': 'SYNTHETIC_SKILL_BODY_CANARY'}]}},
+        {'sessionId': session, 'type': 'user', 'uuid': 'u3',
+         'message': {'content': '<system-reminder>SYNTHETIC_REMINDER_CANARY</system-reminder>'}},
+        {'sessionId': session, 'type': 'assistant', 'uuid': 'a1',
+         'message': {'content': [{'type': 'text', 'text': 'Synthetic summary drafted.'}]}},
+    ]
+    path.write_text(chr(10).join(json.dumps(r) for r in rows), encoding='utf-8')
+    text = read_session_context(session, str(tmp_path))
+    assert 'user: Prepare the Acme summary' in text
+    assert 'assistant: Synthetic summary drafted.' in text
+    assert 'SYNTHETIC_SKILL_BODY_CANARY' not in text
+    assert 'SYNTHETIC_REMINDER_CANARY' not in text
+
+
+def test_context_refusals_carry_the_library_gate(tmp_path):
+    session, _path = action_session_fixture(tmp_path)
+    with pytest.raises(ValueError, match='bad_id'):
+        read_session_context('../session', str(tmp_path))
+    with pytest.raises(ValueError, match='not_found'):
+        read_session_context('11111111-2222-4333-8444-777777777777', str(tmp_path))
+    with pytest.raises(ValueError, match='root missing'):
+        read_session_context(session, None)
+    with pytest.raises(ValueError, match='root missing'):
+        read_session_context(session, 'relative/sessions')
+
+
 def test_no_title_matching_or_inferred_session_context(monkeypatch):
     feed=work_feed_case();feed['items']=[work_action_case()]
     monkeypatch.setattr(work_status,'read_configured',lambda env:feed)

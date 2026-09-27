@@ -47,8 +47,13 @@ process. The library reads no environment variable; the four `/api/convo/*` rout
 400, and answer an unset root as NOT CHECKED on reads and as a 400 `unavailable` on export and
 fork. Token, host and query checks stay in the console. The rule for which user lines a person
 actually typed (`typed_text` / `looks_injected`) also lives there, and the session list imports it
-rather than keeping a second copy. The integrations view lists the library as an informational
-row under library dependencies; it has no read endpoint of its own.
+rather than keeping a second copy; so does the work-context reader, which also resolves the session
+file through the library's `locate`. The integrations view lists the library as an informational
+row under library dependencies; it has no read endpoint of its own and is not a health check. The
+dependency is hard: `server.py`, `convos.py` and `work_context.py` import it at module level, so a
+missing library stops the console from starting rather than degrading one panel. Before a runtime
+generation built from this version is installed, the runtime lock must carry the `convo-chain`
+wheel row; the package is not on PyPI, so no other install path resolves it.
 
 The conversation chain is read from the whole transcript, not from `parentUuid` alone. Parallel
 tool calls make a node look like it has two children, and those are one reply, not a branch. A

@@ -103,7 +103,10 @@ def test_convo_chain_is_an_informational_library_row(monkeypatch):
 
 
 def test_an_unimportable_library_reads_unavailable_not_ready(monkeypatch):
-    """负对照:库导入失败时这一行必须是 unavailable,不能因为它「只是登记」就恒为 ready。"""
+    """负对照:库导入失败时这一行必须是 unavailable,不能因为它「只是登记」就恒为 ready。
+
+    这是对 _library_state 这个函数的负对照,不是一个生产上能出现的状态:convo-chain 是硬依赖,
+    缺了它控制台启动就失败(见下一个测试)。"""
     import integrations
     import work_status
     import component_status
@@ -120,3 +123,26 @@ def test_an_unimportable_library_reads_unavailable_not_ready(monkeypatch):
     row = {r['id']: r for r in integrations.read_configured()['items']}['convo-chain']
     assert row['connection']['state'] == 'unavailable'
     assert 'synthetic missing library' in row['connection']['reason']
+
+
+def test_convo_chain_is_a_hard_dependency_and_the_row_says_so(monkeypatch):
+    """这一行的措辞必须跟事实一致:convo-chain 在三个模块的顶层导入(缺了就起不来),
+    pyproject 钉死版本,所以这一行只能自称「登记」,不能暗示它在监测库是否可用。
+    哪天有人把导入改成惰性的软依赖,这个测试会红,逼着他同时改文档和这行的措辞。"""
+    import ast
+    from pathlib import Path
+    import integrations
+    import work_status
+    import component_status
+    here = Path(integrations.__file__).resolve().parent
+    for name in ('server.py', 'convos.py', 'work_context.py'):
+        tree = ast.parse((here / name).read_text(encoding='utf-8'))
+        top = [n for n in tree.body if isinstance(n, (ast.Import, ast.ImportFrom))]
+        assert any((isinstance(n, ast.Import) and any(a.name == 'convo_chain' for a in n.names))
+                   or (isinstance(n, ast.ImportFrom) and n.module == 'convo_chain') for n in top), name
+    pyproject = (here.parent.parent / 'pyproject.toml').read_text(encoding='utf-8')
+    assert '"convo-chain==' in pyproject
+    monkeypatch.setattr(work_status, 'read_configured', lambda: {'available': False})
+    monkeypatch.setattr(component_status, 'read_configured', lambda: {'available': False})
+    row = {r['id']: r for r in integrations.read_configured()['items']}['convo-chain']
+    assert '仅作登记' in row['connection']['reason'] and '硬依赖' in row['connection']['reason']

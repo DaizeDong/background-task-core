@@ -447,6 +447,9 @@ def test_the_typed_by_a_person_rule_has_one_home():
     assert C.typed_text is convo_chain.typed_text
     assert C.looks_injected is convo_chain.looks_injected
     assert work_context.looks_injected is convo_chain.looks_injected
+    assert work_context.typed_text is convo_chain.typed_text
+    assert work_context.locate is convo_chain.locate and work_context.shape is convo_chain.shape
+    assert not hasattr(work_context, "re"), "work_context must not carry its own session id regex"
     assert not hasattr(C, "_typed_text") and not hasattr(C, "_looks_injected")
 
 
