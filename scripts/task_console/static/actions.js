@@ -21,10 +21,14 @@ const ConsoleActions={
     panel.hidden=!rows.length;
     const line=row=>`${row.label}：${row.pending?'处理中，已等待 '+Math.floor((Date.now()-row.started)/1000)+' 秒':row.message}`;
     const active=rows.filter(row=>row.pending), current=active[0] || rows[0];
+    // Sticky only while something is still running. A finished record stays in the page flow at
+    // the top; pinned, it covered whatever the owner was looking at (the conversation chain card
+    // right after a fork, by about 140px at phone width) for the rest of the page session.
+    panel.classList?.toggle('settled',!active.length);
     $('operation-current').textContent=current?line(current):'';
     $('operation-current').className=current?.pending?'warn':current?.tone || '';
     $('operation-history').innerHTML=rows.map(row=>`<li><span class="${row.pending?'warn':row.tone}">${esc(line(row))}</span></li>`).join('');
-    this.sync();if(active.length) this.timer=setTimeout(()=>this.render(),1000);
+    this.sync();syncStickyOffsets();if(active.length) this.timer=setTimeout(()=>this.render(),1000);
   },
   sync(){
     const pending=this.operations.some(row=>row.pending);
@@ -40,6 +44,12 @@ const ConsoleActions={
     });
   },
   start(){
+    syncStickyOffsets();
+    if(typeof ResizeObserver==='function'){
+      const observer=new ResizeObserver(()=>syncStickyOffsets());
+      ['bar','operation-panel'].forEach(id=>{if($(id)) observer.observe($(id));});
+    }
+    if(typeof window!=='undefined') window.addEventListener?.('resize',syncStickyOffsets);
     const mode=$('console-mode');mode.hidden=!this.readOnly;
     mode.textContent='只读预览 · 无法修改';mode.title=this.reason;
     this.sync();new MutationObserver(()=>this.sync()).observe(document.body,{childList:true,subtree:true,attributes:true,attributeFilter:['disabled']});
@@ -50,6 +60,19 @@ const ConsoleActions={
     }
   }
 };
+// The page's sticky stack, measured rather than assumed: #bar wraps to two rows on mid widths and
+// is not sticky at all at phone width, where a hard-coded 54px left a gap above the operation
+// panel with page content showing through it. --bar-stick places the panel directly under the
+// bar; --sticky-stack feeds html scroll-padding-top so scrollIntoView and anchor jumps (the chain
+// card opening, a pipeline run) land below whatever is actually pinned.
+function syncStickyOffsets(){
+  const root=document.documentElement;
+  if(!root?.style?.setProperty || typeof getComputedStyle!=='function') return;
+  const pinned=el=>el && !el.hidden && getComputedStyle(el).position==='sticky' ? Math.ceil(el.getBoundingClientRect().height) : 0;
+  const bar=pinned($('bar'));
+  root.style.setProperty('--bar-stick',bar+'px');
+  root.style.setProperty('--sticky-stack',(bar+pinned($('operation-panel')))+'px');
+}
 function operationLabel(path,body){
   if(path.endsWith('/plan')) return '准备操作预览';
   if(path==='/api/work/action' && body.action_id==='complete') return '标记完成';
