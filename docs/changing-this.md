@@ -261,7 +261,13 @@
 按顺序。标星的是**漏了不会报错**的。
 
 1. 后端读侧模块 `scripts/task_console/<name>.py`,纯读、不 import 被观察的那个仓。
-2. `server.py`:`import`、GET 路由、必要时 POST 路由与它的 `Refused` 处理。
+   **库依赖不算被观察的仓**:`convo-chain`(对话链)、`llmcall`、`fleet_guards` 是
+   `pyproject.toml` 里钉了版本的依赖,按固定名在进程内导入;被观察的生产者(reminder 的
+   work-feed、SMITH 目录)只走它们的 CLI 或快照。判据是控制台借的是对方的**规则**(库),
+   还是读的是对方的**产物**(生产者)。库不读 `TASK_CONSOLE_*`,根目录之类由路由显式传进去;
+   它在 `integrations.py` 的 `ADAPTERS` 里是一行 `library` 层、没有 endpoint 的登记。
+2. `server.py`:`import`、GET 路由、必要时 POST 路由与它的 `Refused` 处理
+   (逻辑在库里的,接库自己带 `code` 的错误类型,比如对话链的 `ConvoChainError`)。
    **每条 `/api/` 分支都要 `_authed()`** —— 这条现在有通扫闸盯着,漏了会红。
 3. 前端是模块化的,不再是一个 `console.html` 里的大脚本:
    `static/panels/<name>.js` 一个文件,登记进 `static/app.js` 的 `CONSOLE_MODULES`
@@ -308,7 +314,7 @@
 - **动作表的路径闸里,`abspath` 不是 `realpath` 的笔误,末尾那一段也是刻意不解析的。**
   这台机器用目录联接部署,解析掉会让合法路径被判成越界。代价写在那段代码的 docstring 里,
   要改先读它。
-- **`Refused` 带 `code` 不是为了好看。** 一个动作上有好几道闸互相兜底,
+- **`Refused`(以及 convo-chain 的 `ConvoChainError`)带 `code` 不是为了好看。** 一个动作上有好几道闸互相兜底,
   只断言「抛了异常」证明不了是哪一道抛的 —— 放开其中一道,另一道仍然会挡,
   于是两条测试在各自的投毒下都照样全绿。`code` 让每条用例钉住自己那道闸。
 - **「有两份实现」不一定是错的,先读注释。** 这个仓里有几处刻意的重复,

@@ -55,8 +55,23 @@ ADAPTERS = (
             '仓库状态与变更', '查看差异及经确认的仓库操作'),
     Adapter('selfcheck', '配置自检', 'selfcheck', 'run', '/api/selfcheck', 'diagnostics',
             '读取路径与配置检查', '查看配置问题'),
+    # 库依赖,不是被观测的生产者:convo-chain 是 pyproject 里钉死版本的依赖,按固定名在进程内
+    # 导入,不做任何发现。它这一行只是登记,没有自己的读端点(对话链的四条路由都带参数,
+    # 按规矩是显式的受保护路由,不是无参的适配器读),所以 endpoint 为空、不进 ROUTES。
+    Adapter('convo-chain', '对话链库 convo-chain', 'convo_chain', '__version__', '', 'convos',
+            '会话转录的对话链、节点、Markdown 导出与分叉', '在会话页打开对话链;分叉经受保护的 POST',
+            'library', ('conversations',)),
 )
-ROUTES = {adapter.endpoint: adapter for adapter in ADAPTERS}
+ROUTES = {adapter.endpoint: adapter for adapter in ADAPTERS if adapter.endpoint}
+
+
+def _library_state(adapter):
+    """库依赖只答「这个进程里能不能按固定名导入、是哪一版」,不代表任何生产者的健康。"""
+    try:
+        version = getattr(importlib.import_module(adapter.module), adapter.reader)
+    except Exception as error:
+        return {'state': 'unavailable', 'reason': f'{type(error).__name__}: {error}'}
+    return {'state': 'ready', 'reason': f'已安装 {version},进程内导入的库依赖'}
 
 
 def read_configured():
@@ -76,7 +91,8 @@ def read_configured():
     for adapter in ADAPTERS:
         row = asdict(adapter)
         row.pop('module'); row.pop('reader')
-        row['connection'] = observations.get(adapter.id, {'state': 'unchecked'})
+        row['connection'] = (_library_state(adapter) if adapter.layer == 'library'
+                             else observations.get(adapter.id, {'state': 'unchecked'}))
         if adapter.id == 'components':
             row['coverage'] = components.get('coverage')
             row['catalog'] = {key: components.get('catalog', {}).get(key) for key in ('available', 'reason', 'coverage')}

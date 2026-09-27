@@ -37,6 +37,8 @@ import re
 import time
 from pathlib import Path
 
+from convo_chain import looks_injected, typed_text
+
 # 三种「这场对话叫什么」的记录。按字节找标记比逐行 json.loads 便宜一个数量级,
 # 所以先用字节扫一遍,命中了才解析。
 # 只匹配**裸类型名**,不带引号和冒号:带上就等于依赖 JSON 的具体排版(冒号后有没有空格),
@@ -74,31 +76,9 @@ def _iter_json(chunk: str):
             continue
 
 
-def _typed_text(entry) -> str | None:
-    """这条 user 记录是不是**人真的打进去的字**,是就返回它。
-
-    判据是 content 的形状:人打的字在转录里是一个纯字符串,而系统注入的东西(skill 正文、
-    工具结果、提醒块)是内容块的列表。这个区分是承重的:不做的话,一个计划任务的转录里
-    会有十几条「用户消息」,因为它加载的每一个 skill 正文都算一条,于是每一个无头运行都
-    被判成一场多轮对话。实测按块也算时,一个纯自动化目录报出 247 场「真人对话」。
-
-    形状还不够,还要排掉那些确实是纯字符串、但由命令回显或提醒块构成的伪消息。
-    """
-    m = entry.get("message") or {}
-    c = m.get("content")
-    if not isinstance(c, str):
-        return None
-    t = c.strip()
-    return t or None
-
-
-def _looks_injected(text: str) -> bool:
-    """系统注入的伪用户消息:提醒块、命令回显、钩子输出。它们不是人打的字。"""
-    t = text.lstrip()
-    return t.startswith(("<system-reminder", "<command-name", "<command-message",
-                         "<local-command", "Caveat:", "[Request interrupted",
-                         # 后台任务结束时由运行框架塞进来的通知,形状是纯字符串,但不是人打的字。
-                         "<task-notification"))
+# 「哪一条是人真的打进去的字」的两条判据(typed_text / looks_injected)住在 convo-chain 库里,
+# 对话链和这里各用一次,只有那一份实现。以前这里自带一份、对话链从这里借,同一条规则就有了
+# 两个家;现在两边都从库里导入。
 
 
 def read_titles(path: Path) -> dict:
@@ -200,8 +180,8 @@ def read_one(path: Path, now: float | None = None) -> dict:
                 first_ts = ts
             last_ts = ts
         if entry.get("type") == "user" and not entry.get("isSidechain"):
-            txt = _typed_text(entry)
-            if txt and not _looks_injected(txt):
+            txt = typed_text(entry)
+            if txt and not looks_injected(txt):
                 human += 1
                 if first_msg is None:
                     first_msg = txt

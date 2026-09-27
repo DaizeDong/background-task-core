@@ -53,7 +53,7 @@ import integrations
 import source_reads
 import console_store
 import convos
-import convtree
+import convo_chain
 import evtlog
 import freshness
 import history
@@ -110,6 +110,31 @@ CONVO_CHAIN_KEYS = frozenset(("id", "leaf", "sub"))
 CONVO_NODE_KEYS = frozenset(("id", "u", "sub"))
 CONVO_EXPORT_KEYS = frozenset(("id", "to", "from", "leaf", "sub", "tools", "thinking"))
 CONVO_FORK_KEYS = frozenset(("id", "at", "leaf", "sub"))
+# 对话链的判定(索引、形状闸、链、节点、导出、分叉)全在 convo-chain 库里。它是这台控制台
+# 钉死版本的库依赖(和 llmcall、fleet_guards 一样在进程内导入,索引缓存因此活在这个进程里),
+# 不是一个被观测的生产者。库自己不读任何环境变量:根目录只由这里从 TASK_CONSOLE_SESSIONS
+# 取出后显式传进去,所以「没设」的说法也由这里给,点名的是运维要去设的那个变量。
+#
+# 「没设」照旧交给库去判,不在这里提前拦:库里几道闸的先后(比如子代理不能分叉先于
+# 根目录)是它的语义,这里抢先回一个 unavailable 会把那个顺序悄悄改掉。这里只换措辞。
+CONVO_ROOT_UNSET = "没有设 TASK_CONSOLE_SESSIONS,对话链读不了,这一栏是「未检查」。"
+
+
+def _convo_root():
+    return os.environ.get("TASK_CONSOLE_SESSIONS") or None
+
+
+def _convo_read(res, root):
+    """读侧:库对没给根目录答 200 + available:false(未检查),这里只把原因换成点名变量的那句。"""
+    if root is None and isinstance(res, dict) and res.get("available") is False:
+        return {"available": False, "reason": CONVO_ROOT_UNSET}
+    return res
+
+
+def _convo_refused(e, root):
+    """库拒绝的请求 → 400 正文。码原样透传;没设根目录的 unavailable 换成点名变量的措辞。"""
+    msg = CONVO_ROOT_UNSET if e.code == "unavailable" and root is None else str(e)
+    return {"error": msg, "code": e.code}
 
 NOT_RUN, RUNNING = 0x41303, 0x41301
 VERBS = ("enable", "disable", "run", "stop")
@@ -1112,14 +1137,16 @@ class Handler(BaseHTTPRequestHandler):
         body = self._convo_body(CONVO_FORK_KEYS)
         if body is None:
             return None
+        root = _convo_root()
         try:
-            convtree.shape(body.get("id"), sub=body.get("sub"), leaf=body.get("leaf"),
-                           required=("at",), at=body.get("at"))
-            return self._json(200, convtree.fork(body.get("id"), body.get("at"),
-                                                 leaf=body.get("leaf") or None,
-                                                 sub=body.get("sub") or None))
-        except maint.Refused as e:
-            return self._json(400, {"error": str(e), "code": e.code})
+            convo_chain.shape(body.get("id"), sub=body.get("sub"), leaf=body.get("leaf"),
+                              required=("at",), at=body.get("at"))
+            return self._json(200, convo_chain.fork(body.get("id"), body.get("at"),
+                                                    leaf=body.get("leaf") or None,
+                                                    sub=body.get("sub") or None, root=root))
+        except convo_chain.ConvoChainError as e:
+            # 写侧没有根目录是硬失败(400 unavailable),不是「未检查」:库自己这样判。
+            return self._json(400, _convo_refused(e, root))
         except Exception as e:
             return self._json(500, {"error": f"{type(e).__name__}: {e}"})
 
@@ -1401,12 +1428,13 @@ class Handler(BaseHTTPRequestHandler):
             q = self._convo_query(CONVO_CHAIN_KEYS)
             if q is None:
                 return None
+            root = _convo_root()
             try:
-                convtree.shape(q.get("id"), sub=q.get("sub"), leaf=q.get("leaf"))
-                return self._json(200, convtree.chain(q.get("id"), leaf=q.get("leaf"),
-                                                      sub=q.get("sub")))
-            except maint.Refused as e:
-                return self._json(400, {"error": str(e), "code": e.code})
+                convo_chain.shape(q.get("id"), sub=q.get("sub"), leaf=q.get("leaf"))
+                return self._json(200, _convo_read(convo_chain.chain(
+                    q.get("id"), leaf=q.get("leaf"), sub=q.get("sub"), root=root), root))
+            except convo_chain.ConvoChainError as e:
+                return self._json(400, _convo_refused(e, root))
             except Exception as e:
                 return self._json(500, {"error": f"{type(e).__name__}: {e}"})
         if path == "/api/convo/export":
@@ -1423,16 +1451,17 @@ class Handler(BaseHTTPRequestHandler):
                 if v not in (None, "0", "1"):
                     return self._json(400, {"error": f"{k} 只能是 0 或 1", "code": "bad_query"})
                 flags[k] = v == "1"
+            root = _convo_root()
             try:
-                # 形状闸在碰文件系统之前:规则只有 convtree.shape 这一份。
-                convtree.shape(q.get("id"), sub=q.get("sub"), leaf=q.get("leaf"),
-                               required=("to",), to=q.get("to"), frm=q.get("from"))
-                return self._json(200, convtree.export_md(
+                # 形状闸在碰文件系统之前:规则只有 convo_chain.shape 这一份。
+                convo_chain.shape(q.get("id"), sub=q.get("sub"), leaf=q.get("leaf"),
+                                  required=("to",), to=q.get("to"), frm=q.get("from"))
+                return self._json(200, convo_chain.export_md(
                     q.get("id"), q.get("to"), frm=q.get("from"), leaf=q.get("leaf"),
                     sub=q.get("sub"), include_tools=flags["tools"],
-                    include_thinking=flags["thinking"]))
-            except maint.Refused as e:
-                return self._json(400, {"error": str(e), "code": e.code})
+                    include_thinking=flags["thinking"], root=root))
+            except convo_chain.ConvoChainError as e:
+                return self._json(400, _convo_refused(e, root))
             except Exception as e:
                 return self._json(500, {"error": f"{type(e).__name__}: {e}"})
         if path == "/api/convo/node":
@@ -1441,11 +1470,13 @@ class Handler(BaseHTTPRequestHandler):
             q = self._convo_query(CONVO_NODE_KEYS)
             if q is None:
                 return None
+            root = _convo_root()
             try:
-                convtree.shape(q.get("id"), sub=q.get("sub"), required=("u",), u=q.get("u"))
-                return self._json(200, convtree.node(q.get("id"), q.get("u"), sub=q.get("sub")))
-            except maint.Refused as e:
-                return self._json(400, {"error": str(e), "code": e.code})
+                convo_chain.shape(q.get("id"), sub=q.get("sub"), required=("u",), u=q.get("u"))
+                return self._json(200, _convo_read(convo_chain.node(
+                    q.get("id"), q.get("u"), sub=q.get("sub"), root=root), root))
+            except convo_chain.ConvoChainError as e:
+                return self._json(400, _convo_refused(e, root))
             except Exception as e:
                 return self._json(500, {"error": f"{type(e).__name__}: {e}"})
         if path == "/api/maint":

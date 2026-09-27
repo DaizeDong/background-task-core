@@ -37,6 +37,19 @@ Windows only. It reads the Windows Task Scheduler; there is nothing to read anyw
 | Conversations | Claude Code transcripts under `TASK_CONSOLE_SESSIONS` | list sessions and copy a path; open one as its conversation chain across compactions and branches; export any range to Markdown; fork a new session from any node |
 | Calls | the LLM-call primitive's append-only ledger | see today's and this week's usage, which rung answered, how long the degraded stretches were, and reorder the fallback chain |
 
+The chain logic (the transcript index and its cache, the id shape gate, chain, node, Markdown
+export and fork) lives in the `convo-chain` library
+([DaizeDong/convo-chain](https://github.com/DaizeDong/convo-chain)), which is a library
+dependency, not an observed producer: `pyproject.toml` pins it (`convo-chain==0.1.0`) the way it
+pins `llmcall`, and `server.py` imports it in process so its index cache lives in the console
+process. The library reads no environment variable; the four `/api/convo/*` routes read
+`TASK_CONSOLE_SESSIONS` and pass it in as `root`, map the library's `ConvoChainError.code` to a
+400, and answer an unset root as NOT CHECKED on reads and as a 400 `unavailable` on export and
+fork. Token, host and query checks stay in the console. The rule for which user lines a person
+actually typed (`typed_text` / `looks_injected`) also lives there, and the session list imports it
+rather than keeping a second copy. The integrations view lists the library as an informational
+row under library dependencies; it has no read endpoint of its own.
+
 The conversation chain is read from the whole transcript, not from `parentUuid` alone. Parallel
 tool calls make a node look like it has two children, and those are one reply, not a branch. A
 compaction boundary has no parent, so the walk continues into the earlier history through the
@@ -174,7 +187,7 @@ names with your own tasks. Everything else is optional.
 | `TASK_CONSOLE_VISIBILITY` | a JSON object keyed by `owner/repo` (lowercase), each value `PUBLIC` or `PRIVATE`, or an object with a `visibility` field | unset means every repo's visibility reads unknown and no badge is drawn, which is deliberately hard to tell apart from a repo the table has no row for, so the panel also reports the table it loaded and how many rows matched |
 | `TASK_CONSOLE_CODEX` | a second agent CLI's home directory, holding its instruction file, config, session store, logs and cache | no default; unset means that whole half of the maintenance view reads NOT CHECKED, which is deliberately not the same as reading zero bytes |
 | `TASK_CONSOLE_PLUGIN_CACHE` | a plugin cache directory | unset means the cache row reads NOT CHECKED and nothing can be deleted |
-| `TASK_CONSOLE_SESSIONS` | a session transcript directory | unset means that row reads NOT CHECKED |
+| `TASK_CONSOLE_SESSIONS` | a session transcript directory; also the `root` the console passes to the `convo-chain` library for the conversation chain | unset means that row reads NOT CHECKED, the chain reads NOT CHECKED, and export and fork refuse with `unavailable` |
 | `TASK_CONSOLE_CLAUDE` | the CLI used for plugin actions | falls back to PATH; not found means the plugin panel reads NOT CHECKED |
 | `TASK_CONSOLE_ALLOWED_HOSTS` | extra Host header values to accept | only the three loopback spellings are accepted |
 | `TASK_CONSOLE_IDENTITIES` | a table of `login\|display name\|commit email`, one per line, `#` for comments, saying which identity each repository owner should be committed under | unset means the account-match column reads NOT CHECKED for every repository, which is deliberately not the same as saying they match; no address from this file is ever rendered, only the account name and the verdict |

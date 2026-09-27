@@ -18,7 +18,10 @@ capabilities drifts the moment a verb is added and the drift is silent — the r
 list, and the list is where the promise lives. The conversation view has one write of its own
 outside that table: it can fork a saved session at any node into a new transcript file next to
 the original, with exclusive create, never modifying the original; its limits are in
-[the console README](scripts/task_console/README.md).
+[the console README](scripts/task_console/README.md). That view's transcript logic lives in
+[convo-chain](https://github.com/DaizeDong/convo-chain), a pinned library dependency imported in
+process like `llmcall`, not an observed producer; the console keeps the routes, their token and
+shape checks, and the panel.
 
 Task creation and migration use the declaration, review and registration APIs described in [task registration](docs/task-registration.md). The web action table does not provide an unrestricted Scheduler shortcut. Registration records authority and recovery evidence before changing task definitions; the console keeps its existing review step for outgoing actions.
 

@@ -2,6 +2,7 @@
 import json
 from pathlib import Path
 import re
+from convo_chain import looks_injected
 from fleet_guards import filesystem as fs
 
 import convos
@@ -43,7 +44,7 @@ def read_session_context(session_id, root):
         if isinstance(content, list):
             content = '\n'.join(block['text'] for block in content if isinstance(block, dict)
                                 and block.get('type') == 'text' and isinstance(block.get('text'), str))
-        if not isinstance(content, str) or not content.strip() or convos._looks_injected(content):
+        if not isinstance(content, str) or not content.strip() or looks_injected(content):
             continue
         key = entry.get('uuid') or (kind, content)
         if key not in seen:

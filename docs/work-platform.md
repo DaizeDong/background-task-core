@@ -23,6 +23,16 @@ it does not query reminder tables. `task-console` remains the owner of task cont
 registration, health conclusions and task/pipeline receipts. `llmcall` remains the sole
 model execution interface. There is no new scheduler, work database or agent runner.
 
+Library dependencies are not producers. `convo-chain` (the conversation chain),
+`llmcall` and `fleet_guards` are pinned in `pyproject.toml` and imported in process
+by fixed name; the console borrows their rules, not their records. `convo-chain`
+owns the transcript semantics (index, chain, node, export, fork and the "typed by a
+person" rule) and reads no environment variable: the console passes
+`TASK_CONSOLE_SESSIONS` as `root` and keeps authentication, host and shape checks
+on its own routes. Observed producers such as the reminder `work-feed` are the
+opposite case: the console calls their CLI or reads their snapshot and never
+imports their code.
+
 Each item has a stable ID and a source-defined role: `agent_work`, `tracked_item`, or
 `signal`. Email, radar and demand feeds are information inputs; pending feed entries
 are not presented as unfinished agent work. Unknown sources remain tracked items,
@@ -79,7 +89,9 @@ write through the work owner's API. The console never executes a command or
 opens a path supplied by a source record. To add an adapter, declare it in
 `ADAPTERS`, supply a bounded read function, and exercise authentication,
 unconfigured, empty, failed and recovery states. Parameterized reads and writes
-remain explicit guarded routes.
+remain explicit guarded routes. A library dependency gets an informational row
+with layer `library` and no endpoint: it is listed, reports whether it imports and
+which version, and is never discovered or routed.
 
 `source_reads.py` shares concurrent reads per adapter, with at most eight
 callers, and retains observation metadata only. Independent sources in an

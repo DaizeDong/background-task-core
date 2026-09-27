@@ -830,18 +830,22 @@ def test_convo_routes_reject_a_rebinding_host(srv, method, path, body):
 
 @pytest.fixture
 def _no_fs(monkeypatch):
-    """记下 convtree 有没有被叫到文件系统那一步,以及路由有没有越过自己的形状闸。
+    """记下 convo-chain 有没有被叫到文件系统那一步,以及路由有没有越过自己的形状闸。
 
     四个 API 自己入口处也判形状,所以只 spy 文件系统的话,路由层那一道被拿掉也照样绿。
-    把四个 API 也换成 spy,钉住的是「路由自己先拒绝」这一层。"""
-    import convtree
+    把四个 API 也换成 spy,钉住的是「路由自己先拒绝」这一层。路由调的是包上的公开名
+    (convo_chain.chain…),库内部互相调的是 core 模块里的名字,所以两处都要换。"""
+    import convo_chain
+    from convo_chain import core
     seen = []
 
     def spy(*a, **k):
         seen.append(a)
         raise AssertionError("形状不对的 id 走过了路由的形状闸")
+    for name in ("chain", "node", "export_md", "fork"):
+        monkeypatch.setattr(convo_chain, name, spy)
     for name in ("locate", "_base", "chain", "node", "export_md", "fork"):
-        monkeypatch.setattr(convtree, name, spy)
+        monkeypatch.setattr(core, name, spy)
     return seen
 
 
@@ -880,17 +884,17 @@ def test_convo_bad_input_is_400_before_touching_the_filesystem(srv, _no_fs, meth
 
 
 def test_convo_subagent_fork_is_refused_before_the_filesystem(srv, monkeypatch):
-    """子代理的转录只读。这一道在 convtree.fork 里(不是形状闸),所以只 spy 文件系统。"""
-    import convtree
+    """子代理的转录只读。这一道在 convo_chain.fork 里(不是形状闸),所以只 spy 文件系统。"""
+    from convo_chain import core
     seen = []
-    monkeypatch.setattr(convtree, "locate", lambda *a, **k: seen.append(a))
+    monkeypatch.setattr(core, "locate", lambda *a, **k: seen.append(a))
     st, data = call(srv, "POST", "/api/convo/fork", token=TOKEN,
                     body={"id": _CV_SID, "at": _CV_U, "sub": "abc"})
     assert (st, json.loads(data)["code"]) == (400, "no_sub_fork") and seen == []
 
 
 def test_convo_good_shape_does_reach_the_module(srv, monkeypatch, tmp_path):
-    """正对照:形状对的 id 真的走到了 convtree。否则上面那组 400 可能只是
+    """正对照:形状对的 id 真的走到了 convo-chain。否则上面那组 400 可能只是
     「这条路由对什么都回 400」。根目录指向一个空目录,于是答案是 not_found。"""
     monkeypatch.setenv("TASK_CONSOLE_SESSIONS", str(tmp_path))
     for method, path, body in _CV_ROUTES:
@@ -906,6 +910,41 @@ def test_convo_unset_root_is_not_checked_not_an_error(srv, monkeypatch):
         assert st == 200 and json.loads(data)["available"] is False, path
     st, data = call(srv, "POST", "/api/convo/fork", token=TOKEN, body={"id": _CV_SID, "at": _CV_U})
     assert (st, json.loads(data)["code"]) == (400, "unavailable")
+
+
+def test_convo_unset_root_names_the_console_variable(srv, monkeypatch, tmp_path):
+    """convo-chain 不读环境变量,根目录只由路由从 TASK_CONSOLE_SESSIONS 取出传进去。
+
+    所以没设时的原因必须点名运维要去设的那个变量,而且读写四条的形状与以前一致:
+    读侧 200 + available:false,写侧 400 unavailable。CONVO_CHAIN_ROOT 是库的 CLI 才读的
+    变量,把它指向一个真有转录的目录也不能让控制台读到东西(负对照:库没有自己去环境里找)。"""
+    d = tmp_path / "proj-a"
+    d.mkdir()
+    (d / f"{_CV_SID}.jsonl").write_text(json.dumps(
+        {"type": "user", "uuid": _CV_U, "parentUuid": None, "sessionId": _CV_SID,
+         "message": {"role": "user", "content": "hello"}}) + "\n", encoding="utf-8")
+    monkeypatch.delenv("TASK_CONSOLE_SESSIONS", raising=False)
+    monkeypatch.setenv("CONVO_CHAIN_ROOT", str(tmp_path))
+    for path in (f"/api/convo/chain?id={_CV_SID}", f"/api/convo/node?id={_CV_SID}&u={_CV_U}"):
+        st, data = call(srv, "GET", path, token=TOKEN)
+        assert (st, json.loads(data)) == (200, {"available": False, "reason": S.CONVO_ROOT_UNSET}), path
+    st, data = call(srv, "GET", f"/api/convo/export?id={_CV_SID}&to={_CV_U}", token=TOKEN)
+    assert (st, json.loads(data)) == (400, {"error": S.CONVO_ROOT_UNSET, "code": "unavailable"})
+    st, data = call(srv, "POST", "/api/convo/fork", token=TOKEN, body={"id": _CV_SID, "at": _CV_U})
+    assert (st, json.loads(data)) == (400, {"error": S.CONVO_ROOT_UNSET, "code": "unavailable"})
+    assert "TASK_CONSOLE_SESSIONS" in S.CONVO_ROOT_UNSET
+    # 正对照:同一个目录经 TASK_CONSOLE_SESSIONS 给进去,同一条请求就读得到。
+    monkeypatch.setenv("TASK_CONSOLE_SESSIONS", str(tmp_path))
+    st, data = call(srv, "GET", f"/api/convo/chain?id={_CV_SID}", token=TOKEN)
+    assert st == 200 and json.loads(data)["available"] is True
+
+
+def test_convo_unset_root_keeps_the_library_gate_order(srv, monkeypatch):
+    """「子代理不能分叉」在库里先于根目录判。路由若抢先拦 unset,就会把这道闸的码换掉。"""
+    monkeypatch.delenv("TASK_CONSOLE_SESSIONS", raising=False)
+    st, data = call(srv, "POST", "/api/convo/fork", token=TOKEN,
+                    body={"id": _CV_SID, "at": _CV_U, "sub": "abc"})
+    assert (st, json.loads(data)["code"]) == (400, "no_sub_fork")
 
 
 def test_convo_fork_round_trip_over_http(srv, monkeypatch, tmp_path):

@@ -437,3 +437,24 @@ def test_a_failed_replace_leaves_no_temp_file_behind(tmp_path, monkeypatch):
     C._write_cache_atomically(cpath, {"a": 1})       # 不抛
     assert not cpath.exists()
     assert not list(tmp_path.glob("*.tmp-*")), "替换失败之后临时文件留在了磁盘上"
+
+
+def test_the_typed_by_a_person_rule_has_one_home():
+    """「哪一条是人打的字」只有 convo-chain 里那一份。会话列表和工作上下文都从库里导入,
+    不许再各自带一份:以前这里自带一份、对话链从这里借,规则就有了两个家。"""
+    import convo_chain
+    import work_context
+    assert C.typed_text is convo_chain.typed_text
+    assert C.looks_injected is convo_chain.looks_injected
+    assert work_context.looks_injected is convo_chain.looks_injected
+    assert not hasattr(C, "_typed_text") and not hasattr(C, "_looks_injected")
+
+
+def test_a_non_object_message_line_is_not_a_person_and_does_not_break_the_scan(tmp_path):
+    """转录是外来数据:message 是字符串的一行以前让整份会话读不出来。现在它只是不算人话。"""
+    p = tmp_path / "s.jsonl"
+    p.write_text(line(type="user", message="not an object", timestamp="2026-01-01T00:00:00Z")
+                 + line(type="user", message={"role": "user", "content": "hello"},
+                        timestamp="2026-01-01T00:00:01Z"), encoding="utf-8")
+    r = C.read_one(p, now=NOW)
+    assert (r["humanSeen"], r["preview"]) == (1, "hello")

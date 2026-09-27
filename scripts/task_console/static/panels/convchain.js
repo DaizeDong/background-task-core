@@ -1,7 +1,7 @@
 // Classic script module; optional panel (app.js OPTIONAL_PANELS -> #chbox).
 // 对话链:会话屏的下钻。一场会话在文件里是一棵树(回退重写会分叉、压缩会把前文换成概括),
 // 而 claude --resume 只沿其中一条链走。这一块把那条链按「轮」切开给人看,并允许从任意节点
-// 导出或分叉。判定(哪条是链、哪里算分叉、压缩边界之前接哪一段)全在后端 convtree.py,
+// 导出或分叉。判定(哪条是链、哪里算分叉、压缩边界之前接哪一段)全在 convo-chain 库里,
 // 这里只画结论。
 // ⚠ 本文件载入时不许碰 DOM:它是可选面板,载入失败只能坏掉 #chbox 自己,
 // 而且 test_panel_parity 会在一个只有 querySelector 的假 document 里执行它。
