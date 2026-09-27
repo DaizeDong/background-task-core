@@ -138,7 +138,7 @@ def test_real_read_reports_dropped_and_truncated_honestly():
 # 通道被关掉(Windows 默认就是关的)但通道文件还在时,EvtQuery 打得开、返回零条,
 # 快路报 enabled=True,于是永远不会回落到 PowerShell 那条,那句
 # 「日志是关闭的,开启它是开始记录不是恢复记录」永远不出现。
-# 页面于是印出「运行日志 0」——正是本模块开头写的那句要防的事。
+# 页面于是印出「运行日志 0」,正是本模块开头写的那句要防的事。
 
 def test_a_disabled_channel_is_reported_as_disabled(monkeypatch):
     monkeypatch.setattr(E, "channel_enabled", lambda: (False, None))
@@ -175,7 +175,7 @@ def test_no_more_items_is_a_normal_end_not_a_failure():
         winerror = 5
     assert E._is_no_more(Other()) is False
 
-    # ⚠ 判据是 `winerror == 259 or "259" in str(e)`,而上面两个用例的 str() 都是空串 ——
+    # ⚠ 判据是 `winerror == 259 or "259" in str(e)`,而上面两个用例的 str() 都是空串,
     # **第二条分支从来没有被任何用例走到过**,更没有负对照。
     # 那条分支存在是因为有些 pywin32 版本不带 winerror 属性,只有消息;
     # 但它同时意味着**任何消息里恰好含 259 的真错误都会被当成正常读完**,
@@ -190,7 +190,7 @@ def test_no_more_items_is_a_normal_end_not_a_failure():
     #
     # 值得留一句的是**当初那个写法为什么不够好**:它把一个会造成本模块存在理由的行为
     # 钉成了期望值。这个模块开头就写着「一条空的运行日志和一段读不到的运行日志
-    # 在界面上长得一模一样」,而子串匹配 259 恰好制造那件事 ——
+    # 在界面上长得一模一样」,而子串匹配 259 恰好制造那件事,
     # 一个无关错误被判成正常读完,于是 enabled=True、dropped=0、条数偏小但看起来确定。
     # **一个防 X 的判据不该把 X 写进期望**:那让下一个人以为它是设计,而不是欠债。
     # 要记录一个已知的洞,写进 docstring,别写进断言。
@@ -201,7 +201,7 @@ def test_no_more_items_is_a_normal_end_not_a_failure():
         "消息里含 12590 的无关错误被当成了正常读完 —— 那正是这个模块要防的那件事:"
         "读到一半失败被报成读完了。判据必须按词边界匹配 259。")
 
-    # 完全不相干、也不含 259 的,必须判假 —— 否则上面那条说明不了任何事。
+    # 完全不相干、也不含 259 的,必须判假, 否则上面那条说明不了任何事。
     class Clean(Exception):
         def __str__(self):
             return "Access is denied"

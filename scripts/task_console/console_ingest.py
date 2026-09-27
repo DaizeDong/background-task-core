@@ -56,7 +56,7 @@ RUNLOG = HERE / "runlog.ps1"
 #
 # 它比页面那边(server.RUNLOG_MAX_EVENTS)大,这是刻意的、不是漂移:
 # 页面是一次点击要等的东西,摄入是后台补历史的东西,两者能承受的时间不一样。
-# 两个数各自有主,各自在自己的两条路径上保持一致 —— 这和「同一个数写了两遍」不是一回事。
+# 两个数各自有主,各自在自己的两条路径上保持一致, 这和「同一个数写了两遍」不是一回事。
 MAX_EVENTS = 500000
 COLLECT = HERE / "collect.ps1"
 
@@ -66,7 +66,7 @@ def now() -> str:
 
 
 # 解释器解析只有一份,在 winps.py。
-# ⚠ 这里原来自己写了一份,而且**不认 TASK_CONSOLE_POWERSHELL** ——
+# ⚠ 这里原来自己写了一份,而且**不认 TASK_CONSOLE_POWERSHELL**,
 # README 的变量表里写着它生效。于是一台设了这个变量的机器上,摄入器安静地用另一个
 # 解释器跑,而页面上没有任何一处显示这个差别。
 from winps import powershell  # noqa: E402
@@ -218,7 +218,7 @@ def _read_runlog(days: int) -> tuple[dict, str]:
     except Exception:
         pass
     # ⚠ 上限必须显式传给回落路径。这里原来只传 -Days,于是回落时吃的是脚本自己的默认
-    # (两万),而快路给的是五十万 —— 同一次摄入,走哪条路决定了它能看到多少事件,
+    # (两万),而快路给的是五十万, 同一次摄入,走哪条路决定了它能看到多少事件,
     # 相差二十五倍,而没有任何一处会说出走的是哪条路、上限是多少。
     # 这条禁令在 server.py 的同名调用处就写着,而它没有落到这一侧:
     # **一个只修在一处的规则,和一条没有的规则,区别只是它看起来已经修过了。**
@@ -240,7 +240,7 @@ def ingest_runlog(con, days: int) -> tuple[bool, int, str]:
         return False, 0, "读运行日志返回了非预期的结构"
     if not raw.get("enabled"):
         # reason 这个键在两条通路上都可能存在但为 None,所以 .get("reason", "") 会取回 None
-        # 而不是空串,再切片就是 TypeError —— 一个「日志关着」的正常分支会炸成异常。
+        # 而不是空串,再切片就是 TypeError, 一个「日志关着」的正常分支会炸成异常。
         why = raw.get("reason") or "运行历史日志是关闭的"
         note_run(con, "runlog", started, False, 0, f"[{via}] {why}"[:400])
         return False, 0, why
@@ -253,7 +253,7 @@ def ingest_runlog(con, days: int) -> tuple[bool, int, str]:
     # 原来这里只判 enabled,于是这两种情况都会走完下面整段:added=0、
     # ingest_run 落一行 ok=1、**runlog-ingest-ok.txt 的 mtime 被刷新**,
     # 而那个戳文件的 docstring 承诺的是「只有成功的 runlog 摄入才写」。
-    # 于是健康面板对摄入判绿、顶栏写「最后摄入 刚才」,而这个通道约五天覆盖一次 ——
+    # 于是健康面板对摄入判绿、顶栏写「最后摄入 刚才」,而这个通道约五天覆盖一次,
     # 这段没被摄入的运行历史是永久丢失的。
     # 同一份载荷 server.py 那边判的是 available=False:两个读者对同一个事实给出相反答案。
     #
@@ -459,7 +459,7 @@ def export_run_events(con) -> tuple[bool, int, str]:
         # 模块开头写着「读不到的源会被记成一条失败的 ingest_run 行并非零退出」,
         # 而导出这一条不在其中:导出失败之后,账本里既没有成功也没有失败,
         # 那一轮在事后看来就像**从来没跑过导出**。
-        # note_run 自己也可能因为同一把锁失败,所以它也要能安静收场 ——
+        # note_run 自己也可能因为同一把锁失败,所以它也要能安静收场,
         # 一个把失败处理本身也炸掉的失败处理,等于没有失败处理。
         try:
             note_run(con, "export", started, False, 0, str(e)[:400])

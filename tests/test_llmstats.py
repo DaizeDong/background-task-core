@@ -79,7 +79,7 @@ def isolate(tmp_path, monkeypatch):
     测到另一个东西 —— 而且是全绿地测到。
     """
     monkeypatch.delenv(llmstats.ENV_CHAIN, raising=False)
-    # 开发机上真的设了这两个时,整批伴生仓用例会测到真机的目录 —— 而且是全绿地测到。
+    # 开发机上真的设了这两个时,整批伴生仓用例会测到真机的目录, 而且是全绿地测到。
     monkeypatch.delenv(llmstats.ENV_LLMCALL_DATA, raising=False)
     monkeypatch.delenv(llmstats.ENV_LLMCALL_CONFIG, raising=False)
     monkeypatch.setenv(llmstats.ENV_CHAIN_FILE, str(tmp_path / "chain.txt"))
@@ -330,7 +330,7 @@ def test_rungs_failed_is_not_skipped():
     assert rows["codexg"]["skipped"] == 0
     assert rows["codex"]["failed"] == 1
     assert rows["cc"]["served"] == 1
-    # claude 在链里但没轮到 —— 既不是 failed 也不是 skipped
+    # claude 在链里但没轮到, 既不是 failed 也不是 skipped
     assert rows["claude"]["not_reached"] == 1
     assert rows["claude"]["failed"] == 0
     assert rows["claude"]["skipped"] == 0
@@ -1083,7 +1083,7 @@ def test_bodies_resolution_returns_none_and_does_not_raise(monkeypatch):
         monkeypatch.delenv(name, raising=False)
     r = llmstats.bodies_resolution()
     assert r["dir"] is None and r["source"] is None
-    # 一个环境变量都没设时,一级都不该走 —— 这里刻意不去猜家目录下的约定路径,
+    # 一个环境变量都没设时,一级都不该走, 这里刻意不去猜家目录下的约定路径,
     # 理由见 _resolve_bodies 的 docstring。`tried` 为空本身就是那个决定的体征。
     assert r["tried"] == [], r["tried"]
 
@@ -1431,7 +1431,7 @@ def test_page_uses_the_observed_chain_for_the_skipped_column(tmp_path, monkeypat
 #
 # 这四条是补出来的:原先只测了「不传 records、自己扫账本」那条路,于是
 # 「传了 records 时取第一条而不是最近一条」「传了 records 时不报行号」两个变异体
-# 活了下来 —— 同一件事的两条实现路径,只测其中一条等于另一条没有闸门。
+# 活了下来, 同一件事的两条实现路径,只测其中一条等于另一条没有闸门。
 
 def test_chain_config_records_branch_takes_the_last_record(tmp_path, monkeypatch):
     """传 records 时也要取**最近一条**,不是第一条。"""

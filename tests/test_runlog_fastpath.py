@@ -102,7 +102,7 @@ def test_falls_back_to_powershell(monkeypatch, no_ps, evt):
     # ⚠ 断言的是**性质**,不是整串参数相等。
     # 原来写的是 `== ["-Days", "60"]`,而那顺带把「不传 -MaxEvents」这个 bug 一起钉住了:
     # 回落路径因此吃脚本自己的默认上限(两万),比快路小二十五倍,
-    # 而这条用例会在有人去修它的时候变红 —— 一条钉住了错误行为的用例,
+    # 而这条用例会在有人去修它的时候变红, 一条钉住了错误行为的用例,
     # 会让修复看起来像回归。
     assert len(no_ps) == 1
     args = no_ps[0][0]
@@ -156,7 +156,7 @@ def test_evtlog_read_exposes_every_key_the_ingester_consumes():
     missing = [k for k in CONSUMED if k not in r]
     assert not missing, f"evtlog.read 少给了摄入器要读的键: {missing}"
     assert isinstance(r["maxRecordId"], int)
-    # oldestRecordId / recordCount 允许是 None(问不出来),但不能不存在 ——
+    # oldestRecordId / recordCount 允许是 None(问不出来),但不能不存在,
     # 「问不出来」和「没这个概念」在下游是两件事。
     for k in ("oldestRecordId", "recordCount"):
         assert r[k] is None or isinstance(r[k], int)
@@ -186,7 +186,7 @@ def test_max_record_id_is_a_number_not_a_missing_key():
 # ---------------------------------------------- 两个读取器要产出同一套「我数得全不全」的键
 # server.py 里那段注释写着「读取器一直在数它们」,而**只有快路在数**:
 # runlog.ps1 从来不产出 dropped / partial / truncated,于是消费方的
-# `raw.get("dropped") or 0` 把「这个读取器根本不数」变成了一个确定的 0 ——
+# `raw.get("dropped") or 0` 把「这个读取器根本不数」变成了一个确定的 0,
 # 同一个页面字段在一条通路上是量出来的,在另一条通路上是缺失被当成了值。
 # 而前端只看这两个字段决定要不要把顶栏染成警告色。
 
@@ -234,7 +234,7 @@ def test_the_slow_reader_reports_the_same_completeness_keys():
     # 这里原来断言的是 `truncated is True`,而那其实编码了一个**环境假设**:这台机器最近
     # 一天至少有 5 条任务事件。那是关于机器的事实,不是关于代码的性质,所以它在一台刚
     # 开通道、一条事件都没有的机器上会红,而红的理由跟被测的东西无关。
-    # 真正的不变量是这个键跟着 count 走,两个方向都要对 —— 恒为真和恒为假一样没用。
+    # 真正的不变量是这个键跟着 count 走,两个方向都要对, 恒为真和恒为假一样没用。
     assert d["truncated"] is (d["count"] >= 5), (
         f"上限设成 5 而 count={d.get('count')},truncated 却是 {d.get('truncated')}")
     if d["count"] < 5:

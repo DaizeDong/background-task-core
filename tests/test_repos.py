@@ -152,7 +152,7 @@ def test_attention_counts_the_ones_a_human_must_act_on(tmp_path):
     # 没上游的仓数要单独报:它们的「没推」是看不见的。
     assert s["unknownUpstream"] == 2
     # attention 这个数和 attentionStates 那张表是同一件事的两处手写副本,
-    # 而没有任何用例对账过 —— 改了其中一处,另一处照旧,页面上就会出现
+    # 而没有任何用例对账过, 改了其中一处,另一处照旧,页面上就会出现
     # 一个和它自己的明细对不上的计数。这里拿明细去重算一遍。
     repos = R.scan(root=str(tmp_path), now=NOW)["repos"]
     states = set(s["attentionStates"])
@@ -412,7 +412,7 @@ def test_visibility_matches_on_owner_repo_not_on_a_filesystem_path(tmp_path, mon
 @pytest.mark.parametrize("url,want", [
     ("https://github.com/Acme/Widget.git", "acme/widget"),
     ("git@github.com:Acme/Widget.git", "acme/widget"),
-    # 本机用 ssh alias,URL 里没有 host 那一段 —— 真实形态,必须认。
+    # 本机用 ssh alias,URL 里没有 host 那一段, 真实形态,必须认。
     ("git@my-alias:Acme/Widget.git", "acme/widget"),
     ("https://example.com/Acme/Widget", "acme/widget"),
     (None, None),
@@ -506,14 +506,14 @@ def test_visibility_matches_when_the_table_key_is_not_lowercase(tmp_path, monkey
 # 扫描过程不 fetch。所以一个从没 fetch 过的仓 behind 恒为 0,
 # 而屏幕上它和「真的已同步」逐字一样。
 # 一个只推不拉的仓永远不会写 FETCH_HEAD,而那种仓在任何以推送为主的工作流里都占多数,
-# 于是「落后 0」大面积失真 —— 这不是边缘情况。
+# 于是「落后 0」大面积失真, 这不是边缘情况。
 
 def test_never_fetched_means_behind_is_not_trusted(tmp_path):
     up = mkbare(tmp_path / "bare", "up")
     d = mkrepo(tmp_path, "a")
     git(d, "remote", "add", "origin", str(up))
     git(d, "push", "-q", "-u", "origin", "HEAD")
-    # push 不写 FETCH_HEAD,所以这个仓有 upstream 但从来没 fetch 过 ——
+    # push 不写 FETCH_HEAD,所以这个仓有 upstream 但从来没 fetch 过,
     # 正是那 13 个的形状。
     assert not (d / ".git" / "FETCH_HEAD").exists()
     out = R.scan(root=str(tmp_path), now=NOW)
@@ -540,7 +540,7 @@ def test_fresh_fetch_means_behind_is_trusted(tmp_path):
     fh = d / ".git" / "FETCH_HEAD"
     assert fh.exists()
     # ⚠ 时间戳要相对 NOW 设。这一组用的是注入的假时钟(NOW 是个固定的未来时刻),
-    # 而 FETCH_HEAD 的 mtime 是真实的现在 —— 两者一减是一百多天,
+    # 而 FETCH_HEAD 的 mtime 是真实的现在, 两者一减是一百多天,
     # 于是一次真的刚刚跑完的 fetch 会被判成过期。
     # 这不是被测代码的问题(生产里 now 是真时钟),是这条用例自己要对齐时钟。
     os.utime(fh, (NOW - 60, NOW - 60))

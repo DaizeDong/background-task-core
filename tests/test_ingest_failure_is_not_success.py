@@ -88,7 +88,7 @@ def test_a_read_failure_is_not_recorded_as_a_successful_ingest(label, db, monkey
     rows = db.execute("SELECT COUNT(*) FROM run_event").fetchone()[0]
     assert rows == want_rows, f"{label}: 入库 {rows} 条,期望 {want_rows}"
 
-    # ingest_run 里那一行的 ok 必须和返回值一致 —— 事后翻账本时它是唯一的线索。
+    # ingest_run 里那一行的 ok 必须和返回值一致, 事后翻账本时它是唯一的线索。
     last = db.execute(
         "SELECT ok, note FROM ingest_run WHERE source='runlog' "
         "ORDER BY rowid DESC LIMIT 1").fetchone()

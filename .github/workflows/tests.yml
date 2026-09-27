@@ -21,6 +21,10 @@ on:
 jobs:
   suite:
     runs-on: windows-latest
+    env:
+      # The package lives under scripts/ (pyproject: packages.find where = scripts). Tests import
+      # it as `task_console`, from this checkout, not from an installed copy.
+      PYTHONPATH: scripts
     steps:
       - uses: actions/checkout@v4
         with:
@@ -36,14 +40,50 @@ jobs:
       # wrong sentence: the module reports "pywin32 unavailable" where the test expects the reason
       # the test is actually about. A runner missing it produces failures that say nothing about the
       # code, which is the same wasted red as running this suite on Linux.
-      - name: Install test dependencies
-        run: python -m pip install --quiet pytest pywin32
-
-      # convo-chain is a hard, pinned library dependency (pyproject: convo-chain==0.1.0): server.py,
-      # convos.py and work_context.py import it at module top. Pinned to the commit that is 0.1.0,
-      # not a moving branch, so a change over there cannot turn this build red or green on its own.
-      - name: Install convo-chain
-        run: python -m pip install --quiet --no-deps "convo-chain @ git+https://github.com/DaizeDong/convo-chain@b7a7c3b79c6c488d5bebd773f2a2481ba059dc34"
+      #
+      # The libraries the console imports are installed for real, pinned to commits, never stubbed,
+      # so CI exercises the import path production uses:
+      #   convo-chain   0.1.0, public (server.py, convos.py, work_context.py).
+      #   fleet-guards  0.1.0, public; the importable fleet_guards package (filesystem, secrets,
+      #                 datadir) that runtime, adoption, observations and git_ops use.
+      #   llmcall       0.2.0, PRIVATE; process containment for controller, runtime_windows,
+      #                 observations and git_ops. Read with a per-consumer read-only deploy key on
+      #                 DaizeDong/llmcall, the same arrangement email-monitor and schedule-reminder use.
+      #   skill-smith   0.1.4, public; the skill catalog the observation adapter reads. Imported
+      #                 lazily there, so it is a test dependency rather than a pyproject one.
+      # A pin is a commit, not a branch, so a change over there cannot turn this build red or green
+      # on its own. Move a pin deliberately, together with the pyproject requirement it satisfies.
+      # A missing key fails the job instead of skipping those tests: a suite that silently skipped
+      # the private dependency would certify a configuration that exists nowhere.
+      - name: Install dependencies
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          LLMCALL_DEPLOY_KEY: ${{ secrets.LLMCALL_DEPLOY_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$LLMCALL_DEPLOY_KEY" || { echo "::error::LLMCALL_DEPLOY_KEY is required to read the private dependency"; exit 1; }
+          tmp="$(cygpath -u "$RUNNER_TEMP")"
+          key="$tmp/llmcall_deploy_key"; hosts="$tmp/github_known_hosts"
+          trap 'rm -f "$key"' EXIT
+          printf '%s\n' "$LLMCALL_DEPLOY_KEY" | tr -d '\r' > "$key"
+          chmod 600 "$key"
+          gh api meta --jq '.ssh_keys[] | "github.com " + .' > "$hosts"
+          export GIT_SSH_COMMAND="ssh -i $key -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$hosts"
+          python -m pip install --quiet pytest pywin32 PyYAML \
+            "fleet-guards @ git+https://github.com/DaizeDong/fleet-guards@3ad9b0ed38437ae4194eef9b462f53807d8124b7" \
+            "llmcall @ git+ssh://git@github.com/DaizeDong/llmcall.git@39dd746958cc2443ed1878af9758569c136b5bea" \
+            "convo-chain @ git+https://github.com/DaizeDong/convo-chain@b7a7c3b79c6c488d5bebd773f2a2481ba059dc34" \
+            "skill-smith @ git+https://github.com/DaizeDong/skill-smith@ff47b5fedfc5b4bd15eace93811736287c1bfda1"
+          # The console itself, installed from a clean export of this commit. Several tests start the
+          # observation worker with `python -I`, which ignores PYTHONPATH on purpose, exactly as the
+          # installed generation runs it, so they need the package importable the way production has
+          # it. Building from an export keeps build/ and *.egg-info out of the checkout under test.
+          mkdir -p "$tmp/console-src"
+          git archive HEAD | tar -x -C "$tmp/console-src"
+          python -m pip install --quiet --no-deps "$tmp/console-src"
+          python -I -c "import fleet_guards.filesystem, llmcall.process, convo_chain, skill_smith.catalog, task_console.observations, yaml, win32api; print('dependencies import')" \
+            || { echo "::error::a pinned dependency did not import; the suite would fail at collection, which reads as a code defect rather than a missing dependency"; exit 1; }
 
       # The Task Scheduler Operational channel is OFF by default on Windows, runners included.
       #
@@ -64,7 +104,12 @@ jobs:
       - name: Acceptance suite
         run: |
           if (-not (Test-Path tests)) { Write-Error "the test suite is MISSING -- an absent suite is not a passing suite"; exit 1 }
-          python -B -m pytest tests/ -q -p no:cacheprovider
+          python -B -m pytest tests/ -q -p no:cacheprovider -m "not owner_integration"
+          # Say once, by name, what did not run and why. Those tests bind the owner's private sources
+          # (TASK_CONSOLE_TEST_CONFIG_SOURCE and friends), which by design never exist on a runner; the
+          # marker comes from the fixtures they request (tests/conftest.py), and their count is the
+          # "deselected" number in the summary above. Run them on the owner machine with the sources set.
+          Write-Host "::notice::owner_integration tests were NOT run: they need private owner sources that never exist on a hosted runner"
 
       # Guards against the suite quietly shrinking to nothing, which would otherwise look exactly
       # like a suite that passes. Raise this deliberately when tests are added; never lower it to
@@ -82,6 +127,6 @@ jobs:
       # was a guess". Raise it from a green run's own output.
       - name: The suite must not have evaporated
         run: |
-          $n = (python -B -m pytest tests/ -q -p no:cacheprovider --collect-only 2>$null | Select-String '::' | Measure-Object).Count
+          $n = (python -B -m pytest tests/ -q -p no:cacheprovider -m "not owner_integration" --collect-only 2>$null | Select-String '::' | Measure-Object).Count
           Write-Host "collected $n tests"
           if ($n -lt 447) { Write-Error "only $n tests collected, expected at least 447 -- tests were removed or collection broke"; exit 1 }

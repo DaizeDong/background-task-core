@@ -33,7 +33,7 @@ import server as S  # noqa: E402
 @pytest.mark.parametrize("decl,want", [
     ({"ok_codes": [2, 3]}, [2, 3]),
     ({"ok_exit_codes": [0, 3, 5]}, [0, 3, 5]),
-    # 两个都写时合并去重,并保持声明顺序 —— 一个把它们当互斥的读取器会丢掉一半。
+    # 两个都写时合并去重,并保持声明顺序, 一个把它们当互斥的读取器会丢掉一半。
     ({"ok_codes": [2, 3], "ok_exit_codes": [3, 5]}, [2, 3, 5]),
     ({}, []),
     # 脏数据不许让整条声明消失:能转成整数的留下,不能的跳过。
@@ -45,7 +45,7 @@ def test_declared_ok_codes_reads_both_spellings(decl, want):
 
 @pytest.mark.parametrize("key", ["ok_codes", "ok_exit_codes"])
 # ⚠ 声明里**刻意不含 0**,而 rc=0 那一行刻意期望 True。
-# 第一版参数是 [0, 3],于是「0 永远算成功」这条规则在每个输入上都不起作用 ——
+# 第一版参数是 [0, 3],于是「0 永远算成功」这条规则在每个输入上都不起作用,
 # 把 server 侧那句 `freshness._ok_codes(...)` 换成裸 `set(codes)`,12 条用例照样全绿。
 # 一条规则要被测到,输入必须是「只有这条规则能给出正确答案」的那种。
 @pytest.mark.parametrize("rc,ok", [(0, True), (3, True), (4, False)])

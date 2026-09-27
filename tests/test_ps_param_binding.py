@@ -42,13 +42,13 @@ SOURCES = ("retire.py", "maint.py")
 # ⚠ 第一版把实参写成「只抓紧挨着的一串参数标志」,而真实写法是
 # `Set-ScheduledTask -TaskName $env:TC_NAME -Description $t.Description`:
 # `-TaskName` 后面跟了一个**值**,正则在那里停住,于是 `-Description` 根本没进扫描范围。
-# 投毒时才发现:把当年那个 bug 原样放回去,这道闸照样打印绿色 ——
+# 投毒时才发现:把当年那个 bug 原样放回去,这道闸照样打印绿色,
 # **它没抓住它存在的唯一理由。** 一个为已修 bug 补的闸,不投毒就等于没写。
 _CALL = re.compile(r"\b([A-Z][A-Za-z]+-[A-Z][A-Za-z]+)([^;|\r\n]*)")
 _PARAM = re.compile(r"(?<![\w$])-([A-Za-z]+)\b")
 
 # PowerShell 的中缀运算符长得和具名参数一模一样,必须排掉,否则 `-not` / `-like` 会被
-# 当成参数报出来 —— 一个动不动就叫的闸门会被绕过,那比没有闸门更糟。
+# 当成参数报出来, 一个动不动就叫的闸门会被绕过,那比没有闸门更糟。
 _OPS = frozenset("""not eq ne lt gt le ge like notlike match notmatch contains notcontains
 in notin and or xor is isnot as replace split join f band bor bxor bnot shl shr ceq cne
 clike cnotlike cmatch imatch""".split())

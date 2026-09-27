@@ -78,7 +78,7 @@ def test_every_task_cmdlet_in_retire_pins_the_root_path():
                     if j > 0:
                         seg = seg[:j]
                 # -InputObject 收的是一个**已经取回来的任务对象**,它的范围由取它的那次
-                # Get 决定 —— 而那次 Get 受同一条规则约束,所以这里不是漏洞。
+                # Get 决定, 而那次 Get 受同一条规则约束,所以这里不是漏洞。
                 # (第一版没有这条,把 `Set-ScheduledTask -InputObject $t` 判成了违规:
                 #  一个把正确写法也判红的闸门会被整体关掉,那比没有闸门更糟。
                 #  正确做法是收紧判据,不是加一条整体豁免。)

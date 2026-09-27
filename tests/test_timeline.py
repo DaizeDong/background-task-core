@@ -93,7 +93,7 @@ def test_a_disabled_task_draws_nothing():
 
 # ---------- expand 认出来的东西,build 必须交出去 ----------
 # ⚠ 上面那几条只测到 expand。expand 收集 unknownTriggers、注释还写着「认不出的类型
-# 照样出现在行里,像 eventDriven 那样」—— 而 build() 的过滤条件只看
+# 照样出现在行里,像 eventDriven 那样」, 而 build() 的过滤条件只看
 # points / spans / eventDriven / actual,拼出来的 row 里也没有这个键。
 # 于是一个只配了月度触发器的任务:expand 认出来了、build 把整行丢掉,
 # **今日时间轴上一行都没有**,页面上也没有任何一处说「有 1 个触发器我不认识」。
