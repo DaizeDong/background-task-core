@@ -1,4 +1,5 @@
 """Pagination finds older conversations without moving the first-page boundary."""
+import json
 import os
 import sys
 from pathlib import Path
@@ -72,3 +73,29 @@ def test_empty_project_remains_a_move_destination(tmp_path):
     result = convos.scan(root=str(tmp_path), query="no matches")
     assert not result["groups"]
     assert {r["id"] for r in result["locations"]} == {"C--Acme-project", empty.name}
+
+
+def test_project_page_does_not_read_other_projects_or_discard_their_cache(tmp_path, monkeypatch):
+    project = populate(tmp_path, 4)
+    other = tmp_path / "C--Acme-other"
+    other.mkdir()
+    sid, body = synthetic_conversation(999, cwd="C:/Acme/other", title="Other example")
+    other_file = other / f"{sid}.jsonl"
+    other_file.write_text(body, encoding="utf-8")
+    cache = tmp_path / "metadata-cache.json"
+    initial = convos.scan(root=str(tmp_path), cache=str(cache), limit_per_group=2)
+    group = next(g for g in initial["groups"] if g["id"] == project.name)
+    saved_other = json.loads(cache.read_text(encoding="utf-8"))[str(other_file)]
+    original_info = convos.project_info
+
+    def current_project_only(directory, **kwargs):
+        assert Path(directory) == project, "a page request inspected an unrelated project"
+        return original_info(directory, **kwargs)
+
+    monkeypatch.setattr(convos, "project_info", current_project_only)
+    page = convos.scan(root=str(tmp_path), cache=str(cache), group=project.name,
+                      cursor=group["nextCursor"], limit_per_group=2)
+    assert page["summary"]["scope"] == "project"
+    assert page["summary"]["files"] == 4
+    assert len(page["groups"][0]["shown"]) == 2
+    assert json.loads(cache.read_text(encoding="utf-8"))[str(other_file)] == saved_other

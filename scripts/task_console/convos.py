@@ -312,6 +312,7 @@ def scan(root: str | None = None, cache: str | None = None,
          now: float | None = None, limit_per_group: int = 40, *,
          group: str | None = None, cursor: str | None = None,
          query: str = "", human_only: bool = False) -> dict:
+    """Read current metadata; a project page scopes counts and locations to that project."""
     if isinstance(limit_per_group, bool) or not isinstance(limit_per_group, int) or not 1 <= limit_per_group <= 200:
         raise ValueError("limit must be between 1 and 200")
     if not isinstance(query, str) or len(query) > 300:
@@ -335,10 +336,15 @@ def scan(root: str | None = None, cache: str | None = None,
         if os.environ.get("TASK_CONSOLE_CONVO_CACHE") else None)
     cached = _load_cache(cpath)
     fresh, hits, misses = {}, 0, 0
+    if group is not None:
+        # A page refresh owns only this directory's cache entries. Other projects
+        # are revalidated on the next full scan, not discarded by pagination.
+        fresh.update((key, value) for key, value in cached.items() if Path(key).parent != base / group)
 
     rows, failed, projects = [], 0, {}
     resolved_base = base.resolve()
-    for d in sorted(base.iterdir()):
+    directories = [base / group] if group is not None else sorted(base.iterdir())
+    for d in directories:
         if not d.is_dir() or d.name.startswith("."):
             continue
         if d.resolve().parent != resolved_base:
@@ -428,6 +434,7 @@ def scan(root: str | None = None, cache: str | None = None,
         "groups": out,
         "locations": locations,
         "summary": {
+            "scope": "project" if group is not None else "all",
             "files": len(rows),
             "matched": matched,
             "groups": len(out),
