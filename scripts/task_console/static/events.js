@@ -153,27 +153,6 @@ document.addEventListener("click",e=>{
     renderBulk(); $("cnt") && render();
     return;
   }
-  // 行上的复制按钮必须在「整行打开对话链」之前判:按钮长在行里面,顺序反过来它永远轮不到。
-  const cvc=e.target.closest("[data-cvcopy]");
-  const cvr=e.target.closest(".cv-r[data-cvfile]");
-  // 整行打开对话链。只传会话 id,不传路径:路径由服务端在会话根下解析。
-  // 对话链是可选面板,没载入时整行退回原来的「复制路径」。
-  if(!cvc && cvr && cvr.dataset.cvid && typeof openConvoChain==='function'){ openConvoChain(cvr.dataset.cvid); return; }
-  const cvp=cvc ? cvc.dataset.cvcopy : cvr && cvr.dataset.cvfile;
-  if(cvp){
-    // 复制而不是「打开」:浏览器里没有安全的方式去开一个本地文件,
-    // 而路径粘到终端里就能用。navigator.clipboard 在非 https 下可能不可用,
-    // 所以失败时把路径显示出来让人自己选,而不是静默什么也不发生。
-    const p = cvp;
-    const ok = () => toast("路径已复制:" + p.slice(-52));
-    if(navigator.clipboard && navigator.clipboard.writeText){
-      navigator.clipboard.writeText(p).then(ok, ()=>toast(p, "bad"));
-    } else { toast(p, "bad"); }
-    return;
-  }
-  const cg=e.target.closest(".cv-gh");
-  if(cg){ const k=cg.parentElement.dataset.cv; CV_OPEN[k]=cg.getAttribute('aria-expanded')!=='true'; renderConvos(); return; }
-  if(e.target.id==="cvonly"){ CV_HUMAN_ONLY=e.target.checked; renderConvos(); return; }
   const rt=e.target.closest("button[data-retire]");
   if(rt){ e.stopPropagation(); retireTask(rt.dataset.retire); return; }
   const mt=e.target.closest("button[data-mt]");
@@ -360,11 +339,6 @@ document.addEventListener("keydown",e=>{
 })();
 $("mtreload").addEventListener("click",()=>{loadMaint();loadSys();loadCodex();});
 $("memreload").addEventListener("click",()=>{loadMem();});
-// 会话屏那个排序下拉是每次 renderConvos 重新生成的,所以不能直接挂在元素上 ——
-// 挂上去的监听会跟着上一版元素一起被丢掉。用一个 change 委托接住。
-document.addEventListener("change", e=>{
-  if(e.target.id==="cvsort"){ CV_SORT=e.target.value; renderConvos(); }
-});
 $("cxload").addEventListener("click",loadCxList);
 // 换库要重扫,换排序不用:排序是纯前端的事,重扫一遍几千个文件只为了换个顺序,
 // 会让这个下拉用起来像卡住了。
@@ -448,7 +422,8 @@ $('theme-select').addEventListener('change',event=>ConsoleTheme.set(event.target
 $('page-refresh').addEventListener('click',refreshPage);
 $('page-export').addEventListener('click',exportPage);
 $('review-search').addEventListener('input',event=>{REVIEW_QUERY=event.target.value;renderTodo();});
-$('cv-search').addEventListener('input',event=>{CV_QUERY=event.target.value;renderConvos();});
+startConvos();
+if(typeof startConversationActions==='function') startConversationActions();
 $('runtime-search').addEventListener('input',event=>{RUNTIME_QUERY=event.target.value;renderSkills();renderClientPlugins();});
 $('runtime-state').addEventListener('change',event=>{RUNTIME_STATE=event.target.value;renderSkills();renderClientPlugins();});
 $('runtime-sort').addEventListener('change',event=>{RUNTIME_SORT=event.target.value;renderSkills();});

@@ -50,7 +50,7 @@ ADAPTERS = (
     Adapter('system', '系统资源', 'sysinfo', 'read', '/api/sys', 'storage',
             '磁盘与目录占用', '预览清理'),
     Adapter('conversations', '本地会话', 'convos', 'scan', '/api/convos', 'convos',
-            '会话记录与来源', '查看记录、复制路径'),
+            '会话记录与存储位置', '搜索、连续加载、重命名与迁移'),
     Adapter('repositories', '代码仓库', 'repos', 'scan', '/api/repos', 'repos',
             '仓库状态与变更', '查看差异及经确认的仓库操作'),
     Adapter('selfcheck', '配置自检', 'selfcheck', 'run', '/api/selfcheck', 'diagnostics',
@@ -59,7 +59,7 @@ ADAPTERS = (
     # 导入,不做任何发现。它这一行只是登记,没有自己的读端点(对话链的四条路由都带参数,
     # 按规矩是显式的受保护路由,不是无参的适配器读),所以 endpoint 为空、不进 ROUTES。
     Adapter('convo-chain', '对话链库 convo-chain', 'convo_chain', '__version__', '', 'convos',
-            '会话转录的对话链、节点、Markdown 导出与分叉', '在会话页打开对话链;分叉经受保护的 POST',
+            '对话链、导出、分叉与会话文件管理', '在会话页打开对话链；修改经受保护的 POST',
             'library', ('conversations',)),
 )
 ROUTES = {adapter.endpoint: adapter for adapter in ADAPTERS if adapter.endpoint}

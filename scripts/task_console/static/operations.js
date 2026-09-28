@@ -7,7 +7,7 @@ function resetFilters(scope){
   if(scope==='repos'){clear(['rpq','rpacc','rpkind','rpvis','rpissue']);RP_STATE='';RP_ISSUE='';renderRepos();}
   if(scope==='catalog'){CATALOG_QUERY='';CATALOG_KIND='';CATALOG_CLIENT='';CATALOG_STATE='';HEALTH_STATE='';renderCatalog();}
   if(scope==='runtime'){clear(['runtime-search','runtime-state']);RUNTIME_QUERY='';RUNTIME_STATE='';renderSkills();renderClientPlugins();}
-  if(scope==='convos'){clear(['cv-search']);CV_QUERY='';CV_HUMAN_ONLY=false;renderConvos();}
+  if(scope==='convos'){clear(['cv-search']);CV_QUERY='';CV_HUMAN_ONLY=false;loadConvos();}
   if(scope==='llm'){clearTimeout(LMQT);clear(['lmq','lmprov','lmcaller','lmok']);Object.assign(LMQ,{q:'',provider:'',caller:'',ok:'',offset:0});LMOPEN=null;loadCalls();}
   if(scope==='diagnostics'){clear(['review-search']);$('review-filter').value='all';REVIEW_QUERY='';REVIEW_FILTER='all';renderTodo();}
   if(scope==='pipelines'){PIPELINE_QUERY='';clear(['pipeline-search']);renderPipelineIssues();}

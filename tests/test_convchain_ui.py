@@ -319,6 +319,6 @@ def test_clicking_another_turn_header_drops_the_old_fork_result():
     看起来像是在说新选的这一轮。"""
     chain = chain_case()
     extra = ("$('chbox').hidden=false;"
-             "const hdr=k=>({closest:sel=>sel==='[data-chk]'?{dataset:{chk:k},classList:{contains:()=>false}}:null});")
+             "const hdr=k=>({closest:sel=>sel==='[data-chk]'?{dataset:{chk:k},getBoundingClientRect:()=>({top:0}),classList:{contains:()=>false}}:null});")
     got = run("CH_SEL='h:0';CH_FRES={newId:'x'};chClick({target:hdr('h:3')});[CH_SEL,CH_FRES]", setup(chain, extra))
     assert got == ["h:3", None]

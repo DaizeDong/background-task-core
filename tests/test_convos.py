@@ -8,8 +8,8 @@
 因为它加载的每个 skill 正文都算一条,于是每个无头运行都被判成一场多轮对话。
 实测按块也算时,一个纯自动化目录报出 247 场「真人对话」,改判据后是 0。
 
-**分组用转录里记的 cwd,不是目录名。** 目录名是把分隔符和点号都换成短横做出来的,
-这个变换不可逆,用它分组会把不同项目并到一起而且看不出来。
+**按真实存储位置分组。** 目录标签优先用原生索引或匹配的工作目录记录,
+不反向解码不可逆的目录名，也不把物理上分离的文件夹合并。
 """
 import json
 import os
@@ -230,14 +230,14 @@ def test_title_source_is_always_reported(tmp_path):
 
 # ---------- 分组 ----------
 
-def test_grouping_uses_the_recorded_cwd_not_the_directory_name(tmp_path):
-    # 两个不同的编码目录名,记录的却是同一个真实路径:必须并成一组。
+def test_storage_locations_remain_distinct_when_historical_cwd_is_the_same(tmp_path):
+    # 文件管理按实际位置分组,历史 cwd 只用于可读标签,不能把两个迁移目标合并。
     session(tmp_path, "C--proj", "a", user_typed("x", cwd="C:/proj"))
     session(tmp_path, "C--proj-2", "b", user_typed("y", cwd="C:/proj"))
     r = C.scan(root=str(tmp_path), now=NOW)
-    assert len(r["groups"]) == 1
-    assert r["groups"][0]["cwd"] == "C:/proj"
-    assert r["groups"][0]["count"] == 2
+    assert len(r["groups"]) == 2
+    assert {g["id"] for g in r["groups"]} == {"C--proj", "C--proj-2"}
+    assert all(g["cwd"] == "C:/proj" and g["count"] == 1 for g in r["groups"])
 
 
 def test_a_transcript_without_a_cwd_gets_its_own_group(tmp_path):

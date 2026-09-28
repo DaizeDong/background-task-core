@@ -34,18 +34,18 @@ Windows only. It reads the Windows Task Scheduler; there is nothing to read anyw
 | Memory pool | a memory directory | see index headroom and broken links; archive an entry |
 | Plugins | `claude plugin list` | enable or disable one |
 | Disk | a plugin cache and a session directory | delete abandoned clone staging directories |
-| Conversations | Claude Code transcripts under `TASK_CONSOLE_SESSIONS` | list sessions and copy a path; open one as its conversation chain across compactions and branches; export any range to Markdown; fork a new session from any node |
+| Conversations | Claude Code transcripts under `TASK_CONSOLE_SESSIONS` | search and page through sessions by storage location; rename or drag sessions between projects; browse chains, export Markdown, and fork from a node |
 | Calls | the LLM-call primitive's append-only ledger | see today's and this week's usage, which rung answered, how long the degraded stretches were, and reorder the fallback chain |
 
 The chain logic (the transcript index and its cache, the id shape gate, chain, node, Markdown
-export and fork) lives in the `convo-chain` library
+export, fork and file operations) lives in the `convo-chain` library
 ([DaizeDong/convo-chain](https://github.com/DaizeDong/convo-chain)), which is a library
-dependency, not an observed producer: `pyproject.toml` pins it (`convo-chain==0.1.0`) the way it
+dependency, not an observed producer: `pyproject.toml` pins its version the way it
 pins `llmcall`, and `server.py` imports it in process so its index cache lives in the console
-process. The library reads no environment variable; the four `/api/convo/*` routes read
+process. The library reads no environment variable; the `/api/convo/*` routes read
 `TASK_CONSOLE_SESSIONS` and pass it in as `root`, map the library's `ConvoChainError.code` to a
-400, and answer an unset root as NOT CHECKED on reads and as a 400 `unavailable` on export and
-fork. Token, host and query checks stay in the console. The rule for which user lines a person
+400 (or 409 for a busy/conflicting edit), and answer an unset root as NOT CHECKED on reads
+and as a 400 `unavailable` on writes. Token, host and query checks stay in the console. The rule for which user lines a person
 actually typed (`typed_text` / `looks_injected`) also lives there, and the session list imports it
 rather than keeping a second copy; so does the work-context reader, which also resolves the session
 file through the library's `locate`. The integrations view lists the library as an informational
@@ -54,6 +54,14 @@ dependency is hard: `server.py`, `convos.py` and `work_context.py` import it at 
 missing library stops the console from starting rather than degrading one panel. Before a runtime
 generation built from this version is installed, the runtime lock must carry the `convo-chain`
 wheel row; the package is not on PyPI, so no other install path resolves it.
+
+Project headers describe physical storage directories. Search runs before pagination, and an
+expanded project loads the next page near its footer; a failed page keeps existing rows and offers
+retry. Dragging onto a project or the destination tray performs the same move as the keyboard
+accessible Move button. The move preserves transcript bytes and session IDs, carries the complete
+sidecar directory, and updates both native indexes. Active writers, collisions and unsafe paths
+are refused. Interrupted edits keep a recovery journal under the configured session root and are
+recovered before another mutation. Fork requests retain a retry identity until the result is known.
 
 The conversation chain is read from the whole transcript, not from `parentUuid` alone. Parallel
 tool calls make a node look like it has two children, and those are one reply, not a branch. A

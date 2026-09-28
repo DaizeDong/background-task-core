@@ -1,4 +1,4 @@
-"""对话历史:按对话创建时所在的目录分组,用对话自己的标题当标题。
+"""对话历史:按当前会话存储目录分组,用对话自己的标题当标题。
 
 标题有六个来源,优先级从高到低,而且**结果里永远带着它来自哪一个**:
 
@@ -19,9 +19,8 @@
 为什么要标出来源:一个由 slug 充数的标题和一句真概括在界面上长得一样,而它们的信息量
 差着量级。看的人有权知道自己在看哪一种。
 
-分组用的是转录里记的 cwd,不是目录名。目录名是把路径里的分隔符和点号都换成短横做出来的,
-这个变换**不可逆**:同一个目录名可能对应好几条真实路径。用它来分组会把不同项目并到一起,
-而且并错了完全看不出来。
+分组标识是实际存储目录。显示的工作目录来自索引或与目录编码匹配的记录,
+不把不可逆的目录名反向解码。历史消息里的 cwd 单独保留,分叉和迁移不会因此跳组。
 
 扫描只读文件的头和尾。整份读要吞掉一整个吉字节,而一次网页请求等不了。代价是有些字段
 可能落在中间没被看到,所以每条记录都带 `partial`:**没读完就说没读完**,不把一个只看了
@@ -31,13 +30,18 @@
 from __future__ import annotations
 
 import io
+import base64
+import hashlib
 import json
+import math
 import os
 import re
 import time
 from pathlib import Path
 
 from convo_chain import looks_injected, typed_text
+from convo_chain.session_ops import project_info
+from convo_chain.errors import ConvoChainError
 
 # 三种「这场对话叫什么」的记录。按字节找标记比逐行 json.loads 便宜一个数量级,
 # 所以先用字节扫一遍,命中了才解析。
@@ -273,8 +277,50 @@ def _load_cache(p: Path | None) -> dict:
         return {}
 
 
+def _page_scope(group, query, human_only):
+    raw = json.dumps([group, query, human_only], ensure_ascii=False).encode("utf-8")
+    return hashlib.sha256(raw).hexdigest()[:24]
+
+
+def _cursor_key(cursor, group, query, human_only):
+    if not cursor:
+        return None
+    try:
+        if not group or not isinstance(cursor, str) or len(cursor) > 2048:
+            raise ValueError
+        obj = json.loads(base64.urlsafe_b64decode(cursor + "=" * (-len(cursor) % 4)))
+        if not isinstance(obj, list) or len(obj) != 4 or obj[0] != 1:
+            raise ValueError
+        if obj[1] != _page_scope(group, query, human_only):
+            raise ValueError
+        stamp, sid = obj[2:]
+        if isinstance(stamp, bool) or not isinstance(stamp, (int, float)) or not math.isfinite(stamp):
+            raise ValueError
+        if not isinstance(sid, str) or len(sid) > 255:
+            raise ValueError
+        return -stamp, sid
+    except (ValueError, TypeError, UnicodeError) as error:
+        raise ValueError("invalid cursor; refresh this project's list") from error
+
+
+def _cursor_for(row, group, query, human_only):
+    raw = json.dumps([1, _page_scope(group, query, human_only), row["mtime"], row["id"]]).encode()
+    return base64.urlsafe_b64encode(raw).decode().rstrip("=")
+
+
 def scan(root: str | None = None, cache: str | None = None,
-         now: float | None = None, limit_per_group: int = 40) -> dict:
+         now: float | None = None, limit_per_group: int = 40, *,
+         group: str | None = None, cursor: str | None = None,
+         query: str = "", human_only: bool = False) -> dict:
+    if isinstance(limit_per_group, bool) or not isinstance(limit_per_group, int) or not 1 <= limit_per_group <= 200:
+        raise ValueError("limit must be between 1 and 200")
+    if not isinstance(query, str) or len(query) > 300:
+        raise ValueError("query is too long")
+    if group is not None and (not isinstance(group, str) or not group or group in (".", "..")
+                              or len(group) > 255 or any(c in group for c in "/\\:")):
+        raise ValueError("invalid project identifier")
+    query = query.strip().casefold()
+    after = _cursor_key(cursor, group, query, human_only)
     raw = root if root is not None else os.environ.get("TASK_CONSOLE_SESSIONS")
     if not raw:
         return {"available": False,
@@ -290,12 +336,20 @@ def scan(root: str | None = None, cache: str | None = None,
     cached = _load_cache(cpath)
     fresh, hits, misses = {}, 0, 0
 
-    rows, failed = [], 0
+    rows, failed, projects = [], 0, {}
+    resolved_base = base.resolve()
     for d in sorted(base.iterdir()):
-        if not d.is_dir():
+        if not d.is_dir() or d.name.startswith("."):
             continue
+        if d.resolve().parent != resolved_base:
+            failed += 1
+            continue
+        projects[d.name] = (d, [])
         for f in sorted(d.glob("*.jsonl")):
             try:
+                if f.is_symlink() or getattr(f.lstat(), "st_file_attributes", 0) & 0x400:
+                    failed += 1
+                    continue
                 st = f.stat()
             except OSError:
                 failed += 1
@@ -323,26 +377,48 @@ def scan(root: str | None = None, cache: str | None = None,
                 misses += 1
             fresh[key] = rec
             rows.append(rec)
+            projects[d.name][1].append(rec)
 
     if cpath:
         _write_cache_atomically(cpath, fresh)
 
-    groups: dict[str, list] = {}
-    for r in rows:
-        # cwd 读不到时单独归一组并说明,不塞进某个看起来合理的目录里。
-        groups.setdefault(r["cwd"] or "(转录里没有记录目录)", []).append(r)
-
-    out = []
-    for cwd, items in groups.items():
-        items.sort(key=lambda x: -(x["mtime"]))
-        out.append({
-            "cwd": cwd,
-            "count": len(items),
-            "humanish": sum(1 for x in items if x["humanSeen"] >= 2),
-            "bytes": sum(x["bytes"] for x in items),
-            "newest": items[0]["mtime"],
-            "shown": items[:limit_per_group],
-            "truncated": len(items) > limit_per_group,
+    if group is not None and group not in projects:
+        raise ValueError("project no longer exists; refresh the list")
+    out, locations, matched = [], [], 0
+    for project_id, (directory, items) in projects.items():
+        candidates = [r["cwd"] for r in items]
+        try:
+            info = project_info(directory, root=base, candidates=candidates)
+        except ConvoChainError as error:
+            info = {"id": project_id, "cwd": next((c for c in candidates if c), None),
+                    "storagePath": str(directory), "locationInferred": True,
+                    "locationWarning": str(error)}
+        info["cwd"] = info["cwd"] or f"(未记录工作目录) {project_id}"
+        locations.append(dict(info))
+        if group is not None and project_id != group:
+            continue
+        eligible = []
+        for row in items:
+            if human_only and row["humanSeen"] < 2:
+                continue
+            if query and query not in " ".join(str(v or "") for v in
+                    (info["cwd"], project_id, row["title"], row.get("preview"), row["file"])).casefold():
+                continue
+            eligible.append({**row, "sourceCwd": row["cwd"], "cwd": info["cwd"], "storageDir": project_id})
+        eligible.sort(key=lambda row: (-row["mtime"], row["id"]))
+        matched += len(eligible)
+        if not eligible and group is None and (items or query or human_only):
+            continue
+        remaining = eligible if after is None else [row for row in eligible if (-row["mtime"], row["id"]) > after]
+        shown = remaining[:limit_per_group]
+        has_more = len(remaining) > len(shown)
+        out.append({**info,
+            "count": len(eligible), "totalCount": len(items),
+            "humanish": sum(1 for x in eligible if x["humanSeen"] >= 2),
+            "bytes": sum(x["bytes"] for x in eligible),
+            "newest": eligible[0]["mtime"] if eligible else 0,
+            "shown": shown, "truncated": has_more, "hasMore": has_more,
+            "nextCursor": _cursor_for(shown[-1], project_id, query, human_only) if has_more else None,
         })
     out.sort(key=lambda g: -g["newest"])
 
@@ -350,11 +426,13 @@ def scan(root: str | None = None, cache: str | None = None,
         "available": True,
         "root": str(base),
         "groups": out,
+        "locations": locations,
         "summary": {
             "files": len(rows),
+            "matched": matched,
             "groups": len(out),
-            "humanish": sum(g["humanish"] for g in out),
-            "bytes": sum(g["bytes"] for g in out),
+            "humanish": sum(r["humanSeen"] >= 2 for r in rows),
+            "bytes": sum(r["bytes"] for r in rows),
             "cacheHits": hits,
             "cacheMisses": misses,
             "cached": bool(cpath),

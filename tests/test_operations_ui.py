@@ -14,8 +14,11 @@ def run(expression, setup=""):
     program = """
 const vm=require('node:vm'), elements={};
 const document={querySelector:()=>({content:'synthetic'}),createElement:()=>({}),
-getElementById:id=>elements[id] ||= {innerHTML:'',textContent:'',value:'',dataset:{},addEventListener:()=>{},appendChild:()=>{}}};
-const context=vm.createContext({document,localStorage:{getItem:()=>null},setTimeout,clearTimeout});
+getElementById:id=>elements[id] ||= {innerHTML:'',textContent:'',value:'',dataset:{},addEventListener:()=>{},appendChild:()=>{},
+querySelectorAll:()=>[],getBoundingClientRect:()=>({top:0,bottom:100}),clientHeight:100,clientTop:0}};
+const window={scrollY:0,scrollTo(){}};
+const context=vm.createContext({document,window,crypto:require('node:crypto').webcrypto,AbortController,
+localStorage:{getItem:()=>null},setTimeout,clearTimeout});
 """
     for name in names[:-1]:
         program += f"vm.runInContext({json.dumps(module_source(name))},context);\n"
@@ -115,12 +118,13 @@ def test_conversation_search_is_scoped_and_groups_start_collapsed():
     setup = "CONVOS=" + json.dumps(operations_case()["conversations"]) + ";"
     result = run("renderConvos();[$('cvgroups').innerHTML,$('cv-match').textContent]", setup)
     assert result[0].count('class="cv-g open"') == 0
-    assert "另有 4 条未载入" in result[1]
-    result = run("CV_OPEN[CONVOS.groups[0].cwd]=false;CV_QUERY='acme';renderConvos();[$('cvgroups').innerHTML,$('cv-match').textContent]", setup)
+    assert "已加载 2 / 6" in result[1]
+    setup += "api=async()=>({...CONVOS,groups:[CONVOS.groups[0]],summary:{...CONVOS.summary,matched:1}});"
+    result = run("CV_QUERY='acme';loadConvos().then(()=>[$('cvgroups').innerHTML,$('cv-match').textContent])", setup)
     assert "Acme project planning" in result[0] and "Sample project planning" not in result[0]
     assert result[0].count('class="cv-g open"') == 1
-    assert "匹配 1/2" in result[1]
-    assert "未参与筛选" in result[0]
+    assert "已加载 1 / 1" in result[1]
+    assert "加载更多" in result[0]
     assert 'class="cv-g open"' not in run("CV_QUERY='acme';renderConvos();CV_QUERY='';renderConvos();$('cvgroups').innerHTML", setup)
 
 

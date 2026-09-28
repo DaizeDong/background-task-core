@@ -15,6 +15,7 @@
 <link rel="stylesheet" href="/static/workbench.css">
 <link rel="stylesheet" href="/static/work-actions.css">
 <link rel="stylesheet" href="/static/convchain.css">
+<link rel="stylesheet" href="/static/conversations.css">
 </head>
 <body>
 <div id="module-error" role="alert" hidden>页面加载失败，请刷新重试。</div>
@@ -269,9 +270,11 @@
 <div class="card" id="cvbox">
     <div class="card-header"><h3 class="card-title">会话<span class="n" id="cvnote">读取中</span></h3><div class="card-actions"><button id="cvreload" title="重新扫描会话">刷新</button></div></div>
     <div class="pad">
-      <div class="catalog-tools"><input id="cv-search" type="search" aria-label="搜索已加载会话" placeholder="搜索标题、项目、路径或内容"><button data-reset-filters="convos">清除筛选</button><span id="cv-match" class="faint"></span></div>
+      <div class="catalog-tools"><input id="cv-search" type="search" aria-label="搜索全部会话" placeholder="搜索全部会话的标题、项目、路径或摘要"><button data-reset-filters="convos">清除筛选</button><span id="cv-match" class="faint"></span></div>
       <div class="cv-head" id="cvhead"></div>
+      <p id="cv-action-error" class="cv-notice error" role="alert" hidden></p>
       <div id="cvgroups"></div>
+      <div id="cv-drop-targets" class="cv-drop-targets" hidden></div>
     </div>
   </div>
   <!-- 对话链:会话列表的下钻,不是一个新分区。由可选面板 panels/convchain.js 渲染;
@@ -293,6 +296,20 @@
   </section>
 
 
+  <dialog id="cv-dialog" class="cv-dialog" aria-labelledby="cv-dialog-title">
+    <form id="cv-form">
+      <h2 id="cv-dialog-title"></h2>
+      <p class="cv-location" id="cv-current"></p>
+      <label class="cv-field" id="cv-title-field">会话名称<input id="cv-new-title" maxlength="200" autocomplete="off"></label>
+      <div class="cv-field" id="cv-target-field" hidden>
+        <label for="cv-target">目标项目<select id="cv-target"></select></label>
+        <p class="cv-location" id="cv-target-path"></p>
+        <span class="faint">迁移会话文件、子会话和索引，保留会话 ID 与历史。</span>
+      </div>
+      <p id="cv-edit-note" class="cv-notice" role="status" aria-live="polite"></p>
+      <div class="cv-dialog-actions"><button id="cv-cancel" type="button">取消</button><button id="cv-submit" type="submit">保存</button></div>
+    </form>
+  </dialog>
   <section id="llm" data-view="llm" data-label="模型调用" hidden>
   <div class="llm-summary">
   <div class="module-section"><div class="card" id="lchain">

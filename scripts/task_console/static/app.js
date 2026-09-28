@@ -10,6 +10,7 @@ const CONSOLE_MODULES = [
   "panels/repositories.js",
   "panels/storage.js",
   "panels/conversations.js",
+  "panels/conversation-actions.js",
   "panels/convchain.js",
   "panels/calls.js",
   "panels/overview.js",
@@ -27,7 +28,8 @@ const CONSOLE_MODULES = [
 const OPTIONAL_PANELS = {
   'panels/plugins.js': 'mt-plugins',
   'panels/integrations.js': 'integration-list',
-  'panels/convchain.js': 'chbox'
+  'panels/convchain.js': 'chbox',
+  'panels/conversation-actions.js': 'cv-action-error'
 };
 (async function startConsole(){
   const failure = document.getElementById("module-error");

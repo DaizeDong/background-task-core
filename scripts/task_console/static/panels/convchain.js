@@ -242,7 +242,8 @@ function chRenderHead(){
     +`<span>压缩 ${chN(CH.compactions)} · 分叉 ${chN(CH.forks)}</span>`
     +`<span title="${CH.cached ? "这次走的是缓存的索引,数字是当初建索引的耗时" : "这次重新建了索引"}">索引 ${chN(CH.indexMs)} ms${CH.cached ? "(缓存)" : ""}</span>`
     +(CH.leafIsDefault ? "" : `<span class="alt">正在看一条非默认分支</span><button class="mini" data-chact="latest">回到最新分支</button>`)
-    +`<span class="cwd" title="${esc(CH.file || "")}">${CH.cwd ? esc(CH.cwd) : "转录里没有记录目录"}</span>`;
+    +`<span class="cwd" title="${esc(CH.file || "")}">保存于 ${esc(CH.locationInferred?CH.projectDir:CH.storageCwd || CH.cwd || CH.projectDir || '工作目录未记录')}</span>`
+    +(!CH_SUB && typeof cvOpenManager==='function'?`<span class="ch-row"><button class="mini" data-cvrename="${esc(CH.id)}">重命名</button><button class="mini" data-cvmove="${esc(CH.id)}">移动会话</button></span>`:'');
   wn.innerHTML=(CH.warnings || []).map(w=>`<div class="warn-line">${esc(w)}</div>`).join("");
 }
 
@@ -342,6 +343,15 @@ function chRenderList(){
   chMarks();
 }
 
+function chRenderTurn(ti){
+  const turn=CH?.turns?.[ti], header=$('chlist').querySelector(`[data-chk="h:${ti}"]`);
+  if(!header || turn?.type!=='turn'){chRenderList();return;}
+  // Keep other rows and their measured content-visibility heights intact.
+  const steps=header.nextElementSibling;
+  if(steps?.classList.contains('ch-steps')) steps.remove();
+  header.outerHTML=chTurnHtml(turn,ti);chMarks();
+}
+
 // 选中、范围、起止这三样只改类名,不重画。展开一轮几千步之后,每按一次 j 重画一遍会卡。
 function chMarks(){
   if(!CH || !CH.available) return;
@@ -365,10 +375,15 @@ function chSelect(k, scroll){
   // 上一次分叉的结果属于上一个节点。选了别的节点还挂着它,看起来像是在说新选的这个。
   if(k!==CH_SEL) CH_FRES=null;
   CH_SEL=k; chMarks();
-  const el=$("chlist").querySelector(`[data-chk="${k}"]`);
+  const L=$("chlist"), el=L.querySelector(`[data-chk="${k}"]`);
   if(el){
-    if(scroll) el.scrollIntoView({block:"nearest"});
-    $("chlist").setAttribute("aria-activedescendant", el.id);
+    if(scroll){
+      const r=el.getBoundingClientRect(), lr=L.getBoundingClientRect();
+      const top=lr.top+L.clientTop, bottom=top+L.clientHeight;
+      if(r.top<top) L.scrollTop+=r.top-top;
+      else if(r.bottom>bottom) L.scrollTop+=r.bottom-bottom;
+    }
+    L.setAttribute("aria-activedescendant", el.id);
   }
   chRenderAct();
   // 按住 j 连走时不为每一行都发请求:停下来 90ms 再取。
@@ -463,12 +478,14 @@ function chRenderAct(){
     +(CH_SUB ? `<span class="faint">子代理的转录不能分叉</span>` : su ? "" : `<span class="faint">先选一个节点</span>`)+`</div>`
     +(!f ? "" : f.error
       ? `<div class="ch-fres bad">分叉失败:${esc(f.error)}</div>`
-      : `<div class="ch-fres"><div>新会话 <code>${esc(f.newId)}</code></div>`
+      : `<div class="ch-fres"><div>${f.reused?'已创建的会话':'新会话'} ${esc(f.title || '')} <code>${esc(f.newId)}</code></div>`
+        +`<div class="cv-location">保存位置：${esc(f.storagePath || f.file || '')}</div>`
         +`<div class="faint">${chN(f.emitted)} 条记录 · 共 ${chN(f.lines)} 行 · 约 ${esc(chTok(f.approxTokens))} tokens · `
         +`${f.fromBoundary ? "从压缩边界 "+esc(chU8(f.fromBoundary))+" 起" : "完整历史,没有压缩边界"}</div>`
         +(f.warnings || []).map(w=>`<div class="warn-line">${esc(w)}</div>`).join("")
         +`<pre class="ch-pre">${esc(f.command || "")}</pre>`
         +`<div class="ch-row"><button class="mini" data-chcopy="${esc(f.command || "")}">复制命令</button>`
+        +(typeof cvOpenManager==='function'?`<button class="mini" data-cvopen-new="${esc(f.newId)}">打开新会话</button><button class="mini" data-cvrename="${esc(f.newId)}">重命名</button><button class="mini" data-cvmove="${esc(f.newId)}">移动</button>`:'')
         +`<span class="faint">在终端里粘贴运行,就从这个节点接着聊</span></div></div>`);
 }
 
@@ -477,7 +494,7 @@ function chToggle(){
   const p=CH_SEL.split(":"), ti=+p[1];
   if(p[0]==="s"){ CH_OPEN[ti]=false; CH_SEL="h:"+ti; }
   else CH_OPEN[ti]=!CH_OPEN[ti];
-  chRenderList(); chSelect(CH_SEL, true);
+  chRenderTurn(ti); chSelect(CH_SEL, true);
 }
 function chMove(d){
   const els=[...$("chlist").querySelectorAll("[data-chk]")];
@@ -524,7 +541,16 @@ async function chExport(){
   }finally{ CH_XBUSY=false; chRenderAct(); chFocusList(true); }
 }
 
-// 分叉。唯一会写文件的动作:在源转录所在的项目目录里独占新建一份,源文件只读。
+const CH_FREQUESTS=new Map();
+function chForkRequest(body){
+  const key='tc.fork.'+JSON.stringify([body.id,body.at,body.leaf || null]);
+  let request=CH_FREQUESTS.get(key);
+  try{request ||= sessionStorage.getItem(key);}catch(error){}
+  request ||= crypto.randomUUID();CH_FREQUESTS.set(key,request);
+  try{sessionStorage.setItem(key,request);}catch(error){}
+  return {key,request};
+}
+// A lost response reuses the request identity, including after a page refresh.
 async function chFork(){
   const at=chSelEnd();
   if(!at || CH_SUB || !CH || CH_FBUSY) return;
@@ -534,23 +560,26 @@ async function chFork(){
     +`原会话文件一个字节都不会改。之后用 claude --resume <新 id> 接着聊。`)) return;
   const body={id:CH_ID, at};
   if(CH_LEAF) body.leaf=CH_LEAF;
+  const request=chForkRequest(body);body.requestId=request.request;
+  const stillSelected=()=>CH_ID===body.id && chSelEnd()===body.at && (CH_LEAF || null)===(body.leaf || null);
   CH_FBUSY=true; chRenderAct();
   $("chnote").textContent="分叉中";
   try{
     const j=await api("/api/convo/fork", {method:"POST", body:JSON.stringify(body)});
     if(!j.newId) throw new Error(j.error || "响应里没有新会话 id");
-    CH_FRES=j; $("chnote").textContent="";
+    CH_FREQUESTS.delete(request.key);
+    try{sessionStorage.removeItem(request.key);}catch(error){}
+    if(stillSelected()){CH_FRES=j;$("chnote").textContent="";}
     toast("已分叉出新会话 "+chU8(j.newId), "ok");
     // 新文件已经落在会话根下了;不重扫的话列表里看不到它,像是没分叉成。
     if(typeof loadConvos==="function") loadConvos().catch(()=>{});
   }catch(e){
-    CH_FRES={error:e.message}; $("chnote").textContent="分叉失败:"+e.message;
+    if(stillSelected()){CH_FRES={error:e.message};$("chnote").textContent="分叉失败:"+e.message;}
     toast("分叉失败:"+e.message, "bad");
   }finally{ CH_FBUSY=false; chRenderAct(); chFocusList(true); }
 }
 
-// 窄屏上两栏上下排:点了一个节点,它的全文和动作在链的下面、屏幕外。点选(不是 j/k)之后
-// 把动作条滚进视口;宽屏两栏并排,什么也不做。
+// Explicitly opening details may reveal the side panel; row expansion never does.
 function chRevealSide(){
   if(typeof window==="undefined" || !window.matchMedia || !window.matchMedia("(max-width:760px)").matches) return;
   const A=$("chact");
@@ -630,15 +659,18 @@ function chClick(e){
     const k=n.dataset.chk, ti=+k.split(":")[1];
     // 标题行和压缩边界:没展开就展开,已经选中再点一次就收起。
     if(k[0]==="h" || n.classList.contains("ch-cmp")){
+      const L=$("chlist"), y=n.getBoundingClientRect().top-L.getBoundingClientRect().top;
       if(!CH_OPEN[ti]) CH_OPEN[ti]=true;
       else if(CH_SEL===k) CH_OPEN[ti]=false;
       // 上一次分叉的结果属于上一个节点(chSelect 同理;这里先改了 CH_SEL,它就看不出换了节点)。
       if(CH_SEL!==k) CH_FRES=null;
-      CH_SEL=k; chRenderList();
+      CH_SEL=k;
+      if(k[0]==='h') chRenderTurn(ti);else chRenderList();
+      const row=L.querySelector(`[data-chk="${k}"]`);
+      if(row) L.scrollTop+=row.getBoundingClientRect().top-L.getBoundingClientRect().top-y;
     }
     chSelect(k, false);
     try{ $("chlist").focus({preventScroll:true}); }catch(err){}
-    chRevealSide();
   }
 }
 

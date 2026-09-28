@@ -7,6 +7,41 @@ import json
 from pathlib import Path
 
 
+def synthetic_conversation(number=1, cwd="C:/Acme/project", title=None, turns=2):
+    """Generate an in-memory transcript for temporary conversation tests."""
+    sid = f"{number:08x}-0000-4000-8000-000000000001"
+    records = []
+    parent = None
+    for index in range(turns):
+        uid = f"{number:08x}-0000-4000-8000-{index + 2:012x}"
+        records.append({"type": "user", "uuid": uid, "parentUuid": parent,
+                        "sessionId": sid, "cwd": cwd,
+                        "message": {"role": "user", "content": f"Synthetic question {number}.{index}"}})
+        parent = uid
+    if title:
+        records.append({"type": "custom-title", "customTitle": title, "sessionId": sid})
+    return sid, "".join(json.dumps(row, ensure_ascii=False) + "\n" for row in records)
+
+
+def synthetic_tool_conversation(number=500, turns=32, cwd="C:/Acme/source"):
+    """A generated conversation with expandable tool/result chains for browser QA."""
+    sid = f"{number:08x}-0000-4000-8000-000000000001"
+    records, parent = [], None
+    for turn in range(turns):
+        content = [f"Synthetic request {turn}: inspect an example file",
+                   [{"type": "tool_use", "id": f"call-{turn}", "name": "Read", "input": {"path": "example.txt"}}],
+                   [{"type": "tool_result", "tool_use_id": f"call-{turn}", "content": "Example file content\n" * 40}],
+                   [{"type": "text", "text": f"Synthetic response {turn}: inspected the example."}]]
+        for step, value in enumerate(content):
+            uid = f"{number:08x}-0000-4000-8000-{turn * 4 + step + 2:012x}"
+            role = "user" if step % 2 == 0 else "assistant"
+            records.append({"type": role, "uuid": uid, "parentUuid": parent, "sessionId": sid,
+                "cwd": cwd, "message": {"role": role, "id": f"msg-{turn}-{step}", "content": value}})
+            parent = uid
+    records.append({"type": "custom-title", "customTitle": "Example tool conversation", "sessionId": sid})
+    return sid, "".join(json.dumps(row, ensure_ascii=False) + "\n" for row in records)
+
+
 def example_request() -> dict:
     manifest = {
         "schemaVersion": 1, "component": "acme-maintenance", "read": "acme-status",

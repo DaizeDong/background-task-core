@@ -54,6 +54,7 @@ import source_reads
 import console_store
 import convos
 import convo_chain
+from convo_chain import session_ops
 import evtlog
 import freshness
 import history
@@ -95,6 +96,7 @@ STATIC_FILES = {
     "panels/tasks.js", "panels/skills.js", "panels/plugins.js", "panels/integrations.js",
     "panels/profile.js", "panels/repositories.js", "panels/storage.js",
     "panels/overview.js", "panels/conversations.js", "panels/calls.js",
+    "panels/conversation-actions.js", "conversations.css",
     "panels/pipelines.js", "panels/review.js", "panels/convchain.js", "convchain.css",
     "navigation.js", "actions.js", "work-model.js", "workbench.js", "workbench.css", "work-actions.js", "work-actions.css",
 }
@@ -109,7 +111,11 @@ DRAIN_MAX = 1 << 20
 CONVO_CHAIN_KEYS = frozenset(("id", "leaf", "sub"))
 CONVO_NODE_KEYS = frozenset(("id", "u", "sub"))
 CONVO_EXPORT_KEYS = frozenset(("id", "to", "from", "leaf", "sub", "tools", "thinking"))
-CONVO_FORK_KEYS = frozenset(("id", "at", "leaf", "sub"))
+CONVO_FORK_KEYS = frozenset(("id", "at", "leaf", "sub", "requestId"))
+CONVO_LIST_KEYS = frozenset(("group", "cursor", "q", "human_only", "limit"))
+CONVO_RENAME_KEYS = frozenset(("id", "title", "expectedProject"))
+CONVO_MOVE_KEYS = frozenset(("id", "targetProject", "expectedProject"))
+_CONVO_ACCESS = threading.RLock()
 # 对话链的判定(索引、形状闸、链、节点、导出、分叉)全在 convo-chain 库里。它是这台控制台
 # 钉死版本的库依赖(和 llmcall、fleet_guards 一样在进程内导入,索引缓存因此活在这个进程里),
 # 不是一个被观测的生产者。库自己不读任何环境变量:根目录只由这里从 TASK_CONSOLE_SESSIONS
@@ -1143,12 +1149,53 @@ class Handler(BaseHTTPRequestHandler):
                               required=("at",), at=body.get("at"))
             return self._json(200, convo_chain.fork(body.get("id"), body.get("at"),
                                                     leaf=body.get("leaf") or None,
-                                                    sub=body.get("sub") or None, root=root))
+                                                    sub=body.get("sub") or None, root=root,
+                                                    request_id=body.get("requestId")))
         except convo_chain.ConvoChainError as e:
             # 写侧没有根目录是硬失败(400 unavailable),不是「未检查」:库自己这样判。
             return self._json(400, _convo_refused(e, root))
         except Exception as e:
             return self._json(500, {"error": f"{type(e).__name__}: {e}"})
+
+    def _convo_edit(self):
+        if not self._authed():
+            self._drain()
+            return self._json(403, {"error": "bad token"})
+        rename = self.path.split("?", 1)[0].endswith("/rename")
+        body = self._convo_body(CONVO_RENAME_KEYS if rename else CONVO_MOVE_KEYS)
+        if body is None:
+            return None
+        root = _convo_root()
+        try:
+            convo_chain.shape(body.get("id"))
+            expected = body.get("expectedProject")
+            if expected is not None and (not isinstance(expected, str) or len(expected) > 255):
+                raise convo_chain.ConvoChainError("来源项目标识不正确", "bad_project")
+            operation = session_ops.rename if rename else session_ops.move
+            result = operation(body.get("id"), body.get("title" if rename else "targetProject"),
+                               root=root, expected_project=expected)
+            return self._json(200, result)
+        except convo_chain.Unavailable as error:
+            return self._json(400, {"error": CONVO_ROOT_UNSET if root is None else str(error), "code": "unavailable"})
+        except convo_chain.ConvoChainError as error:
+            status = 409 if error.code in ("busy", "exists", "conflict", "recovery_conflict", "ambiguous") else 400
+            return self._json(status, _convo_refused(error, root))
+
+    def _convo_list(self):
+        if not self._authed():
+            return self._json(403, {"error": "bad token"})
+        query = self._convo_query(CONVO_LIST_KEYS)
+        if query is None:
+            return None
+        try:
+            if query.get("human_only") not in (None, "0", "1"):
+                raise ValueError("human_only must be 0 or 1")
+            result = convos.scan(group=query.get("group"), cursor=query.get("cursor"),
+                query=query.get("q") or "", human_only=query.get("human_only") == "1",
+                limit_per_group=int(query.get("limit") or "40"))
+            return self._json(200, result)
+        except ValueError as error:
+            return self._json(400, {"error": str(error), "code": "bad_query"})
 
     def _llm_chain(self):
         """改降级链的顺序。
@@ -1269,10 +1316,16 @@ class Handler(BaseHTTPRequestHandler):
                 return None
 
     def do_GET(self):
+        if self.path.split("?", 1)[0].startswith("/api/convo") and self._authed():
+            with _CONVO_ACCESS:
+                return self._guard(self._do_GET, "GET " + self.path.split("?", 1)[0])
         return self._guard(self._do_GET, "GET " + self.path.split("?", 1)[0])
 
     def do_POST(self):
         try:
+            if self.path.split("?", 1)[0].startswith("/api/convo/") and self._authed():
+                with _CONVO_ACCESS:
+                    return self._guard(self._do_POST, "POST " + self.path.split("?", 1)[0])
             return self._guard(self._do_POST, "POST " + self.path.split("?", 1)[0])
         finally:
             # Includes uncertain writes: a lost response is not proof of no change.
@@ -1305,6 +1358,8 @@ class Handler(BaseHTTPRequestHandler):
             if not self._authed():
                 return self._json(403, {"error": "bad token"})
             return self._json(200, integrations.read_configured())
+        if path == '/api/convos':
+            return self._convo_list()
         if path in integrations.ROUTES:
             if not self._authed():
                 return self._json(403, {"error": "bad token"})
@@ -1523,6 +1578,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._llm_chain()
         if self.path.split("?", 1)[0] == "/api/convo/fork":
             return self._convo_fork()
+        if self.path.split("?", 1)[0] in ("/api/convo/rename", "/api/convo/move"):
+            return self._convo_edit()
         if self.path.split("?", 1)[0] != "/api/act":
             self._drain()
             return self._json(404, {"error": "not found"})
