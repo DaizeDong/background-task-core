@@ -34,7 +34,7 @@ Windows only. It reads the Windows Task Scheduler; there is nothing to read anyw
 | Memory pool | a memory directory | see index headroom and broken links; archive an entry |
 | Plugins | `claude plugin list` | enable or disable one |
 | Disk | a plugin cache and a session directory | delete abandoned clone staging directories |
-| Conversations | Claude Code transcripts under `TASK_CONSOLE_SESSIONS` | search and page through sessions by storage location; rename or drag sessions between projects; browse chains, export Markdown, and fork from a node |
+| Conversations | Claude Code transcripts under `TASK_CONSOLE_SESSIONS` | search and page through sessions by storage location; rename, move or permanently delete a confirmed session; browse chains, export Markdown, and fork from a node |
 | Calls | the LLM-call primitive's append-only ledger | see today's and this week's usage, which rung answered, how long the degraded stretches were, and reorder the fallback chain |
 
 The chain logic (the transcript index and its cache, the id shape gate, chain, node, Markdown
@@ -62,6 +62,15 @@ accessible Move button. The move preserves transcript bytes and session IDs, car
 sidecar directory, and updates both native indexes. Active writers, collisions and unsafe paths
 are refused. Interrupted edits keep a recovery journal under the configured session root and are
 recovered before another mutation. Fork requests retain a retry identity until the result is known.
+
+The list exposes View and Delete; More actions holds Rename, Move and file metadata. Opening a
+session replaces the list, and returning restores its scroll position without reloading it.
+Delete first requests `/api/convo/delete-plan` and shows the file count, bytes and native index
+entries. `/api/convo/delete` requires explicit confirmation, the unchanged preview fingerprint and
+a retry request ID. Deletion permanently removes that transcript and its associated directory.
+The library preserves unrelated sessions and refuses stale previews or active writers. Lost
+responses retry the original request; `cleanup_pending` keeps the retry control visible. Read-only
+mode refuses both deletion endpoints. Message content appears before collapsed technical metadata.
 
 The conversation chain is read from the whole transcript, not from `parentUuid` alone. Parallel
 tool calls make a node look like it has two children, and those are one reply, not a branch. A

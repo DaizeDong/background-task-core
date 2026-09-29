@@ -56,10 +56,11 @@ function cvRows(g){
       <div class="cv-main">${chain?`<button class="t" data-cvopen="${esc(r.id)}" title="查看会话：${esc(r.title)}">${esc(r.title)}</button>`:`<span class="t">${esc(r.title)}</span>`}
         ${r.preview&&r.preview!==r.title?`<span class="pv">${esc(r.preview)}</span>`:''}</div>
       <span class="cv-updated">${cvAge(r.ageHours)}</span>
-      <span class="cv-row-actions">${manage?`<button class="mini" data-cvrename="${esc(r.id)}"${disabled?' disabled':''}>重命名</button>
-        <button class="mini cv-handle" data-cvmove="${esc(r.id)}" data-cvdrag="${esc(r.id)}" draggable="${!disabled}"${disabled?' disabled':''} title="点击选择目标项目，也可拖到其他项目上">移动</button>`:''}
-        ${chain?`<button class="mini cv-open" data-cvopen="${esc(r.id)}">查看会话</button>`:''}</span>
-      <details class="cv-details" data-cvdetail="${esc(r.id)}"${CV_DETAILS.has(r.id)?' open':''}><summary>会话详情</summary><div class="cv-detail-body">
+      <span class="cv-row-actions">${chain?`<button class="mini cv-open" data-cvopen="${esc(r.id)}">查看会话</button>`:''}
+        ${manage?`<button class="mini cv-danger" data-cvdelete="${esc(r.id)}"${disabled?' disabled':''}>删除</button>`:''}</span>
+      <details class="cv-details" data-cvdetail="${esc(r.id)}"${CV_DETAILS.has(r.id)?' open':''}><summary>更多操作</summary><div class="cv-detail-body">
+        ${manage?`<span class="cv-row-actions"><button class="mini" data-cvrename="${esc(r.id)}"${disabled?' disabled':''}>重命名</button>
+        <button class="mini cv-handle" data-cvmove="${esc(r.id)}" data-cvdrag="${esc(r.id)}" draggable="${!disabled}"${disabled?' disabled':''} title="点击选择目标项目，也可拖到其他项目上">移动</button></span>`:''}
         <span>标题来源：${esc(CV_SRC[r.titleFrom]||r.titleFrom||'未记录')}</span><span>文件大小：${kb(r.bytes)}</span>
         <span>已识别的用户提问：${r.humanSeen ?? '未记录'}${r.partial?'（只读取了部分内容）':''}</span>
         <span class="cv-location">会话编号：${esc(r.id)}</span><span class="cv-location">文件位置：${esc(r.file)}</span>

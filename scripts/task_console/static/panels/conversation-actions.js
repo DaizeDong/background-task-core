@@ -1,5 +1,6 @@
 // File operations use the console's authenticated action API.
 let CV_EDIT=null, CV_EDIT_BUSY=false, CV_DRAG=null;
+const CV_DELETIONS=new Map();
 function cvSession(id){
   for(const group of CONVOS?.groups || []){
     const row=group.shown.find(r=>r.id===id);
@@ -14,7 +15,10 @@ function cvOpenManager(kind,id){
   const row=typeof id==='object'?id:cvSession(id);
   if(!row){toast('这场会话的位置已改变，请刷新列表后重试','bad');return;}
   CV_EDIT={kind,row};
+  if(kind==='delete'){cvOpenDelete(row);return;}
   const rename=kind==='rename', locations=CONVOS?.locations || CONVOS?.groups || [];
+  $('cv-delete-field').hidden=true;$('cv-repreview').hidden=true;
+  $('cv-submit').classList.remove('cv-danger');
   $('cv-dialog-title').textContent=rename?'重命名会话':'移动会话文件';
   $('cv-current').textContent=row.file || row.id;
   $('cv-title-field').hidden=!rename;$('cv-target-field').hidden=rename;
@@ -28,6 +32,69 @@ function cvOpenManager(kind,id){
   $('cv-edit-note').className='cv-notice';
   cvTargetLocation();$('cv-dialog').showModal();
   const input=rename?$('cv-new-title'):$('cv-target');input.focus();if(rename) input.select();
+}
+const cvDeleteKey=row=>row.projectDir+'/'+row.id;
+function cvDeleteSummary(plan){
+  $('cv-delete-scope').textContent=`将永久删除 ${plan.files} 个文件（${kb(plan.bytes)}），包括会话记录及其关联文件，并移除 ${plan.indexEntries} 条会话索引。`;
+}
+async function cvOpenDelete(row,refresh=false){
+  const dialog=$('cv-dialog');
+  $('cv-dialog-title').textContent='删除会话';
+  $('cv-current').textContent=row.title || row.id;
+  $('cv-title-field').hidden=true;$('cv-target-field').hidden=true;
+  $('cv-new-title').required=false;$('cv-target').required=false;
+  $('cv-delete-field').hidden=false;$('cv-repreview').hidden=true;
+  $('cv-submit').classList.add('cv-danger');$('cv-submit').textContent='永久删除';
+  $('cv-edit-note').className='cv-notice';$('cv-edit-note').textContent='';
+  if(!dialog.open) dialog.showModal();
+  const key=cvDeleteKey(row), previous=CV_DELETIONS.get(key);
+  if(previous && !refresh){
+    CV_EDIT.deletion=previous;cvDeleteSummary(previous.plan);
+    $('cv-edit-note').textContent='上次删除结果尚未确认。再次提交会核对同一请求。';
+    $('cv-submit').textContent='重试原删除请求';$('cv-submit').disabled=false;
+    return;
+  }
+  CV_EDIT_BUSY=true;$('cv-submit').disabled=true;$('cv-cancel').disabled=true;
+  $('cv-delete-scope').textContent='正在检查文件和关联记录…';
+  try{
+    const plan=await api('/api/convo/delete-plan',{method:'POST',body:JSON.stringify({id:row.id,expectedProject:row.projectDir})});
+    CV_EDIT.deletion={plan,requestId:crypto.randomUUID()};
+    cvDeleteSummary(plan);$('cv-submit').disabled=false;
+  }catch(error){
+    CV_EDIT.deletion=null;$('cv-delete-scope').textContent='尚未取得删除范围，未执行删除。';
+    $('cv-edit-note').className='cv-notice error';$('cv-edit-note').textContent=error.message;
+    $('cv-repreview').hidden=false;
+  }finally{CV_EDIT_BUSY=false;$('cv-cancel').disabled=false;}
+}
+async function cvDelete(){
+  if(CV_EDIT_BUSY || !CV_EDIT?.deletion || !ConsoleActions.allowWrite()) return;
+  const {row,deletion}=CV_EDIT, key=cvDeleteKey(row);
+  CV_DELETIONS.set(key,deletion);
+  CV_EDIT_BUSY=true;$('cv-submit').disabled=true;$('cv-cancel').disabled=true;
+  $('cv-edit-note').className='cv-notice';$('cv-edit-note').textContent='正在删除会话文件及关联记录…';
+  try{
+    const result=await api('/api/convo/delete',{method:'POST',body:JSON.stringify({
+      id:row.id,expectedProject:row.projectDir,fingerprint:deletion.plan.fingerprint,
+      requestId:deletion.requestId,confirmed:true})});
+    if(result.deleted!==true) throw new Error('服务未确认删除完成，请重试原请求。');
+    CV_DELETIONS.delete(key);$('cv-dialog').close();
+    if(typeof CH_ID!=='undefined' && CH_ID===row.id) chClose();
+    if(typeof CH_FRES!=='undefined' && CH_FRES?.newId===row.id){CH_FRES=null;chRenderAct();}
+    CV_DETAILS.delete(row.id);
+    toast('会话及关联文件已永久删除','ok');
+    for(const warning of result.warnings || []) toast(warning);
+    await loadConvos();
+  }catch(error){
+    const code=error.payload?.code;
+    $('cv-edit-note').className='cv-notice error';
+    $('cv-edit-note').textContent=error.status?error.message:'删除结果尚未确认。重试会核对原请求。'+error.message;
+    if(code==='conflict'){
+      CV_DELETIONS.delete(key);CV_EDIT.deletion=null;
+      $('cv-repreview').hidden=false;$('cv-submit').textContent='请重新查看删除范围';
+    }else $('cv-submit').textContent='重试原删除请求';
+  }finally{
+    CV_EDIT_BUSY=false;$('cv-submit').disabled=!CV_EDIT?.deletion;$('cv-cancel').disabled=false;
+  }
 }
 function cvTargetLocation(){
   const target=(CONVOS?.locations || CONVOS?.groups || []).find(g=>cvKey(g)===$('cv-target').value);
@@ -74,16 +141,19 @@ function cvClearDrag(){
 }
 function startConversationActions(){
   document.addEventListener('click',event=>{
-    const rename=event.target.closest('[data-cvrename]'), move=event.target.closest('[data-cvmove],[data-cvdrag]');
-    if(rename && !rename.disabled) cvOpenManager('rename',rename.dataset.cvrename);
+    const remove=event.target.closest('[data-cvdelete]'), rename=event.target.closest('[data-cvrename]'), move=event.target.closest('[data-cvmove],[data-cvdrag]');
+    if(remove && !remove.disabled) cvOpenManager('delete',remove.dataset.cvdelete);
+    else if(rename && !rename.disabled) cvOpenManager('rename',rename.dataset.cvrename);
     else if(move && !move.disabled) cvOpenManager('move',move.dataset.cvmove || move.dataset.cvdrag);
     const open=event.target.closest('[data-cvopen-new]');
     if(open && typeof openConvoChain==='function') openConvoChain(open.dataset.cvopenNew);
   });
   $('cv-form').addEventListener('submit',event=>{
     event.preventDefault();if(!CV_EDIT) return;
-    cvMutate(CV_EDIT.kind,CV_EDIT.row,CV_EDIT.kind==='rename'?$('cv-new-title').value:$('cv-target').value);
+    if(CV_EDIT.kind==='delete') cvDelete();
+    else cvMutate(CV_EDIT.kind,CV_EDIT.row,CV_EDIT.kind==='rename'?$('cv-new-title').value:$('cv-target').value);
   });
+  $('cv-repreview').addEventListener('click',()=>{if(!CV_EDIT_BUSY && CV_EDIT?.kind==='delete') cvOpenDelete(CV_EDIT.row,true);});
   $('cv-cancel').addEventListener('click',()=>{if(!CV_EDIT_BUSY) $('cv-dialog').close();});
   $('cv-dialog').addEventListener('cancel',event=>{if(CV_EDIT_BUSY) event.preventDefault();});
   $('cv-target').addEventListener('change',cvTargetLocation);

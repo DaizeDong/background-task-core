@@ -43,7 +43,7 @@ jobs:
       #
       # The libraries the console imports are installed for real, pinned to commits, never stubbed,
       # so CI exercises the import path production uses:
-      #   convo-chain   0.2.0, public (server.py, convos.py, work_context.py).
+      #   convo-chain   0.3.0, public (server.py, convos.py, work_context.py).
       #   fleet-guards  0.1.0, public; the importable fleet_guards package (filesystem, secrets,
       #                 datadir) that runtime, adoption, observations and git_ops use.
       #   llmcall       0.2.0, PRIVATE; process containment for controller, runtime_windows,
@@ -73,7 +73,7 @@ jobs:
           python -m pip install --quiet pytest pywin32 PyYAML \
             "fleet-guards @ git+https://github.com/DaizeDong/fleet-guards@3ad9b0ed38437ae4194eef9b462f53807d8124b7" \
             "llmcall @ git+ssh://git@github.com/DaizeDong/llmcall.git@39dd746958cc2443ed1878af9758569c136b5bea" \
-            "convo-chain @ git+https://github.com/DaizeDong/convo-chain@761053e15bc846cb986868e2c1f44622905c518c" \
+            "convo-chain @ git+https://github.com/DaizeDong/convo-chain@e4e0d2f9e0972ed5a9b1a6f1ef458e46a4bb782c" \
             "skill-smith @ git+https://github.com/DaizeDong/skill-smith@ff47b5fedfc5b4bd15eace93811736287c1bfda1"
           # The console itself, installed from a clean export of this commit. Several tests start the
           # observation worker with `python -I`, which ignores PYTHONPATH on purpose, exactly as the

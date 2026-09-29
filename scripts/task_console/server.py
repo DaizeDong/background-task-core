@@ -115,6 +115,8 @@ CONVO_FORK_KEYS = frozenset(("id", "at", "leaf", "sub", "requestId"))
 CONVO_LIST_KEYS = frozenset(("group", "cursor", "q", "human_only", "limit"))
 CONVO_RENAME_KEYS = frozenset(("id", "title", "expectedProject"))
 CONVO_MOVE_KEYS = frozenset(("id", "targetProject", "expectedProject"))
+CONVO_DELETE_PLAN_KEYS = frozenset(("id", "expectedProject"))
+CONVO_DELETE_KEYS = CONVO_DELETE_PLAN_KEYS | frozenset(("fingerprint", "requestId", "confirmed"))
 _CONVO_ACCESS = threading.RLock()
 # 对话链的判定(索引、形状闸、链、节点、导出、分叉)全在 convo-chain 库里。它是这台控制台
 # 钉死版本的库依赖(和 llmcall、fleet_guards 一样在进程内导入,索引缓存因此活在这个进程里),
@@ -1181,6 +1183,32 @@ class Handler(BaseHTTPRequestHandler):
             status = 409 if error.code in ("busy", "exists", "conflict", "recovery_conflict", "ambiguous") else 400
             return self._json(status, _convo_refused(error, root))
 
+    def _convo_delete(self):
+        if not self._authed():
+            self._drain()
+            return self._json(403, {"error": "bad token"})
+        preview = self.path.split("?", 1)[0].endswith("/delete-plan")
+        body = self._convo_body(CONVO_DELETE_PLAN_KEYS if preview else CONVO_DELETE_KEYS)
+        if body is None:
+            return None
+        root = _convo_root()
+        try:
+            if preview:
+                result = convo_chain.delete_plan(body.get("id"), root=root,
+                                                expected_project=body.get("expectedProject"))
+            else:
+                if body.get("confirmed") is not True:
+                    raise convo_chain.ConvoChainError("请先查看删除范围并确认永久删除", "confirmation_required")
+                result = convo_chain.delete(body.get("id"), root=root,
+                    expected_project=body.get("expectedProject"), fingerprint=body.get("fingerprint"),
+                    request_id=body.get("requestId"))
+            return self._json(200, result)
+        except convo_chain.Unavailable as error:
+            return self._json(400, {"error": CONVO_ROOT_UNSET if root is None else str(error), "code": "unavailable"})
+        except convo_chain.ConvoChainError as error:
+            status = 409 if error.code in ("busy", "conflict", "recovery_conflict", "cleanup_pending", "ambiguous") else 400
+            return self._json(status, _convo_refused(error, root))
+
     def _convo_list(self):
         if not self._authed():
             return self._json(403, {"error": "bad token"})
@@ -1580,6 +1608,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._convo_fork()
         if self.path.split("?", 1)[0] in ("/api/convo/rename", "/api/convo/move"):
             return self._convo_edit()
+        if self.path.split("?", 1)[0] in ("/api/convo/delete-plan", "/api/convo/delete"):
+            return self._convo_delete()
         if self.path.split("?", 1)[0] != "/api/act":
             self._drain()
             return self._json(404, {"error": "not found"})

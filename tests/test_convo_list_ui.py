@@ -3,6 +3,7 @@ import json
 
 from test_operations_ui import run
 from tools.make_fixtures import operations_case
+from tools.make_fixtures import synthetic_conversation
 
 
 def setup():
@@ -67,4 +68,59 @@ def test_open_details_survive_row_repainting():
       const g=CONVOS.groups[0];CV_DETAILS.add(g.shown[0].id);
       return cvRows(g);
     })()""", setup())
-    assert ' open><summary>会话详情</summary>' in result
+    assert ' open><summary>更多操作</summary>' in result
+
+
+def deletion_setup():
+    sid, _ = synthetic_conversation()
+    return setup() + """
+      const row={id:SID,projectDir:'C--Acme-source',title:'Example conversation'};
+      const plan={files:3,bytes:1200,indexEntries:1,fingerprint:'a'.repeat(64)};
+      for(const id of ['cv-submit','cv-cancel','cv-dialog']) $(id).classList={add(){},remove(){}};
+      $('cv-dialog').showModal=function(){this.open=true;};
+      $('cv-dialog').close=function(){this.open=false;};
+      toast=()=>{};loadConvos=async()=>{};
+    """.replace("SID", json.dumps(sid))
+
+
+def test_delete_waits_for_confirmation_and_retries_the_original_request():
+    result = run("""(async()=>{
+      let calls=[];api=async(path,options)=>{
+        calls.push({path,body:JSON.parse(options.body)});
+        if(path.endsWith('delete-plan')) return plan;
+        if(calls.length===2) throw new Error('synthetic lost reply');
+        return {deleted:true};
+      };
+      CV_EDIT={kind:'delete',row};await cvOpenDelete(row);
+      const before=calls.length;await cvDelete();const openAfterFailure=$('cv-dialog').open;
+      await cvDelete();return {before,openAfterFailure,closed:!$('cv-dialog').open,
+        first:calls[1].body,second:calls[2].body};
+    })()""", deletion_setup())
+    assert result["before"] == 1 and result["openAfterFailure"] and result["closed"]
+    assert result["first"] == result["second"] and result["first"]["confirmed"] is True
+
+
+def test_changed_preview_requires_another_preview_and_confirmation():
+    result = run("""(async()=>{
+      let calls=[];api=async(path)=>{
+        calls.push(path);if(path.endsWith('delete-plan')) return plan;
+        throw Object.assign(new Error('changed'),{status:409,payload:{code:'conflict'}});
+      };
+      CV_EDIT={kind:'delete',row};await cvOpenDelete(row);await cvDelete();await cvDelete();
+      return {calls,disabled:$('cv-submit').disabled,repreview:!$('cv-repreview').hidden,
+        pending:CV_DELETIONS.size};
+    })()""", deletion_setup())
+    assert result == {"calls": ["/api/convo/delete-plan", "/api/convo/delete"],
+                      "disabled": True, "repreview": True, "pending": 0}
+
+
+def test_cleanup_pending_keeps_the_original_retry_identity():
+    result = run("""(async()=>{
+      api=async(path)=>path.endsWith('delete-plan')?plan:Promise.reject(
+        Object.assign(new Error('cleanup pending'),{status:409,payload:{code:'cleanup_pending'}}));
+      CV_EDIT={kind:'delete',row};await cvOpenDelete(row);const id=CV_EDIT.deletion.requestId;
+      await cvDelete();$('cv-dialog').close();CV_EDIT={kind:'delete',row};await cvOpenDelete(row);
+      return {same:CV_EDIT.deletion.requestId===id,disabled:$('cv-submit').disabled,
+        label:$('cv-submit').textContent};
+    })()""", deletion_setup())
+    assert result == {"same": True, "disabled": False, "label": "重试原删除请求"}

@@ -65,3 +65,50 @@ def test_read_only_and_stale_source_cannot_change_a_session(srv, sessions, monke
     assert status == 409 and json.loads(raw)["code"] == "conflict"
     monkeypatch.setenv("TASK_CONSOLE_READ_ONLY", "1")
     assert call(srv, "POST", "/api/convo/rename", token=TOKEN, body=body)[0] == 403
+
+
+def delete_body(srv, sessions):
+    _, source, _, sid = sessions
+    body = {"id": sid, "expectedProject": source.name}
+    status, raw = call(srv, "POST", "/api/convo/delete-plan", token=TOKEN, body=body)
+    assert status == 200, raw
+    return {**body, "fingerprint": json.loads(raw)["fingerprint"],
+            "requestId": "00000001-0000-4000-8000-000000000099", "confirmed": True}
+
+
+def test_delete_requires_confirmation_then_removes_only_one_session(srv, sessions):
+    _, source, _, sid = sessions
+    body = delete_body(srv, sessions)
+    for confirmed in (None, False, "true", 1):
+        status, raw = call(srv, "POST", "/api/convo/delete", token=TOKEN, body={**body, "confirmed": confirmed})
+        assert status == 400 and json.loads(raw)["code"] == "confirmation_required"
+    assert len(list(source.glob("*.jsonl"))) == 46
+    status, raw = call(srv, "POST", "/api/convo/delete", token=TOKEN, body=body)
+    assert status == 200 and json.loads(raw)["deleted"] is True
+    assert not (source / (sid + ".jsonl")).exists() and len(list(source.glob("*.jsonl"))) == 45
+    status, raw = call(srv, "POST", "/api/convo/delete", token=TOKEN, body=body)
+    assert status == 200 and json.loads(raw)["unchanged"] is True
+
+
+def test_delete_stale_preview_preserves_session(srv, sessions):
+    _, source, _, sid = sessions
+    body = delete_body(srv, sessions)
+    path = source / (sid + ".jsonl")
+    with path.open("ab") as stream:
+        stream.write(b"\n")
+    status, raw = call(srv, "POST", "/api/convo/delete", token=TOKEN, body=body)
+    assert status == 409 and json.loads(raw)["code"] == "conflict" and path.exists()
+
+
+@pytest.mark.parametrize("route", ["delete-plan", "delete"])
+def test_delete_auth_host_readonly_and_unknown_keys(srv, sessions, monkeypatch, route):
+    body = delete_body(srv, sessions)
+    if route == "delete-plan":
+        body = {k: body[k] for k in ("id", "expectedProject")}
+    url = "/api/convo/" + route
+    assert call(srv, "POST", url, body=body)[0] == 403
+    assert call(srv, "POST", url, host="outside.example", token=TOKEN, body=body)[0] == 400
+    status, raw = call(srv, "POST", url, token=TOKEN, body={**body, "surprise": True})
+    assert status == 400 and json.loads(raw)["code"] == "bad_body"
+    monkeypatch.setenv("TASK_CONSOLE_READ_ONLY", "1")
+    assert call(srv, "POST", url, token=TOKEN, body=body)[0] == 403

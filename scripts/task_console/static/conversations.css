@@ -29,6 +29,8 @@
 .cv-row-actions{display:flex;align-items:center;flex-wrap:wrap;gap:5px;min-width:0}
 .cv-row-actions button,.cv-detail-body button,.cv-page button,.cv-dialog-actions button{min-height:32px;padding:4px 8px;line-height:1.3;white-space:normal}
 .cv-open{color:var(--cyan);border-color:var(--cyan)}
+.cv-danger,.cv-dialog-actions button.cv-danger{color:var(--bad);border-color:var(--bad)}
+#cv-delete-field p{margin:0 0 10px}
 .cv-handle[draggable="true"]{cursor:grab}
 .cv-handle[draggable="true"]:active{cursor:grabbing}
 .cv-details{display:contents}

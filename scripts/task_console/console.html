@@ -272,7 +272,7 @@
     <div class="pad">
       <div class="catalog-tools"><input id="cv-search" type="search" aria-label="搜索全部会话" placeholder="搜索会话名称、内容或项目"><button data-reset-filters="convos">清除筛选</button></div>
       <div class="cv-head" id="cvhead"></div>
-      <p class="cv-help">展开项目查看会话。点击“移动”选择位置，也可拖动该按钮到其他项目。</p>
+      <p class="cv-help">展开项目查找会话。“更多操作”中可重命名、移动或查看文件位置。</p>
       <details class="cv-scan-details"><summary>列表说明</summary><p>只列出有会话的项目。没有会话的目录仍可在“移动”中选择。</p><p id="cv-match"></p></details>
       <p id="cv-action-error" class="cv-notice error" role="alert" hidden></p>
       <div id="cvgroups"></div>
@@ -291,7 +291,7 @@
       <div id="chwarn"></div>
       <div class="ch-split">
         <div class="ch-list" id="chlist" tabindex="0" role="listbox" aria-label="对话链节点。j / k 移动,Enter 展开,[ ] 设起止,Esc 关闭"></div>
-        <div class="ch-side"><div class="ch-act" id="chact"></div><div class="ch-det" id="chdet"></div></div>
+        <div class="ch-side"><details class="ch-actions-menu"><summary>导出与新建会话</summary><div class="ch-act" id="chact"></div></details><div class="ch-det" id="chdet"></div></div>
       </div>
     </div>
   </div>
@@ -307,6 +307,11 @@
         <label for="cv-target">目标项目<select id="cv-target"></select></label>
         <p class="cv-location" id="cv-target-path"></p>
         <span class="faint">会话及其关联文件会一起移到目标项目，原有历史会保留。</span>
+      </div>
+      <div id="cv-delete-field" hidden>
+        <p id="cv-delete-scope"></p>
+        <p class="cv-notice error">永久删除后无法从控制台恢复。正在使用的会话请先关闭。</p>
+        <button id="cv-repreview" type="button" hidden>重新查看删除范围</button>
       </div>
       <p id="cv-edit-note" class="cv-notice" role="status" aria-live="polite"></p>
       <div class="cv-dialog-actions"><button id="cv-cancel" type="button">取消</button><button id="cv-submit" type="submit">保存</button></div>

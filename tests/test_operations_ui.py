@@ -18,7 +18,7 @@ getElementById:id=>elements[id] ||= {innerHTML:'',textContent:'',value:'',datase
 querySelectorAll:()=>[],getBoundingClientRect:()=>({top:0,bottom:100}),clientHeight:100,clientTop:0}};
 const window={scrollY:0,scrollTo(){}};
 const context=vm.createContext({document,window,crypto:require('node:crypto').webcrypto,AbortController,
-localStorage:{getItem:()=>null},setTimeout,clearTimeout});
+localStorage:{getItem:()=>null},setTimeout,clearTimeout,requestAnimationFrame:fn=>setTimeout(fn,0)});
 """
     for name in names[:-1]:
         program += f"vm.runInContext({json.dumps(module_source(name))},context);\n"
@@ -186,10 +186,12 @@ renderCxList=()=>{};
 
 def test_functional_sections_have_no_closed_disclosure_by_default():
     html = (Path(__file__).resolve().parents[1] / "scripts/task_console/console.html").read_text(encoding="utf-8")
-    # Supporting list instructions may be folded; controls and content stay outside.
+    # Instructions and optional export/fork controls may fold; primary content stays visible.
     help_blocks = re.findall(r'<details class="cv-scan-details">(.*?)</details>', html, re.S)
     assert len(help_blocks) == 1
     assert not re.search(r'<(?:button|input|select)\b', help_blocks[0])
     html = re.sub(r'<details class="cv-scan-details">.*?</details>', '', html, flags=re.S)
+    assert '<details class="ch-actions-menu"><summary>导出与新建会话</summary><div class="ch-act" id="chact"></div></details>' in html
+    html = re.sub(r'<details class="ch-actions-menu">.*?</details>', '', html, flags=re.S)
     assert not re.findall(r'<details(?![^>]*\bopen\b)[^>]*>', html)
     assert 'id="theme-select"' in html and 'id="page-export"' in html

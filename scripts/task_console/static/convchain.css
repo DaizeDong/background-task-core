@@ -33,6 +33,9 @@
 .ch-list{background:var(--panel);overflow:auto;overflow-anchor:none;min-width:0;min-height:0;outline:none;contain:strict}
 .ch-list:focus-visible{box-shadow:inset 0 0 0 2px var(--cyan)}
 .ch-side{background:var(--panel);overflow:auto;min-width:0;min-height:0;padding:0 10px 10px;contain:strict}
+.ch-short .ch-split{height:auto;min-height:140px}
+.ch-short .ch-list,.ch-short .ch-side{contain:layout paint;max-height:60vh}
+.ch-actions-menu>summary{padding:8px 0;cursor:pointer;color:var(--cyan);font-size:var(--fs-meta)}
 .ch-t,.ch-s,.ch-cmp,.ch-sum{content-visibility:auto;contain-intrinsic-size:auto 26px}
 @media (max-width:760px){
   .ch-split{grid-template-columns:minmax(0,1fr);height:auto;overflow:visible}

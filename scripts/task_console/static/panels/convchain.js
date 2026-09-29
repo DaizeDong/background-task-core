@@ -14,6 +14,7 @@ let CH_XT=false, CH_XK=false, CH_XBUSY=false, CH_FBUSY=false;
 let CH_POS={}, CH_ORDER=[], CH_TR=[], CH_FKS={}, CH_AGTURN={}, CH_SUBQ="";
 const CH_NODE=new Map();
 let CH_SEQ=0, CH_NSEQ=0, CH_NT=null, CH_ROUTING=false;
+let CH_LIST_SCROLL=0, CH_LIST_FOCUS=null;
 const CH_UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const CH_AGENT=/^[A-Za-z0-9_-]{1,80}$/;
 // 字形、类名、可读名。类名逐字写在这里(不拼接),死 CSS 闸才找得到它们。
@@ -88,6 +89,11 @@ async function openConvoChain(id, opts){
     CH_ROUTING=true;
     try{ showView("convos", false); }finally{ CH_ROUTING=false; }
   }
+  if(!$("cvbox").hidden){
+    CH_LIST_SCROLL=window.scrollY;CH_LIST_FOCUS=document.activeElement;
+    $("cvbox").hidden=true;
+    if(typeof CV_OBSERVER!=='undefined') CV_OBSERVER?.disconnect();
+  }
   const same=CH_ID===id && CH_SUB===sub;
   if(same && CH_LEAF===leaf && CH && !focusU && !opts.force){ $("chbox").hidden=false; return; }
   // 换分支时按 uuid 记下选中和展开的是哪些节点,重新加载后找回来。按下标记的话,
@@ -159,6 +165,13 @@ function chClose(keepHash){
   CH=null; CH_ID=null; CH_SUB=null; CH_LEAF=null; CH_PARENT=null; CH_SEL=null;
   CH_FROM=null; CH_TO=null; CH_OPEN={}; CH_FKOPEN=null; CH_FRES=null; CH_NODE.clear();
   $("chbox").hidden=true;
+  $("cvbox").hidden=false;
+  requestAnimationFrame(()=>{
+    if(CH_ID || CURVIEW!=="convos") return;
+    window.scrollTo({top:CH_LIST_SCROLL,behavior:'instant'});
+    if(CH_LIST_FOCUS?.isConnected) CH_LIST_FOCUS.focus({preventScroll:true});
+    if(typeof cvObserve==='function') cvObserve();
+  });
   if(!keepHash && location.hash.slice(1).indexOf("convos/")===0){
     try{ history.replaceState(null, "", "#convos"); }catch(e){}
   }
@@ -214,7 +227,10 @@ function chRange(){
   return [a, b];
 }
 
-function chRender(){ chRenderHead(); chRenderList(); chRenderAct(); chRenderDet(); }
+function chRender(){
+  $("chbox").classList?.toggle('ch-short',CH_ORDER.length<=12);
+  chRenderHead(); chRenderList(); chRenderAct(); chRenderDet();
+}
 
 function chRenderHead(){
   const cr=$("chcrumb"), hd=$("chhead"), wn=$("chwarn");
@@ -235,9 +251,10 @@ function chRenderHead(){
   const nT=(CH.turns || []).filter(t=>t.type==="turn").length;
   hd.innerHTML=`<span class="ttl">${esc(CH.title || CH.id)}</span>`
     +`<span><b>${nT}</b> 轮</span>`
-    +(!CH_SUB && typeof cvOpenManager==='function'?`<span class="ch-row"><button class="mini" data-cvrename="${esc(CH.id)}">重命名</button><button class="mini" data-cvmove="${esc(CH.id)}">移动会话</button></span>`:'')
+    +(!CH_SUB && typeof cvOpenManager==='function'?`<button class="mini cv-danger" data-cvdelete="${esc(CH.id)}"${ConsoleActions.readOnly?' disabled':''}>删除会话</button>`:'')
     +(CH.leafIsDefault ? "" : `<span class="alt">正在看一条非默认分支</span><button class="mini" data-chact="latest">回到最新分支</button>`)
-    +`<details class="ch-file-details"><summary>文件与读取详情</summary><div class="ch-file-meta">`
+    +`<details class="ch-file-details"><summary>更多操作与详情</summary><div class="ch-file-meta">`
+    +(!CH_SUB && typeof cvOpenManager==='function'?`<span class="ch-row"><button class="mini" data-cvrename="${esc(CH.id)}"${ConsoleActions.readOnly?' disabled':''}>重命名</button><button class="mini" data-cvmove="${esc(CH.id)}"${ConsoleActions.readOnly?' disabled':''}>移动会话</button></span>`:'')
     +`<span>${chN(CH.lines)} 行 · ${chN(CH.chainEntries)} 个链条目 · ${kb(CH.bytes)}</span>`
     +`<span>显示链 <b>${chN(CH.pathLen)}</b> 个节点</span>`
     +`<span${CH.badLines ? ' class="bad"' : ""}>坏行 ${chN(CH.badLines)}</span>`
@@ -435,9 +452,7 @@ function chRenderDet(n){
   const flags=[[n.isMeta,"isMeta"],[n.isSidechain,"isSidechain"],[n.isCompactSummary,"压缩概括"],
     [n.promptSource,"来源 "+n.promptSource]].filter(x=>x[0]).map(x=>`<span>${esc(x[1])}</span>`).join("");
   const pre=(t, cls)=>`<pre class="ch-pre${cls ? " "+cls : ""}">${esc(t)}</pre>`;
-  let h=`<h5>${k[0]} ${esc(k[2])}${n.role ? " · "+esc(n.role) : ""}</h5>`
-    +`<dl class="ch-kv">${kv.map(x=>`<dt>${esc(x[0])}</dt><dd>${esc(x[1])}</dd>`).join("")}</dl>`
-    +(flags ? `<div class="ch-flags">${flags}</div>` : "");
+  let h=`<h5>${k[0]} ${esc(k[2])}${n.role ? " · "+esc(n.role) : ""}</h5>`;
   if(n.truncated){
     const tf=n.truncatedFields || [], cut=tf.filter(x=>x!=="omitted");
     if(cut.length) h+=`<div class="warn-line">这些字段超过 20 万字符,只显示了开头:${esc(cut.join("、"))}</div>`;
@@ -455,6 +470,8 @@ function chRenderDet(n){
   if(n.attachment){ body++; h+=`<h5>📎 附件 ${esc(n.attachment.type || "")}</h5>`+pre(n.attachment.summary || ""); }
   if(n.compactMetadata){ h+=`<h5>压缩元数据</h5>`+pre(JSON.stringify(n.compactMetadata, null, 2)); }
   if(!body) h+=`<div class="ch-hint">这一行没有可读的正文。原始 JSON 在下面。</div>`;
+  h+=`<details><summary>消息信息</summary><dl class="ch-kv">${kv.map(x=>`<dt>${esc(x[0])}</dt><dd>${esc(x[1])}</dd>`).join("")}</dl>`
+    +(flags ? `<div class="ch-flags">${flags}</div>` : "")+`</details>`;
   h+=n.raw!=null
     ? `<details><summary>原始 JSON 行${n.rawTruncated ? "(已截断)" : ""}</summary>${pre(n.raw)}</details>`
     : `<div class="faint">这一行 ${kb(n.byteLength)},太大,不下发原文。</div>`;
