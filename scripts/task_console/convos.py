@@ -343,7 +343,12 @@ def scan(root: str | None = None, cache: str | None = None,
 
     rows, failed, projects = [], 0, {}
     resolved_base = base.resolve()
-    directories = [base / group] if group is not None else sorted(base.iterdir())
+    try:
+        directories = [base / group] if group is not None else sorted(base.iterdir())
+    except OSError:
+        directories = []
+        failed += 1
+        fresh.update(cached)
     for d in directories:
         if not d.is_dir() or d.name.startswith("."):
             continue
@@ -351,7 +356,13 @@ def scan(root: str | None = None, cache: str | None = None,
             failed += 1
             continue
         projects[d.name] = (d, [])
-        for f in sorted(d.glob("*.jsonl")):
+        try:
+            files = sorted(f for f in d.iterdir() if f.suffix.lower() == ".jsonl")
+        except OSError:
+            failed += 1
+            fresh.update((key, value) for key, value in cached.items() if Path(key).parent == d)
+            continue
+        for f in files:
             try:
                 if f.is_symlink() or getattr(f.lstat(), "st_file_attributes", 0) & 0x400:
                     failed += 1
@@ -413,7 +424,8 @@ def scan(root: str | None = None, cache: str | None = None,
             eligible.append({**row, "sourceCwd": row["cwd"], "cwd": info["cwd"], "storageDir": project_id})
         eligible.sort(key=lambda row: (-row["mtime"], row["id"]))
         matched += len(eligible)
-        if not eligible and group is None and (items or query or human_only):
+        # Browsing lists conversations; empty directories remain move destinations.
+        if not eligible and group is None:
             continue
         remaining = eligible if after is None else [row for row in eligible if (-row["mtime"], row["id"]) > after]
         shown = remaining[:limit_per_group]

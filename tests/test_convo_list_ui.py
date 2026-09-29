@@ -49,3 +49,22 @@ def test_failed_page_keeps_rows_and_cursor_for_an_explicit_retry():
     assert result["failed"]["rows"] == 1 and result["failed"]["cursor"] == "synthetic-cursor"
     assert "synthetic failure" in result["failed"]["error"]
     assert result["busy"] is False and result["error"] is None
+
+
+def test_disclosure_clicks_do_not_open_conversations():
+    result = run("""(()=>{
+      let opened=0;openConvoChain=()=>opened++;
+      cvClick({target:{closest:selector=>selector==='details'?{}:null}});
+      const before=opened;
+      cvClick({target:{closest:selector=>selector==='[data-cvopen]'?{dataset:{cvopen:'synthetic'}}:null}});
+      return {before,opened};
+    })()""")
+    assert result == {"before": 0, "opened": 1}
+
+
+def test_open_details_survive_row_repainting():
+    result = run("""(()=>{
+      const g=CONVOS.groups[0];CV_DETAILS.add(g.shown[0].id);
+      return cvRows(g);
+    })()""", setup())
+    assert ' open><summary>会话详情</summary>' in result

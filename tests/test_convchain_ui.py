@@ -243,10 +243,18 @@ def test_the_fork_button_names_the_node_it_forks_at():
     chain = chain_case()
     last0 = chain["turns"][0]["steps"][-1]["u"]
     html = run("CH_SEL='h:0';chRenderAct();$('chact').innerHTML", setup(chain))
-    assert f"在本轮结尾 {last0[:8]} 处分叉" in html
+    assert f"从本轮末尾新建会话：包含到消息 {last0[:8]} 为止的历史" in html
     one = chain["turns"][0]["steps"][1]["u"]
     html = run("CH_SEL='s:0:1';chRenderAct();$('chact').innerHTML", setup(chain))
-    assert f"从 {one[:8]} 处分叉" in html
+    assert f"从这里新建会话：包含到消息 {one[:8]} 为止的历史" in html
+
+
+def test_chain_read_failures_stay_visible_outside_file_details():
+    header, warning = run("chRenderHead();[$('chhead').innerHTML,$('chwarn').innerHTML]",
+                          setup(chain_case(badLines=2, danglingParents=1)))
+    assert '<details class="ch-file-details">' in header
+    assert '坏行 2' in warning and '悬空父节点 1' in warning
+    assert '<details' not in warning
 
 
 def test_branch_alternatives_show_where_each_one_starts_and_ends():
@@ -303,7 +311,7 @@ def test_rows_say_the_chain_can_be_opened():
               "groups": [{"cwd": "/synthetic/p", "count": 1, "humanish": 1, "bytes": 10,
                           "newest": 1, "truncated": False, "shown": rows}]}
     base = STUB + "CONVOS=" + json.dumps(convos) + ";CV_OPEN['/synthetic/p']=true;"
-    assert "对话链 ›" in run("renderConvos();$('cvgroups').innerHTML", base)
+    assert "查看会话</button>" in run("renderConvos();$('cvgroups').innerHTML", base)
     assert "对话链 ›" not in run("renderConvos();$('cvgroups').innerHTML", base + "openConvoChain=undefined;")
 
 

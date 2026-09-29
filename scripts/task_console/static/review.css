@@ -118,11 +118,6 @@ table.g th.num{text-align:right}
 .runtime-section>.mt-col{border:0;padding:var(--section-inset);border-radius:0}
 .mt-rows{max-height:320px}.mt-r{min-height:30px}
 .rp-split{min-width:0}.rp-detail{overflow-wrap:anywhere}.rp-filters{flex-wrap:wrap}.rp-filters input{min-width:0}
-.cv-head{flex-wrap:wrap}.cv-gh{padding:6px 8px;width:100%;border:0;border-radius:0;background:none;text-align:left;color:var(--ink)}.cv-gh .dir{overflow-wrap:anywhere}
-.cv-list{max-height:300px;overflow:auto}.cv-g.open>.cv-list{display:block}.cv-g:not(.open)>.cv-list{display:none}
-.cv-copy{border:0;background:none;color:var(--ink);text-align:left;padding:0;min-height:24px}
-.cv-r{padding:8px 6px;align-items:center;border-bottom:1px solid var(--line2)}
-.cv-r:last-child{border-bottom:0}.cv-gh{min-height:40px;background:var(--panel2)}
 .cv-r .src{padding:2px 5px;border-radius:4px}.cv-r .pv{line-height:1.5}
 .rp-filters input{flex:1 1 18rem;width:0}.rp-r{min-height:32px}.rp-r .n{color:var(--ink)}
 .rp-r.on{background:var(--cur);border-left-color:var(--cyan)}
@@ -193,15 +188,10 @@ table.g th.num{text-align:right}
   #mt-memory{display:block}#mt-memory>.mem-grps{margin:12px 0}
   #storage>.mt-grid,.llm-summary .lc-list{grid-template-columns:1fr}
   #sckd .r{grid-template-columns:9px minmax(90px,1fr) auto}#sckd .r .p{grid-row:2;grid-column:2/-1}
-  .cv-gh{grid-template-columns:10px minmax(0,1fr) 90px}.cv-gh .cv-bar,.cv-gh .cv-hm,.cv-gh .ag{display:none}
-  .cv-gh .dn{min-width:0;flex:1;white-space:normal;overflow-wrap:anywhere}.cv-gh .dp{display:none}.cv-list{padding-left:8px}
-  .cv-r{grid-template-columns:minmax(0,1fr) 24px 36px}.cv-r .pv{display:none}.cv-r .m:last-of-type{grid-column:1/-1}
 }
 @media(prefers-reduced-motion:reduce){*,*:before,*:after{scroll-behavior:auto!important;animation:none!important;transition:none!important}}
 
 /* Group independent records by the room available inside the workspace. */
-#cvgroups{columns:38rem;column-gap:var(--section-gap)}
-#cvgroups>.cv-g{break-inside:avoid;min-width:0;border:1px solid var(--line);border-radius:var(--card-radius);overflow:hidden;margin-bottom:var(--section-gap)}
 .rp-split{grid-template-columns:minmax(0,1.7fr) minmax(0,1fr);height:auto;align-items:start;background:none;gap:var(--section-gap);overflow:visible}
 .rp-list{container:repositories / inline-size;max-height:calc(100dvh - 310px);border:1px solid var(--line);border-radius:var(--card-radius)}
 .rp-detail{position:sticky;top:calc(var(--sticky-stack,54px) + 12px);border:1px solid var(--line);border-radius:var(--card-radius)}

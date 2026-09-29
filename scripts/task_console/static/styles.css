@@ -642,58 +642,7 @@ td.ops .mini.danger:hover{border-color:var(--bad);color:var(--bad)}
 .d-error{background:transparent;border:2px solid var(--bad);border-radius:50%}
 .d-detached{background:var(--idle);transform:rotate(45deg);border-radius:1px}
 
-/* ---- 会话(对话历史) ----------------------------------------------------------------------
-   按对话创建时所在的目录分组。标题来自对话自己,而标题**从哪来**也画出来:
-   一个由代号充数的标题和一句真概括长得一样,但信息量差着量级。 */
-#cvbox .pad{padding:7px 10px 9px}
-.cv-head{display:flex;align-items:center;gap:12px;flex-wrap:wrap;font-size:var(--fs-meta);
-  color:var(--dim);margin-bottom:6px}
-.cv-head b{font-variant-numeric:tabular-nums;color:var(--ink);font-size:var(--fs-lead)}
-.cv-head label{display:inline-flex;align-items:center;gap:4px;cursor:pointer}
-.cv-g{border-top:1px solid var(--line2)}
-.cv-gh{display:grid;grid-template-columns:10px minmax(0,1fr) 88px 44px 46px 106px;
-  gap:8px;align-items:center;padding:4px 0;cursor:pointer;font-size:var(--fs-body)}
-.cv-gh:hover{background:var(--cur)}
-.cv-gh .caret{color:var(--faint);font-size:var(--fs-chip);transition:none}
-/* ⚠ 这条以前写成 `.cv-gh .hm`,而 JS 渲染出来的类名是 cv-hm,所以它一行都没生效过:
-   那一列既不是 cyan 也没有右对齐,宽度跟着内容抖。两条规则合并成一条。 */
-.cv-hm{font-variant-numeric:tabular-nums;color:var(--cyan);font-size:var(--fs-meta);
-  white-space:nowrap;min-width:34px;text-align:right}
-/* 路径拆两段:前缀降成背景纹理,末段(真正区分这一行的那部分)留全色不截断。
-   刻意不只显示末段 —— `...\scripts` 这种末段在别处会撞名,那会丢掉定位能力。
-   前缀仍然逐字在 DOM 里,只是宽度不够时才省略;title 始终是完整绝对路径。 */
-.cv-gh .dir{display:flex;min-width:0;font-family:var(--mono,inherit);text-align:left}
-.cv-gh .dp{color:var(--faint);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:0 1 auto}
-.cv-gh .dn{color:var(--ink);font-weight:500;white-space:nowrap;flex:none}
-.cv-gh .n{font-variant-numeric:tabular-nums;color:var(--faint);font-size:var(--fs-meta);
-  white-space:nowrap;text-align:right}
-.cv-gh .ag{font-variant-numeric:tabular-nums;color:var(--dim);font-size:var(--fs-meta);
-  white-space:nowrap;text-align:right}
-/* 体积条。跨度是 88K 到 3.7G 四个数量级,线性条会让除最大两行外全部归零,所以取对数。
-   ⚠ 非零的最小值保底 3px,而真正的 0 走 .zero 的斜纹 ——
-   「小到看不见」和「没有」必须是两个不同的图形。 */
-.cv-bar{height:6px;background:var(--line2);border-radius:1px;position:relative;overflow:hidden}
-.cv-bar i{position:absolute;inset:0 auto 0 0;background:var(--cyan);opacity:.55;display:block}
-.cv-bar.zero{background:repeating-linear-gradient(45deg,var(--line2) 0 3px,transparent 3px 6px)}
-.cv-list{padding:0 0 4px 18px;display:none}
-.cv-g.open .cv-list{display:block}
-.cv-r{display:grid;grid-template-columns:minmax(0,1fr) auto auto auto auto;gap:8px;align-items:baseline;
-  font-size:var(--fs-body);padding:3px 0;border-top:1px solid var(--line2)}
-.cv-r .t{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-/* 标题和正文是两样东西。改过名之后标题不再透露这场对话在说什么,所以两行都留。 */
-.cv-r .pv{grid-column:1;font-size:var(--fs-meta);color:var(--faint);overflow:hidden;
-  text-overflow:ellipsis;white-space:nowrap;margin-top:1px}
-.cv-r .src.rename{color:var(--cyan);border-color:var(--cyan)}
-.cv-r .src.ai-title{color:var(--dim)}
-.cv-r .src{font-size:var(--fs-chip);padding:0 3px;border:1px solid var(--line);border-radius:2px;
-  color:var(--faint);white-space:nowrap}
-.cv-r .src.slug,.cv-r .src.id{color:var(--warn);border-color:var(--warn)}
-.cv-r .m{font-variant-numeric:tabular-nums;color:var(--faint);font-size:var(--fs-meta);white-space:nowrap}
-.cv-r.human .t{color:var(--ink);font-weight:500}
-.cv-r .t{color:var(--dim)}
-.cv-r[data-cvfile]{cursor:pointer;border-radius:2px}
-.cv-r[data-cvfile]:hover{background:var(--cur)}
-.cv-more{font-size:var(--fs-meta);color:var(--warn);padding:3px 0}
+/* Conversation layout lives in conversations.css. */
 
 /* ================= 把 Tabler 接到本页的调色板与密度上 ==============================
    外壳(侧栏、顶栏、卡片、徽章)现在全是 Tabler 的组件,所以这一段不再画外壳,
@@ -937,7 +886,7 @@ section[data-view][hidden]{display:none}
    改成按列的 data-col 选,渲染那边一并补上属性,两处必须一起改。 */
 table.g td.nm,table.g td[data-col="lastRun"],table.g td[data-col="nextRun"],
 table.g td[data-col="timeout"]{font-family:var(--mono)}
-#sckd .r .p,.cv-r .m,.mt-r .c,.tile .v,#bar b,.tlkey{font-family:var(--mono)}
+#sckd .r .p,.mt-r .c,.tile .v,#bar b,.tlkey{font-family:var(--mono)}
 #help td.hot{font-family:var(--mono)}
 
 /* 三处原来都是 gap:1px 铺在 --line 底色上画分隔线。单看每一处都合理,

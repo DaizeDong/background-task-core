@@ -186,5 +186,10 @@ renderCxList=()=>{};
 
 def test_functional_sections_have_no_closed_disclosure_by_default():
     html = (Path(__file__).resolve().parents[1] / "scripts/task_console/console.html").read_text(encoding="utf-8")
+    # Supporting list instructions may be folded; controls and content stay outside.
+    help_blocks = re.findall(r'<details class="cv-scan-details">(.*?)</details>', html, re.S)
+    assert len(help_blocks) == 1
+    assert not re.search(r'<(?:button|input|select)\b', help_blocks[0])
+    html = re.sub(r'<details class="cv-scan-details">.*?</details>', '', html, flags=re.S)
     assert not re.findall(r'<details(?![^>]*\bopen\b)[^>]*>', html)
     assert 'id="theme-select"' in html and 'id="page-export"' in html

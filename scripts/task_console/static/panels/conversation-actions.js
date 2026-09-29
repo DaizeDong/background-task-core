@@ -20,9 +20,9 @@ function cvOpenManager(kind,id){
   $('cv-title-field').hidden=!rename;$('cv-target-field').hidden=rename;
   $('cv-new-title').value=row.title || '';$('cv-new-title').required=rename;
   const options=locations.filter(g=>cvKey(g)!==row.projectDir);
-  $('cv-target').innerHTML=options.map(g=>`<option value="${esc(cvKey(g))}">${esc(g.cwd || g.id)} · ${esc(g.id || '')}</option>`).join('');
+  $('cv-target').innerHTML=options.map(g=>`<option value="${esc(cvKey(g))}">${esc(g.cwd || g.id)}</option>`).join('');
   $('cv-target').required=!rename;
-  $('cv-submit').textContent=rename?'保存名称':'迁移到此目录';
+  $('cv-submit').textContent=rename?'保存名称':'移动到此项目';
   $('cv-submit').disabled=!rename && !options.length;
   $('cv-edit-note').textContent=!rename && !options.length?'还没有其他项目目录可供迁移':'';
   $('cv-edit-note').className='cv-notice';

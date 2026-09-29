@@ -19,6 +19,11 @@
 .ch-head .cwd{font-family:var(--mono);color:var(--faint);overflow-wrap:anywhere;min-width:0}
 .ch-head .alt{color:var(--amber)}
 .ch-head .bad{color:var(--bad)}
+.ch-file-details{flex:1 1 100%;min-width:0}
+.ch-file-details>summary{cursor:pointer;color:var(--dim)}
+.ch-file-meta{display:flex;flex-wrap:wrap;gap:4px 12px;line-height:1.6;padding-top:6px}
+.ch-file-meta>span{min-width:0;overflow-wrap:anywhere}
+.ch-file-meta .cwd{flex-basis:100%}
 .ch-split{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);gap:1px;
   background:var(--line2);border:1px solid var(--line2);height:max(320px, calc(100vh - 260px));overflow:hidden}
 /* ⚠ contain:strict 和行上的 content-visibility 是量出来的:一条上万节点的链展开一轮几百步后,

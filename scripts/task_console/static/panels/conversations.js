@@ -2,12 +2,12 @@
 let CONVOS=null, CV_HUMAN_ONLY=false, CV_OPEN={}, CV_QUERY="", CV_OPEN_QUERY="", CV_SORT="new";
 let CV_VERSION=0, CV_LOADING=false, CV_REQUEST=null, CV_TIMER=null, CV_OBSERVER=null;
 const CV_PAGES=new Map(), CV_EPH_KEY="::eph::";
+const CV_DETAILS=new Set();
 const CV_SESSION_ID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const CV_TAG={rename:"自命名","ai-title":"自动标题",summary:"摘要","first-message":"首条消息",slug:"代号",id:"会话号"};
 const CV_SRC={rename:"你指定的会话标题","ai-title":"自动生成的窗口标题",summary:"压缩时写的概括",
   "first-message":"第一条消息",slug:"自动代号",id:"只有会话号"};
 const cvKey=g=>g.id || g.cwd;
-const cvAge=h=>h==null?"时间未记录":h<24?Math.max(0,h).toFixed(0)+" 小时":(h/24).toFixed(0)+" 天";
+const cvAge=h=>h==null?"时间未记录":h<1?"刚刚":h<24?Math.floor(h)+" 小时前":Math.floor(h/24)+" 天前";
 
 function cvInvalidate(){
   CV_VERSION++;CV_REQUEST?.abort();CV_REQUEST=null;CV_OBSERVER?.disconnect();
@@ -44,7 +44,7 @@ function cvCount(){
   if(!CONVOS?.available) return;
   const loaded=CONVOS.groups.reduce((n,g)=>n+g.shown.length,0);
   const matched=CONVOS.summary.matched ?? CONVOS.summary.files;
-  $('cv-match').textContent=`已加载 ${loaded} / ${matched} 场${CV_QUERY.trim()?'匹配会话':''} · 展开目录后向下滚动继续加载`;
+  $('cv-match').textContent=`已加载 ${loaded} / ${matched} 个会话；展开项目后可继续向下加载。`;
 }
 function cvRows(g){
   return g.shown.map(r=>{
@@ -53,21 +53,24 @@ function cvRows(g){
     const manage=valid && typeof cvOpenManager==='function';
     const disabled=typeof ConsoleActions!=='undefined' && ConsoleActions.readOnly;
     return `<div class="cv-r${r.humanSeen>=2?' human':''}" data-cvfile="${esc(r.file)}"${chain?` data-cvid="${esc(r.id)}"`:''}>
-      <button class="t" data-cvopen="${chain?esc(r.id):''}" title="${esc(r.title)}">${esc(r.title)}</button>
-      <span class="src ${esc(r.titleFrom)}" title="${esc(CV_SRC[r.titleFrom]||r.titleFrom)}">${CV_TAG[r.titleFrom]||'?'}</span>
-      <span class="m">${r.humanSeen?'👤'+r.humanSeen+(r.partial?'+':''):''}</span>
-      <span class="m">${cvAge(r.ageHours)} · ${kb(r.bytes)}${chain?' · <span class="cv-open">对话链 ›</span>':''}</span>
+      <div class="cv-main">${chain?`<button class="t" data-cvopen="${esc(r.id)}" title="查看会话：${esc(r.title)}">${esc(r.title)}</button>`:`<span class="t">${esc(r.title)}</span>`}
+        ${r.preview&&r.preview!==r.title?`<span class="pv">${esc(r.preview)}</span>`:''}</div>
+      <span class="cv-updated">${cvAge(r.ageHours)}</span>
       <span class="cv-row-actions">${manage?`<button class="mini" data-cvrename="${esc(r.id)}"${disabled?' disabled':''}>重命名</button>
-        <button class="mini" data-cvmove="${esc(r.id)}"${disabled?' disabled':''}>移动</button>
-        <button class="mini cv-handle" data-cvdrag="${esc(r.id)}" draggable="${!disabled}"${disabled?' disabled':''} aria-label="拖动会话到其他目录" title="拖到项目标题上即可迁移文件；也可点击移动">⠿</button>`:''}
-        ${ibtn('i-copy','复制会话文件路径',`data-cvcopy="${esc(r.file)}"`)}</span>
-      ${r.preview&&r.preview!==r.title?`<span class="pv" title="${esc(r.preview)}">${esc(r.preview)}</span>`:''}
+        <button class="mini cv-handle" data-cvmove="${esc(r.id)}" data-cvdrag="${esc(r.id)}" draggable="${!disabled}"${disabled?' disabled':''} title="点击选择目标项目，也可拖到其他项目上">移动</button>`:''}
+        ${chain?`<button class="mini cv-open" data-cvopen="${esc(r.id)}">查看会话</button>`:''}</span>
+      <details class="cv-details" data-cvdetail="${esc(r.id)}"${CV_DETAILS.has(r.id)?' open':''}><summary>会话详情</summary><div class="cv-detail-body">
+        <span>标题来源：${esc(CV_SRC[r.titleFrom]||r.titleFrom||'未记录')}</span><span>文件大小：${kb(r.bytes)}</span>
+        <span>已识别的用户提问：${r.humanSeen ?? '未记录'}${r.partial?'（只读取了部分内容）':''}</span>
+        <span class="cv-location">会话编号：${esc(r.id)}</span><span class="cv-location">文件位置：${esc(r.file)}</span>
+        ${!valid?'<span class="warn">会话编号无法识别，可通过文件位置检查原始记录。</span>':''}
+        <button class="mini" data-cvcopy="${esc(r.file)}">复制文件路径</button></div></details>
     </div>`;
   }).join('');
 }
 function cvPage(g){
   const id=cvKey(g), state=CV_PAGES.get(id), more=g.hasMore ?? g.truncated;
-  return `<div class="cv-page" data-cvpage="${esc(id)}"><span${state?.error?' class="bad" role="alert"':''}>${state?.error?esc(state.error):`已加载 ${g.shown.length} / ${g.count} 场`}</span>
+  return `<div class="cv-page" data-cvpage="${esc(id)}"><span${state?.error?' class="bad" role="alert"':''}>${state?.error?esc(state.error):`已加载 ${g.shown.length} / ${g.count} 个会话`}</span>
     ${more?`<button data-cvmore="${esc(id)}"${state?.busy?' disabled':''}>${state?.busy?'加载中…':state?.error?'重试加载':'加载更多'}</button>`:'<span>已全部显示</span>'}</div>`;
 }
 function cvGroupElement(id){
@@ -123,13 +126,11 @@ function renderConvos(){
   }
   const S=CONVOS.summary, query=CV_QUERY.trim().toLowerCase();
   if(query!==CV_OPEN_QUERY){CV_OPEN={};CV_OPEN_QUERY=query;}
-  $('cvhead').innerHTML=`<span>共 <b>${S.files}</b> 场</span><span><b>${S.humanish}</b> 场用户多轮对话</span><span>${S.groups} 个目录 · ${kb(S.bytes)}</span>
-    <label>目录排序 <select id="cvsort">${[['new','最近活动'],['size','体积'],['count','场次'],['old','最旧在前']].map(([v,t])=>`<option value="${v}"${CV_SORT===v?' selected':''}>${t}</option>`).join('')}</select></label>
-    <label><input type="checkbox" id="cvonly"${CV_HUMAN_ONLY?' checked':''}> 只看用户多轮对话</label>
-    ${S.unreadable?`<span class="bad">读取失败 ${S.unreadable} 场</span>`:''}`;
-  const groups=[...CONVOS.groups], values=groups.map(g=>g.bytes||0).filter(Boolean);
-  const lo=Math.log10(1+Math.min(...values,Infinity)), hi=Math.log10(1+Math.max(...values,1));
-  const bar=b=>!b?0:hi<=lo?100:Math.max(3,Math.round(3+97*(Math.log10(1+b)-lo)/(hi-lo)));
+  $('cvhead').innerHTML=`<span class="cv-total"><b>${S.matched ?? S.files}</b> 个会话，分布在 <b>${S.groups}</b> 个项目</span>
+    <label>排序 <select id="cvsort">${[['new','最近更新'],['count','会话最多'],['old','最早更新'],['size','占用空间']].map(([v,t])=>`<option value="${v}"${CV_SORT===v?' selected':''}>${t}</option>`).join('')}</select></label>
+    <label title="根据已读取的内容识别，长会话可能只统计了一部分"><input type="checkbox" id="cvonly"${CV_HUMAN_ONLY?' checked':''}> 至少两次用户提问</label>
+    ${S.unreadable?`<span class="bad" role="alert">${S.unreadable} 个文件或目录读取失败，列表可能不完整。请检查访问权限后刷新。</span>`:''}`;
+  const groups=[...CONVOS.groups];
   const compare={new:(a,b)=>b.newest-a.newest,old:(a,b)=>a.newest-b.newest,
     size:(a,b)=>b.bytes-a.bytes,count:(a,b)=>b.count-a.count};
   const isEph=g=>/[\\/]Temp[\\/](astab|astra|ccstab|ccagentic)_[a-z0-9]+$/i.test(g.cwd)&&!g.humanish&&g.count<=2;
@@ -139,22 +140,25 @@ function renderConvos(){
     const cut=cwd.search(/[\\/][^\\/]*$/), head=cut>0?cwd.slice(0,cut+1):'', tail=cut>0?cwd.slice(cut+1):cwd;
     return `<div class="cv-g${open?' open':''}" data-cv="${esc(id)}" data-cvproject="${esc(id)}">
       <button class="cv-gh" aria-expanded="${open}" title="${esc(g.storagePath || cwd)}">
-        <span class="caret">${open?'▼':'▶'}</span><span class="dir"><span class="dp">${esc(head)}</span><span class="dn">${esc(tail)}</span></span>
-        <span class="cv-bar${g.bytes?'':' zero'}"><i style="width:${bar(g.bytes)}%"></i></span>
-        <span class="cv-hm">${g.humanish?'👤'+g.humanish:''}</span><span class="ag">${g.newest?cvAge((Date.now()/1000-g.newest)/3600):'空目录'}</span>
-        <span class="n">${g.count} 场 · ${kb(g.bytes)}</span></button>
+        <span class="caret" aria-hidden="true">${open?'▼':'▶'}</span><span class="dir"><span class="dn">${esc(tail)}</span><span class="dp">${esc(head)}</span></span>
+        <span class="n">${g.count} 个会话</span><span class="ag">${g.newest?cvAge((Date.now()/1000-g.newest)/3600):'时间未记录'}</span>
+        <span class="cv-expand">${open?'收起':'展开'}</span></button>
       <div class="cv-list">${open?cvLocation(g)+cvRows(g)+cvPage(g):''}</div></div>`;
   };
   const ephOpen=CV_OPEN[CV_EPH_KEY] ?? !!query;
   const ephHtml=eph.length?`<div class="cv-g${ephOpen?' open':''}" data-cv="${CV_EPH_KEY}">
-    <button class="cv-gh" aria-expanded="${ephOpen}"><span class="caret">${ephOpen?'▼':'▶'}</span><span class="dir">临时会话目录 ${eph.length} 个</span><span></span><span></span><span></span><span class="n">${eph.reduce((n,g)=>n+g.count,0)} 场</span></button>
+    <button class="cv-gh" aria-expanded="${ephOpen}"><span class="caret" aria-hidden="true">${ephOpen?'▼':'▶'}</span><span class="dir">临时运行记录（${eph.length} 个项目）</span><span class="n">${eph.reduce((n,g)=>n+g.count,0)} 个会话</span><span class="ag"></span><span class="cv-expand">${ephOpen?'收起':'展开'}</span></button>
     <div class="cv-list">${ephOpen?eph.map(groupHtml).join(''):''}</div></div>`:'';
   const top=window.scrollY;
   $('cvgroups').innerHTML=rest.map(groupHtml).join('')+ephHtml || '<p class="review-empty">没有匹配的会话</p>';
   window.scrollTo({top,behavior:'instant'});cvCount();cvObserve();
 }
 function cvLocation(g){
-  return `<div class="cv-location">${esc(g.storagePath || g.cwd)}${g.locationInferred?' · 工作目录仅由历史记录推断':''}${g.locationWarning?' · '+esc(g.locationWarning):''}</div>`;
+  return `${g.locationWarning?`<p class="cv-notice error" role="alert">项目位置需要核对：${esc(g.locationWarning)}</p>`:''}
+    <details class="cv-project-details" data-cvdetail="project:${esc(cvKey(g))}"${CV_DETAILS.has('project:'+cvKey(g))?' open':''}><summary>项目位置</summary><div class="cv-detail-body">
+      <span class="cv-location">工作目录：${esc(g.cwd)}${g.locationInferred?'（根据历史记录推断）':''}</span>
+      <span class="cv-location">会话存放位置：${esc(g.storagePath || g.cwd)}</span><span>文件合计：${kb(g.bytes)}</span>
+      <button class="mini" data-cvcopy="${esc(g.storagePath || g.cwd)}">复制存放路径</button></div></details>`;
 }
 async function cvCopyPath(path){
   try{await navigator.clipboard.writeText(path);toast('路径已复制');}
@@ -163,6 +167,9 @@ async function cvCopyPath(path){
 function cvClick(event){
   const copy=event.target.closest('[data-cvcopy]');
   if(copy){event.stopPropagation();cvCopyPath(copy.dataset.cvcopy);return;}
+  const open=event.target.closest('[data-cvopen]');
+  if(open){openConvoChain(open.dataset.cvopen);return;}
+  if(event.target.closest('details')) return;
   const more=event.target.closest('[data-cvmore]');
   if(more){cvLoadMore(more.dataset.cvmore);return;}
   const header=event.target.closest('.cv-gh');
@@ -172,16 +179,13 @@ function cvClick(event){
     const next=[...$('cvgroups').querySelectorAll('.cv-gh')].find(el=>el.parentElement.dataset.cv===id);
     next?.focus({preventScroll:true});return;
   }
-  if(event.target.closest('.cv-row-actions')) return;
-  const row=event.target.closest('.cv-r[data-cvfile]');
-  if(row){
-    if(row.dataset.cvid && typeof openConvoChain==='function') openConvoChain(row.dataset.cvid);
-    else if(typeof cvCopyPath==='function') cvCopyPath(row.dataset.cvfile);
-    else toast(row.dataset.cvfile);
-  }
 }
 function startConvos(){
   $('cvbox').addEventListener('click',cvClick);
+  $('cvbox').addEventListener('toggle',event=>{
+    const key=event.target.dataset.cvdetail;
+    if(key) event.target.open?CV_DETAILS.add(key):CV_DETAILS.delete(key);
+  },true);
   $('cv-search').addEventListener('input',cvSearchChanged);
   $('cvhead').addEventListener('change',event=>{
     if(event.target.id==='cvsort'){CV_SORT=event.target.value;renderConvos();}

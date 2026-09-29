@@ -11,11 +11,16 @@ from tools.make_fixtures import synthetic_conversation
 import convos
 
 
-def populate(root, count=95):
-    project = root / "C--Acme-project"
+@pytest.fixture(autouse=True)
+def isolated_cache(tmp_path, monkeypatch):
+    monkeypatch.setenv("TASK_CONSOLE_CONVO_CACHE", str(tmp_path / "metadata-cache.json"))
+
+
+def populate(root, count=95, *, project_name="C--Acme-project", turns=2):
+    project = root / project_name
     project.mkdir()
     for number in range(1, count + 1):
-        sid, body = synthetic_conversation(number, title=f"Example {number}")
+        sid, body = synthetic_conversation(number, title=f"Example {number}", turns=turns)
         path = project / f"{sid}.jsonl"
         path.write_text(body, encoding="utf-8")
         os.utime(path, (1_800_000_000, 1_800_000_000))
@@ -66,13 +71,79 @@ def test_storage_groups_do_not_reclassify_a_fork_from_its_first_retained_cwd(tmp
     assert "C:/Acme/project/nested" in {row["sourceCwd"] for row in group["shown"]}
 
 
-def test_empty_project_remains_a_move_destination(tmp_path):
+@pytest.mark.parametrize("filters", [{}, {"query": "no matches"}, {"human_only": True}])
+def test_empty_projects_are_hidden_but_remain_move_destinations(tmp_path, filters):
+    project = populate(tmp_path, 1, turns=1)
+    empty = populate(tmp_path, 0, project_name="C--Acme-empty")
+    result = convos.scan(root=str(tmp_path), **filters)
+    expected_groups = set() if filters else {project.name}
+    assert {g["id"] for g in result["groups"]} == expected_groups
+    assert result["summary"]["groups"] == len(expected_groups)
+    assert result["summary"]["files"] == 1
+    assert result["summary"]["unreadable"] == 0
+    assert {r["id"] for r in result["locations"]} == {project.name, empty.name}
+
+
+@pytest.mark.parametrize("filters", [{}, {"query": "no matches"}, {"human_only": True}])
+def test_explicit_empty_project_retains_its_page(tmp_path, filters):
+    empty = populate(tmp_path, 0)
+    result = convos.scan(root=str(tmp_path), group=empty.name, **filters)
+    assert result["available"] is True
+    assert result["summary"]["scope"] == "project"
+    assert result["summary"]["groups"] == 1
+    assert result["summary"]["files"] == result["summary"]["matched"] == 0
+    assert result["summary"]["unreadable"] == 0
+    assert [r["id"] for r in result["locations"]] == [empty.name]
+    group = result["groups"][0]
+    assert group["id"] == empty.name
+    assert group["count"] == group["totalCount"] == 0
+    assert group["shown"] == []
+    assert group["hasMore"] is group["truncated"] is False
+    assert group["nextCursor"] is None
+
+
+def test_missing_project_is_not_an_empty_page(tmp_path):
+    with pytest.raises(ValueError, match="project no longer exists"):
+        convos.scan(root=str(tmp_path), group="C--Acme-missing")
+
+
+@pytest.mark.parametrize("explicit", [False, True])
+def test_unreadable_project_enumeration_is_reported(tmp_path, monkeypatch, explicit):
+    denied = populate(tmp_path, 1, project_name="C--Acme-denied")
+    readable = populate(tmp_path, 1)
+    original_iterdir = Path.iterdir
+
+    def checked_iterdir(directory):
+        if directory == denied:
+            raise PermissionError("synthetic directory access denied")
+        yield from original_iterdir(directory)
+
+    monkeypatch.setattr(Path, "iterdir", checked_iterdir)
+    result = convos.scan(root=str(tmp_path), group=denied.name if explicit else None)
+    assert result["available"] is True
+    assert result["summary"]["unreadable"] == 1
+    assert result["summary"]["files"] == (0 if explicit else 1)
+    assert {g["id"] for g in result["groups"]} == {denied.name if explicit else readable.name}
+    assert {r["id"] for r in result["locations"]} == (
+        {denied.name} if explicit else {denied.name, readable.name})
+    assert len(result["groups"][0]["shown"]) == (0 if explicit else 1)
+
+
+def test_unreadable_root_enumeration_is_not_a_clean_empty_scan(tmp_path, monkeypatch):
     populate(tmp_path, 1)
-    empty = tmp_path / "C--Acme-empty"
-    empty.mkdir()
-    result = convos.scan(root=str(tmp_path), query="no matches")
-    assert not result["groups"]
-    assert {r["id"] for r in result["locations"]} == {"C--Acme-project", empty.name}
+    original_iterdir = Path.iterdir
+
+    def checked_iterdir(directory):
+        if directory == tmp_path:
+            raise PermissionError("synthetic root access denied")
+        yield from original_iterdir(directory)
+
+    monkeypatch.setattr(Path, "iterdir", checked_iterdir)
+    result = convos.scan(root=str(tmp_path))
+    assert result["available"] is True
+    assert result["groups"] == result["locations"] == []
+    assert result["summary"]["files"] == 0
+    assert result["summary"]["unreadable"] == 1
 
 
 def test_project_page_does_not_read_other_projects_or_discard_their_cache(tmp_path, monkeypatch):
@@ -87,12 +158,18 @@ def test_project_page_does_not_read_other_projects_or_discard_their_cache(tmp_pa
     group = next(g for g in initial["groups"] if g["id"] == project.name)
     saved_other = json.loads(cache.read_text(encoding="utf-8"))[str(other_file)]
     original_info = convos.project_info
+    original_iterdir = Path.iterdir
 
     def current_project_only(directory, **kwargs):
         assert Path(directory) == project, "a page request inspected an unrelated project"
         return original_info(directory, **kwargs)
 
+    def current_directory_only(directory):
+        assert directory == project, "a page request enumerated outside its project"
+        return original_iterdir(directory)
+
     monkeypatch.setattr(convos, "project_info", current_project_only)
+    monkeypatch.setattr(Path, "iterdir", current_directory_only)
     page = convos.scan(root=str(tmp_path), cache=str(cache), group=project.name,
                       cursor=group["nextCursor"], limit_per_group=2)
     assert page["summary"]["scope"] == "project"

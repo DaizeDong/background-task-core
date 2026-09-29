@@ -270,8 +270,10 @@
 <div class="card" id="cvbox">
     <div class="card-header"><h3 class="card-title">会话<span class="n" id="cvnote">读取中</span></h3><div class="card-actions"><button id="cvreload" title="重新扫描会话">刷新</button></div></div>
     <div class="pad">
-      <div class="catalog-tools"><input id="cv-search" type="search" aria-label="搜索全部会话" placeholder="搜索全部会话的标题、项目、路径或摘要"><button data-reset-filters="convos">清除筛选</button><span id="cv-match" class="faint"></span></div>
+      <div class="catalog-tools"><input id="cv-search" type="search" aria-label="搜索全部会话" placeholder="搜索会话名称、内容或项目"><button data-reset-filters="convos">清除筛选</button></div>
       <div class="cv-head" id="cvhead"></div>
+      <p class="cv-help">展开项目查看会话。点击“移动”选择位置，也可拖动该按钮到其他项目。</p>
+      <details class="cv-scan-details"><summary>列表说明</summary><p>只列出有会话的项目。没有会话的目录仍可在“移动”中选择。</p><p id="cv-match"></p></details>
       <p id="cv-action-error" class="cv-notice error" role="alert" hidden></p>
       <div id="cvgroups"></div>
       <div id="cv-drop-targets" class="cv-drop-targets" hidden></div>
@@ -281,8 +283,8 @@
        容器写在静态 HTML 里,那个模块载入失败时 app.js 才有地方写「加载失败」。
        放在 #cvgroups 外面,于是会话列表重扫重画时它不会被一起冲掉。 -->
   <div class="card" id="chbox" hidden>
-    <div class="card-header"><h3 class="card-title">对话链<span class="n" id="chnote"></span></h3>
-      <div class="card-actions"><button class="mini" id="chclose" title="关闭对话链(Esc)" aria-label="关闭对话链">关闭</button></div></div>
+    <div class="card-header"><h3 class="card-title">会话内容<span class="n" id="chnote"></span></h3>
+      <div class="card-actions"><button class="mini" id="chclose" title="返回会话列表(Esc)" aria-label="返回会话列表">返回列表</button></div></div>
     <div class="pad">
       <div class="ch-crumb" id="chcrumb"></div>
       <div class="ch-head" id="chhead"></div>
@@ -304,7 +306,7 @@
       <div class="cv-field" id="cv-target-field" hidden>
         <label for="cv-target">目标项目<select id="cv-target"></select></label>
         <p class="cv-location" id="cv-target-path"></p>
-        <span class="faint">迁移会话文件、子会话和索引，保留会话 ID 与历史。</span>
+        <span class="faint">会话及其关联文件会一起移到目标项目，原有历史会保留。</span>
       </div>
       <p id="cv-edit-note" class="cv-notice" role="status" aria-live="polite"></p>
       <div class="cv-dialog-actions"><button id="cv-cancel" type="button">取消</button><button id="cv-submit" type="submit">保存</button></div>

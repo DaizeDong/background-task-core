@@ -234,17 +234,21 @@ function chRenderHead(){
   }
   const nT=(CH.turns || []).filter(t=>t.type==="turn").length;
   hd.innerHTML=`<span class="ttl">${esc(CH.title || CH.id)}</span>`
+    +`<span><b>${nT}</b> 轮</span>`
+    +(!CH_SUB && typeof cvOpenManager==='function'?`<span class="ch-row"><button class="mini" data-cvrename="${esc(CH.id)}">重命名</button><button class="mini" data-cvmove="${esc(CH.id)}">移动会话</button></span>`:'')
+    +(CH.leafIsDefault ? "" : `<span class="alt">正在看一条非默认分支</span><button class="mini" data-chact="latest">回到最新分支</button>`)
+    +`<details class="ch-file-details"><summary>文件与读取详情</summary><div class="ch-file-meta">`
     +`<span>${chN(CH.lines)} 行 · ${chN(CH.chainEntries)} 个链条目 · ${kb(CH.bytes)}</span>`
-    +`<span>显示链 <b>${chN(CH.pathLen)}</b> 个节点 · <b>${nT}</b> 轮</span>`
+    +`<span>显示链 <b>${chN(CH.pathLen)}</b> 个节点</span>`
     +`<span${CH.badLines ? ' class="bad"' : ""}>坏行 ${chN(CH.badLines)}</span>`
     +`<span>悬空父节点 ${chN(CH.danglingParents)}</span>`
     +(CH.duplicateUuids ? `<span title="同一个 uuid 被整行重写过,只保留第一份">重复 uuid ${CH.duplicateUuids}</span>` : "")
     +`<span>压缩 ${chN(CH.compactions)} · 分叉 ${chN(CH.forks)}</span>`
     +`<span title="${CH.cached ? "这次走的是缓存的索引,数字是当初建索引的耗时" : "这次重新建了索引"}">索引 ${chN(CH.indexMs)} ms${CH.cached ? "(缓存)" : ""}</span>`
-    +(CH.leafIsDefault ? "" : `<span class="alt">正在看一条非默认分支</span><button class="mini" data-chact="latest">回到最新分支</button>`)
     +`<span class="cwd" title="${esc(CH.file || "")}">保存于 ${esc(CH.locationInferred?CH.projectDir:CH.storageCwd || CH.cwd || CH.projectDir || '工作目录未记录')}</span>`
-    +(!CH_SUB && typeof cvOpenManager==='function'?`<span class="ch-row"><button class="mini" data-cvrename="${esc(CH.id)}">重命名</button><button class="mini" data-cvmove="${esc(CH.id)}">移动会话</button></span>`:'');
-  wn.innerHTML=(CH.warnings || []).map(w=>`<div class="warn-line">${esc(w)}</div>`).join("");
+    +`</div></details>`;
+  wn.innerHTML=(CH.badLines || CH.danglingParents ? `<div class="warn-line">读取警告：坏行 ${chN(CH.badLines)} · 悬空父节点 ${chN(CH.danglingParents)}</div>` : "")
+    +(CH.warnings || []).map(w=>`<div class="warn-line">${esc(w)}</div>`).join("");
 }
 
 function chSubLabel(s){
@@ -461,8 +465,8 @@ function chRenderAct(){
   const A=$("chact");
   if(!CH || !CH.available || !CH_ORDER.length){ A.innerHTML=""; return; }
   const r=chRange(), a=r[0], b=r[1], su=chSelU(), bad=a>b, f=CH_FRES, fe=chSelEnd();
-  // 选中的是一轮的标题行时,分叉点是这一轮的最后一步,不是屏上高亮的那句提问:按钮上写明是哪个节点。
-  const fl=!fe ? "从这里分叉成新会话" : CH_SEL && CH_SEL[0]==="h" ? `在本轮结尾 ${chU8(fe)} 处分叉成新会话` : `从 ${chU8(fe)} 处分叉成新会话`;
+  // 选中的是一轮的标题行时,分叉点是这一轮的最后一步,不是屏上高亮的那句提问:按钮上写明作用范围。
+  const fl=fe && CH_SEL && CH_SEL[0]==="h" ? "从本轮末尾新建会话" : "从这里新建会话";
   A.innerHTML=`<div class="ch-row"><span class="faint">范围</span>`
     +`<code>${CH_FROM ? esc(chU8(CH_FROM)) : "开头"}</code> → <code>${esc(chU8(CH_ORDER[b]))}</code>`
     +`<span class="faint">${CH_TO ? "" : CH_FROM ? "(没设终点,到链尾;按 ] 设终点)" : CH_SEL && CH_SEL[0]==="h" ? "(终点是选中这一轮的最后一步)" : CH_SEL ? "(终点跟着选中)" : "(没选节点时到链尾)"}${bad ? "" : " · "+(b-a+1)+" 个节点"}</span>`
@@ -474,10 +478,11 @@ function chRenderAct(){
     +`<label><input type="checkbox" id="chthink"${CH_XK ? " checked" : ""}> 含思考</label>`
     +`<button class="mini" data-chexport="md"${bad || CH_XBUSY ? " disabled" : ""}><svg class="ic" aria-hidden="true"><use href="#i-fetch"/></svg>导出 Markdown</button></div>`
     +`<div class="ch-row"><button class="mini" data-ctfork="at"${CH_SUB || !su || CH_FBUSY ? " disabled" : ""}`
-    +` title="在选中的节点处新建一个可以 --resume 的会话,原文件不动">⑂ ${esc(fl)}</button>`
+    +` title="${esc(fl)}：包含到消息 ${esc(chU8(fe))} 为止的历史">${esc(fl)}</button>`
     +(CH_SUB ? `<span class="faint">子代理的转录不能分叉</span>` : su ? "" : `<span class="faint">先选一个节点</span>`)+`</div>`
+    +`<div class="faint">保留到所选消息为止的上下文；若历史已压缩，从最近一次压缩后的内容接续。</div>`
     +(!f ? "" : f.error
-      ? `<div class="ch-fres bad">分叉失败:${esc(f.error)}</div>`
+      ? `<div class="ch-fres bad">新建会话失败:${esc(f.error)}</div>`
       : `<div class="ch-fres"><div>${f.reused?'已创建的会话':'新会话'} ${esc(f.title || '')} <code>${esc(f.newId)}</code></div>`
         +`<div class="cv-location">保存位置：${esc(f.storagePath || f.file || '')}</div>`
         +`<div class="faint">${chN(f.emitted)} 条记录 · 共 ${chN(f.lines)} 行 · 约 ${esc(chTok(f.approxTokens))} tokens · `
@@ -554,28 +559,28 @@ function chForkRequest(body){
 async function chFork(){
   const at=chSelEnd();
   if(!at || CH_SUB || !CH || CH_FBUSY) return;
-  if(!confirm(`从节点 ${chU8(at)} 分叉成一个新会话?\n\n`
-    +`会在原会话所在的项目目录里新建一份转录文件,带一个新的会话 id,`
-    +`内容是 Claude 走到这个节点时实际拥有的上下文(隔着压缩时从最近的压缩边界开始)。\n\n`
-    +`原会话文件一个字节都不会改。之后用 claude --resume <新 id> 接着聊。`)) return;
+  if(!confirm(`从选中位置新建会话？\n\n`
+    +`新会话会保存在当前项目，保留到所选消息为止的上下文。`
+    +`如果历史已压缩，会从最近一次压缩后的内容开始。\n\n`
+    +`原会话会保留。创建后可复制启动命令，在终端里接着聊。`)) return;
   const body={id:CH_ID, at};
   if(CH_LEAF) body.leaf=CH_LEAF;
   const request=chForkRequest(body);body.requestId=request.request;
   const stillSelected=()=>CH_ID===body.id && chSelEnd()===body.at && (CH_LEAF || null)===(body.leaf || null);
   CH_FBUSY=true; chRenderAct();
-  $("chnote").textContent="分叉中";
+  $("chnote").textContent="正在新建会话";
   try{
     const j=await api("/api/convo/fork", {method:"POST", body:JSON.stringify(body)});
     if(!j.newId) throw new Error(j.error || "响应里没有新会话 id");
     CH_FREQUESTS.delete(request.key);
     try{sessionStorage.removeItem(request.key);}catch(error){}
     if(stillSelected()){CH_FRES=j;$("chnote").textContent="";}
-    toast("已分叉出新会话 "+chU8(j.newId), "ok");
+    toast("新会话已创建 "+chU8(j.newId), "ok");
     // 新文件已经落在会话根下了;不重扫的话列表里看不到它,像是没分叉成。
     if(typeof loadConvos==="function") loadConvos().catch(()=>{});
   }catch(e){
-    if(stillSelected()){CH_FRES={error:e.message};$("chnote").textContent="分叉失败:"+e.message;}
-    toast("分叉失败:"+e.message, "bad");
+    if(stillSelected()){CH_FRES={error:e.message};$("chnote").textContent="新建会话失败:"+e.message;}
+    toast("新建会话失败:"+e.message, "bad");
   }finally{ CH_FBUSY=false; chRenderAct(); chFocusList(true); }
 }
 
@@ -643,7 +648,7 @@ function chClick(e){
   const ex=t.closest("[data-chexport]");
   if(ex){ if(!ex.disabled) chExport().catch(err=>toast("导出失败:"+err.message, "bad")); return; }
   const fo=t.closest("[data-ctfork]");
-  if(fo){ if(!fo.disabled) chFork().catch(err=>toast("分叉失败:"+err.message, "bad")); return; }
+  if(fo){ if(!fo.disabled) chFork().catch(err=>toast("新建会话失败:"+err.message, "bad")); return; }
   const b=t.closest("[data-chact]");
   if(b){ if(!b.disabled){ chAct(b.dataset.chact); chFocusList(); } return; }
   const cp=t.closest("[data-chcopy]");
