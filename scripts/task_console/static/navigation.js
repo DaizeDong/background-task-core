@@ -23,6 +23,7 @@ function showView(key,push){
   document.querySelectorAll('section[data-view]').forEach(section=>section.hidden=section.dataset.view!==key);
   document.querySelectorAll('#side .nv').forEach(link=>{
     const selected=link.dataset.view===group;
+    link.title=link.querySelector('.nav-link-title').textContent;
     link.classList.toggle('active',selected);link.parentElement.classList.toggle('active',selected);
     if(selected) link.setAttribute('aria-current','page');else link.removeAttribute('aria-current');
     link.tabIndex=selected?0:-1;

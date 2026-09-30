@@ -697,6 +697,15 @@ body{font-size:var(--fs-body)}
    折叠态同理:按「收起」换来的宽度和眼睛看到的对不上。 */
 :root{--tblr-sidebar-width:10.5rem;--tblr-sidebar-folded-width:3rem}
 #side{--tblr-sidebar-width:10.5rem;--tblr-sidebar-folded-width:3rem}
+#side.navbar-folded{--tblr-sidebar-width:var(--tblr-sidebar-folded-width)}
+@media(min-width:576px){
+  #side.navbar-folded>.container-fluid{padding-inline:4px}
+  #side.navbar-folded .navbar-brand>span{display:none}
+  #side.navbar-folded .navbar-nav{padding-inline:0}
+  #side.navbar-folded .nav-link{justify-content:center;padding-inline:4px;margin-inline:0}
+  #side.navbar-folded .nav-link-icon{margin-right:0}
+  #side.navbar-folded .mt-auto{padding:4px!important}
+}
 #side .navbar-brand{font-size:var(--fs-lead);padding:6px 4px 4px;font-weight:600;margin-inline:0}
 #side .nav-link{padding:4px 8px 4px 10px;font-size:var(--fs-body);border-radius:3px}
 #side .nav-link-icon{width:15px;text-align:center;opacity:.85;margin-right:6px}
