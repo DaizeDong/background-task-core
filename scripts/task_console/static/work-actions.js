@@ -5,26 +5,27 @@ const WORK_ACTION_STATES={preparing:['准备中','pending'],queued:['排队中',
   done:['已完成','ok'],failed:['未完成','bad'],stalled:['已暂停','warn'],review_unavailable:['待复核','warn'],
   stopped:['已请求停止','muted'],reconcile:['结果待核实','warn'],dispatching:['正在提交','pending'],task_requested:['已提交任务','pending']};
 function workActionButtons(item,compact=false){
-  const actions=item.actions;if(!actions) return item.origin_item_id?`<div class="work-actions"><button class="mini" data-work-id="${esc(item.origin_item_id)}">查看原待办</button></div>`:'';
+  const actions=item.actions;if(!actions) return item.origin_item_id?`<div class="work-actions"><button class="icon-only mini" data-work-id="${esc(item.origin_item_id)}" title="查看原待办"><svg class="ic" aria-hidden="true"><use href="#i-eye"/></svg><span class="control-label">查看原待办</span></button></div>`:'';
   if(!actions.available) return actions.reason?`<div class="work-actions"><small>${esc(actions.reason)}</small></div>`:'';
   const current=actions.current, pending=WORK_ACTION_PENDING.has(item.id), readOnly=ConsoleActions.readOnly;
   const controls=(actions.offers || []).slice(0,3).map((offer,index)=>{
     const disabled=readOnly || pending || !offer.enabled;
     const reason=readOnly?ConsoleActions.reason:pending?'正在提交':offer.reason || offer.description || '';
     const complete=offer.kind==='complete';
-    return `<button class="mini work-action${complete?' complete':index===0?' primary':''}" data-work-item="${esc(item.id)}" data-work-action="${esc(offer.id)}" ${disabled?'disabled':''} title="${esc(reason)}"><span aria-hidden="true">${complete?'✓':'▶'}</span> ${esc(offer.label)}</button>`;
+    const icon={complete:'i-on',agent:'i-play',task:'i-play'}[offer.kind];
+    return `<button class="mini${icon?' icon-only':''} work-action${complete?' complete':index===0?' primary':''}" data-work-item="${esc(item.id)}" data-work-action="${esc(offer.id)}" ${disabled?'disabled':''} title="${esc(offer.label+(reason?'：'+reason:''))}" aria-label="${esc(offer.label)}">${icon?`<svg class="ic" aria-hidden="true"><use href="#${icon}"/></svg>`:esc(offer.label)}</button>`;
   });
   if(current){
     const [label,tone]=WORK_ACTION_STATES[current.state] || ['状态待确认','idle'];
     controls.unshift(statusBadge(label,tone));
-    if(current.work_item_id) controls.push(`<button class="mini" data-work-id="${esc(current.work_item_id)}">${current.state==='done'?'查看结果':'查看进度'}</button>`);
-    if(current.kind==='agent' && ['preparing','queued','running','reconcile'].includes(current.state)) controls.push(`<button class="mini work-action stop" data-work-item="${esc(item.id)}" data-work-stop="${esc(current.id)}" ${readOnly || pending?'disabled':''} title="${esc(readOnly?ConsoleActions.reason:'停止这次处理，保留待办')}">■ 停止</button>`);
+    if(current.work_item_id) controls.push(`<button class="mini icon-only" data-work-id="${esc(current.work_item_id)}" title="${current.state==='done'?'查看结果':'查看进度'}" aria-label="${current.state==='done'?'查看结果':'查看进度'}"><svg class="ic" aria-hidden="true"><use href="#i-eye"/></svg></button>`);
+    if(current.kind==='agent' && ['preparing','queued','running','reconcile'].includes(current.state)) controls.push(`<button class="mini icon-only work-action stop" data-work-item="${esc(item.id)}" data-work-stop="${esc(current.id)}" ${readOnly || pending?'disabled':''} title="${esc(readOnly?ConsoleActions.reason:'停止这次处理，保留待办')}" aria-label="停止"><svg class="ic" aria-hidden="true"><use href="#i-stop"/></svg></button>`);
   }
   for(const link of actions.links || []){
-    if(link.kind==='session') controls.push(`<button class="mini" data-work-context="${esc(item.id)}">原对话</button>`);
+    if(link.kind==='session') controls.push(`<button class="icon-only mini" data-work-context="${esc(item.id)}" title="原对话"><svg class="ic" aria-hidden="true"><use href="#i-chat"/></svg><span class="control-label">原对话</span></button>`);
     if(link.kind==='task'){
       const task=COMPONENTS?.tasks?.find(row=>row.task_id===link.id);
-      if(task?.name) controls.push(`<button class="mini" data-task="${esc(task.name)}">关联任务</button>`);
+      if(task?.name) controls.push(`<button class="icon-only mini" data-task="${esc(task.name)}" title="关联任务"><svg class="ic" aria-hidden="true"><use href="#i-link"/></svg><span class="control-label">关联任务</span></button>`);
     }
   }
   const note=current?.summary || (current?.state==='task_requested'?'运行请求已提交，完成结果尚未确认':'');

@@ -267,7 +267,7 @@ function rpChip(n, label, tone, title){
 function renderRepoDetail(){
   const box = $("rpdetail");
   if(!RP_SEL){
-    box.innerHTML = `<div class="rp-empty">左边选一个仓,这里显示它的信息和可做的操作。</div>`;
+    box.innerHTML = `<div class="rp-empty">选择仓库</div>`;
     return;
   }
   const r = REPOS.repos.find(x=>x.name===RP_SEL);

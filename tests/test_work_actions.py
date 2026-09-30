@@ -67,7 +67,8 @@ def test_completion_control_and_acknowledgement():
     item = work_action_case()
     item['actions']['offers'] = [{'id': 'complete', 'kind': 'complete', 'label': '标记完成', 'enabled': True}]
     html = render(item)
-    assert 'data-work-action="complete"' in html and '✓' in html and '▶' not in html
+    assert 'data-work-action="complete"' in html and 'href="#i-on"' in html and 'href="#i-play"' not in html
+    assert 'aria-label="标记完成"' in html
     assert 'disabled' in render(item, "document.querySelector=()=>({content:'true'});")
     setup = 'const sample=' + json.dumps(item) + ';' + '''
 WORK={available:true,items:[sample]};let refreshes=0,messages=[];renderWorkPlatform=()=>{};

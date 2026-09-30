@@ -4,7 +4,7 @@ const INTEGRATION_STATES={ready:'接口可读',unchecked:'未检查',unconfigure
 const INTEGRATION_LAYERS={core:'控制台核心',shared:'共享服务',adapter:'数据适配器',library:'库依赖',business:'通知与线索来源',origin:'其他记录来源标签'};
 async function loadIntegrations(){
   const note=$('integration-note');note.textContent='读取接入信息';
-  try{INTEGRATIONS=await api('/api/integrations');renderIntegrations();note.textContent='状态来自本次服务启动后的读取记录；刷新不会运行业务任务。';}
+  try{INTEGRATIONS=await api('/api/integrations');renderIntegrations();note.textContent='';}
   catch(error){note.textContent='读取失败：'+error.message;}
 }
 function renderIntegrations(){
@@ -17,9 +17,9 @@ function renderIntegrations(){
       const state=row.connection||{}, tone=state.state==='ready'?'ok':['stale','unavailable'].includes(state.state)?'warn':'idle';
       return `<tr><th scope="row">${esc(row.label)}<small>${row.depends_on.length?'依赖：'+esc(row.depends_on.join('、')):'独立'}</small></th>
         <td>${esc(row.provides)}${row.record_count!=null?`<small>${esc(row.record_count)} 条来源记录</small>`:''}<small>${esc(row.actions)}</small></td>
-        <td>${statusBadge(INTEGRATION_STATES[state.state]||state.state,tone)}<small>${row.layer==='core'?'框架正在提供此页面':row.layer==='library'?'控制台进程内导入，不是被观测的来源':['business','origin'].includes(row.layer)?esc(state.reason):'上次成功：'+stamp(state.last_success)}</small>${state.reason && !['business','origin'].includes(row.layer)?`<small>${esc(state.reason)}</small>`:''}</td>
-        <td><button data-integration-open="${esc(row.view)}" data-integration-source="${esc(row.source||'')}">查看</button>${row.endpoint?` <button data-integration-check="${esc(row.endpoint)}">重读</button>`:''}</td></tr>`;
-    }).join('')}</tbody></table></div>`:`<p class="review-empty">${INTEGRATIONS.coverage.work_sources==='unavailable'?'共享工作服务尚不可读，无法确认业务来源。':'暂无业务来源记录。核心和已配置的数据适配器仍可使用。'}</p>`);
+        <td>${statusBadge(INTEGRATION_STATES[state.state]||state.state,tone)}${!['core','library','business','origin'].includes(row.layer)?`<small>上次成功：${stamp(state.last_success)}</small>`:''}${state.reason?`<small>${esc(state.reason)}</small>`:''}</td>
+        <td><button class="icon-only" data-integration-open="${esc(row.view)}" data-integration-source="${esc(row.source||'')}" title="查看"><svg class="ic" aria-hidden="true"><use href="#i-eye"/></svg><span class="control-label">查看</span></button>${row.endpoint?` <button class="icon-only" data-integration-check="${esc(row.endpoint)}" title="重读"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg><span class="control-label">重读</span></button>`:''}</td></tr>`;
+    }).join('')}</tbody></table></div>`:`<p class="review-empty">${INTEGRATIONS.coverage.work_sources==='unavailable'?'工作服务不可读':'暂无来源记录'}</p>`);
     return layer==='origin'?`<details><summary>${heading}</summary>${content}</details>`:`<h3>${heading}</h3>${content}`;
   }).join('');
 }

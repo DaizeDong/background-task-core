@@ -4,9 +4,6 @@
 .cv-head b{color:var(--ink);font-weight:600}
 .cv-head label{display:inline-flex;align-items:center;gap:5px;min-width:0}
 .cv-total{margin-right:auto}
-.cv-help{margin:4px 0;color:var(--dim);font-size:var(--fs-body)}
-.cv-scan-details{margin:0 0 10px;color:var(--dim);font-size:var(--fs-meta)}
-.cv-scan-details p{margin:4px 0}
 .cv-g{min-width:0;border-top:1px solid var(--line2)}
 .cv-gh{display:grid;grid-template-columns:12px minmax(0,1fr) auto 80px 30px;align-items:center;gap:10px;width:100%;min-width:0;min-height:44px;padding:6px 8px;border:0;border-radius:0;background:transparent;text-align:left;color:var(--ink);font:inherit}
 .cv-gh:hover,.cv-g.open>.cv-gh{background:var(--cur)}
@@ -34,7 +31,10 @@
 .cv-handle[draggable="true"]{cursor:grab}
 .cv-handle[draggable="true"]:active{cursor:grabbing}
 .cv-details{display:contents}
-.cv-details>summary{font-size:var(--fs-meta);color:var(--dim);white-space:nowrap;min-height:32px;align-content:center}
+.cv-details>summary{display:flex;align-items:center;justify-content:center;width:32px;min-height:32px;color:var(--dim);list-style:none}
+.cv-details>summary::-webkit-details-marker{display:none}
+.cv-details>summary>.ic{width:17px;height:17px}
+@media(pointer:coarse){.cv-details>summary{width:40px;min-height:40px}}
 .cv-detail-body{display:flex;flex-wrap:wrap;align-items:center;gap:6px 16px;padding:8px 10px;border-left:2px solid var(--line);background:var(--panel2);color:var(--dim);font-size:var(--fs-meta);min-width:0;overflow-wrap:anywhere}
 .cv-details>.cv-detail-body{grid-column:1/-1}
 .cv-detail-body .cv-location{flex:1 0 100%}

@@ -99,7 +99,7 @@ function pipelineRunControl(key,row){
   const label=running?'正在运行':queued?'已排队':key==='sync'?'立即同步':'立即备份';
   const reason=ConsoleActions.readOnly?ConsoleActions.reason:busy?'正在提交操作':
     running?'本次仍在运行':queued?'等待执行':row.state==='Ready'?'立即运行整条流水线，保留原计划':'任务状态未确认';
-  return `<button class="mini task-control" data-act="run" data-name="${esc(row.name)}" ${disabled?'disabled':''} title="${esc(reason)}"><svg class="ic" aria-hidden="true"><use href="#i-play"/></svg>${label}</button>`;
+  return `<button class="mini task-control icon-only" data-act="run" data-name="${esc(row.name)}" ${disabled?'disabled':''} title="${esc(label+'：'+reason)}"><svg class="ic" aria-hidden="true"><use href="#i-play"/></svg><span class="control-label">${label}</span></button>`;
 }
 
 function renderPipelines(){
@@ -115,7 +115,7 @@ function renderPipelines(){
       return `<div class="card pipeline-run" id="pipeline-${key}">
         <div class="card-header"><h2 class="card-title">${esc(def.title)}</h2><div class="review-actions">
           ${statusBadge(task?pipeState(status):'未找到对应任务',task?componentTone(status):'idle',undefined,'review-status')}
-          ${task?`<button data-task="${esc(task.name)}">任务详情</button>`:""}
+          ${task?`<button class="icon-only" data-task="${esc(task.name)}" title="任务详情"><svg class="ic" aria-hidden="true"><use href="#i-eye"/></svg><span class="control-label">任务详情</span></button>`:""}
           ${pipelineRunControl(key,row)}</div></div>
         <div class="pipeline-metrics"><span>最近运行 <b>${esc(pipeTime(task && task.execution && task.execution.started_at))}</b></span>
           <span>下次计划 <b>${esc(row ? pipeTime(row.nextRun) : "未读取")}</b></span><span>运行标识 <b>${esc(task && task.run_id || "未提供")}</b></span>
@@ -130,7 +130,7 @@ function renderPipelines(){
           </td></tr>`).join("")}</tbody></table></div></div>`;
     }).join("")+
     `<div class="card"><div class="card-header"><h2 class="card-title">同步中发现的问题 <span id="pipeline-issue-count" class="n"></span></h2>
-    <div class="catalog-tools"><input id="pipeline-search" type="search" aria-label="搜索流水线问题" placeholder="搜索对象、类型或原因" value="${esc(PIPELINE_QUERY)}"><button data-reset-filters="pipelines">清除筛选</button><button data-goto="resources">查看技能和插件</button></div></div>
+    <div class="catalog-tools"><input id="pipeline-search" type="search" aria-label="搜索流水线问题" placeholder="搜索对象、类型或原因" value="${esc(PIPELINE_QUERY)}"><button class="icon-only" data-reset-filters="pipelines" title="清除筛选"><svg class="ic" aria-hidden="true"><use href="#i-filter-clear"/></svg><span class="control-label">清除筛选</span></button><button class="icon-only" data-goto="resources" title="查看技能和插件"><svg class="ic" aria-hidden="true"><use href="#i-puzzle"/></svg><span class="control-label">查看技能和插件</span></button></div></div>
     <div id="pipeline-issues" class="ops-scroll"></div></div>`;
   $("pipeline-search").addEventListener("input",event=>{PIPELINE_QUERY=event.target.value;renderPipelineIssues();});
   renderPipelineIssues();

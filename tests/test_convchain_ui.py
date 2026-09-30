@@ -311,7 +311,8 @@ def test_rows_say_the_chain_can_be_opened():
               "groups": [{"cwd": "/synthetic/p", "count": 1, "humanish": 1, "bytes": 10,
                           "newest": 1, "truncated": False, "shown": rows}]}
     base = STUB + "CONVOS=" + json.dumps(convos) + ";CV_OPEN['/synthetic/p']=true;"
-    assert "查看会话</button>" in run("renderConvos();$('cvgroups').innerHTML", base)
+    html = run("renderConvos();$('cvgroups').innerHTML", base)
+    assert 'title="查看会话"' in html and 'class="control-label">查看会话</span>' in html
     assert "对话链 ›" not in run("renderConvos();$('cvgroups').innerHTML", base + "openConvoChain=undefined;")
 
 

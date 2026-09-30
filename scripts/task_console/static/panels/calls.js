@@ -356,8 +356,8 @@ function renderCalls(){
   const from = LMTOTAL ? LMQ.offset + 1 : 0;
   const to = Math.min(LMQ.offset + LMQ.limit, LMTOTAL);
   $("lmpage").innerHTML =
-    '<button class="mini" id="lmprev"' + (LMQ.offset <= 0 ? " disabled" : "") + ">上一页</button>"
-    + '<button class="mini" id="lmnext"' + (to >= LMTOTAL ? " disabled" : "") + ">下一页</button>"
+    ibtn('i-left','上一页','id="lmprev"'+(LMQ.offset <= 0?' disabled':''))
+    + ibtn('i-right','下一页','id="lmnext"'+(to >= LMTOTAL?' disabled':''))
     + "<span>" + lnum(from) + "–" + lnum(to) + " / 共 " + lnum(LMTOTAL) + " 条</span>";
 }
 

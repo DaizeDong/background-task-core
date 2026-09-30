@@ -1058,3 +1058,9 @@ html {scroll-padding-top:var(--sticky-stack,54px)}
 #delete-state {color:var(--warn);overflow-wrap:anywhere}
 .mt-r {flex-wrap:wrap}
 @media(max-width:600px){.launch-facts{grid-template-columns:1fr;gap:4px}.launch-facts dd{margin-bottom:10px}.operation-panel{padding:10px 14px}}
+/* Compact actions retain their accessible names and native hover descriptions. */
+.control-label{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;border:0}
+button.icon-only{position:relative;display:inline-flex;align-items:center;justify-content:center;width:32px;min-width:32px;min-height:32px;padding:6px;gap:0;flex:0 0 auto;vertical-align:middle}
+button.icon-only>.ic{width:17px;height:17px;margin:0;pointer-events:none}
+button.icon-only:focus-visible{outline:2px solid var(--cyan);outline-offset:2px}
+@media(pointer:coarse){button.icon-only{width:40px;min-width:40px;min-height:40px}}

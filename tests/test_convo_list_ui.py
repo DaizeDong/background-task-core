@@ -68,7 +68,7 @@ def test_open_details_survive_row_repainting():
       const g=CONVOS.groups[0];CV_DETAILS.add(g.shown[0].id);
       return cvRows(g);
     })()""", setup())
-    assert ' open><summary>更多操作</summary>' in result
+    assert ' open><summary title="更多操作" aria-label="更多操作">' in result
 
 
 def deletion_setup():

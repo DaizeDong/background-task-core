@@ -235,7 +235,7 @@ function chRender(){
 function chRenderHead(){
   const cr=$("chcrumb"), hd=$("chhead"), wn=$("chwarn");
   if(CH_SUB){
-    cr.innerHTML=`<button class="mini" data-chact="back">‹ 返回主会话</button>`
+    cr.innerHTML=`<button class="icon-only mini" data-chact="back" title="‹ 返回主会话"><svg class="ic" aria-hidden="true"><use href="#i-left"/></svg><span class="control-label">‹ 返回主会话</span></button>`
       +`<span>${CH_PARENT && CH_PARENT.title ? esc(CH_PARENT.title)+" › " : ""}子代理 <code>${esc(CH_SUB)}</code> · 只读</span>`;
   } else if(CH && CH.available && (CH.subagents || []).length){
     const S=CH.subagents;
@@ -251,10 +251,10 @@ function chRenderHead(){
   const nT=(CH.turns || []).filter(t=>t.type==="turn").length;
   hd.innerHTML=`<span class="ttl">${esc(CH.title || CH.id)}</span>`
     +`<span><b>${nT}</b> 轮</span>`
-    +(!CH_SUB && typeof cvOpenManager==='function'?`<button class="mini cv-danger" data-cvdelete="${esc(CH.id)}"${ConsoleActions.readOnly?' disabled':''}>删除会话</button>`:'')
-    +(CH.leafIsDefault ? "" : `<span class="alt">正在看一条非默认分支</span><button class="mini" data-chact="latest">回到最新分支</button>`)
+    +(!CH_SUB && typeof cvOpenManager==='function'?`<button class="icon-only mini cv-danger" data-cvdelete="${esc(CH.id)}"${ConsoleActions.readOnly?' disabled':''} title="删除会话"><svg class="ic" aria-hidden="true"><use href="#i-trash"/></svg><span class="control-label">删除会话</span></button>`:'')
+    +(CH.leafIsDefault ? "" : `<span class="alt">正在看一条非默认分支</span><button class="icon-only mini" data-chact="latest" title="回到最新分支"><svg class="ic" aria-hidden="true"><use href="#i-branch"/></svg><span class="control-label">回到最新分支</span></button>`)
     +`<details class="ch-file-details"><summary>更多操作与详情</summary><div class="ch-file-meta">`
-    +(!CH_SUB && typeof cvOpenManager==='function'?`<span class="ch-row"><button class="mini" data-cvrename="${esc(CH.id)}"${ConsoleActions.readOnly?' disabled':''}>重命名</button><button class="mini" data-cvmove="${esc(CH.id)}"${ConsoleActions.readOnly?' disabled':''}>移动会话</button></span>`:'')
+    +(!CH_SUB && typeof cvOpenManager==='function'?`<span class="ch-row"><button class="icon-only mini" data-cvrename="${esc(CH.id)}"${ConsoleActions.readOnly?' disabled':''} title="重命名"><svg class="ic" aria-hidden="true"><use href="#i-edit"/></svg><span class="control-label">重命名</span></button><button class="icon-only mini" data-cvmove="${esc(CH.id)}"${ConsoleActions.readOnly?' disabled':''} title="移动会话"><svg class="ic" aria-hidden="true"><use href="#i-move"/></svg><span class="control-label">移动会话</span></button></span>`:'')
     +`<span>${chN(CH.lines)} 行 · ${chN(CH.chainEntries)} 个链条目 · ${kb(CH.bytes)}</span>`
     +`<span>显示链 <b>${chN(CH.pathLen)}</b> 个节点</span>`
     +`<span${CH.badLines ? ' class="bad"' : ""}>坏行 ${chN(CH.badLines)}</span>`
@@ -281,7 +281,7 @@ function chSubOptions(q){
 function chFkHtml(u){
   const f=CH_FKS[u];
   if(!f || CH_FKOPEN!==u) return "";
-  return `<div class="ch-fk" role="menu"><div class="hd">⑂ 这里分出 ${f.alternatives.length} 条分支。选一条,就沿它一直看到它最后写下的那个节点。</div>`
+  return `<div class="ch-fk" role="menu"><div class="hd">${f.alternatives.length} 条分支</div>`
     +f.alternatives.map(a=>`<button role="menuitem" data-chleaf="${esc(a.leaf)}" data-chat="${esc(f.u)}"${a.active ? " disabled" : ""}>`
       +`<span class="${a.active ? "act" : "alt"}">${a.active ? "当前" : "切换"}</span>`
       +`<span class="pv" title="${esc(a.preview || "")}">${esc(a.preview || "(这条分支里没有用户消息)")}</span>`
@@ -436,8 +436,7 @@ function chRenderDet(n){
   const D=$("chdet");
   if(!CH || !CH.available){ D.innerHTML=""; return; }
   if(!n){
-    D.innerHTML=`<div class="ch-hint">点一个节点看全文。键盘(焦点在链上时):j / k 上下,Enter 展开或收起一轮,`
-      +`[ 设起点,] 设终点,Esc 关闭。</div>`;
+    D.innerHTML=`<div class="ch-hint">选择消息</div>`;
     return;
   }
   if(n.error){ D.innerHTML=`<div class="mt-note">读不到这个节点:${esc(n.error)}</div>`; return; }
@@ -469,7 +468,7 @@ function chRenderDet(n){
   if(n.systemContent){ body++; h+=`<h5>系统内容</h5>`+pre(n.systemContent); }
   if(n.attachment){ body++; h+=`<h5>📎 附件 ${esc(n.attachment.type || "")}</h5>`+pre(n.attachment.summary || ""); }
   if(n.compactMetadata){ h+=`<h5>压缩元数据</h5>`+pre(JSON.stringify(n.compactMetadata, null, 2)); }
-  if(!body) h+=`<div class="ch-hint">这一行没有可读的正文。原始 JSON 在下面。</div>`;
+  if(!body) h+=`<div class="ch-hint">无正文</div>`;
   h+=`<details><summary>消息信息</summary><dl class="ch-kv">${kv.map(x=>`<dt>${esc(x[0])}</dt><dd>${esc(x[1])}</dd>`).join("")}</dl>`
     +(flags ? `<div class="ch-flags">${flags}</div>` : "")+`</details>`;
   h+=n.raw!=null
@@ -486,18 +485,17 @@ function chRenderAct(){
   const fl=fe && CH_SEL && CH_SEL[0]==="h" ? "从本轮末尾新建会话" : "从这里新建会话";
   A.innerHTML=`<div class="ch-row"><span class="faint">范围</span>`
     +`<code>${CH_FROM ? esc(chU8(CH_FROM)) : "开头"}</code> → <code>${esc(chU8(CH_ORDER[b]))}</code>`
-    +`<span class="faint">${CH_TO ? "" : CH_FROM ? "(没设终点,到链尾;按 ] 设终点)" : CH_SEL && CH_SEL[0]==="h" ? "(终点是选中这一轮的最后一步)" : CH_SEL ? "(终点跟着选中)" : "(没选节点时到链尾)"}${bad ? "" : " · "+(b-a+1)+" 个节点"}</span>`
+    +`<span class="faint" title="${CH_TO ? '指定终点' : !CH_FROM && CH_SEL ? '到所选消息' : '到链尾'}">${bad ? "" : (b-a+1)+" 个节点"}</span>`
     +(bad ? `<span style="color:var(--bad)">起点在终点之后</span>` : "")+`</div>`
-    +`<div class="ch-row"><button class="mini" data-chact="from"${su ? "" : " disabled"}>设为起点 [</button>`
-    +`<button class="mini" data-chact="to"${su ? "" : " disabled"}>设为终点 ]</button>`
-    +`<button class="mini" data-chact="clr"${CH_FROM || CH_TO ? "" : " disabled"}>清除范围</button></div>`
+    +`<div class="ch-row"><button class="icon-only mini" data-chact="from"${su ? "" : " disabled"} title="设为起点 ["><svg class="ic" aria-hidden="true"><use href="#i-range-start"/></svg><span class="control-label">设为起点 [</span></button>`
+    +`<button class="icon-only mini" data-chact="to"${su ? "" : " disabled"} title="设为终点 ]"><svg class="ic" aria-hidden="true"><use href="#i-range-end"/></svg><span class="control-label">设为终点 ]</span></button>`
+    +`<button class="icon-only mini" data-chact="clr"${CH_FROM || CH_TO ? "" : " disabled"} title="清除范围"><svg class="ic" aria-hidden="true"><use href="#i-filter-clear"/></svg><span class="control-label">清除范围</span></button></div>`
     +`<div class="ch-row"><label><input type="checkbox" id="chtools"${CH_XT ? " checked" : ""}> 含工具调用</label>`
     +`<label><input type="checkbox" id="chthink"${CH_XK ? " checked" : ""}> 含思考</label>`
-    +`<button class="mini" data-chexport="md"${bad || CH_XBUSY ? " disabled" : ""}><svg class="ic" aria-hidden="true"><use href="#i-fetch"/></svg>导出 Markdown</button></div>`
-    +`<div class="ch-row"><button class="mini" data-ctfork="at"${CH_SUB || !su || CH_FBUSY ? " disabled" : ""}`
-    +` title="${esc(fl)}：包含到消息 ${esc(chU8(fe))} 为止的历史">${esc(fl)}</button>`
+    +`<button class="mini icon-only" data-chexport="md"${bad || CH_XBUSY ? " disabled" : ""} title="导出 Markdown" aria-label="导出 Markdown"><svg class="ic" aria-hidden="true"><use href="#i-fetch"/></svg></button></div>`
+    +`<div class="ch-row"><button class="mini icon-only" data-ctfork="at"${CH_SUB || !su || CH_FBUSY ? " disabled" : ""}`
+    +` title="${esc(fl)}：包含到消息 ${esc(chU8(fe))} 为止的历史" aria-label="${esc(fl)}"><svg class="ic" aria-hidden="true"><use href="#i-branch"/></svg></button>`
     +(CH_SUB ? `<span class="faint">子代理的转录不能分叉</span>` : su ? "" : `<span class="faint">先选一个节点</span>`)+`</div>`
-    +`<div class="faint">保留到所选消息为止的上下文；若历史已压缩，从最近一次压缩后的内容接续。</div>`
     +(!f ? "" : f.error
       ? `<div class="ch-fres bad">新建会话失败:${esc(f.error)}</div>`
       : `<div class="ch-fres"><div>${f.reused?'已创建的会话':'新会话'} ${esc(f.title || '')} <code>${esc(f.newId)}</code></div>`
@@ -506,9 +504,9 @@ function chRenderAct(){
         +`${f.fromBoundary ? "从压缩边界 "+esc(chU8(f.fromBoundary))+" 起" : "完整历史,没有压缩边界"}</div>`
         +(f.warnings || []).map(w=>`<div class="warn-line">${esc(w)}</div>`).join("")
         +`<pre class="ch-pre">${esc(f.command || "")}</pre>`
-        +`<div class="ch-row"><button class="mini" data-chcopy="${esc(f.command || "")}">复制命令</button>`
-        +(typeof cvOpenManager==='function'?`<button class="mini" data-cvopen-new="${esc(f.newId)}">打开新会话</button><button class="mini" data-cvrename="${esc(f.newId)}">重命名</button><button class="mini" data-cvmove="${esc(f.newId)}">移动</button>`:'')
-        +`<span class="faint">在终端里粘贴运行,就从这个节点接着聊</span></div></div>`);
+        +`<div class="ch-row"><button class="icon-only mini" data-chcopy="${esc(f.command || "")}" title="复制命令"><svg class="ic" aria-hidden="true"><use href="#i-copy"/></svg><span class="control-label">复制命令</span></button>`
+        +(typeof cvOpenManager==='function'?`<button class="icon-only mini" data-cvopen-new="${esc(f.newId)}" title="打开新会话"><svg class="ic" aria-hidden="true"><use href="#i-eye"/></svg><span class="control-label">打开新会话</span></button><button class="icon-only mini" data-cvrename="${esc(f.newId)}" title="重命名"><svg class="ic" aria-hidden="true"><use href="#i-edit"/></svg><span class="control-label">重命名</span></button><button class="icon-only mini" data-cvmove="${esc(f.newId)}" title="移动"><svg class="ic" aria-hidden="true"><use href="#i-move"/></svg><span class="control-label">移动</span></button>`:'')
+        +`</div></div>`);
 }
 
 function chToggle(){

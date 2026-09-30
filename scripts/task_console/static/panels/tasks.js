@@ -493,10 +493,10 @@ function renderBulk(){
   if(!sel.size){ b.hidden=true; return; }
   b.hidden=false;
   b.innerHTML=`<span>已选 <b>${sel.size}</b></span>
-    <button data-bulk="run">运行选中任务</button>
-    <button data-bulk="enable">启用选中任务</button>
-    <button class="danger" data-bulk="disable">停用选中任务</button>
-    <button data-bulk="clear">取消选择</button>`;
+    <button class="icon-only" data-bulk="run" title="运行选中任务"><svg class="ic" aria-hidden="true"><use href="#i-play"/></svg><span class="control-label">运行选中任务</span></button>
+    <button class="icon-only" data-bulk="enable" title="启用选中任务"><svg class="ic" aria-hidden="true"><use href="#i-on"/></svg><span class="control-label">启用选中任务</span></button>
+    <button class="icon-only danger" data-bulk="disable" title="停用选中任务"><svg class="ic" aria-hidden="true"><use href="#i-pause"/></svg><span class="control-label">停用选中任务</span></button>
+    <button class="icon-only" data-bulk="clear" title="取消选择"><svg class="ic" aria-hidden="true"><use href="#i-filter-clear"/></svg><span class="control-label">取消选择</span></button>`;
 }
 
 async function act(names, verb){

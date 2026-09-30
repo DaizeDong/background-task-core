@@ -1,5 +1,6 @@
 // Classic script module; loaded in app.js dependency order.
 document.addEventListener("click", e=>{
+  const target=e.target.closest('button') || e.target;
   const launch=e.target.closest('[data-launch]');
   if(launch){e.preventDefault();e.stopImmediatePropagation();openTaskLaunch(launch.dataset.launch);return;}
   const deletion=e.target.closest('[data-delete]');
@@ -22,10 +23,10 @@ document.addEventListener("click", e=>{
     else if(fx.dataset.fix === "run"){ act([a], "run"); }
     return;
   }
-  if(e.target.id==="cxall"){
+  if(target.id==="cxall"){
     (CXL&&CXL.items||[]).forEach(i=>CXSEL.add(i.rel)); renderCxList(); return; }
-  if(e.target.id==="cxnone"){ CXSEL.clear(); renderCxList(); return; }
-  if(e.target.id==="cxdel"){ cxDelete(); return; }
+  if(target.id==="cxnone"){ CXSEL.clear(); renderCxList(); return; }
+  if(target.id==="cxdel"){ cxDelete(); return; }
   const cx = e.target.closest("[data-cxrel]");
   if(cx){ const k=cx.dataset.cxrel;
     // ⚠ 只改这一行,不重画整张表。2382 行重画一次要几十毫秒,而且会把滚动位置
@@ -40,8 +41,8 @@ document.addEventListener("click", e=>{
   // 明细表的行同时是可点开的,而下面那个监听里有若干 closest 会先把点击接走。
   const mv = e.target.closest("[data-mv]");
   if(mv){ lcMove(Number(mv.dataset.i), mv.dataset.mv === "up" ? -1 : 1); return; }
-  if(e.target.id === "lmprev"){ LMQ.offset = Math.max(0, LMQ.offset - LMQ.limit); loadCalls(); return; }
-  if(e.target.id === "lmnext"){ LMQ.offset += LMQ.limit; loadCalls(); return; }
+  if(target.id === "lmprev"){ LMQ.offset = Math.max(0, LMQ.offset - LMQ.limit); loadCalls(); return; }
+  if(target.id === "lmnext"){ LMQ.offset += LMQ.limit; loadCalls(); return; }
   const lr = e.target.closest(".l-calls tr.lrow");
   if(lr){ openCall(Number(lr.dataset.i)); return; }
   const jp = e.target.closest("[data-jump]");
@@ -344,7 +345,7 @@ $("cxload").addEventListener("click",loadCxList);
 // 会让这个下拉用起来像卡住了。
 $("cxwhich").addEventListener("change",loadCxList);
 $("cxsort").addEventListener("change",()=>{ if(CXL) renderCxList(); });
-$("scktog").addEventListener("click",()=>{const open=$("sckd").classList.toggle("on");$("scktog").textContent=open?"收起检查":"展开检查";});
+$("scktog").addEventListener("click",()=>{const open=$("sckd").classList.toggle("on");setIconControl($("scktog"),open?'i-up':'i-down',open?'收起检查':'展开检查');});
 $("rpreload").addEventListener("click",loadRepos);
 // 过滤只改看得见什么,不重新扫描 —— 扫一遍所有仓要一秒多,而每敲一个字符重扫一次
 // 既慢又会让选中的那个仓在脚下换位置。
@@ -413,7 +414,7 @@ $("lclist").addEventListener("dragend", ()=>{ LCFROM = null; renderChain(); });
 // The full call ledger is loaded when the user opens that workspace.
 $("sidetoggle").addEventListener("click",()=>{
   const n=$("side").classList.toggle("navbar-folded");
-  $("sidetoggle").textContent = n ? "\u00bb" : "\u00ab 收起";
+  setIconControl($("sidetoggle"),'i-sidebar',n?'展开侧栏':'收起侧栏');
   try{ localStorage.setItem("tc.narrow", n?"1":"0"); }catch(e){}
 });
 try{ if(localStorage.getItem("tc.narrow")==="1") $("sidetoggle").click(); }catch(e){}
@@ -447,7 +448,7 @@ $("help").addEventListener("click",()=>$("help").hidden=true);
 $("refresh").addEventListener("click",load);
 function syncHygBtn(){
   const b=$("hygtog"); if(!b) return;
-  b.textContent = HYG_OPEN ? "收起保障配置" : "保障配置 +" + HYGIENE.length;
+  setIconControl(b,'i-tools',HYG_OPEN?'收起保障配置':'保障配置');
 }
 $("hygtog").addEventListener("click",()=>{
   HYG_OPEN = !HYG_OPEN;

@@ -29,7 +29,7 @@ function renderReviewQueue(rows,dataBroken){
     <div class="review-object"><h3>${esc(row.task || row.nm)}</h3>
     <ul>${row.reasons.map(reason=>`<li>${esc(reason)}</li>`).join("")}</ul></div>
     <div class="review-actions">
-    <button ${row.task?`data-task="${esc(row.task)}"`:row.v==="repos"?`data-review-repo="${esc(row.nm)}"`:`data-goto="${esc(row.v)}"`}>查看详情</button></div>
+    <button class="icon-only" ${row.task?`data-task="${esc(row.task)}"`:row.v==="repos"?`data-review-repo="${esc(row.nm)}"`:`data-goto="${esc(row.v)}"`} title="查看详情"><svg class="ic" aria-hidden="true"><use href="#i-eye"/></svg><span class="control-label">查看详情</span></button></div>
     </article>`).join("") || '<p class="review-empty">没有符合筛选条件的技术问题</p>';
   return all.length;
 }

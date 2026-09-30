@@ -44,7 +44,7 @@ function cvCount(){
   if(!CONVOS?.available) return;
   const loaded=CONVOS.groups.reduce((n,g)=>n+g.shown.length,0);
   const matched=CONVOS.summary.matched ?? CONVOS.summary.files;
-  $('cv-match').textContent=`已加载 ${loaded} / ${matched} 个会话；展开项目后可继续向下加载。`;
+  $('cv-match').textContent=`已加载 ${loaded} / ${matched}`;
 }
 function cvRows(g){
   return g.shown.map(r=>{
@@ -56,16 +56,16 @@ function cvRows(g){
       <div class="cv-main">${chain?`<button class="t" data-cvopen="${esc(r.id)}" title="查看会话：${esc(r.title)}">${esc(r.title)}</button>`:`<span class="t">${esc(r.title)}</span>`}
         ${r.preview&&r.preview!==r.title?`<span class="pv">${esc(r.preview)}</span>`:''}</div>
       <span class="cv-updated">${cvAge(r.ageHours)}</span>
-      <span class="cv-row-actions">${chain?`<button class="mini cv-open" data-cvopen="${esc(r.id)}">查看会话</button>`:''}
-        ${manage?`<button class="mini cv-danger" data-cvdelete="${esc(r.id)}"${disabled?' disabled':''}>删除</button>`:''}</span>
-      <details class="cv-details" data-cvdetail="${esc(r.id)}"${CV_DETAILS.has(r.id)?' open':''}><summary>更多操作</summary><div class="cv-detail-body">
-        ${manage?`<span class="cv-row-actions"><button class="mini" data-cvrename="${esc(r.id)}"${disabled?' disabled':''}>重命名</button>
-        <button class="mini cv-handle" data-cvmove="${esc(r.id)}" data-cvdrag="${esc(r.id)}" draggable="${!disabled}"${disabled?' disabled':''} title="点击选择目标项目，也可拖到其他项目上">移动</button></span>`:''}
+      <span class="cv-row-actions">${chain?`<button class="icon-only mini cv-open" data-cvopen="${esc(r.id)}" title="查看会话"><svg class="ic" aria-hidden="true"><use href="#i-eye"/></svg><span class="control-label">查看会话</span></button>`:''}
+        ${manage?`<button class="icon-only mini cv-danger" data-cvdelete="${esc(r.id)}"${disabled?' disabled':''} title="删除"><svg class="ic" aria-hidden="true"><use href="#i-trash"/></svg><span class="control-label">删除</span></button>`:''}</span>
+      <details class="cv-details" data-cvdetail="${esc(r.id)}"${CV_DETAILS.has(r.id)?' open':''}><summary title="更多操作" aria-label="更多操作"><svg class="ic" aria-hidden="true"><use href="#i-more"/></svg></summary><div class="cv-detail-body">
+        ${manage?`<span class="cv-row-actions"><button class="icon-only mini" data-cvrename="${esc(r.id)}"${disabled?' disabled':''} title="重命名"><svg class="ic" aria-hidden="true"><use href="#i-edit"/></svg><span class="control-label">重命名</span></button>
+        <button class="icon-only mini cv-handle" data-cvmove="${esc(r.id)}" data-cvdrag="${esc(r.id)}" draggable="${!disabled}"${disabled?' disabled':''} title="点击选择目标项目，也可拖到其他项目上"><svg class="ic" aria-hidden="true"><use href="#i-move"/></svg><span class="control-label">移动</span></button></span>`:''}
         <span>标题来源：${esc(CV_SRC[r.titleFrom]||r.titleFrom||'未记录')}</span><span>文件大小：${kb(r.bytes)}</span>
         <span>已识别的用户提问：${r.humanSeen ?? '未记录'}${r.partial?'（只读取了部分内容）':''}</span>
         <span class="cv-location">会话编号：${esc(r.id)}</span><span class="cv-location">文件位置：${esc(r.file)}</span>
         ${!valid?'<span class="warn">会话编号无法识别，可通过文件位置检查原始记录。</span>':''}
-        <button class="mini" data-cvcopy="${esc(r.file)}">复制文件路径</button></div></details>
+        <button class="icon-only mini" data-cvcopy="${esc(r.file)}" title="复制文件路径"><svg class="ic" aria-hidden="true"><use href="#i-copy"/></svg><span class="control-label">复制文件路径</span></button></div></details>
     </div>`;
   }).join('');
 }
@@ -159,7 +159,7 @@ function cvLocation(g){
     <details class="cv-project-details" data-cvdetail="project:${esc(cvKey(g))}"${CV_DETAILS.has('project:'+cvKey(g))?' open':''}><summary>项目位置</summary><div class="cv-detail-body">
       <span class="cv-location">工作目录：${esc(g.cwd)}${g.locationInferred?'（根据历史记录推断）':''}</span>
       <span class="cv-location">会话存放位置：${esc(g.storagePath || g.cwd)}</span><span>文件合计：${kb(g.bytes)}</span>
-      <button class="mini" data-cvcopy="${esc(g.storagePath || g.cwd)}">复制存放路径</button></div></details>`;
+      <button class="icon-only mini" data-cvcopy="${esc(g.storagePath || g.cwd)}" title="复制存放路径"><svg class="ic" aria-hidden="true"><use href="#i-copy"/></svg><span class="control-label">复制存放路径</span></button></div></details>`;
 }
 async function cvCopyPath(path){
   try{await navigator.clipboard.writeText(path);toast('路径已复制');}

@@ -115,12 +115,12 @@ function taskActionButtons(row,advanced=false){
   const reason=ConsoleActions.readOnly?ConsoleActions.reason:busy?'正在执行操作':!known?'任务状态未确认':'';
   const hints={enable:'恢复按计划启动',disable:'不再按计划启动；正在运行的任务继续执行',run:'立即运行一次，保留原计划',stop:'请求停止当前运行，保留后续计划'};
   const symbols={enable:'i-on',disable:'i-pause',run:'i-play',stop:'i-stop'};
-  const control=(verb,label,extraReason='')=>`<button class="mini task-control" data-act="${verb}" data-name="${esc(row.name)}" ${disabled || extraReason?'disabled':''} title="${esc(reason || extraReason || hints[verb])}"><svg class="ic" aria-hidden="true"><use href="#${symbols[verb]}"/></svg>${label}</button>`;
+  const control=(verb,label,extraReason='')=>`<button class="mini task-control icon-only" data-act="${verb}" data-name="${esc(row.name)}" ${disabled || extraReason?'disabled':''} title="${esc(reason || extraReason || hints[verb])}"><svg class="ic" aria-hidden="true"><use href="#${symbols[verb]}"/></svg><span class="control-label">${label}</span></button>`;
   return '<span class="task-controls">'+
     control(row.state==='Disabled'?'enable':'disable',row.state==='Disabled'?'启用':'停用')+
     (row.state==='Running'?control('stop','停止本次'):control('run','运行一次',row.state==='Disabled'?'请先启用':row.state==='Queued'?'已在队列中':''))+
-    `<button class="mini task-control" data-launch="${esc(row.name)}" title="查看完整命令、身份和运行条件">启动方式</button>`+
-    (advanced?`<button class="mini task-control retire-control" data-retire="${esc(row.name)}" ${disabled?'disabled':''} title="${esc(reason || '停用任务，并移出备份与健康检查清单；需要确认')}"><svg class="ic" aria-hidden="true"><use href="#i-retire"/></svg>停用并移出清单</button>`:'')+'</span>';
+    `<button class="icon-only mini task-control" data-launch="${esc(row.name)}" title="查看完整命令、身份和运行条件"><svg class="ic" aria-hidden="true"><use href="#i-terminal"/></svg><span class="control-label">启动方式</span></button>`+
+    (advanced?`<button class="mini task-control retire-control icon-only" data-retire="${esc(row.name)}" ${disabled?'disabled':''} title="${esc(reason || '停用任务，并移出备份与健康检查清单；需要确认')}"><svg class="ic" aria-hidden="true"><use href="#i-retire"/></svg><span class="control-label">停用并移出清单</span></button>`:'')+'</span>';
 }
 
 function taskStartCommand(row){

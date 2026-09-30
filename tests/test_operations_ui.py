@@ -186,11 +186,8 @@ renderCxList=()=>{};
 
 def test_functional_sections_have_no_closed_disclosure_by_default():
     html = (Path(__file__).resolve().parents[1] / "scripts/task_console/console.html").read_text(encoding="utf-8")
-    # Instructions and optional export/fork controls may fold; primary content stays visible.
-    help_blocks = re.findall(r'<details class="cv-scan-details">(.*?)</details>', html, re.S)
-    assert len(help_blocks) == 1
-    assert not re.search(r'<(?:button|input|select)\b', help_blocks[0])
-    html = re.sub(r'<details class="cv-scan-details">.*?</details>', '', html, flags=re.S)
+    # Optional export/fork controls may fold; primary content stays visible.
+    assert 'cv-scan-details' not in html
     assert '<details class="ch-actions-menu"><summary>导出与新建会话</summary><div class="ch-act" id="chact"></div></details>' in html
     html = re.sub(r'<details class="ch-actions-menu">.*?</details>', '', html, flags=re.S)
     assert not re.findall(r'<details(?![^>]*\bopen\b)[^>]*>', html)

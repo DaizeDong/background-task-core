@@ -144,11 +144,11 @@ function renderCxList(){
 
   const selBytes=items.filter(i=>CXSEL.has(i.rel)).reduce((a,i)=>a+i.bytes,0);
   el.innerHTML=`<div class="cx-bar">
-      <button class="mini" id="cxall">全选已列出的文件</button>
-      <button class="mini" id="cxnone">清空选择</button>
+      <button class="icon-only mini" id="cxall" title="全选已列出的文件"><svg class="ic" aria-hidden="true"><use href="#i-select-all"/></svg><span class="control-label">全选已列出的文件</span></button>
+      <button class="icon-only mini" id="cxnone" title="清空选择"><svg class="ic" aria-hidden="true"><use href="#i-filter-clear"/></svg><span class="control-label">清空选择</span></button>
       <span class="sel">选中 <b>${CXSEL.size}</b> 份 · ${kb(selBytes)}</span>
-      <button class="mini danger" id="cxdel"${CXSEL.size?"":" disabled"}
-        title="${CXSEL.size?"永久删除选中的文件，需要确认":"请先选择文件"}">删除选中文件</button>
+      <button class="icon-only mini danger" id="cxdel"${CXSEL.size?"":" disabled"}
+        title="${CXSEL.size?"永久删除选中的文件，需要确认":"请先选择文件"}"><svg class="ic" aria-hidden="true"><use href="#i-trash"/></svg><span class="control-label">删除选中文件</span></button>
     </div><div class="cx-list">${rows}</div>`;
 }
 

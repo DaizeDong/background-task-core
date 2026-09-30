@@ -35,7 +35,7 @@ function renderSkills(){
         ? ibtn("i-restore","恢复技能，下次会话生效",`data-mt="skill.restore" data-name="${esc(k.name)}"`)
         : ibtn("i-archive","归档技能，下次会话不再加载",
                `data-mt="skill.archive" data-name="${esc(k.name)}"`,"danger")}
-      <button class="mini danger" data-delete="skill" data-name="${esc(k.name)}" data-location="${k.archived?'archive':'live'}" title="预览删除范围；联接只移除联接本身">删除…</button>
+      <button class="icon-only mini danger" data-delete="skill" data-name="${esc(k.name)}" data-location="${k.archived?'archive':'live'}" title="预览删除范围；联接只移除联接本身"><svg class="ic" aria-hidden="true"><use href="#i-trash"/></svg><span class="control-label">删除…</span></button>
     </div>`).join("");
     el.innerHTML=`<div class="mt-t">技能 <b>${selected.length}/${S.skills.length}</b>
         <span class="sub">${S.budgetChars} 字符${
@@ -112,7 +112,7 @@ function renderCatalog(){
   el.innerHTML=`<div class="catalog-tools"><input type="search" id="catalog-search" aria-label="搜索已登记的技能和插件" placeholder="搜索名称、路径或依赖" value="${esc(CATALOG_QUERY)}">
       <select id="catalog-kind" aria-label="来源类型"><option value="">全部类型</option>${Object.entries(catalog && catalog.statistics || {}).map(([kind,count])=>`<option value="${esc(kind)}"${CATALOG_KIND===kind?" selected":""}>${esc(catalogLabel(kind))} (${count})</option>`).join("")}</select>
       <select id="catalog-client" aria-label="涉及客户端"><option value="">全部客户端</option>${clients.map(client=>`<option value="${esc(client)}"${client===CATALOG_CLIENT?" selected":""}>${esc(catalogLabel(client))}</option>`).join("")}</select>
-      <select id="catalog-state" aria-label="组件状态"><option value="">全部状态</option>${states.map(([value,label])=>`<option value="${esc(value)}"${value===CATALOG_STATE?" selected":""}>${esc(label)}</option>`).join("")}</select><button data-reset-filters="catalog">清除筛选</button><span>${catalog && catalog.available?records.length+" 项":"尚未读取目录"}</span><span id="catalog-count"></span></div>
+      <select id="catalog-state" aria-label="组件状态"><option value="">全部状态</option>${states.map(([value,label])=>`<option value="${esc(value)}"${value===CATALOG_STATE?" selected":""}>${esc(label)}</option>`).join("")}</select><button class="icon-only" data-reset-filters="catalog" title="清除筛选"><svg class="ic" aria-hidden="true"><use href="#i-filter-clear"/></svg><span class="control-label">清除筛选</span></button><span>${catalog && catalog.available?records.length+" 项":"尚未读取目录"}</span><span id="catalog-count"></span></div>
     <div id="catalog-results" class="ops-scroll"></div>
     <div class="catalog-heading health-heading"><h2>自动化检查结果 <span style="color:var(--${coverageTone})">${esc(cov.checked ?? "?")}/${esc(cov.expected ?? "?")}</span></h2><span>异常 ${problemCount} · 未检查 ${uncheckedCount}</span>
       <select id="health-state" aria-label="健康检查状态"><option value="">全部结论</option>${["healthy","degraded","unhealthy","unknown"].map(state=>`<option value="${state}"${state===HEALTH_STATE?" selected":""}>${catalogLabel(state)}</option>`).join("")}</select></div>
@@ -134,7 +134,7 @@ function renderCatalogHealth(){
     <th scope="row">${esc(task.name || task.task_id)}<small>${esc(task.task_id)}</small></th>
     <td>${statusBadge(catalogLabel(task.verdict),componentTone(task.verdict))}</td><td>${(task.checks||[]).map(check=>`<div class="check-line"><span>${esc(check.check_id)}</span> ${statusBadge(catalogLabel(check.state),componentTone(check.state))} <span class="faint">${esc(check.checked)}/${esc(check.expected)}</span></div>`).join("") || "未检查"}</td>
     <td><div>运行 ${esc(task.run_id || "未提供")}</div><div>${statusBadge(catalogLabel(task.execution && task.execution.state),componentTone(task.execution && task.execution.state))}</div>${task.verdict!=="healthy"?`<small>${esc((task.reason_codes||[]).join(" · "))}</small>`:""}</td>
-    <td>${task.name?`<button data-task="${esc(task.name)}">查看任务</button>`:"未关联"}</td></tr>`).join("")}</tbody></table>`;
+    <td>${task.name?`<button class="icon-only" data-task="${esc(task.name)}" title="查看任务"><svg class="ic" aria-hidden="true"><use href="#i-eye"/></svg><span class="control-label">查看任务</span></button>`:"未关联"}</td></tr>`).join("")}</tbody></table>`;
 }
 const CATALOG_DIMENSIONS=["declared","enabled","cached","installed","resolved","discovered","compatible"];
 function catalogStateCell(value,dimension){
