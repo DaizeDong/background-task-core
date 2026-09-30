@@ -43,7 +43,7 @@
 .source-strip>span{display:inline-flex;align-items:center;gap:var(--space-2)}
 .source-strip .status-chip{padding:1px 5px;min-height:22px}
 .work-toolbar{display:flex;gap:var(--space-2);align-items:center;flex-wrap:wrap;padding:var(--space-2);border:1px solid var(--line);border-radius:var(--card-radius);background:var(--panel2)}
-.work-toolbar input{flex:1 1 18rem;width:0}.work-toolbar select{max-width:100%}.work-toolbar>span{color:var(--dim);margin-left:auto;white-space:nowrap}
+.work-toolbar input{flex:1 1 18rem;width:0}.work-toolbar select{max-width:100%}.work-toolbar>span{color:var(--dim);margin-left:auto;overflow-wrap:anywhere}
 .work-list{overflow:auto;scrollbar-gutter:stable}
 .work-layout{display:grid;grid-template-columns:minmax(0,1fr) clamp(20rem,20%,28rem);gap:var(--section-gap);align-items:start;--work-room:max(24rem,calc(100dvh - 194px))}
 .work-layout>.work-section{container:records / inline-size;max-height:var(--work-room)}

@@ -72,7 +72,8 @@ function renderWorkPlatform(){
   $('work-list').innerHTML=present && rows.length?columns+rows.map(item=>workItemRow(item)).join(''):workEmpty(present?'没有符合筛选条件的记录':absent);
   const grouped=rows.reduce((n,item)=>n+(item.linked_work?.length || 0)+(item.linked_records?.length || 0),0);
   const history=workRows(WORK,{role:WORK_ROLE,source:WORK_SOURCE,query:WORK_QUERY}).filter(item=>!workUnfinished(item)).length;
-  $('work-match').textContent=present?`${rows.length} 项${grouped?' · 已归入 '+grouped+' 条关联记录':''}${WORK_STATE==='unfinished' && history?' · '+history+' 条已结束记录可在「全部状态」查看':''}`:'—';
+  $('work-match').textContent=present?`${rows.length} 项${grouped?' · 关联 '+grouped:''}${WORK_STATE==='unfinished' && history?' · 已结束 '+history:''}`:'—';
+  $('work-match').title=WORK_STATE==='unfinished' && history?'已结束记录可在「全部状态」查看':'';
   const sources=[...new Set((WORK?.sources || []).map(row=>row.source))].sort();
   const missingSource=WORK_SOURCE && !sources.includes(WORK_SOURCE);
   const options='<option value="">全部来源</option>'+sources.map(source=>`<option value="${esc(source)}">${esc(workSourceLabel(source))}</option>`).join('')+(missingSource?`<option value="${esc(WORK_SOURCE)}">${esc(workSourceLabel(WORK_SOURCE))}（本次未读到）</option>`:'');
