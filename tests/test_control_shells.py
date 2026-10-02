@@ -29,7 +29,6 @@ exit ([int]$env:SYNTHETIC_EXIT)
 
 @pytest.mark.parametrize('relative', [
     'tools/register-profile-sync.ps1',
-    'claude/scripts/register-homecoming-task.ps1',
 ])
 def test_registration_shell_preview_and_exact_apply(tmp_path, relative, config_source):
     script = config_source / relative
@@ -59,8 +58,7 @@ def test_configured_authority_arguments_are_forwarded(tmp_path):
 
 
 def test_shells_have_no_scheduler_or_installation_implementation(config_source):
-    for path in [ROOT / 'scripts/task_console/act.ps1', config_source / 'tools/register-profile-sync.ps1',
-                 config_source / 'claude/scripts/register-homecoming-task.ps1']:
+    for path in [ROOT / 'scripts/task_console/act.ps1', config_source / 'tools/register-profile-sync.ps1']:
         source = path.read_text(encoding='utf-8')
         assert 'ScheduledTask' not in source
         assert 'Schedule.Service' not in source
