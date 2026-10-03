@@ -183,13 +183,15 @@ document.addEventListener("click",e=>{
   if(th){ if(sortKey===th.dataset.k) asc=!asc; else {sortKey=th.dataset.k; asc=true;} render(); return; }
   const tr=e.target.closest("#tbl tbody tr[data-name]");
   if(tr){ cur=+tr.dataset.i; const d=tr.nextElementSibling;
-    if(d&&d.classList.contains("det")){ d.remove(); render(); }
+    if(d&&d.classList.contains("det")){ closeDetail(); render(); }
     else { render(); const t2=document.querySelector(`#tbl tbody tr[data-i="${cur}"]`); if(t2) openDetail(t2); } }
 });
 document.addEventListener("keydown",e=>{
   if(!$("help").hidden){ if(e.key==="Escape"||e.key==="?"){ $("help").hidden=true; } return; }
   if(/^(INPUT|SELECT|TEXTAREA)$/.test(document.activeElement.tagName)){
-    if(e.key==="Escape") document.activeElement.blur();
+    // Esc 只是离开输入框,筛选照旧生效。type="search" 的框在 Chrome/Edge 里按 Esc 默认还会清空内容,
+    // 而先 blur 之后浏览器不发 input 事件:框空了、表格却还按旧关键词筛着。所以先拦掉默认动作。
+    if(e.key==="Escape"){ e.preventDefault(); document.activeElement.blur(); }
     return;
   }
   // 带修饰键的一律不接管。这一条不是洁癖:r/s/e/d 是运行/停止/启用/停用,
@@ -260,7 +262,7 @@ document.addEventListener("keydown",e=>{
     return;   // 动作类的键(r/s/e/d/x/a)直接不受理:静默执行一个破坏性动作是最坏的结果
   }
   if(k==="/"){
-    const searchId={overview:'work-search',work:'work-search',automations:'automation-search',resources:'catalog-search',repos:'rpq',convos:'cv-search',llm:'lmq',diagnostics:'review-search',pipelines:'pipeline-search'}[CURVIEW];
+    const searchId={overview:'work-search',work:'work-search',automations:'automation-search',resources:'catalog-search',repos:'rpq',convos:'cv-search',llm:'lmq',diagnostics:'review-search',pipelines:'pipeline-task-search'}[CURVIEW];
     if(searchId){e.preventDefault();if(CURVIEW==='overview')showView('work',true);$(searchId).focus();return;}
     // 过滤框在任务分区里。在别的分区按 / 时,preventDefault 顺手掐掉了浏览器的快速查找,
     // 而承诺的过滤框既没出现也没获得焦点,零反馈 :
@@ -456,6 +458,15 @@ $("hygtog").addEventListener("click",()=>{
   syncHygBtn(); if(DATA) render();
 });
 syncHygBtn();
+renderTaskColumns();
+$('task-column-options').addEventListener('change',event=>{
+  const key=event.target.dataset.taskColumn;if(!key) return;
+  if(event.target.checked) TASK_COLUMNS.add(key);else TASK_COLUMNS.delete(key);
+  try{localStorage.setItem('tc.taskColumns',JSON.stringify([...TASK_COLUMNS]));}catch(e){}
+  if(DATA) render();
+});
+$('pipeline-task-search').addEventListener('input',renderPipelines);
+$('pipeline-verdict').addEventListener('change',renderPipelines);
 // 明细行要贴着可视区左沿,所以它需要知道 .pad 现在多宽。CSS 算不出这个数(td 跨满整张表,
 // 而表可以比容器宽),只能量。用 ResizeObserver 而不是 window.resize:侧栏折叠、
 // 纵向滚动条出现/消失都会改变可视宽度,而这两件事都不触发 window.resize ——
@@ -474,7 +485,7 @@ syncHygBtn();
   else window.addEventListener("resize", set);
 })();
 $("q").addEventListener("input",()=>{ if(DATA) render(); });
-["cat","only","hideoff"].forEach(id=>$(id).addEventListener("change",()=>{ if(DATA) render(); }));
+["cat","only","hideoff","task-verdict"].forEach(id=>$(id).addEventListener("change",()=>{ if(DATA) render(); }));
 
 $("pipeline-refresh").addEventListener("click",loadComponents);
 $("review-filter").addEventListener("change",event=>{REVIEW_FILTER=event.target.value;renderTodo();});

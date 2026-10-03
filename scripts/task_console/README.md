@@ -184,6 +184,61 @@ produce the same empty-looking chart weeks later.
 Copy `categories.example.json` to `~/.task-console/categories.json` and replace the synthetic
 names with your own tasks. Everything else is optional.
 
+Each category has `name`, `tasks` (Windows task names), and an optional category `desc`.
+`taskDesc` maps task names to legacy `title：summary` strings. The task row's `desc` still uses
+that override first, then the Scheduler description, then `null`; overview and review keep
+that contract.
+
+An optional `taskInfo` object maps task names to structured descriptions:
+
+| Field | Meaning |
+| --- | --- |
+| `title` | Short task title |
+| `summary` | What the task does |
+| `cadence` | Human-readable frequency; the actual Scheduler plan remains separately visible |
+| `status` | Last reviewed situation, separate from the live execution state |
+| `advice` | Suggested next action |
+| `verdict` | `keep` 保留, `fix` 要修, `urgent` 急修, `adjust` 调整, `decide` 待定, `remove` 可删, `disabled` 保持停用 |
+| `asOf` | Date of the status/advice review, conventionally `YYYY-MM-DD` |
+
+All fields are optional strings. A broken entry and a missing entry are shown differently,
+because they call for different fixes:
+
+- A non-object entry, or an entry with any recognized field whose value is not a string, is ignored in full. Unless another category supplies a valid entry for it, the row gets `infoInvalid` set to what is broken (`整条不是一个对象`, or `这些字段不是文字:` and the fields), shows 说明写法不对, and repeats the reason in its detail, because the page warning that names the task sits on the diagnostics page, which the automation tabs never show. A non-object `taskInfo` map is reported by category name, since its tasks cannot be known.
+- Unknown keys are dropped from the entry, and a page warning names the task and the keys, so
+  a misspelt field such as `asof` does not silently read as an empty one.
+- An unknown `verdict` is moved to `verdictUnrecognized` with its original text, the row shows
+  建议无法识别 and counts under 无法识别, and a page warning names it. It never reads as 未评估.
+  An empty or whitespace-only `verdict` counts as not written: 未评估, no warning.
+- A `taskInfo` key that matches no Scheduler task is named in a page warning. Otherwise a misspelt task name would leave the real task quietly 未评估 while a misspelt field name is reported.
+
+The page keeps its own copy of the verdict list. `tests/test_task_info.py` checks it against the server's, and a value only the server knows still shows 建议无法识别 rather than 未评估.
+
+Strings are kept verbatim, including empty strings; dates are not parsed. Each task row
+exposes the cleaned object as `info`, or `{}` when absent or ignored. If a task has metadata
+in several categories, the last valid entry replaces the previous one in full. Category
+membership still uses the first assignment and reports duplicates.
+
+All three automation tabs, and the day timeline on the run tab, prefer a nonblank `info.title`, then the first clause of `desc`, then the task name. The summary prefers nonblank `info.summary`, then the rest of `desc`; when `info.title` is set and `desc` has no separator, the whole `desc` is the summary, so a description never disappears behind a title. The clause separator is the first `。`, or `：` / `:` not followed by a digit, slash or backslash, which keeps clock times, drive letters and URLs whole. Displayed titles and summaries are trimmed. The Windows task name remains visible, and on the timeline it moves into the tooltip.
+Search includes the title, summary, advice and task name, plus legacy descriptions and categories; on the sync and backup tab it also matches the card titles.
+Advice filters include counts after the other filters, with missing verdicts marked 未评估, broken ones 无法识别, and rows whose task data is still loading 建议未读取 (that option is listed only while such rows exist).
+Category headers show counts for the whole category. A missing verdict never implies 保留 or 保持停用. Verdict chips have a dashed outline so a recommendation never looks like the live state chip next to it.
+These editorial fields never change task actions, execution status or health judgments.
+
+A disabled task shows 不会运行 as its next run (已停用，不会运行 in full). The Scheduler keeps computing a next time from the triggers of a disabled task, but it will not run, and the timeline already skips it. Disabled tasks sort after every task that has a next run.
+
+The sync and backup tab reads its run records from a captured snapshot (`TASK_CONSOLE_STATUS_SNAPSHOT`), not from a live query. The toolbar says when the snapshot was captured and how long ago; once it is more than 24 hours old (both pipelines run at least daily) the time turns to the warning colour and a notice above the cards says the records stopped at that moment. Issue reason codes are shown in Chinese with the code in the tooltip, and stay searchable by either; a code without wording is shown as it is.
+
+The run table defaults to task, state, schedule, next run and actions, plus selection checkboxes.
+The column menu exposes the other operational columns; the safeguards control toggles its six
+configuration columns. Saved column choices persist locally. The default table fits a desktop
+panel; on narrow screens or with additional columns, scrolling stays inside its container.
+Full descriptions, frequency, reviewed status/date and advice precede the technical detail fields.
+Use only synthetic data in shared examples; keep actual descriptions in private machine config.
+The checked-in categories example is generated by `tools/make_fixtures.py` and checked against
+the generator by the fixture boundary gate. Regenerate it from the repository root with
+`python -B tools/make_fixtures.py`.
+
 | Variable | What it points at | If unset |
 |---|---|---|
 | `TASK_CONSOLE_CATEGORIES` | your category map | `~/.task-console/categories.json`; if that is missing, every task lands in one group called uncategorized, and the page says so |

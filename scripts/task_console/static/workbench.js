@@ -95,16 +95,19 @@ function renderPlatformSignals(){
 }
 function renderAutomations(){
   if(!$('automation-list')) return;
-  const rows=automationRows(ROWS,AUTO_QUERY,AUTO_STATE);
+  const verdict=$('automation-verdict').value;
+  const candidates=automationRows(ROWS,AUTO_QUERY,AUTO_STATE);
+  updateTaskVerdictFilter('automation-verdict',candidates,verdict);
+  const rows=candidates.filter(row=>taskMatchesVerdict(row,verdict));
   $('automation-count').textContent=DATA?`${rows.length}/${ROWS.length} 项`:'暂时读不到计划任务';
-  $('automation-reset').hidden=!AUTO_QUERY && !AUTO_STATE;
+  $('automation-reset').hidden=!AUTO_QUERY && !AUTO_STATE && !verdict;
   const groups=new Map();rows.forEach(row=>{if(!groups.has(row.cat))groups.set(row.cat,[]);groups.get(row.cat).push(row);});
-  const rowHtml=row=>`<article class="automation-row">
-    <div class="automation-name"><strong title="${esc(row.desc || row.name)}">${esc((row.desc || row.name).split(/[。]|[：:](?!\d)/)[0])}</strong><small>${esc(row.name)}</small></div>
-    ${statusBadge(taskStateLabel(row.state),({Ready:'ok',Running:'active',Queued:'pending',Disabled:'muted'})[row.state] || 'idle',row.state==='Disabled'?'Ⅱ':undefined,'work-state')}
-    <div class="automation-schedule" title="${esc(row.triggers)}">${esc(taskSchedule(row))}<small>${row.nextRun?'下次 '+esc(workTime(row.nextRun)):'没有下次运行时间'}</small></div>
-    ${taskActionButtons(row)}<button class="icon-only record-link" data-task="${esc(row.name)}" title="查看详情"><svg class="ic" aria-hidden="true"><use href="#i-eye"/></svg><span class="control-label">查看详情</span></button></article>`;
-  $('automation-list').innerHTML=!DATA?workEmpty('暂时读不到计划任务'):rows.length?[...groups].map(([name,items])=>`<div class="automation-group"><h3>${esc(name)}<span>${items.length} 项计划</span></h3>${items.map(rowHtml).join('')}</div>`).join(''):workEmpty('没有符合筛选条件的计划任务');
+  $('automation-list').innerHTML=!DATA?workEmpty('暂时读不到计划任务'):rows.length?[...groups].map(([name,items])=>{
+    const group=DATA.groups.find(g=>g.cat===name), all=ROWS.filter(row=>row.cat===name);
+    return `<section class="card automation-group"><div class="card-header automation-group-header"><div><h3 class="card-title">${esc(name)} <span class="n">${items.length===all.length?all.length:items.length+'/'+all.length} 项计划</span></h3>
+      ${group?.desc?`<p>${esc(group.desc)}</p>`:''}</div><span class="automation-verdict-counts">${esc(taskVerdictSummary(all))}</span></div>
+      <div class="automation-list-heading" aria-hidden="true"><span>任务与建议</span><span>运行计划</span><span>状态</span><span>操作</span></div>${items.map(row=>taskListRow(row)).join('')}</section>`;
+  }).join(''):workEmpty('没有符合筛选条件的计划任务');
 }
 function openWorkRecord(id,keepOrder=false){
   const item=(WORK?.items || []).find(row=>row.id===id);
@@ -137,9 +140,10 @@ function startWorkPlatform(){
   [['work-search','input',value=>WORK_QUERY=value],['work-role','change',value=>WORK_ROLE=value],['work-state','change',value=>WORK_STATE=value],['work-source','change',value=>WORK_SOURCE=value]].forEach(([id,event,set])=>$(id).addEventListener(event,e=>{set(e.target.value);renderWorkPlatform();}));
   $('automation-search').addEventListener('input',e=>{AUTO_QUERY=e.target.value;renderAutomations();});
   $('automation-state').addEventListener('change',e=>{AUTO_STATE=e.target.value;renderAutomations();});
+  $('automation-verdict').addEventListener('change',renderAutomations);
   $('work-detail-close').addEventListener('click',()=>$('work-detail').close());
   $('work-reset').addEventListener('click',()=>{setWorkFilters();$('work-search').focus();});
-  $('automation-reset').addEventListener('click',()=>{AUTO_QUERY='';AUTO_STATE='';$('automation-search').value='';$('automation-state').value='';renderAutomations();$('automation-search').focus();});
+  $('automation-reset').addEventListener('click',()=>{AUTO_QUERY='';AUTO_STATE='';$('automation-search').value='';$('automation-state').value='';$('automation-verdict').value='';renderAutomations();$('automation-search').focus();});
   for(const [id,delta] of [['work-detail-prev',-1],['work-detail-next',1]]) $(id).addEventListener('click',()=>{
     const next=WORK_DETAIL_IDS[WORK_DETAIL_IDS.indexOf(WORK_DETAIL_ID)+delta];if(next) openWorkRecord(next,true);
   });

@@ -12,6 +12,29 @@ const pipeTime = value => {
   return Number.isNaN(date.getTime()) ? "时间无法识别" : date.toLocaleString("zh-CN", {hour12:false});
 };
 const pipeState = state => ({healthy:"正常",unhealthy:"异常",degraded:"部分可用",failed:"失败",success:"完成",ok:"完成",completed:"完成",running:"运行中",unknown:"待验证"}[state] || "待验证");
+// 同步写进收据的是原因码。页面上给人看中文,原码留在悬停提示里;认不出的原因码照原样显示。
+const PIPELINE_REASONS = {
+  managed_block_modified_by_user:"同步管理的配置段被手动改过，没有覆盖",
+  managed_role_or_entry_modified_missing_or_unowned:"同步管理的 agent 条目被改过、缺失或不归同步管",
+  managed_agents_dependency_conflict:"agent 配置的依赖关系冲突",
+  skill_routing_ownership_or_layout_conflict:"技能路由的归属或目录结构冲突",
+  source_command_not_reviewed_for_native_adapter:"钩子命令还没审核，没有转成 Codex 原生钩子",
+  external_installer_required:"由外部安装程序管理，需另行安装"
+};
+const pipelineReason = code => Object.hasOwn(PIPELINE_REASONS, code) ? PIPELINE_REASONS[code] : code;
+// 运行记录来自一份采集好的快照,不是打开页面时现查的。采集停了以后,「最近运行」和各环节结果
+// 会一直停在那一刻,而它们看起来和刚采集的记录一模一样,所以快照多旧必须说出来。
+// 两条流水线都至少每天跑一次,超过一天没更新的快照一定已经过时。
+const PIPELINE_STALE_HOURS = 24;
+function pipelineSnapshotAge(value, now=Date.now()){
+  if(value == null || value === "") return {text:"快照时间未记录", stale:false, age:""};
+  const date = new Date(typeof value === "number" ? value*1000 : value);
+  if(Number.isNaN(date.getTime())) return {text:"快照时间无法识别", stale:false, age:""};
+  const hours=(now-date.getTime())/3600000;
+  if(hours<-0.1) return {text:`快照于 ${pipeTime(value)}（晚于本机时间）`, stale:false, age:""};
+  const age=hours<1?"不到 1 小时前":hours<48?`${Math.floor(hours)} 小时前`:`${Math.floor(hours/24)} 天前`;
+  return {text:`快照于 ${pipeTime(value)}（${age}）`, stale:hours>PIPELINE_STALE_HOURS, age};
+}
 
 function pipelineTask(key, components){
   const def = PIPELINE_DEFS[key];
@@ -91,34 +114,48 @@ async function loadComponents(){
   if(typeof renderPlatformSignals==='function') renderPlatformSignals();
 }
 
-function pipelineRunControl(key,row){
-  if(!row) return '';
-  if(row.state==='Disabled') return taskActionButtons(row);
-  const running=row.state==='Running', queued=row.state==='Queued';
-  const disabled=busy || ConsoleActions.readOnly || row.state!=='Ready';
-  const label=running?'正在运行':queued?'已排队':key==='sync'?'立即同步':'立即备份';
-  const reason=ConsoleActions.readOnly?ConsoleActions.reason:busy?'正在提交操作':
-    running?'本次仍在运行':queued?'等待执行':row.state==='Ready'?'立即运行整条流水线，保留原计划':'任务状态未确认';
-  return `<button class="mini task-control icon-only" data-act="run" data-name="${esc(row.name)}" ${disabled?'disabled':''} title="${esc(label+'：'+reason)}"><svg class="ic" aria-hidden="true"><use href="#i-play"/></svg><span class="control-label">${label}</span></button>`;
+function pipelineRows(){
+  // 找不到这条任务有四种原因,要说的话和要做的事都不一样,不能共用一句「未读取」:
+  // 计划任务还在读、读失败了、读到了但计划程序里没有它、有不止一个同名任务。
+  const read=typeof API_READS!=='undefined'?API_READS.get('/api/tasks'):null;
+  const failed=(typeof TASKS_LOAD_ERROR!=='undefined' && TASKS_LOAD_ERROR) || read?.error;
+  return Object.entries(PIPELINE_DEFS).map(([key,def])=>{
+    const scheduled=ROWS.filter(row=>row.name===def.name);
+    const row=scheduled.length===1?scheduled[0]:null;
+    const missing=row?null:!DATA?(failed?['计划任务读取失败','bad']:['正在读取计划任务','pending']):
+      scheduled.length>1?[`计划程序里有 ${scheduled.length} 个同名任务`,'warn']:['计划程序里没有这个任务','bad'];
+    const displayRow=row || {name:def.name,triggers:missing[0],infoPending:!DATA};
+    return {key,def,row,displayRow,missing};
+  });
 }
 
 function renderPipelines(){
   const box=$("pipeline-body");if(!box) return;
-  $("pipeline-sample").textContent="读取时间 "+pipeTime(COMPONENTS && COMPONENTS.captured_at);
-  box.innerHTML=(!COMPONENTS || !COMPONENTS.available ? `<p class="review-notice">${esc(COMPONENTS && COMPONENTS.reason || "正在读取运行记录")}</p>`:"")+
-    Object.entries(PIPELINE_DEFS).map(([key,def])=>{
+  const query=$('pipeline-task-search').value, verdict=$('pipeline-verdict').value;
+  // 卡片标题(「每日备份与整理」)也要搜得到:人是照着卡片上的字搜的,不是照着任务名。
+  const q=query.trim().toLowerCase();
+  const candidates=pipelineRows().filter(item=>taskMatches(item.displayRow,query) ||
+    [item.def.title,item.def.purpose].join(' ').toLowerCase().includes(q));
+  updateTaskVerdictFilter('pipeline-verdict',candidates.map(item=>item.displayRow),verdict);
+  const visible=candidates.filter(item=>taskMatchesVerdict(item.displayRow,verdict));
+  const snap=pipelineSnapshotAge(COMPONENTS && COMPONENTS.captured_at), sample=$("pipeline-sample");
+  sample.textContent=snap.text;
+  sample.className=snap.stale?"pipeline-stale":"faint";
+  const stale=COMPONENTS && COMPONENTS.available && snap.stale
+    ? `<p class="review-notice">下面的运行记录来自 ${esc(snap.age)}采集的快照，之后没有再更新，最近运行和各环节结果都停在那一刻。任务现在的状态看每张卡片上的状态和下次运行时间。</p>`:"";
+  box.innerHTML=(!COMPONENTS || !COMPONENTS.available ? `<p class="review-notice">${esc(COMPONENTS && COMPONENTS.reason || "正在读取运行记录")}</p>`:"")+stale+
+    (!visible.length?'<p class="review-empty">没有符合筛选条件的同步与备份任务</p>':'')+
+    visible.map(({key,def,row,displayRow,missing})=>{
       const task=pipelineTask(key,COMPONENTS), receipt=task && task.last_run_v1;
       const status=task && (receipt && receipt.status || task.verdict);
-      const scheduled=typeof ROWS!=="undefined" ? ROWS.filter(row=>row.name===def.name) : [];
-      const row=scheduled.length===1 ? scheduled[0] : null;
       const steps=pipelineSteps(key,COMPONENTS);
       return `<div class="card pipeline-run" id="pipeline-${key}">
-        <div class="card-header"><h2 class="card-title">${esc(def.title)}</h2><div class="review-actions">
-          ${statusBadge(task?pipeState(status):'未找到对应任务',task?componentTone(status):'idle',undefined,'review-status')}
-          ${task?`<button class="icon-only" data-task="${esc(task.name)}" title="任务详情"><svg class="ic" aria-hidden="true"><use href="#i-eye"/></svg><span class="control-label">任务详情</span></button>`:""}
-          ${pipelineRunControl(key,row)}</div></div>
+        <div class="card-header"><h2 class="card-title">${esc(def.title)}</h2></div>
+        ${taskListRow(displayRow,{controls:row?taskActionButtons(row):'',showDetails:!!row,
+          state:row?null:statusBadge(missing[0],missing[1])})}
+        <div class="pipeline-result">运行记录 ${statusBadge(task?pipeState(status):'未找到对应记录',task?componentTone(status):'idle',undefined,'review-status')}</div>
         <div class="pipeline-metrics"><span>最近运行 <b>${esc(pipeTime(task && task.execution && task.execution.started_at))}</b></span>
-          <span>下次计划 <b>${esc(row ? pipeTime(row.nextRun) : "未读取")}</b></span><span>运行标识 <b>${esc(task && task.run_id || "未提供")}</b></span>
+          <span>运行标识 <b>${esc(task && task.run_id || "未提供")}</b></span>
           <span>任务标识 <b>${esc(task && task.task_id || "未关联")}</b></span>
           ${receipt?`<span>模式 <b>${esc(receipt.mode || "未记录")}</b></span><span>本次改动 <b>${esc(receipt.change_count ?? "未记录")}</b></span><span>剩余差异 <b>${esc(receipt.remaining_changes ?? "未记录")}</b></span>`:""}
         </div>
@@ -143,12 +180,20 @@ function renderPipelines(){
 function renderPipelineIssues(){
   const task=pipelineTask("sync",COMPONENTS), findings=task && task.last_run_v1 && task.last_run_v1.findings;
   const query=PIPELINE_QUERY.trim().toLowerCase();
-  const rows=(Array.isArray(findings)?findings:[]).filter(f=>!query || JSON.stringify(f).toLowerCase().includes(query));
+  // 中文说法也要搜得到,原因码照旧能搜。
+  const rows=(Array.isArray(findings)?findings:[]).filter(f=>!query ||
+    (JSON.stringify(f)+" "+(f.reason?pipelineReason(f.reason):"")).toLowerCase().includes(query));
   $("pipeline-issue-count").textContent=Array.isArray(findings)?`显示 ${rows.length} 项，共 ${findings.length} 项`:"尚无问题清单";
-  $("pipeline-issues").innerHTML=rows.length?`<table class="ops-table"><thead><tr><th>类型</th><th>对象</th><th>状态 / 原因</th></tr></thead><tbody>${rows.map(f=>`<tr><td>${esc(catalogLabel(f.area))}</td><th scope="row">${esc(f.name || "未命名")}</th><td>${esc(f.reason || catalogLabel(f.status))}</td></tr>`).join("")}</tbody></table>`:
+  const reasonCell=f=>f.reason
+    ? `<td${pipelineReason(f.reason)!==f.reason?` title="原因码 ${esc(f.reason)}"`:""}>${esc(pipelineReason(f.reason))}</td>`
+    : `<td>${esc(catalogLabel(f.status))}</td>`;
+  $("pipeline-issues").innerHTML=rows.length?`<table class="ops-table"><thead><tr><th>类型</th><th>对象</th><th>状态 / 原因</th></tr></thead><tbody>${rows.map(f=>`<tr><td>${esc(catalogLabel(f.area))}</td><th scope="row">${esc(f.name || "未命名")}</th>${reasonCell(f)}</tr>`).join("")}</tbody></table>`:
     `<p class="review-empty">${Array.isArray(findings)?findings.length?"没有符合筛选条件的问题":"本次同步记录未列出问题":"尚未读到问题清单，无法确认功能是否可用"}</p>`;
 }
 function pipelineClick(event){
   const link=event.target.closest("[data-open-pipeline]");
-  if(link){showView("pipelines",true);$("pipeline-"+link.dataset.openPipeline)?.scrollIntoView({block:"start"});}
+  if(link){
+    $('pipeline-task-search').value='';$('pipeline-verdict').value='';renderPipelines();
+    showView("pipelines",true);$("pipeline-"+link.dataset.openPipeline)?.scrollIntoView({block:"start"});
+  }
 }

@@ -236,10 +236,6 @@ table.g tbody tr.cur{background:var(--cur);box-shadow:inset 2px 0 0 var(--cyan)}
 table.g tbody tr.sel{background:var(--sel)}
 table.g td.nm{max-width:340px;overflow:hidden;text-overflow:ellipsis;font-weight:500;
   white-space:normal;line-height:1.25}
-/* 说明是任务名下面的第二行。它自己不换行:一条被折成三行的说明会把整张表撑散,
-   而完整正文在 title 和展开行里都还在。 */
-table.g td.nm .ds2{display:block;font-weight:400;color:var(--dim);font-size:var(--fs-chip);
-  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-family:var(--ui)}
 /* 说明列。原来写的是 max-width:0 + width:100%,那是「吸收剩余宽度」的写法,
    但这张表 19 列的自然宽度合计已经超过容器,**没有剩余宽度可吸收**,于是 max-width:0
    赢,这一列被压成 34px、只显示一个字加省略号。一列只显示一个字比没有这一列更差:

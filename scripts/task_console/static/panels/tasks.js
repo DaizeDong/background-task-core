@@ -1,11 +1,146 @@
 // Classic script module; loaded in app.js dependency order.
 
-let DATA=null, ROWS=[], VIEW=[], cur=0, sel=new Set(), sortKey="cat", asc=true, busy=false;
-// Show all operational columns initially; retain explicit user choices.
+let DATA=null, ROWS=[], VIEW=[], cur=0, sel=new Set(), sortKey="name", asc=true, busy=false;
+// Keep routine operation compact; retain saved column and safeguards choices.
 const HYGIENE = ["catchup","retries","timeout","artifact","inAllow","inHealth"];
-let HYG_OPEN = true;
-try{ HYG_OPEN = localStorage.getItem("tc.hyg") !== "0"; }catch(e){}
-const shownCols = () => HYG_OPEN ? C : C.filter(c => HYGIENE.indexOf(c[0]) < 0);
+let HYG_OPEN = false;
+let TASK_COLUMNS = new Set(['sl','ops','triggers','nextRun']);
+try{
+  HYG_OPEN = localStorage.getItem("tc.hyg") === "1";
+  const saved=JSON.parse(localStorage.getItem('tc.taskColumns'));
+  if(Array.isArray(saved)) TASK_COLUMNS=new Set(saved.filter(key=>typeof key==='string'));
+}catch(e){}
+const shownCols = () => C.filter(c=>['selc','name'].includes(c[0]) ||
+  (HYGIENE.includes(c[0])?HYG_OPEN:TASK_COLUMNS.has(c[0])));
+
+// Metadata presentation is shared by all automation tabs. No inferred verdicts.
+// 建议徽章不借用状态徽章的符号(✓ 正常、Ⅱ 停用),外框另用虚线(workbench.css 的 .task-verdict):
+// 「建议保持停用」和「此刻已停用」是两件事,配置过期之后它们会不一致,屏幕上必须分得开。
+const TASK_VERDICTS = {
+  urgent:{label:'急修',tone:'bad',symbol:'!',className:'task-verdict-urgent'},
+  fix:{label:'要修',tone:'bad',symbol:'!'},
+  adjust:{label:'调整',tone:'warn',symbol:'↻'},
+  decide:{label:'待定',tone:'pending',symbol:'?'},
+  remove:{label:'可删',tone:'muted',symbol:'·'},
+  disabled:{label:'保持停用',tone:'muted',symbol:'·'},
+  keep:{label:'保留',tone:'muted',symbol:'·'}
+};
+// 兜底桶分开数:「没写建议」是缺失,「写了但认不出 / 整条说明写坏了」是坏掉,
+// 「计划任务还没读到」是还不知道。三种要做的事不一样,计数也不能混在一起。
+const TASK_VERDICT_EXTRA = {unrecognized:{label:'无法识别'}, unassessed:{label:'未评估'}, pending:{label:'建议未读取'}};
+function taskText(row){
+  const desc=typeof row.desc==='string'?row.desc.trim():'';
+  // 半角冒号后面跟数字、斜杠或反斜杠时不是分隔符:08:00、C:\、https:// 都不能被切成标题和摘要。
+  const separator=desc.match(/[。]|[：:](?![\d\/\\])/);
+  const title=separator?desc.slice(0,separator.index).trim():desc;
+  const summary=separator?desc.slice(separator.index+1).trim():'';
+  const infoTitle=row.info?.title?.trim();
+  // 标题来自 info、desc 又切不出摘要时,整段 desc 是这条任务仅有的说明,不能因此整段消失。
+  const fallback=infoTitle && !summary && desc && desc!==infoTitle ? desc : summary;
+  return {title:infoTitle || title || row.name || '未命名任务',
+    summary:row.info?.summary?.trim() || fallback};
+}
+function taskVerdict(row){
+  const key=row.info?.verdict;
+  return Object.hasOwn(TASK_VERDICTS,key)?key:'';
+}
+// 服务端认得、这里不认得的建议值(两边的表只改了一边)也算认不出,不能落成「未评估」。
+function taskVerdictUnknown(row){
+  const raw=row.info?.verdict;
+  if(typeof raw==='string' && raw && !Object.hasOwn(TASK_VERDICTS,raw)) return raw;
+  return row.info?.verdictUnrecognized || '';
+}
+function taskVerdictBucket(row){
+  if(row.infoPending) return 'pending';
+  const key=taskVerdict(row);
+  if(key) return key;
+  return row.infoInvalid || taskVerdictUnknown(row) ? 'unrecognized' : 'unassessed';
+}
+function taskVerdictBadge(row){
+  if(row.infoPending) return statusBadge('建议未读取','idle','?','task-verdict');
+  if(row.infoInvalid) return statusBadge('说明写法不对','bad','!','task-verdict');
+  const verdict=TASK_VERDICTS[taskVerdict(row)];
+  if(verdict) return statusBadge(verdict.label,verdict.tone,verdict.symbol,'task-verdict '+(verdict.className || ''));
+  if(taskVerdictUnknown(row)) return statusBadge('建议无法识别','warn','?','task-verdict');
+  return statusBadge('未评估','idle','?','task-verdict');
+}
+function taskMatches(row,query){
+  const q=query.trim().toLowerCase(), text=taskText(row);
+  return !q || [text.title,text.summary,row.info?.advice,row.name,row.desc,row.cat].join(' ').toLowerCase().includes(q);
+}
+function taskMatchesVerdict(row,verdict){
+  return !verdict || taskVerdictBucket(row)===verdict;
+}
+function taskVerdictCounts(rows){
+  const counts={};
+  rows.forEach(row=>{const key=taskVerdictBucket(row);counts[key]=(counts[key] || 0)+1;});
+  return counts;
+}
+function taskVerdictOptions(rows,selected=''){
+  const counts=taskVerdictCounts(rows);
+  return `<option value="">全部建议 (${rows.length})</option>`+
+    [...Object.entries(TASK_VERDICTS),...Object.entries(TASK_VERDICT_EXTRA)]
+      // 「建议未读取」只在计划任务还没读到时才有行;平时列一个恒为 0 的选项只是噪音。
+      // 选中着的选项必须留着,否则下拉框会显示「全部建议」而表格仍按它在筛。
+      .filter(([key])=>key!=='pending' || counts[key] || key===selected)
+      .map(([key,value])=>`<option value="${key}">${value.label} (${counts[key] || 0})</option>`).join('');
+}
+function updateTaskVerdictFilter(id,rows,selected){
+  const control=$(id);
+  if(!control) return;
+  control.innerHTML=taskVerdictOptions(rows,selected);control.value=selected;
+}
+function taskVerdictSummary(rows){
+  const counts=taskVerdictCounts(rows);
+  return [...Object.entries(TASK_VERDICTS),...Object.entries(TASK_VERDICT_EXTRA)]
+    .filter(([key])=>counts[key]).map(([key,value])=>`${value.label} ${counts[key]}`).join(' · ');
+}
+function taskIdentityHtml(row){
+  const text=taskText(row);
+  return `<div class="automation-name"><div class="task-heading"><strong>${esc(text.title)}</strong>${taskVerdictBadge(row)}</div>`+
+    (text.summary?`<p class="task-summary-text" title="${esc(text.summary)}">${esc(text.summary)}</p>`:'')+
+    `<small class="task-machine-name">${esc(row.name)}</small></div>`;
+}
+// relative=true 是表格那一窄列用的短说法,完整说法进 title。几种情况的短说法也必须互不相同。
+function taskNextRun(row,relative=false){
+  // 停用的任务计划程序照样按触发器推算出下次时间,但它不会跑(时间轴同样跳过停用任务);
+  // 照抄那个时间,等于在停用的任务旁边写「1 分钟后」。
+  if(row.state==='Disabled') return relative?'不会运行':'已停用，不会运行';
+  if(row.infoError) return relative?'读取失败':'下次运行时间读取失败';
+  if(!Object.hasOwn(row,'nextRun')) return relative?'未读取':'未读取下次运行时间';
+  if(!row.nextRun) return relative?'无下次时间':'没有下次运行时间';
+  if(Number.isNaN(new Date(row.nextRun).getTime())) return '时间无法识别';
+  return relative?relTime(row.nextRun):workTime(row.nextRun);
+}
+function taskListRow(row,{controls=taskActionButtons(row),state=null,showDetails=true}={}){
+  const badge=state || statusBadge(taskStateLabel(row.state),({Ready:'ok',Running:'active',Queued:'pending',Disabled:'muted'})[row.state] || 'idle',row.state==='Disabled'?'Ⅱ':undefined,'work-state');
+  const next=(row.nextRun && !row.infoError && row.state!=='Disabled'?'下次 ':'')+taskNextRun(row);
+  return `<article class="automation-row">${taskIdentityHtml(row)}
+    <div class="automation-schedule" title="${esc(taskSchedule(row,true))}">${esc(taskSchedule(row))}<small>${esc(next)}</small></div>
+    <div class="automation-state">${badge}</div><div class="automation-actions">${controls}
+    ${showDetails?`<button class="icon-only record-link" data-task="${esc(row.name)}" title="查看详情"><svg class="ic" aria-hidden="true"><use href="#i-eye"/></svg><span class="control-label">查看详情</span></button>`:''}</div></article>`;
+}
+function taskInfoHtml(row){
+  // 写坏了的说明不能画成一排「未填写」:那会让人去补写,而真正要做的是去改那条写错的配置。
+  // 坏在哪里就地说出来:汇总警告在「诊断」分区,自动化的三个标签页上都看不到它。
+  if(row.infoInvalid){
+    const why=typeof row.infoInvalid==='string'?`:${row.infoInvalid}`:'';
+    return `<section class="task-info" aria-label="任务说明"><p class="review-notice">这条任务在分类配置里的 taskInfo 写法不对,已整条忽略${esc(why)}。</p></section>`;
+  }
+  const info=row.info || {}, text=taskText(row), unknownVerdict=taskVerdictUnknown(row);
+  const value=(v,missing)=>v?esc(v):`<span class="u">${missing}</span>`;
+  const verdictNote=unknownVerdict?`<small class="task-info-date">建议值「${esc(unknownVerdict)}」认不出,按「建议无法识别」处理</small>`:'';
+  return `<section class="task-info" aria-label="任务说明"><dl class="task-info-fields">
+    <dt>用途</dt><dd>${value(text.summary,'未填写用途摘要')}</dd>
+    <dt>频率</dt><dd>${value(info.cadence,'未填写频率说明')}</dd>
+    <dt>现状</dt><dd>${value(info.status,'未填写现状')}<small class="task-info-date">${info.asOf?'核对于 '+esc(info.asOf):'未填写核对日期'}</small></dd>
+    <dt>建议</dt><dd>${value(info.advice,'未填写建议')}${verdictNote}</dd></dl></section>`;
+}
+function renderTaskColumns(){
+  const box=$('task-column-options');if(!box) return;
+  box.innerHTML=C.filter(c=>!['selc','name',...HYGIENE].includes(c[0])).map(c=>
+    `<label><input type="checkbox" data-task-column="${c[0]}"${TASK_COLUMNS.has(c[0])?' checked':''}> ${c[1]}</label>`).join('');
+}
 // 时间轴可视窗口,单位分钟。整天是 [0,1440];缩放和拖动只改这两个数,所有位置都由它们算出来。
 let tlFrom=0, tlTo=1440;
 const TL_MIN_SPAN=5;    // 最小窗口 5 分钟。实测深度缩放时一帧 1.1ms,成本由 25 行固定的
@@ -43,7 +178,12 @@ function taskSchedule(row,full=false){
   }).join('；');
 }
 
+// 最近一次读计划任务失败的原因。读失败和还没读完在别的分区(同步与备份)要显示成两回事。
+let TASKS_LOAD_ERROR=null;
 async function load(){
+  // 新的一次读取一开始就清掉上一次的失败:读取中的那段时间,同步与备份要说「正在读取」,
+  // 而不是把已经过去的那次失败当成现在的状态。
+  TASKS_LOAD_ERROR=null;
   try{
     DATA=await api("/api/tasks");
     if(DATA.error) throw new Error(DATA.error);
@@ -53,7 +193,7 @@ async function load(){
     s.value=keep;
     render();
     if(typeof renderPipelines==="function") renderPipelines();
-  }catch(e){ DATA=null; ROWS=[]; updateBadges(); if(typeof renderPipelines==="function") renderPipelines(); $("tbl").innerHTML=`<tbody><tr><td style="color:var(--bad);padding:10px">读取失败:${esc(e.message)}</td></tr></tbody>`; }
+  }catch(e){ DATA=null; ROWS=[]; TASKS_LOAD_ERROR=e.message || '读取失败'; updateBadges(); if(typeof renderPipelines==="function") renderPipelines(); $("tbl").innerHTML=`<tbody><tr><td style="color:var(--bad);padding:10px">读取失败:${esc(e.message)}</td></tr></tbody>`; }
 }
 
 // 把渲染合并到一帧里。之前滚轮和拖动都是每个事件同步渲染一次,而浏览器一次拖动可以
@@ -97,9 +237,15 @@ function renderTL(){
   // 视窗外的标记直接不渲染。让它们留在 DOM 里靠 overflow 裁掉,在放大到几十分钟时
   // 等于每行仍要摆几百个绝对定位元素,滚动会明显掉帧。
   const vis=m=>m>=tlFrom-1&&m<=tlTo+1;
+  // timeline.build 拼的行只有 name/cat/points/spans/eventDriven/unknownTriggers/actual/sk,
+  // 不带说明;说明在任务表那条通路上(ROWS)。行名从那里取中文标题,机器名留在悬停提示里。
+  // 任务表还没读到、或者里面没有这一行时,照旧显示机器名,不编一个名字出来。
+  const byName=new Map(ROWS.map(t=>[t.name,t]));
   const rows=T.rows.map(r=>{
+    const known=byName.get(r.name), label=known?taskText(known).title:r.name;
+    const nameTip=label===r.name?r.name:`${label} · ${r.name}`;
     const marks=r.points.filter(p=>vis(mins(p))).map(p=>
-      `<i class="tlpt${mins(p)<=nowM?" done":""}" style="left:${tlPos(mins(p))}%" title="${esc(r.name)} 计划 ${p}"></i>`).join("");
+      `<i class="tlpt${mins(p)<=nowM?" done":""}" style="left:${tlPos(mins(p))}%" title="${esc(label)} 计划 ${p}"></i>`).join("");
     const spans=r.spans.map(sp=>{
       const a=Math.max(mins(sp.from),tlFrom), b=Math.min(mins(sp.to),tlTo);
       if(b<=a) return "";
@@ -107,10 +253,10 @@ function renderTL(){
       // 于是一个十秒级的任务会在 tooltip 里声称「00:00-13:53 共 5000 次」,
       // 而真实是全天 8640 次。**一个数了一半却报出确定数字的结果,比不报还糟。**
       const cnt = sp.truncated ? `至少 ${sp.count} 次(展开撞上上限,没数完)` : `共 ${sp.count} 次`;
-      return `<i class="tlspan${sp.truncated?" trunc":""}" style="left:${tlPos(a)}%;width:${Math.max(tlPos(b)-tlPos(a),0.4)}%" title="${esc(r.name)} ${sp.from}-${sp.to} 每 ${esc(sp.every)} ${cnt}"></i>`;
+      return `<i class="tlspan${sp.truncated?" trunc":""}" style="left:${tlPos(a)}%;width:${Math.max(tlPos(b)-tlPos(a),0.4)}%" title="${esc(label)} ${sp.from}-${sp.to} 每 ${esc(sp.every)} ${cnt}"></i>`;
     }).join("");
     const acts=(r.actual||[]).filter(a=>vis(mins(a))).map(a=>
-      `<i class="tlact" style="left:${tlPos(mins(a))}%" title="${esc(r.name)} 实际运行 ${a}"></i>`).join("");
+      `<i class="tlact" style="left:${tlPos(mins(a))}%" title="${esc(label)} 实际运行 ${a}"></i>`).join("");
     const evt=(r.eventDriven.length&&!r.points.length&&!r.spans.length)
       ? `<span class="tlevt" title="${esc(r.eventDriven.join("/"))} 触发,无固定时刻"
           ><b class="tlbadge">${esc(r.eventDriven.join("/"))}</b></span>`:"";
@@ -122,12 +268,7 @@ function renderTL(){
       ? `<span class="tlevt warnish" title="触发器类型 ${esc(r.unknownTriggers.join("/"))} 认不出,今日时刻算不出来"
           ><b class="tlbadge">? ${esc(r.unknownTriggers.join("/"))}</b></span>`:"";
     const nowBar=vis(nowM)?`<i class="tlnow" style="left:${tlPos(nowM)}%"></i>`:"";
-    // ⚠ 这里原来还拼了 `r.desc`,而 timeline.build 从不产出这个字段(它拼的 row 只有
-    // name/cat/points/spans/eventDriven/unknownTriggers/actual/sk)。于是这个三元
-    // 永远走 false 分支 —— 一段看起来在显示说明、实际什么都不显示的代码。
-    // 说明确实存在,但它在任务表那条通路上(DATA.groups 的行里),不在这里。
-    // 要么去取过来,要么别装作有:现在是后者,并写明它在哪。
-    return `<div class="tlrow" data-task="${esc(r.name)}"><div class="tlname" title="${esc(r.name)}">${esc(r.name)}</div>
+    return `<div class="tlrow" data-task="${esc(r.name)}"><div class="tlname" title="${esc(nameTip)}">${esc(label)}</div>
       <div class="tltrack">${spans}${marks}${acts}${evt}${unk}${nowBar}</div></div>`;
   }).join("");
   $("tl").innerHTML=`<div class="hours">${tlTicks()}</div>${rows}`;
@@ -225,6 +366,8 @@ function relTime(s){
   const t=new Date(String(s).replace(" ","T"));
   if(isNaN(t)) return String(s).slice(5);   // 解析不了就照实回显原文,不编一个数出来
   const d=(t-Date.now())/36e5, a=Math.abs(d);
+  // 不到半分钟会四舍五入成「0分后」,读起来像出错了。
+  if(Math.round(a*60)===0) return d<0?"刚刚":"即将运行";
   const u=a<1?`${Math.round(a*60)}分`:a<48?`${a.toFixed(a<10?1:0)}小时`:`${(a/24).toFixed(0)}天`;
   return d<0?u+"前":u+"后";
 }
@@ -264,18 +407,9 @@ const C=[
  ["selc","",r=>`<td style="width:20px"><input type="checkbox" class="selbox"
    data-selname="${esc(r.name)}"${sel.has(r.name)?" checked":""}
    aria-label="选中 ${esc(r.name)}"></td>`,()=>0],
+ ["name","任务",r=>`<td class="nm">${taskIdentityHtml(r)}</td>`,r=>taskText(r).title],
  ["sl","状态",r=>`<td>${statusBadge(r.sl,({ok:'ok',bad:'bad',running:'active',pending:'pending',disabled:'muted',unknown:'idle'})[r.sk] || 'idle',undefined,'st')}</td>`,r=>r.sl],
- ["ops","操作",r=>`<td class="ops">${taskActionButtons(r,true)}</td>`,r=>r.state],
- // 说明折进任务名的第二行。它们本来就是一体的「这是什么」,而分成两列的代价是
- // 说明只剩 280px、每行都被截成半句话(「每日 22:00 的配置备份总…」)。
- // 合并之后说明可用宽度涨到 340px,而且不再和任务名争抢。
- ["name","任务",r=>`<td class="nm" title="${esc(r.name)}">${esc(r.name)}`
-   +(r.desc?`<span class="ds2" title="${esc(r.desc)}">${esc(r.desc)}</span>`:"")
-   +`</td>`,r=>r.name],
  ["cat","大类",r=>`<td class="dim">${esc(r.cat)}</td>`,r=>r.cat],
- // 「说明」不再单独占一列 —— 它现在是任务名那一格的第二行。
- // 按说明排序这个能力一并没了,而那个能力没有实际用途;搜索仍然能搜到说明
- // (过滤框的 placeholder 写的就是「任务名 / 大类 / 说明」,那条路径没变)。
  // 健康% 旁边要能看出它是拿什么算出来的。判词表认不出来的那些进 other 桶,
  // 它只进分母不出现在任何地方:监控器换一种措辞之后,每一行会显示 0.0% 而
  // ok/bad/stale 全是 0,同一行里两个数字互相矛盾而没有任何字段说明观察去哪了。
@@ -338,8 +472,9 @@ const C=[
  // 排序键仍取原始字符串,排序结果与改之前逐行一致。
  ["lastRun","上次",r=>`<td class="dim num" data-col="lastRun" title="${esc(r.lastRun||"从未")}">${
     r.lastRun?esc(relTime(r.lastRun)):'<span class="u">从未</span>'}</td>`,r=>r.lastRun||""],
- ["nextRun","下次",r=>`<td class="dim num" data-col="nextRun" title="${esc(r.nextRun||"没有下次计划")}">${
-    r.nextRun?esc(relTime(r.nextRun)):'<span class="u">-</span>'}</td>`,r=>r.nextRun||""],
+ // 停用任务的排序键取空串:它不会运行,不该按计划程序推算出的那个时间排进「即将运行」的前面。
+ ["nextRun","下次",r=>`<td class="dim num" data-col="nextRun" title="${esc(taskNextRun(r))}">${esc(taskNextRun(r,true))}</td>`,r=>r.state==="Disabled"?"":(r.nextRun||"")],
+ ["ops","操作",r=>`<td class="ops">${taskActionButtons(r,true)}</td>`,r=>r.state],
  ["catchup","补跑",r=>`<td class="${r.catchup?"y":"n"}">${r.catchup?"是":"否"}</td>`,r=>r.catchup?1:0],
  ["retries","重试",r=>`<td class="num">${r.retries}</td>`,r=>r.retries],
  ["timeout","超时限制",r=>{const i=(r.timeout==="PT72H"||r.timeout==="PT0S");return `<td data-col="timeout" title="${esc(r.timeout)}" style="color:${i?"var(--warn)":"var(--dim)"}">${esc(r.timeout==='PT0S'?'不限时':taskDuration(r.timeout))}</td>`},r=>r.timeout||""],
@@ -351,7 +486,6 @@ const C=[
 function detail(r){
   const rcs=r.runs?Object.keys(r.runs.rcs||{}).map(k=>k+"x"+r.runs.rcs[k]).join(", "):"";
   const dl=[
-   ["用途",r.desc?esc(r.desc):'<span class="u">没有用途说明</span>'],
    ["运行计划",esc(taskSchedule(r,true))],
    ["命令",`<code>${esc(r.exec)} ${esc(r.args)}</code>`],
    ["工作目录",esc(r.cwd || '未设置')],
@@ -372,7 +506,7 @@ function detail(r){
   // 动作提到行上之后,展开态那份没删,于是同一个按钮在同一屏出现两次,
   // 而其中一份还比另一份少一个动作 : 两份不完全一样的重复,比完全一样的更糟,
   // 因为人会以为差别是有意义的。
-  return `<tr class="det"><td colspan="${shownCols().length}"><div class="det"><dl>${dl}</dl>${iss}</div></td></tr>`;
+  return `<tr class="det"><td colspan="${shownCols().length}"><div class="det">${taskInfoHtml(r)}<dl class="task-technical-fields">${dl}</dl>${iss}</div></td></tr>`;
 }
 
 function render(){
@@ -441,15 +575,26 @@ function render(){
 
   const q=$("q").value.trim().toLowerCase(), cat=$("cat").value;
   const onlyBad=$("only").checked, hideOff=$("hideoff").checked;
-  VIEW=ROWS.filter(r=>(!cat||r.cat===cat)&&!(hideOff&&r.state==="Disabled")
+  const candidates=ROWS.filter(r=>(!cat||r.cat===cat)&&!(hideOff&&r.state==="Disabled")
     &&!(onlyBad&&r.sk!=="bad"&&!sev(r))
-    &&(!q||r.name.toLowerCase().indexOf(q)>=0||r.cat.toLowerCase().indexOf(q)>=0
-       ||(r.desc||"").toLowerCase().indexOf(q)>=0));
-  const col=C.find(c=>c[0]===sortKey)||C[3];
+    &&taskMatches(r,q));
+  const verdict=$('task-verdict').value;
+  updateTaskVerdictFilter('task-verdict',candidates,verdict);
+  // cur 是下标,展开的明细跟着任务名走。筛选或排序一变,同一个下标会指到另一个任务上:
+  // 人看着 B 的明细按 r/s,跑掉或停掉的却是 C。所以先记下光标所在的任务,重排之后按名字找回来。
+  const curName=VIEW[cur]&&VIEW[cur].name;
+  VIEW=candidates.filter(r=>taskMatchesVerdict(r,verdict));
+  const CC=shownCols();
+  // 排序列被「显示列」藏起来时,表还按一列看不见的列排着,表头上却没有任何一处显示方向。
+  // 退回按任务名排,并把 sortKey 一起改过去,让表头上的方向和实际顺序一致。
+  if(!CC.some(c=>c[0]===sortKey)){ sortKey="name"; asc=true; }
+  const col=C.find(c=>c[0]===sortKey)||C[1];
   VIEW.sort((a,b)=>{const x=col[3](a),y=col[3](b);
     const c=(typeof x==="number"&&typeof y==="number")?x-y:String(x).localeCompare(String(y),"zh");
     return asc?c:-c;});
-  if(cur>=VIEW.length) cur=Math.max(0,VIEW.length-1);
+  const found=curName?VIEW.findIndex(r=>r.name===curName):-1;
+  if(found>=0) cur=found;
+  else if(cur>=VIEW.length) cur=Math.max(0,VIEW.length-1);
   $("cnt").textContent=`${VIEW.length}/${ROWS.length} 行`+(sel.size?` · 已选 ${sel.size}`:"");
   // 记下焦点落在哪一行的哪个控件上,重建之后放回去。
   const ae = document.activeElement;
@@ -457,17 +602,17 @@ function render(){
   const keep = aeRow ? {name: aeRow.dataset.name,
                         act: ae.dataset ? ae.dataset.act : null,
                         box: ae.classList && ae.classList.contains("selbox")} : null;
-  const CC=shownCols();
   // 排序是这张表最主要的整理手段,原来只有 click:纯键盘用户完全用不了,
   // 读屏用户既按不动也听不出当前按哪一列排(方向只存在于 ::after,没有 aria-sort 兜底)。
   // selc 那一列的排序键是常量,点它会重排一次却看不出任何变化 :
   // 一个会响应但没有效果的可点区域,比不可点更让人怀疑自己看错了,所以它不给 data-k。
+  $('tbl').className='g'+(CC.length>6?' task-table-expanded':'');
   $("tbl").innerHTML=`<thead><tr>${CC.map(c=>{
       const sortable = c[0] !== "selc";
       const cur = sortKey===c[0];
       const aria = !sortable ? "" : ` aria-sort="${cur ? (asc?"ascending":"descending") : "none"}"`;
       const tab = sortable ? ' tabindex="0" role="columnheader"' : "";
-      return `<th${sortable?` data-k="${c[0]}"`:""}${tab}${aria} class="${cur?"s"+(asc?" a":""):""}">${c[1]}</th>`;
+      return `<th data-column="${c[0]}"${sortable?` data-k="${c[0]}"`:""}${tab}${aria} class="${cur?"s"+(asc?" a":""):""}">${c[1]}</th>`;
     }).join("")}</tr></thead>`
     // 光标行和选中行原来只有 CSS 类:读屏用户按 j/k 时焦点始终在 body,
     // 屏幕上那条光标在无障碍树里不存在,他不知道自己停在哪一行。
@@ -485,6 +630,7 @@ function render(){
       try{ (target||row).focus({preventScroll:true}); }catch(e){}
     }
   }
+  reopenDetail();
   renderBulk();
 }
 
@@ -532,7 +678,7 @@ function focusTask(name){
   const q = $("q");
   // A detail link always opens the named task, even with stale filters or selections.
   q.value = name;
-  $("cat").value = "";$("only").checked=false;$("hideoff").checked=false;sel.clear();
+  $("cat").value = "";$('task-verdict').value='';$("only").checked=false;$("hideoff").checked=false;sel.clear();
   if (DATA) render();
   cur=VIEW.findIndex(row=>row.name===name);
   const tr = document.querySelector(`#tbl tbody tr[data-i="${cur}"]`);
@@ -550,16 +696,29 @@ function focusCategory(cat){
 
 const targets = () => sel.size ? Array.from(sel) : (VIEW[cur] ? [VIEW[cur].name] : []);
 
+// 展开的是哪个任务,按名字记下来。render() 整表重建会把明细行一起抹掉,而切换分区后的重读、
+// 定时刷新都会调 render():以前点「查看详情」打开的明细几秒后就自己收起来了。
+let OPEN_DETAIL=null;
 function openDetail(tr){
   document.querySelectorAll("tr.det").forEach(x=>x.remove());
   const r=VIEW[+tr.dataset.i];
+  if(r){ tr.insertAdjacentHTML("afterend", detail(r)); OPEN_DETAIL=r.name; }
+}
+function closeDetail(){
+  document.querySelectorAll("tr.det").forEach(x=>x.remove());
+  OPEN_DETAIL=null;
+}
+function reopenDetail(){
+  if(!OPEN_DETAIL) return;
+  const tr=[...document.querySelectorAll("#tbl tbody tr[data-name]")].find(row=>row.dataset.name===OPEN_DETAIL);
+  const r=tr && VIEW[+tr.dataset.i];
   if(r) tr.insertAdjacentHTML("afterend", detail(r));
 }
 function toggleDetail(){
   const tr=document.querySelector(`#tbl tbody tr[data-i="${cur}"]`);
   if(!tr) return;
   const d=tr.nextElementSibling;
-  if(d&&d.classList.contains("det")) d.remove(); else openDetail(tr);
+  if(d&&d.classList.contains("det")) closeDetail(); else openDetail(tr);
 }
 function focusCur(){
   const tr=document.querySelector(`#tbl tbody tr[data-i="${cur}"]`);

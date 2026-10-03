@@ -1,6 +1,7 @@
-# Generated fixtures are compared byte for byte against tools/make_fixtures.py output
+# Every generated fixture declared in .dataclass.json is compared byte for byte against tools/make_fixtures.py output
 # (tests/test_compiler_parity.py), and the generator writes LF. Without this, a checkout with
 # core.autocrlf=true (the Windows CI runner's default) rewrites them to CRLF and the parity test
 # fails on line endings rather than content.
 examples/console/*.json text eol=lf
 examples/console/.console.json text eol=lf
+scripts/task_console/categories.example.json text eol=lf

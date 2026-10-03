@@ -3,14 +3,14 @@ let PAGE_REFRESHING=false;
 // Each panel owns its filters. This shared control only calls their existing renderers.
 function resetFilters(scope){
   const clear=ids=>ids.forEach(id=>$(id).value='');
-  if(scope==='tasks'){clear(['q','cat']);$('only').checked=false;$('hideoff').checked=false;if(DATA) render();}
+  if(scope==='tasks'){clear(['q','cat','task-verdict']);$('only').checked=false;$('hideoff').checked=false;if(DATA) render();}
   if(scope==='repos'){clear(['rpq','rpacc','rpkind','rpvis','rpissue']);RP_STATE='';RP_ISSUE='';renderRepos();}
   if(scope==='catalog'){CATALOG_QUERY='';CATALOG_KIND='';CATALOG_CLIENT='';CATALOG_STATE='';HEALTH_STATE='';renderCatalog();}
   if(scope==='runtime'){clear(['runtime-search','runtime-state']);RUNTIME_QUERY='';RUNTIME_STATE='';renderSkills();renderClientPlugins();}
   if(scope==='convos'){clear(['cv-search']);CV_QUERY='';CV_HUMAN_ONLY=false;loadConvos();}
   if(scope==='llm'){clearTimeout(LMQT);clear(['lmq','lmprov','lmcaller','lmok']);Object.assign(LMQ,{q:'',provider:'',caller:'',ok:'',offset:0});LMOPEN=null;loadCalls();}
   if(scope==='diagnostics'){clear(['review-search']);$('review-filter').value='all';REVIEW_QUERY='';REVIEW_FILTER='all';renderTodo();}
-  if(scope==='pipelines'){PIPELINE_QUERY='';clear(['pipeline-search']);renderPipelineIssues();}
+  if(scope==='pipelines'){PIPELINE_QUERY='';clear(['pipeline-task-search','pipeline-verdict']);renderPipelines();}
 }
 const PAGE_READS={
   overview:[loadWork,load,loadComponents],
@@ -49,12 +49,14 @@ function pageSnapshot(view){
   const snapshots={
     overview:()=>({work:WORK,tasks:DATA,components:COMPONENTS}),
     work:()=>({work:WORK,filters:{query:WORK_QUERY,role:WORK_ROLE,state:WORK_STATE,source:WORK_SOURCE}}),
-    automations:()=>({tasks:DATA,filters:{query:AUTO_QUERY,state:AUTO_STATE}}),
+    // 导出的 filters 要和屏幕上实际在用的筛选一一对上,少记一个,导出的列表就解释不了。
+    automations:()=>({tasks:DATA,filters:{query:AUTO_QUERY,state:AUTO_STATE,verdict:value('automation-verdict')}}),
     integrations:()=>({integrations:typeof INTEGRATIONS==='undefined'?null:INTEGRATIONS}),
     resources:()=>({components:catalogComponents(),maintenance:MAINT,memory:MEM}),
     diagnostics:()=>({tasks:DATA,components:COMPONENTS,selfcheck:SCK,repositories:REPOS,system:SYS,memory:MEM}),
-    pipelines:()=>({components:COMPONENTS,tasks:DATA}),
-    tasks:()=>({tasks:DATA,visibleTaskNames:VIEW.map(row=>row.name)}),
+    pipelines:()=>({components:COMPONENTS,tasks:DATA,filters:{query:value('pipeline-task-search'),verdict:value('pipeline-verdict'),issueQuery:PIPELINE_QUERY}}),
+    tasks:()=>({tasks:DATA,visibleTaskNames:VIEW.map(row=>row.name),
+      filters:{query:value('q'),category:value('cat'),verdict:value('task-verdict'),onlyProblems:!!$('only')?.checked,hideDisabled:!!$('hideoff')?.checked}}),
     repos:()=>({repositories:REPOS,filters:{query:value('rpq'),account:value('rpacc'),kind:value('rpkind'),visibility:value('rpvis'),state:RP_STATE,issue:RP_ISSUE}}),
     storage:()=>({components:catalogComponents(),maintenance:MAINT,memory:MEM,system:SYS,codex:CODEX,cleanup:CXL,cleanupLibrary:value('cxwhich')}),
     convos:()=>({conversations:CONVOS,filters:{query:CV_QUERY,humanOnly:CV_HUMAN_ONLY,sort:CV_SORT},chain:typeof convoChainSnapshot==='function'?convoChainSnapshot():null}),

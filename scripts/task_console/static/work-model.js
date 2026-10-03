@@ -54,8 +54,7 @@ function workProjection(feed){
     // No owner decision contract is connected. Never derive approvals from failed work.
     decisions:null};
 }
-function automationRows(rows,query='',state=''){
-  const q=query.trim().toLowerCase();
-  return rows.filter(row=>(!q || [row.name,row.desc,row.cat].join(' ').toLowerCase().includes(q)) &&
+function automationRows(rows,query='',state='',verdict=''){
+  return rows.filter(row=>taskMatches(row,query) && taskMatchesVerdict(row,verdict) &&
     (!state || (state==='disabled'?row.state==='Disabled':state==='enabled'?['Ready','Running','Queued'].includes(row.state):row.state==='Running')));
 }

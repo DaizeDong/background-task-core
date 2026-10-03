@@ -701,6 +701,9 @@ RUNLOG_OUT = ("available", "reason", "since", "oldest", "count", "note",
               "partial", "dropped", "truncated", "windowDays", "countScope")
 RUNLOG_DROP = ("tasks",)                      # 同上,已并进每一行
 
+TASK_INFO_FIELDS = frozenset({"title", "summary", "cadence", "status", "advice", "verdict", "asOf"})
+TASK_INFO_VERDICTS = frozenset({"keep", "fix", "urgent", "adjust", "decide", "remove", "disabled"})
+
 
 def build_payload() -> dict:
     rc, out, err = run_ps(COLLECT)
@@ -716,6 +719,15 @@ def build_payload() -> dict:
     assigned: dict[str, str] = {}
     dup_cat: dict[str, list[str]] = {}
     descs: dict[str, str] = {}
+    infos: dict[str, dict[str, str]] = {}
+    # taskInfo 的三种写坏法各报各的,而且报出任务名:写坏了的说明和没写说明要做的事不一样,
+    # 不能都落成页面上的「未填写」「未评估」。
+    bad_info: list[str] = []
+    # 任务名 -> 坏在哪里。这句话会原样显示在那一行的明细里:汇总警告在「诊断」分区,
+    # 自动化的三个标签页上都看不到它。
+    invalid_info: dict[str, str] = {}
+    unknown_keys: list[str] = []
+    bad_verdicts: list[str] = []
     for c in cats:
         for n in c.get("tasks", []):
             # 分类配置是仓外的手写 JSON,复制粘贴一行就能让一个任务落在两个大类里。
@@ -733,6 +745,47 @@ def build_payload() -> dict:
         for n, d in (c.get("taskDesc") or {}).items():
             if d:
                 descs[n] = d
+        raw_info = c.get("taskInfo", {})
+        if not isinstance(raw_info, dict):
+            # 整张表不是对象,受影响的是哪些任务无从知道,只能按大类报。
+            bad_info.append(f"{c.get('name') or '未命名大类'} 的整张 taskInfo")
+            continue
+        for n, entry in raw_info.items():
+            if not isinstance(entry, dict):
+                bad_info.append(n)
+                invalid_info[n] = "整条不是一个对象"
+                continue
+            not_text = sorted(k for k, v in entry.items() if k in TASK_INFO_FIELDS and not isinstance(v, str))
+            if not_text:
+                bad_info.append(n)
+                invalid_info[n] = f"这些字段不是文字:{'、'.join(not_text)}"
+                continue
+            cleaned = {k: v for k, v in entry.items() if k in TASK_INFO_FIELDS}
+            unknown = sorted(k for k in entry if k not in TASK_INFO_FIELDS)
+            if unknown:
+                # 不认识的键多半是拼错的已知键(asof、advise),悄悄丢掉等于这一项没写。
+                unknown_keys.append(f"{n}({'、'.join(unknown)})")
+            verdict = cleaned.get("verdict")
+            if verdict is not None and not verdict.strip():
+                # 空的建议值就是没写建议:按「未评估」显示,不报「认不出」。
+                del cleaned["verdict"]
+            elif verdict is not None and verdict not in TASK_INFO_VERDICTS:
+                # 认不出的建议值保留原文另放一个字段,前端显示「建议无法识别」而不是「未评估」。
+                del cleaned["verdict"]
+                cleaned["verdictUnrecognized"] = verdict
+                bad_verdicts.append(f"{n}({verdict})")
+            infos[n] = cleaned
+
+    def listed(items: list[str]) -> str:
+        shown = list(dict.fromkeys(items))
+        return "、".join(shown[:6]) + (f" 等 {len(shown)} 项" if len(shown) > 6 else "")
+    if bad_info:
+        warnings.append(f"分类配置里有 {len(bad_info)} 条 taskInfo 写法不对,已整条忽略:{listed(bad_info)}。")
+    if unknown_keys:
+        warnings.append(f"分类配置里的 taskInfo 有不认识的字段,这些字段已忽略:{listed(unknown_keys)}。")
+    if bad_verdicts:
+        warnings.append(f"分类配置里有 {len(bad_verdicts)} 个建议值认不出,页面上显示为「建议无法识别」:"
+                        f"{listed(bad_verdicts)}。")
 
     tasks: dict[str, dict] = {}
     for t in raw["tasks"]:
@@ -744,6 +797,9 @@ def build_payload() -> dict:
         # Chinese override first, then the task's own description. Neither is invented: if both are
         # absent the cell stays empty rather than being filled with a plausible guess.
         t["desc"] = descs.get(t["name"]) or t.get("description") or None
+        t["info"] = infos.get(t["name"], {})
+        if t["name"] in invalid_info and t["name"] not in infos:
+            t["infoInvalid"] = invalid_info[t["name"]]
         # 两个键名都要认,而且**只能有一份表**知道它们叫什么。
         # 这里以前是 `e.get("ok_codes", [])`,只认一个名字:声明成 ok_exit_codes 的任务
         # 在这条渲染通路上被静默丢掉,而 freshness 那条认全, 同一个退出码,
@@ -758,6 +814,13 @@ def build_payload() -> dict:
         t["sk"], t["sl"] = k, lbl
         t["issues"] = issues_of(t, allow)
         tasks[t["name"]] = t
+
+    # taskInfo 的键要对上计划程序里真有的任务。键拼错一个字母,那条说明哪里都显示不出来,
+    # 真正的那个任务安静地落成「未评估」;拼错字段名会报警,拼错任务名也得报。
+    orphan_info = sorted(n for n in set(infos) | set(invalid_info) if n not in tasks)
+    if orphan_info:
+        warnings.append(f"分类配置里有 {len(orphan_info)} 条 taskInfo 对不上计划程序里的任何任务,"
+                        f"没有显示:{listed(orphan_info)}。")
 
     groups = []
     for c in cats:

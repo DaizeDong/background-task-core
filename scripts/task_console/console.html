@@ -145,8 +145,13 @@
   </div>
 </section>
 <section id="automations" data-view="automations" data-label="自动化" hidden>
-  <div class="work-toolbar"><input id="automation-search" type="search" placeholder="搜索任务名称或用途" aria-label="搜索自动化"><select id="automation-state" aria-label="自动化状态"><option value="">全部状态</option><option value="enabled">已启用</option><option value="disabled">已停用</option><option value="running">正在运行</option></select><button class="icon-only" id="automation-reset" hidden title="清除筛选"><svg class="ic" aria-hidden="true"><use href="#i-filter-clear"/></svg><span class="control-label">清除筛选</span></button><span id="automation-count" role="status"></span></div>
-  <div class="work-section"><div id="automation-list"></div></div>
+  <div class="work-toolbar">
+    <input id="automation-search" type="search" placeholder="搜索标题、用途、建议或任务名" aria-label="搜索自动化">
+    <select id="automation-verdict" aria-label="按建议筛选"><option value="">全部建议</option></select>
+    <select id="automation-state" aria-label="自动化状态"><option value="">全部状态</option><option value="enabled">已启用</option><option value="disabled">已停用</option><option value="running">正在运行</option></select>
+    <button class="icon-only" id="automation-reset" hidden title="清除筛选"><svg class="ic" aria-hidden="true"><use href="#i-filter-clear"/></svg><span class="control-label">清除筛选</span></button><span id="automation-count" role="status"></span>
+  </div>
+  <div id="automation-list"></div>
 </section>
 <section id="storage" data-view="storage" data-label="存储" hidden>
   <div class="mt-grid"><div class="runtime-section"><h3>Codex 存储</h3><div class="mt-col" id="mt-codex"></div></div><div class="runtime-section"><h3>系统存储</h3><div class="mt-col" id="mt-sys"></div></div></div>
@@ -192,24 +197,34 @@
 </div>
 </section>
 <section id="pipelines" data-view="pipelines" data-label="流水线" hidden>
-  <div class="pipeline-toolbar"><span id="pipeline-sample" class="faint"></span><button class="icon-only" id="pipeline-refresh" title="刷新记录"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg><span class="control-label">刷新记录</span></button></div>
+  <div class="pipeline-toolbar work-toolbar">
+    <input id="pipeline-task-search" type="search" placeholder="搜索标题、用途、建议或任务名" aria-label="搜索同步与备份任务">
+    <select id="pipeline-verdict" aria-label="按建议筛选同步与备份"><option value="">全部建议</option></select>
+    <button class="icon-only" data-reset-filters="pipelines" title="清除筛选"><svg class="ic" aria-hidden="true"><use href="#i-filter-clear"/></svg><span class="control-label">清除筛选</span></button>
+    <span id="pipeline-sample" class="faint"></span><button class="icon-only" id="pipeline-refresh" title="刷新记录"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg><span class="control-label">刷新记录</span></button>
+  </div>
   <div id="pipeline-body">正在读取运行记录</div>
 
 </section>
   <section id="tasks" data-view="tasks" data-label="计划任务" hidden>
 <div class="task-summary"><span><span aria-hidden="true">▤</span>任务 <b id="s-total">-</b></span><span><span aria-hidden="true">×</span>失败 <b id="s-bad">-</b></span><span><span aria-hidden="true">!</span>有警告 <b id="s-iss">-</b></span><span><span aria-hidden="true">Ⅱ</span>停用 <b id="s-off">-</b></span></div>
 <div id="tools">
-  <input type="text" id="q" placeholder="搜索任务名或说明" autocomplete="off">
-  <select id="cat"><option value="">全部分类</option></select>
+  <input type="search" id="q" placeholder="搜索标题、用途、建议或任务名" aria-label="搜索运行详情" autocomplete="off">
+  <select id="cat" aria-label="按分类筛选"><option value="">全部分类</option></select>
+  <select id="task-verdict" aria-label="按建议筛选运行详情"><option value="">全部建议</option></select>
   <label class="tg"><input type="checkbox" id="only"> 只看异常与警告</label>
   <label class="tg"><input type="checkbox" id="hideoff"> 隐藏停用</label>
   <button id="hygtog" title="补跑 / 重试 / 超时 / 产物 / 备份 / 监控 六列"></button>
+  <div class="dropdown task-columns">
+    <button type="button" class="btn btn-sm dropdown-toggle" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false">显示列</button>
+    <div class="dropdown-menu" id="task-column-options"></div>
+  </div>
   <button class="icon-only" id="refresh" title="刷新任务"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg><span class="control-label">刷新任务</span></button><button class="icon-only" data-reset-filters="tasks" title="清除筛选"><svg class="ic" aria-hidden="true"><use href="#i-filter-clear"/></svg><span class="control-label">清除筛选</span></button>
   <span class="faint" id="cnt"></span>
 </div>
 <div class="card" id="dtbox">
     <div class="card-header"><h3 class="card-title">任务列表 </h3></div>
-    <div class="pad" style="padding:0"><table class="g" id="tbl"></table></div>
+    <div class="pad task-table-scroll"><table class="g" id="tbl"></table></div>
   </div>
 <div class="module-section"><div class="card" id="tlbox">
     <div class="card-header"><h3 class="card-title">今日时间轴
