@@ -38,20 +38,6 @@ document.addEventListener("click", e=>{
     else if(fx.dataset.fix === "run"){ act([a], "run"); }
     return;
   }
-  if(target.id==="cxall"){
-    (CXL&&CXL.items||[]).forEach(i=>CXSEL.add(i.rel)); renderCxList(); return; }
-  if(target.id==="cxnone"){ CXSEL.clear(); renderCxList(); return; }
-  if(target.id==="cxdel"){ cxDelete(); return; }
-  const cx = e.target.closest("[data-cxrel]");
-  if(cx){ const k=cx.dataset.cxrel;
-    // ⚠ 只改这一行,不重画整张表。2382 行重画一次要几十毫秒,而且会把滚动位置
-    // 弹回顶部 —— 在一张两千行的清单上挑东西时,那等于每勾一个就把人送回开头。
-    // (实测还有一个更隐蔽的后果:重画会把已有的行节点全部换掉,
-    // 于是任何「先取一批节点再逐个点」的用法只有第一次生效。)
-    if(CXSEL.has(k)) CXSEL.delete(k); else CXSEL.add(k);
-    cx.classList.toggle("on", CXSEL.has(k));
-    const box=cx.querySelector("input"); if(box) box.checked=CXSEL.has(k);
-    cxSelSummary(); return; }
   // 调用屏。和上面那几段同理,这些挂点必须留在**先注册的**这个监听里:
   // 明细表的行同时是可点开的,而下面那个监听里有若干 closest 会先把点击接走。
   // 明细里的「收起」。明细行本身不带 data-name / data-i,不会被下面的行展开处理器接走,
@@ -215,118 +201,10 @@ document.addEventListener("keydown",e=>{
   handleEscape(e);
 });
 
-// 时间轴:滚轮缩放(以指针为中心)、按住拖动平移、双击回到整天
-(function(){
-  const tl=$("tl");
-  tl.addEventListener("wheel",e=>{
-    const track=e.target.closest(".tltrack")||tl.querySelector(".tltrack");
-    if(!track) return;
-    // 无条件接管滚轮会造出一条**整页宽的滚轮死区**:.tl 有 820px 最小宽度,窄窗口里它
-    // 横向铺满整屏、高约 400px,鼠标落进去就滚不动页面,只会把时间轴越缩越小 ——
-    // 而人在那一刻想做的多半只是往下看后面的内容。
-    // 所以只有明确表达了缩放意图(Ctrl / Shift / 横向滚轮)才接管,平滚一律交回页面。
-    // 图例里写了这句提示:一个只有作者知道的手势等于没有。
-    if(!(e.ctrlKey||e.metaKey||e.shiftKey||Math.abs(e.deltaX)>Math.abs(e.deltaY))) return;
-    e.preventDefault();
-    const rect=track.getBoundingClientRect();
-    const pct=Math.min(1,Math.max(0,(e.clientX-rect.left)/rect.width));
-    const d = e.deltaY || e.deltaX;
-    tlZoom(d>0?1.25:0.8, pct);   // tlZoom 内部走 scheduleTL,一帧只渲染一次
-  },{passive:false});
-  // 这里是拖动真正的 bug:原来在 .tltrack 上 setPointerCapture,而 renderTL() 第一次平移
-  // 就把那个元素连同整个 innerHTML 换掉了。捕获目标一消失,后续 pointermove 就不再送到
-  // 这个监听器,拖动于是走走停停。捕获必须放在渲染不会替换的元素上,也就是 #tl 本身。
-  // (2026-09-02 实测:渲染成本 2.1ms 中位数,从来不是瓶颈,我之前的诊断错了。)
-  let dragging=false, lastX=0, w=1;
-  tl.addEventListener("pointerdown",e=>{
-    const track=e.target.closest(".tltrack");
-    if(!track) return;
-    dragging=true; lastX=e.clientX;
-    w=track.getBoundingClientRect().width || 1;
-    tl.classList.add("drag");
-    tl.setPointerCapture(e.pointerId);
-  });
-  tl.addEventListener("pointermove",e=>{
-    if(!dragging) return;
-    const dx=e.clientX-lastX; lastX=e.clientX;
-    tlPan(dx/w);
-  });
-  const endDrag=e=>{
-    if(!dragging) return;
-    dragging=false; tl.classList.remove("drag");
-    try{ tl.releasePointerCapture(e.pointerId); }catch(_){}
-  };
-  tl.addEventListener("pointerup",endDrag);
-  tl.addEventListener("pointercancel",endDrag);
-  tl.addEventListener("dblclick",tlReset);
-})();
-// 每张卡片自己的刷新按钮都删了:顶栏的刷新会把这一屏的全部读取再跑一遍,同一屏摆两个一样的图标只会让人猜哪个更全。
-// 只留会话库的「重新扫描」:它只扫所选的那个库,比整页刷新便宜得多。扫描期间灰着,免得被连点。
-$("cxload").addEventListener("click",async()=>{
-  const button=$("cxload");setDisabled(button,"正在扫描所选的会话库");
-  try{ await loadCxList(); }finally{ setDisabled(button,""); }
-});
-// 换库要重扫,换排序不用:排序是纯前端的事,重扫一遍几千个文件只为了换个顺序,
-// 会让这个下拉用起来像卡住了。
-$("cxwhich").addEventListener("change",loadCxList);
-$("cxsort").addEventListener("change",()=>{ if(CXL) renderCxList(); });
-$("scktog").addEventListener("click",()=>{const open=$("sckd").classList.toggle("on");setIconControl($("scktog"),open?'i-up':'i-down',open?'收起检查':'展开检查');});
-// 过滤只改看得见什么,不重新扫描 —— 扫一遍所有仓要一秒多,而每敲一个字符重扫一次
-// 既慢又会让选中的那个仓在脚下换位置。
-$("rpq").addEventListener("input", renderRepoList);
-$("rpacc").addEventListener("change", renderRepoList);
-$("rpvis").addEventListener("change", renderRepoList);
-$("rpkind").addEventListener("change", renderRepoList);
-// 列表行既可点也可用键盘。给了 tabindex 却不接键,那是「看起来能聚焦却按不动」,
-// 比不可聚焦更让人困惑 —— 这条在别处已经栽过一次。
-$("rplist").addEventListener("keydown", e=>{
-  if(e.key!=="Enter" && e.key!==" ") return;
-  const row = e.target.closest("[data-rp]");
-  if(!row) return;
-  e.preventDefault();
-  RP_SEL = row.dataset.rp; renderRepoList();
-});
-
-// ── 调用屏的挂点 ──
-$("lcsave").addEventListener("click", lcSave);
-$("lcreset").addEventListener("click", ()=>{ LCDRAFT = null; renderChain(); });
-$("lmprov").addEventListener("change", e=>{ LMQ.provider = e.target.value; LMQ.offset = 0; loadCalls(); });
-$("lmok").addEventListener("change", e=>{ LMQ.ok = e.target.value; LMQ.offset = 0; loadCalls(); });
-$("lmcaller").addEventListener("change", e=>{ LMQ.caller = e.target.value; LMQ.offset = 0; loadCalls(); });
-$("lmq").addEventListener("input", e=>callSearchInput(e.target.value));
-// 拖拽排序。上下箭头按钮是同一件事的键盘可达版本,两条路都留着:
-// 只有拖拽的话,这个控件对键盘用户不存在。
-let LCFROM = null;
-$("lclist").addEventListener("dragstart", e=>{
-  const li = e.target.closest("li[data-i]");
-  if(!li) return;
-  LCFROM = Number(li.dataset.i);
-  li.classList.add("drag");
-  e.dataTransfer.effectAllowed = "move";
-  // Firefox 不设 data 就不发 drop。值本身没人读。
-  try{ e.dataTransfer.setData("text/plain", String(LCFROM)); }catch(err){}
-});
-$("lclist").addEventListener("dragover", e=>{
-  const li = e.target.closest("li[data-i]");
-  if(!li || LCFROM == null) return;
-  e.preventDefault();
-  [...$("lclist").children].forEach(x=>x.classList.toggle("over", x === li));
-});
-$("lclist").addEventListener("drop", e=>{
-  const li = e.target.closest("li[data-i]");
-  if(!li || LCFROM == null) return;
-  e.preventDefault();
-  const to = Number(li.dataset.i);
-  const a = (LCDRAFT || ((LLM && LLM.chain && LLM.chain.effective) || [])).slice();
-  if(LCFROM !== to && LCFROM < a.length){
-    a.splice(to, 0, a.splice(LCFROM, 1)[0]);
-    LCDRAFT = a;
-  }
-  LCFROM = null;
-  renderChain();
-});
-$("lclist").addEventListener("dragend", ()=>{ LCFROM = null; renderChain(); });
-
+startTimeline();
+startStorage();
+startRepositories();
+startCalls();
 // The full call ledger is loaded when the user opens that workspace.
 $("sidetoggle").addEventListener("click",()=>{
   const n=$("side").classList.toggle("navbar-folded");
@@ -345,13 +223,9 @@ $('page-export').addEventListener('click',()=>{
   try{ $('page-menu').hidePopover(); }catch(error){}
   exportPage();
 });
-$('review-search').addEventListener('input',event=>{REVIEW_QUERY=event.target.value;renderTodo();});
 startConvos();
 if(typeof startConversationActions==='function') startConversationActions();
-$('runtime-search').addEventListener('input',event=>{RUNTIME_QUERY=event.target.value;renderSkills();renderClientPlugins();});
-$('runtime-state').addEventListener('change',event=>{RUNTIME_STATE=event.target.value;renderSkills();renderClientPlugins();});
-$('runtime-sort').addEventListener('change',event=>{RUNTIME_SORT=event.target.value;renderSkills();});
-$('rpissue').addEventListener('change',event=>{RP_ISSUE=event.target.value;renderRepoList();});
+startResources();
 ConsoleActions.start();
 startDeletionControls();
 startTaskOperations();
@@ -369,51 +243,12 @@ showView(location.hash.slice(1) || VIEWS[0], false);
 loadPageOnce(CURVIEW).then(prefetchBadgeSources);
 // 「N 分钟前刷新」要跟着时间走,半分钟重写一次就够。
 setInterval(renderRefreshAge,30000);
-$("tlin").addEventListener("click",()=>tlZoom(0.7,0.5));
-$("tlout").addEventListener("click",()=>tlZoom(1.4,0.5));
-$("tlreset").addEventListener("click",tlReset);
-function syncHygBtn(){
-  const b=$("hygtog"); if(!b) return;
-  setIconControl(b,'i-tools',HYG_OPEN?'收起保障配置':'保障配置');
-}
-$("hygtog").addEventListener("click",()=>{
-  HYG_OPEN = !HYG_OPEN;
-  try{ localStorage.setItem("tc.hyg", HYG_OPEN?"1":"0"); }catch(e){}
-  syncHygBtn(); if(DATA) render();
-});
-syncHygBtn();
-renderTaskColumns();
-$('task-column-options').addEventListener('change',event=>{
-  const key=event.target.dataset.taskColumn;if(!key) return;
-  if(event.target.checked) TASK_COLUMNS.add(key);else TASK_COLUMNS.delete(key);
-  try{localStorage.setItem('tc.taskColumns',JSON.stringify([...TASK_COLUMNS]));}catch(e){}
-  if(DATA) render();
-});
+startTasksPage();
 $('pipeline-task-search').addEventListener('input',renderPipelines);
 $('pipeline-verdict').addEventListener('change',renderPipelines);
-// 明细行要贴着可视区左沿,所以它需要知道 .pad 现在多宽。CSS 算不出这个数(td 跨满整张表,
-// 而表可以比容器宽),只能量。用 ResizeObserver 而不是 window.resize:侧栏折叠、
-// 纵向滚动条出现/消失都会改变可视宽度,而这两件事都不触发 window.resize ——
-// 一个只听 resize 的版本在最常见的那两种情况下会安静地用一个过期的数。
-(function(){
-  const pad = document.querySelector("#dtbox .pad");
-  if(!pad) return;
-  // 宽度为 0 只有一个含义:这一屏当前是隐藏的(section[hidden] 走 display:none)。
-  // 把 0 写进去会让明细行的 width:var(--padw) 变成零宽 —— 一个「量不到」被当成一个值用。
-  // 隐藏时什么都不写,保留上一次的好值;分区一显示,观察器立刻带着真实宽度再触发一次。
-  const set = () => { const w = pad.clientWidth; if(w > 0) pad.style.setProperty("--padw", w + "px"); };
-  set();
-  // 没有 ResizeObserver 就退回 window.resize。少量场景会用到过期的宽度,
-  // 但 --padw 缺席时 CSS 回落到 100%,也就是改动前的行为,不会塌。
-  if(window.ResizeObserver) new ResizeObserver(set).observe(pad);
-  else window.addEventListener("resize", set);
-})();
-$("q").addEventListener("input",()=>{ if(DATA) render(); });
-["cat","only","hideoff","task-verdict"].forEach(id=>$(id).addEventListener("change",()=>{ if(DATA) render(); }));
-
-$("review-filter").addEventListener("change",event=>{REVIEW_FILTER=event.target.value;renderTodo();});
 
 document.addEventListener("click",pipelineClick);
+startDiagnostics();
 document.addEventListener("click",reviewClick);
 // 清除筛选按钮的亮灭跟着筛选走。挂在 document 上、而且最后注册:各个筛选控件自己的监听先把
 // 状态写好,这里再数;点击也算,因为仓库状态条、来源按钮和跳转链接都是点一下就换了筛选。

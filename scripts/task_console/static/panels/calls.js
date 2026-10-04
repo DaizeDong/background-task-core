@@ -475,3 +475,45 @@ async function openCall(i){
 // (这里原来写着「五个分区」。分区数是会变的,而散文里的数字不会跟着变 : 上一次加分区时
 //  它就已经过期了。真值永远只有下面那个 VIEWS 数组,别在注释里复写它的长度。)
 // hash 还顺带给了两个白送的好处:刷新回到原来那一屏,以及可以把某一屏发给自己。
+
+// ── 模型调用这一屏的挂点 ──(从 events.js 搬来,原因见 tasks.js 的 startTasksPage 上方)
+let LCFROM = null;
+function startCalls(){
+  $("lcsave").addEventListener("click", lcSave);
+  $("lcreset").addEventListener("click", ()=>{ LCDRAFT = null; renderChain(); });
+  $("lmprov").addEventListener("change", e=>{ LMQ.provider = e.target.value; LMQ.offset = 0; loadCalls(); });
+  $("lmok").addEventListener("change", e=>{ LMQ.ok = e.target.value; LMQ.offset = 0; loadCalls(); });
+  $("lmcaller").addEventListener("change", e=>{ LMQ.caller = e.target.value; LMQ.offset = 0; loadCalls(); });
+  $("lmq").addEventListener("input", e=>callSearchInput(e.target.value));
+  // 拖拽排序。上下箭头按钮是同一件事的键盘可达版本,两条路都留着:
+  // 只有拖拽的话,这个控件对键盘用户不存在。
+  $("lclist").addEventListener("dragstart", e=>{
+    const li = e.target.closest("li[data-i]");
+    if(!li) return;
+    LCFROM = Number(li.dataset.i);
+    li.classList.add("drag");
+    e.dataTransfer.effectAllowed = "move";
+    // Firefox 不设 data 就不发 drop。值本身没人读。
+    try{ e.dataTransfer.setData("text/plain", String(LCFROM)); }catch(err){}
+  });
+  $("lclist").addEventListener("dragover", e=>{
+    const li = e.target.closest("li[data-i]");
+    if(!li || LCFROM == null) return;
+    e.preventDefault();
+    [...$("lclist").children].forEach(x=>x.classList.toggle("over", x === li));
+  });
+  $("lclist").addEventListener("drop", e=>{
+    const li = e.target.closest("li[data-i]");
+    if(!li || LCFROM == null) return;
+    e.preventDefault();
+    const to = Number(li.dataset.i);
+    const a = (LCDRAFT || ((LLM && LLM.chain && LLM.chain.effective) || [])).slice();
+    if(LCFROM !== to && LCFROM < a.length){
+      a.splice(to, 0, a.splice(LCFROM, 1)[0]);
+      LCDRAFT = a;
+    }
+    LCFROM = null;
+    renderChain();
+  });
+  $("lclist").addEventListener("dragend", ()=>{ LCFROM = null; renderChain(); });
+}

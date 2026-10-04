@@ -555,3 +555,23 @@ async function repoPublishPlans(names){
 
 async function repoCommitPush(name){ return repoPublishPlans([name]); }
 async function repoCommitPushBatch(names){ return repoPublishPlans(names); }
+
+// ── 代码仓库这一屏的挂点 ──(从 events.js 搬来,原因见 tasks.js 的 startTasksPage 上方)
+function startRepositories(){
+  // 过滤只改看得见什么,不重新扫描 —— 扫一遍所有仓要一秒多,而每敲一个字符重扫一次
+  // 既慢又会让选中的那个仓在脚下换位置。
+  $("rpq").addEventListener("input", renderRepoList);
+  $("rpacc").addEventListener("change", renderRepoList);
+  $("rpvis").addEventListener("change", renderRepoList);
+  $("rpkind").addEventListener("change", renderRepoList);
+  // 列表行既可点也可用键盘。给了 tabindex 却不接键,那是「看起来能聚焦却按不动」,
+  // 比不可聚焦更让人困惑 —— 这条在别处已经栽过一次。
+  $("rplist").addEventListener("keydown", e=>{
+    if(e.key!=="Enter" && e.key!==" ") return;
+    const row = e.target.closest("[data-rp]");
+    if(!row) return;
+    e.preventDefault();
+    RP_SEL = row.dataset.rp; renderRepoList();
+  });
+  $('rpissue').addEventListener('change',event=>{RP_ISSUE=event.target.value;renderRepoList();});
+}

@@ -162,9 +162,9 @@ ROWS.push({...row,name:'AcmeOther',info:{title:'Alpha',verdict:'urgent'},sk:'bad
 
 def test_table_sort_filters_and_counts_compose_and_detail_links_clear_filters():
     result = run("""sortKey='name';render();const sorted=VIEW.map(r=>r.name);
-$('only').checked=true;render();const bad=VIEW.map(r=>r.name);
+TASK_STATUS='bad';render();const bad=VIEW.map(r=>r.name);
 $('hideoff').checked=true;render();const hidden=VIEW.length;
-$('only').checked=false;$('hideoff').checked=false;$('task-verdict').value='fix';render();
+TASK_STATUS='';$('hideoff').checked=false;$('task-verdict').value='fix';render();
 const filtered=VIEW.map(r=>r.name), counts=$('task-verdict').innerHTML;
 showView=()=>{};document.querySelector=()=>null;toast=()=>{};
 focusTask('AcmeOther');({sorted,bad,hidden,filtered,counts,focused:VIEW.map(r=>r.name),verdict:$('task-verdict').value})""", table_setup())
@@ -219,13 +219,13 @@ def test_escape_clears_the_task_search_and_the_table_follows():
 
 def test_exported_snapshots_record_every_filter_in_use():
     prefix = table_setup() + """
-$('q').value='Zulu';$('cat').value='Generated test tasks';$('task-verdict').value='fix';$('only').checked=true;
+$('q').value='Zulu';$('cat').value='Generated test tasks';$('task-verdict').value='fix';TASK_STATUS='bad';
 $('automation-verdict').value='urgent';$('pipeline-task-search').value='备份';$('pipeline-verdict').value='keep';PIPELINE_QUERY='mcp';
 """
     result = run("""({tasks:pageSnapshot('tasks').data.filters,automations:pageSnapshot('automations').data.filters,
 pipelines:pageSnapshot('pipelines').data.filters})""", prefix)
     assert result["tasks"] == {"query": "Zulu", "category": "Generated test tasks", "verdict": "fix",
-                               "onlyProblems": True, "hideDisabled": False}
+                               "status": "bad", "hideDisabled": False}
     assert result["automations"]["verdict"] == "urgent"
     assert result["pipelines"] == {"query": "备份", "verdict": "keep", "issueQuery": "mcp"}
 
@@ -233,8 +233,9 @@ pipelines:pageSnapshot('pipelines').data.filters})""", prefix)
 def test_default_columns_are_compact_but_all_columns_remain_available():
     defaults = run("shownCols().map(c=>c[0])")
     assert defaults == ["selc", "name", "sl", "triggers", "nextRun", "ops"]
-    assert run("TASK_COLUMNS=new Set(C.map(c=>c[0]));HYG_OPEN=true;shownCols().length===C.length")
-    assert run("TASK_COLUMNS.clear();HYG_OPEN=false;shownCols().map(c=>c[0])") == ["selc", "name"]
+    # 保障配置六列和别的列一样由「显示列」逐列勾选,不再有单独的整组开关。
+    assert run("TASK_COLUMNS=new Set(C.map(c=>c[0]));shownCols().length===C.length")
+    assert run("TASK_COLUMNS.clear();shownCols().map(c=>c[0])") == ["selc", "name"]
 
 
 def test_delete_replaces_the_retire_button_on_every_tab_that_lists_tasks():

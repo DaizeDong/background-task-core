@@ -199,7 +199,7 @@ def test_cleanup_selection_buttons_follow_the_selection():
 
 def test_clear_filter_buttons_count_active_filters_on_every_scope():
     scopes = run("Object.keys(RESET_FILTER_COUNTS).sort()")
-    assert scopes == sorted(["tasks", "repos", "catalog", "runtime", "convos", "llm", "diagnostics", "pipelines", "work", "automations"])
+    assert scopes == sorted(["tasks", "repos", "catalog", "runtime", "resources", "convos", "llm", "diagnostics", "pipelines", "work", "automations"])
     # 每个范围敲一个字进搜索框,按钮就亮起来并说清 1 项;清掉之后又灰回去。
     for scope in scopes:
         result = run(f"""(()=>{{
@@ -208,7 +208,7 @@ def test_clear_filter_buttons_count_active_filters_on_every_scope():
           $('review-filter').value='all';
           const before=(syncResetFilters(),[reset.disabled,reset.title]);
           const box=RESET_FILTER_SEARCH['{scope}'];$(box).value='a';
-          if('{scope}'==='catalog') CATALOG_QUERY='a';if('{scope}'==='work') WORK_QUERY='a';
+          if('{scope}'==='catalog') CATALOG_KIND='a';if('{scope}'==='work') WORK_QUERY='a';
           if('{scope}'==='automations') AUTO_QUERY='a';
           syncResetFilters();const after=[reset.disabled,reset.title];
           return {{before,after}};

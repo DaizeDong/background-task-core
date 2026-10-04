@@ -58,7 +58,11 @@ function renderWorkPlatform(){
   const absent=WORK_LOADING?'正在读取工作记录':'暂时读不到工作记录';
   const stale=WORK_ERROR && present?'刷新失败，以下为上次读取的记录。':'';
   $('work-source-state').textContent=present?`${stale}${WORK_LOADING?'正在刷新 · ':''}读取于 ${workTime(WORK.observed_at)}${coverage.omitted || coverage.invalid?' · 部分记录未读到':''}`:absent;
-  $('decision-state').innerHTML=workEmpty('审批未接入');
+  // 「需要你确认」只在接上了审批来源时出现。没接上时整条藏起来,而不是常驻顶上告诉人审批还没接上:
+  // 那条横幅占着最显眼的位置,却永远不变,读了也做不了什么。
+  const decisions=present && Array.isArray(p.decisions)?p.decisions:null;
+  if($('decision-strip')) $('decision-strip').hidden=!decisions;
+  if(decisions) $('decision-state').innerHTML=decisions.map(item=>workItemRow(item,true)).join('') || workEmpty('没有要你确认的事');
   $('active-work').innerHTML=present?p.active.map(item=>workItemRow(item,true)).join('') || workEmpty('工作单中没有正在执行或排队的任务'):workEmpty(absent);
   $('recent-results').innerHTML=present?p.results.slice(0,6).map(item=>workItemRow(item,true)).join('') || workEmpty('还没有 Agent 完成记录'):workEmpty(absent);
   $('tracked-work').innerHTML=present?p.tracked.slice(0,5).map(item=>workItemRow(item,true)).join('') || workEmpty('没有待办事项'):workEmpty(absent);

@@ -16,6 +16,11 @@
 <link rel="stylesheet" href="/static/work-actions.css">
 <link rel="stylesheet" href="/static/convchain.css">
 <link rel="stylesheet" href="/static/conversations.css">
+<link rel="stylesheet" href="/static/page-automation.css">
+<link rel="stylesheet" href="/static/page-diagnostics.css">
+<link rel="stylesheet" href="/static/page-work.css">
+<link rel="stylesheet" href="/static/page-llm.css">
+<link rel="stylesheet" href="/static/page-resources.css">
 </head>
 <body>
 <div id="module-error" role="alert" hidden>页面加载失败，请刷新重试。</div>
@@ -176,14 +181,18 @@
 <nav id="view-tabs" aria-label="当前工作区" hidden></nav>
 <section id="overview" data-view="overview" data-label="工作台" hidden>
   <div class="workspace-meta"><span id="work-source-state">正在连接工作记录</span><span id="work-context"></span></div>
-  <div class="decision-strip"><h2><span class="section-symbol idle" aria-hidden="true">?</span>需要你确认</h2><div id="decision-state"></div></div>
+  <!-- 按急迫程度排:要人管的事(技术问题摘要)在最上;接着是 Agent 没做完或出错的工作;再是待办和正在做并排;
+       完成记录最不急,放到最下面占满整行。手机上同一顺序排成一列。
+       「需要你确认」只有接上审批来源(projection.decisions 不为空)才出现:以前它常驻顶上,只写着审批还没接上,
+       占着整页最显眼的位置却永远不变。 -->
+  <div id="attention-strip" class="attention-strip" role="status" hidden></div>
+  <div class="decision-strip" id="decision-strip" hidden><h2><span class="section-symbol idle" aria-hidden="true">?</span>需要你确认</h2><div id="decision-state"></div></div>
+  <div class="work-section interrupted-card" id="interrupted-card" hidden><div class="section-heading"><h2><span class="section-symbol bad" aria-hidden="true">×</span>Agent 未完成 / 出错 <span id="interrupted-count">—</span></h2></div><div id="interrupted-work"></div></div>
   <div class="work-columns">
-    <div class="work-main">
-      <div class="work-section"><div class="section-heading"><h2><span class="section-symbol" aria-hidden="true">▶</span>Agent 正在做 <span id="active-count">—</span></h2><button class="icon-only record-link" data-work-filter="agent_work" data-work-state="active" title="查看进行中 →"><svg class="ic" aria-hidden="true"><use href="#i-right"/></svg><span class="control-label">查看进行中 →</span></button></div><div id="active-work"></div></div>
-      <div class="work-section"><div class="section-heading"><h2 title="Agent 记录的完成状态"><span class="section-symbol ok" aria-hidden="true">✓</span>Agent 完成记录 <span id="result-count">—</span></h2><button class="icon-only record-link" data-work-filter="agent_work" data-work-state="done" title="查看全部结果 →"><svg class="ic" aria-hidden="true"><use href="#i-right"/></svg><span class="control-label">查看全部结果 →</span></button></div><div id="recent-results"></div></div>
-    </div>
-    <aside class="work-aside"><div class="work-section"><div class="section-heading"><h2><span class="section-symbol pending" aria-hidden="true">◷</span>待办事项 <span id="tracked-count">—</span></h2><button class="icon-only record-link" data-work-filter="tracked_item" data-work-state="tracked_active" title="查看全部待办 →"><svg class="ic" aria-hidden="true"><use href="#i-right"/></svg><span class="control-label">查看全部待办 →</span></button></div><div id="tracked-work"></div></div></aside>
+    <div class="work-aside"><div class="work-section"><div class="section-heading"><h2><span class="section-symbol pending" aria-hidden="true">◷</span>待办事项 <span id="tracked-count">—</span></h2><button class="icon-only record-link" data-work-filter="tracked_item" data-work-state="tracked_active" title="查看全部待办 →"><svg class="ic" aria-hidden="true"><use href="#i-right"/></svg><span class="control-label">查看全部待办 →</span></button></div><div id="tracked-work"></div></div></div>
+    <div class="work-main"><div class="work-section"><div class="section-heading"><h2><span class="section-symbol" aria-hidden="true">▶</span>Agent 正在做 <span id="active-count">—</span></h2><button class="icon-only record-link" data-work-filter="agent_work" data-work-state="active" title="查看进行中 →"><svg class="ic" aria-hidden="true"><use href="#i-right"/></svg><span class="control-label">查看进行中 →</span></button></div><div id="active-work"></div></div></div>
   </div>
+  <div class="work-section"><div class="section-heading"><h2 title="Agent 记录的完成状态"><span class="section-symbol ok" aria-hidden="true">✓</span>Agent 完成记录 <span id="result-count">—</span></h2><button class="icon-only record-link" data-work-filter="agent_work" data-work-state="done" title="查看全部结果 →"><svg class="ic" aria-hidden="true"><use href="#i-right"/></svg><span class="control-label">查看全部结果 →</span></button></div><div id="recent-results"></div></div>
   <div id="platform-sources" class="source-strip"></div>
 </section>
 <section id="work" data-view="work" data-label="工作记录" hidden>
@@ -211,7 +220,9 @@
   <div id="automation-list"></div>
 </section>
 <section id="storage" data-view="storage" data-label="存储" hidden>
-  <div class="mt-grid"><div class="runtime-section"><h3>Codex 存储</h3><div class="mt-col" id="mt-codex"></div></div><div class="runtime-section"><h3>系统存储</h3><div class="mt-col" id="mt-sys"></div></div></div>
+  <!-- 磁盘最急,排第一;Codex 那张卡的名字只在标题上写一次,总量跟在标题后面。#storage-alert 留给磁盘告警横幅。 -->
+  <div id="storage-alert" class="storage-alert" role="alert" hidden></div>
+  <div class="mt-grid"><div class="runtime-section"><h3>系统存储</h3><div class="mt-col" id="mt-sys"></div></div><div class="runtime-section"><h3>Codex 存储<b class="runtime-total" id="codex-total"></b></h3><div class="mt-col" id="mt-codex"></div></div></div>
   <div class="module-section"><div class="card" id="cxbox">
     <div class="card-header"><h3 class="card-title">会话存储清理<span class="n" id="cxnote">等待扫描</span></h3>
       <div class="card-actions">
@@ -265,14 +276,19 @@
 
 </section>
   <section id="tasks" data-view="tasks" data-label="计划任务" hidden>
-<div class="task-summary"><span><span aria-hidden="true">▤</span>任务 <b id="s-total">-</b></span><span><span aria-hidden="true">×</span>失败 <b id="s-bad">-</b></span><span><span aria-hidden="true">!</span>有警告 <b id="s-iss">-</b></span><span><svg class="ic" aria-hidden="true"><use href="#i-toggle-off"/></svg>停用 <b id="s-off">-</b></span></div>
+<!-- 四个计数就是筛选按钮:点「失败」只看失败的任务,再点一次回到全部;「任务」那一个就是全部。
+     以前它们是不能点的方块,真正的筛选是一个把失败和警告混在一起的勾选框。 -->
+<div class="task-summary" role="group" aria-label="按运行状态筛选">
+  <button type="button" data-task-status="" aria-pressed="true"><span aria-hidden="true">▤</span>任务 <b id="s-total">-</b></button>
+  <button type="button" data-task-status="bad" aria-pressed="false"><span aria-hidden="true">×</span>失败 <b id="s-bad">-</b></button>
+  <button type="button" data-task-status="warn" aria-pressed="false"><span aria-hidden="true">!</span>有警告 <b id="s-iss">-</b></button>
+  <button type="button" data-task-status="off" aria-pressed="false"><svg class="ic" aria-hidden="true"><use href="#i-toggle-off"/></svg>停用 <b id="s-off">-</b></button>
+</div>
 <div id="tools">
   <input type="search" id="q" placeholder="搜索标题、用途、建议或任务名" aria-label="搜索运行详情" autocomplete="off">
   <select id="cat" aria-label="按分类筛选"><option value="">全部分类</option></select>
   <select id="task-verdict" aria-label="按建议筛选运行详情"><option value="">全部建议</option></select>
-  <label class="tg"><input type="checkbox" id="only"> 只看异常与警告</label>
   <label class="tg"><input type="checkbox" id="hideoff"> 隐藏停用</label>
-  <button id="hygtog" title="补跑 / 重试 / 超时 / 产物 / 备份 / 监控 六列"></button>
   <div class="dropdown task-columns">
     <button type="button" class="btn btn-sm dropdown-toggle" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false">显示列</button>
     <div class="dropdown-menu" id="task-column-options"></div>
@@ -326,7 +342,7 @@
           <option value="pub">公开</option><option value="priv">私有</option>
           <option value="unk">未知</option></select>
         <select id="rpissue" aria-label="仓库问题"><option value="">全部问题</option><option value="identity_mismatch">账号不匹配</option><option value="identity_unchecked">账号未检查</option><option value="upstream">未设置远程跟踪分支</option><option value="behind">尚未检查远程更新</option></select>
-        <button class="icon-only" data-reset-filters="repos" title="清除筛选"><svg class="ic" aria-hidden="true"><use href="#i-filter-clear"/></svg><span class="control-label">清除筛选</span></button><span class="hit" id="rphit"></span>
+        <span id="rpstate-chip" class="rpstate-chip"></span><button class="icon-only" data-reset-filters="repos" title="清除筛选"><svg class="ic" aria-hidden="true"><use href="#i-filter-clear"/></svg><span class="control-label">清除筛选</span></button><span class="hit" id="rphit"></span>
       </div>
       <div class="rp-split">
         <div class="rp-list" id="rplist"></div>
@@ -344,15 +360,17 @@
     </div></div>
   </section>
   <section id="resources" data-view="resources" data-label="能力与配置" hidden>
-<div class="card catalog-card"><div class="card-header"><h2 class="card-title">资源目录</h2><div class="card-actions" aria-label="资源管理快捷入口"><button class="icon-only" data-goto="#mt-skills" title="技能管理"><svg class="ic" aria-hidden="true"><use href="#i-tools"/></svg><span class="control-label">技能管理</span></button><button class="icon-only" data-goto="#mt-plugins" title="插件管理"><svg class="ic" aria-hidden="true"><use href="#i-puzzle"/></svg><span class="control-label">插件管理</span></button><button class="icon-only" data-goto="#membox" title="记忆管理"><svg class="ic" aria-hidden="true"><use href="#i-memory"/></svg><span class="control-label">记忆管理</span></button></div></div><div class="pad" id="mt-catalog">正在读取技能和插件</div></div>
-  <div class="module-section"><div class="card" id="membox">
-    <div class="card-header"><h3 class="card-title">Claude 记忆与索引<span class="n" id="memnote">读取中</span></h3></div>
-    <div class="pad" id="mt-memory"></div>
-  </div></div>
+<!-- 一个搜索框管整页:同时筛技能、插件和资源目录。以前两块各有一个,在上面那个里搜技能,下面的技能列表纹丝不动。
+     锚点是写着字的链接,不是三个图标:图标按钮看着像操作,点了却只是滚到别处。
+     顺序按常用程度:技能与插件(归档、启停、删除都在这里)→ 记忆 → 资源目录。 -->
+<div class="work-toolbar resources-toolbar">
+  <input id="resources-search" type="search" placeholder="搜索技能、插件或资源目录" aria-label="搜索技能、插件和资源目录" autocomplete="off">
+  <button class="icon-only" data-reset-filters="resources" title="清除筛选"><svg class="ic" aria-hidden="true"><use href="#i-filter-clear"/></svg><span class="control-label">清除筛选</span></button>
+  <nav class="resources-anchors" aria-label="跳到本页的某一块"><button type="button" data-goto="#mt-skills">技能</button><span aria-hidden="true">·</span><button type="button" data-goto="#mt-plugins">插件</button><span aria-hidden="true">·</span><button type="button" data-goto="#membox">记忆</button><span aria-hidden="true">·</span><button type="button" data-goto="#catalog-box">目录</button></nav>
+</div>
 <div class="card" id="mtbox">
     <div class="card-header"><h3 class="card-title" title="更改在下次会话生效">技能与插件<span class="n" id="mtnote">读取中</span></h3>
   <div class="catalog-tools runtime-tools">
-    <input type="search" id="runtime-search" aria-label="搜索技能和插件" placeholder="搜索技能 / 插件">
     <select id="runtime-state" aria-label="技能和插件状态"><option value="">全部状态</option><option value="active">启用中</option><option value="inactive">归档 / 停用</option></select>
     <select id="runtime-sort" aria-label="技能排序"><option value="name">按名称</option><option value="budget">按描述大小</option></select><button class="icon-only" data-reset-filters="runtime" title="清除筛选"><svg class="ic" aria-hidden="true"><use href="#i-filter-clear"/></svg><span class="control-label">清除筛选</span></button>
   </div></div><div class="mt-grid">
@@ -360,6 +378,11 @@
       <div class="runtime-section"><h3>Claude 插件</h3><div class="mt-col" id="mt-plugins"></div></div>
     </div>
   </div>
+  <div class="module-section"><div class="card" id="membox">
+    <div class="card-header"><h3 class="card-title">Claude 记忆与索引<span class="n" id="memnote">读取中</span></h3></div>
+    <div class="pad" id="mt-memory"></div>
+  </div></div>
+<div class="card catalog-card" id="catalog-box"><div class="card-header"><h2 class="card-title">资源目录</h2></div><div class="pad" id="mt-catalog">正在读取技能和插件</div></div>
   </section>
   <section id="convos" data-view="convos" data-label="会话记录" hidden>
 <div class="card" id="cvbox">
@@ -416,40 +439,17 @@
     </form>
   </dialog>
   <section id="llm" data-view="llm" data-label="模型调用" hidden>
-  <div class="llm-summary">
-  <div class="module-section"><div class="card" id="lchain">
-    <div class="card-header"><h3 class="card-title">调用顺序<span class="n" id="lcnote">读取中</span></h3></div>
-    <div class="pad">
-      <div id="lcwarn"></div>
-      <div id="lcdrift"></div>
-      <ol class="lc-list" id="lclist"></ol>
-      <div class="lc-foot">
-        <button class="mini" id="lcsave" data-label="保存顺序" disabled title="保存顺序"><svg class="ic" aria-hidden="true"><use href="#i-save"/></svg>保存顺序</button>
-        <button class="mini" id="lcreset" data-label="放弃修改" disabled title="放弃修改"><svg class="ic" aria-hidden="true"><use href="#i-restore"/></svg>放弃修改</button>
-        <span class="faint" id="lcpath"></span>
-      </div>
-    </div>
-  </div></div>
-
+  <!-- 先看用了多少、哪里失败,再查调用记录;服务统计和很少动的调用顺序放最后。
+       以前调用顺序编辑器排在最上面,要找的调用记录被推到一屏以外。 -->
   <div class="card" id="luse">
     <div class="card-header"><h3 class="card-title">用量<span class="n" id="lunote"></span></h3></div>
     <div class="pad"><div class="l-wins" id="lwins"></div><div id="lledger" class="l-led"></div></div>
-  </div>
-
-  <div class="module-section"><div class="card" id="lrungs">
-    <div class="card-header"><h3 class="card-title">服务统计<span class="n" id="lrnote"></span></h3></div>
-    <div class="pad"><table class="l-rung" id="lrtab"></table>
-      <div id="lrverify"></div>
-      </div>
-  </div></div>
-
   </div>
   <div class="module-section"><div class="card" id="lruns">
     <div class="card-header"><h3 class="card-title">失败与回退<span class="n" id="lsnote"></span></h3></div>
     <div class="pad"><div id="lstab"></div>
       </div>
   </div></div>
-
   <div class="card" id="lcalls">
     <div class="card-header"><h3 class="card-title">调用记录<span class="n" id="lmnote"></span></h3>
       <div class="card-actions">
@@ -466,7 +466,27 @@
       <div class="l-page" id="lmpage"></div>
     </div>
   </div>
-
+  <div class="llm-summary llm-config">
+  <div class="module-section"><div class="card" id="lrungs">
+    <div class="card-header"><h3 class="card-title">服务统计<span class="n" id="lrnote"></span></h3></div>
+    <div class="pad"><table class="l-rung" id="lrtab"></table>
+      <div id="lrverify"></div>
+      </div>
+  </div></div>
+  <div class="module-section"><div class="card" id="lchain">
+    <div class="card-header"><h3 class="card-title">调用顺序<span class="n" id="lcnote">读取中</span></h3></div>
+    <div class="pad">
+      <div id="lcwarn"></div>
+      <div id="lcdrift"></div>
+      <ol class="lc-list" id="lclist"></ol>
+      <div class="lc-foot">
+        <button class="mini" id="lcsave" data-label="保存顺序" disabled title="保存顺序"><svg class="ic" aria-hidden="true"><use href="#i-save"/></svg>保存顺序</button>
+        <button class="mini" id="lcreset" data-label="放弃修改" disabled title="放弃修改"><svg class="ic" aria-hidden="true"><use href="#i-restore"/></svg>放弃修改</button>
+        <span class="faint" id="lcpath"></span>
+      </div>
+    </div>
+  </div></div>
+  </div>
   </section>
 </div>
 </div>

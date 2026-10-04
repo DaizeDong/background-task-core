@@ -1,0 +1,14 @@
+/* 资源(控制台接入、技能与记忆、代码仓库、存储清理)这一区的样式。每个页面区一份表,只写本区自己的规则;要覆盖共用规则时,选择器限定在本区的 section 里。
+   这样几个页面可以各改各的,不必都挤进 styles.css,一页的改动也不会漏到别的页上。 */
+
+/* 客户端技能与记忆:页顶一行是整页共用的搜索框和写着字的锚点。锚点是按钮(data-goto 滚到本页某一块),
+   不是 href="#…" 的链接:那种链接会改地址栏,被当成切换分区。 */
+#resources .resources-anchors{display:flex;align-items:center;flex-wrap:wrap;gap:0 2px;margin-left:auto;color:var(--dim)}
+#resources .resources-anchors button{min-height:32px;padding:4px 6px;border:0;background:none;color:var(--cyan);font-size:var(--fs-body)}
+#resources .resources-anchors button:not(:disabled):hover{text-decoration:underline;background:none;color:var(--cyan)}
+#resources .runtime-section:has(#mt-skills),#resources .runtime-section:has(#mt-plugins),#resources #catalog-box{scroll-margin-top:120px}
+/* 存储清理:磁盘告警横幅占满整行(这一屏在宽屏上是两栏网格)。卡片标题后面的数是 Codex 存储的总量。 */
+#storage>#storage-alert{grid-column:1 / -1}
+#storage .runtime-total{margin-left:8px;color:var(--ink);font-variant-numeric:tabular-nums}
+/* 仓库状态筛选的芯片位,空着时不占位置,免得在筛选条里留一段空隙。 */
+#repos .rpstate-chip:empty{display:none}

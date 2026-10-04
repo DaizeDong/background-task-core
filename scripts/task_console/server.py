@@ -102,6 +102,8 @@ STATIC_FILES = {
     "panels/pipelines.js", "panels/review.js", "panels/convchain.js", "convchain.css",
     "navigation.js", "actions.js", "work-model.js", "workbench.js", "workbench.css", "work-actions.js", "work-actions.css",
     "task-operations.js",
+    # 每个页面区一份样式表,页面包各写各的(见 static/page-*.css 开头的说明)。
+    "page-automation.css", "page-diagnostics.css", "page-work.css", "page-llm.css", "page-resources.css",
 }
 
 # 对话链唯一的 POST(分叉)的正文只有几个 id,几百字节。

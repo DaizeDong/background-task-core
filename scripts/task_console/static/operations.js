@@ -3,10 +3,15 @@ let PAGE_REFRESHING=false;
 // Each panel owns its filters. This shared control only calls their existing renderers.
 function resetFilters(scope){
   const clear=ids=>ids.forEach(id=>$(id).value='');
-  if(scope==='tasks'){clear(['q','cat','task-verdict']);$('only').checked=false;$('hideoff').checked=false;if(DATA) render();}
+  if(scope==='tasks'){clear(['q','cat','task-verdict']);TASK_STATUS='';$('hideoff').checked=false;if(DATA) render();else syncTaskStatus(null);}
   if(scope==='repos'){clear(['rpq','rpacc','rpkind','rpvis','rpissue']);RP_STATE='';RP_ISSUE='';renderRepos();}
-  if(scope==='catalog'){CATALOG_QUERY='';CATALOG_KIND='';CATALOG_CLIENT='';CATALOG_STATE='';HEALTH_STATE='';renderCatalog();}
-  if(scope==='runtime'){clear(['runtime-search','runtime-state']);RUNTIME_QUERY='';RUNTIME_STATE='';renderSkills();renderClientPlugins();}
+  // 资源页只有一个搜索框,同时筛技能、插件和资源目录;它旁边的清除按钮清整页。
+  // 两块各自的清除按钮只清自己那几个下拉,不动共用的搜索词:在一块里点清除,另一块的结果不该跟着变。
+  if(scope==='catalog'||scope==='resources'){CATALOG_KIND='';CATALOG_CLIENT='';CATALOG_STATE='';HEALTH_STATE='';}
+  if(scope==='runtime'||scope==='resources'){clear(['runtime-state']);RUNTIME_STATE='';}
+  if(scope==='resources'){clear(['resources-search']);RUNTIME_QUERY='';CATALOG_QUERY='';}
+  if(scope==='catalog'||scope==='resources') renderCatalog();
+  if(scope==='runtime'||scope==='resources'){renderSkills();renderClientPlugins();}
   if(scope==='convos'){clear(['cv-search']);CV_QUERY='';CV_HUMAN_ONLY=false;loadConvos();}
   if(scope==='llm'){clearTimeout(LMQT);clear(['lmq','lmprov','lmcaller','lmok']);Object.assign(LMQ,{q:'',provider:'',caller:'',ok:'',offset:0});LMOPEN=null;loadCalls();}
   if(scope==='diagnostics'){clear(['review-search']);$('review-filter').value='all';REVIEW_QUERY='';REVIEW_FILTER='all';renderTodo();}
@@ -18,10 +23,11 @@ function resetFilters(scope){
 // 每个范围里此刻生效的筛选有几项。能读控件就读控件:搜索框有防抖,状态变量要过一会儿
 // 才跟上,而按钮该在敲下第一个字时就亮。没有控件的筛选(仓库状态条、只看人类消息)读状态变量。
 const RESET_FILTER_COUNTS={
-  tasks:value=>[value('q'),value('cat'),value('task-verdict'),!!$('only')?.checked,!!$('hideoff')?.checked],
+  tasks:value=>[value('q'),value('cat'),value('task-verdict'),TASK_STATUS,!!$('hideoff')?.checked],
   repos:value=>[value('rpq'),value('rpacc'),value('rpkind'),value('rpvis'),value('rpissue'),RP_STATE],
-  catalog:()=>[CATALOG_QUERY,CATALOG_KIND,CATALOG_CLIENT,CATALOG_STATE,HEALTH_STATE],
-  runtime:value=>[value('runtime-search'),value('runtime-state')],
+  catalog:()=>[CATALOG_KIND,CATALOG_CLIENT,CATALOG_STATE,HEALTH_STATE],
+  runtime:value=>[value('runtime-state')],
+  resources:value=>[value('resources-search'),value('runtime-state'),CATALOG_KIND,CATALOG_CLIENT,CATALOG_STATE,HEALTH_STATE],
   convos:value=>[value('cv-search'),CV_HUMAN_ONLY],
   llm:value=>[value('lmq'),value('lmprov'),value('lmcaller'),value('lmok')],
   diagnostics:value=>[value('review-search'),value('review-filter')!=='all' && value('review-filter')],
@@ -31,7 +37,8 @@ const RESET_FILTER_COUNTS={
   automations:value=>[AUTO_QUERY,AUTO_STATE,value('automation-verdict')]
 };
 // 清除之后按钮随即变灰、焦点跟着丢掉,所以把焦点交给这个范围的搜索框,接着就能输入新的条件。
-const RESET_FILTER_SEARCH={tasks:'q',repos:'rpq',catalog:'catalog-search',runtime:'runtime-search',convos:'cv-search',llm:'lmq',
+// 两块各自的清除按钮旁边没有搜索框,焦点交给它那一块的第一个下拉,不跳回页顶。
+const RESET_FILTER_SEARCH={tasks:'q',repos:'rpq',catalog:'catalog-kind',runtime:'runtime-state',resources:'resources-search',convos:'cv-search',llm:'lmq',
   diagnostics:'review-search',pipelines:'pipeline-task-search',work:'work-search',automations:'automation-search'};
 function activeFilterCount(scope){
   const value=id=>String($(id)?.value || '').trim();
@@ -107,11 +114,12 @@ function pageSnapshot(view){
     // 导出的 filters 要和屏幕上实际在用的筛选一一对上,少记一个,导出的列表就解释不了。
     automations:()=>({tasks:DATA,repairs:REPAIRS,filters:{query:AUTO_QUERY,state:AUTO_STATE,verdict:value('automation-verdict')}}),
     integrations:()=>({integrations:typeof INTEGRATIONS==='undefined'?null:INTEGRATIONS}),
-    resources:()=>({components:catalogComponents(),maintenance:MAINT,memory:MEM}),
+    resources:()=>({components:catalogComponents(),maintenance:MAINT,memory:MEM,
+      filters:{query:RUNTIME_QUERY,runtimeState:RUNTIME_STATE,runtimeSort:RUNTIME_SORT,catalogKind:CATALOG_KIND,catalogClient:CATALOG_CLIENT,catalogState:CATALOG_STATE,healthState:HEALTH_STATE}}),
     diagnostics:()=>({tasks:DATA,components:COMPONENTS,selfcheck:SCK,repositories:REPOS,system:SYS,memory:MEM}),
     pipelines:()=>({components:COMPONENTS,tasks:DATA,repairs:REPAIRS,filters:{query:value('pipeline-task-search'),verdict:value('pipeline-verdict'),issueQuery:PIPELINE_QUERY}}),
     tasks:()=>({tasks:DATA,repairs:REPAIRS,visibleTaskNames:VIEW.map(row=>row.name),
-      filters:{query:value('q'),category:value('cat'),verdict:value('task-verdict'),onlyProblems:!!$('only')?.checked,hideDisabled:!!$('hideoff')?.checked}}),
+      filters:{query:value('q'),category:value('cat'),verdict:value('task-verdict'),status:TASK_STATUS,hideDisabled:!!$('hideoff')?.checked}}),
     repos:()=>({repositories:REPOS,filters:{query:value('rpq'),account:value('rpacc'),kind:value('rpkind'),visibility:value('rpvis'),state:RP_STATE,issue:RP_ISSUE}}),
     storage:()=>({components:catalogComponents(),maintenance:MAINT,memory:MEM,system:SYS,codex:CODEX,cleanup:CXL,cleanupLibrary:value('cxwhich')}),
     convos:()=>({conversations:CONVOS,filters:{query:CV_QUERY,humanOnly:CV_HUMAN_ONLY,sort:CV_SORT},chain:typeof convoChainSnapshot==='function'?convoChainSnapshot():null}),

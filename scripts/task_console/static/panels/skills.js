@@ -109,15 +109,14 @@ function renderCatalog(){
   const clients=[...new Set(records.flatMap(catalogClients))].sort();
   const states=[["compatible:no","不兼容"],["compatible:unknown","兼容性未检查"],["authenticated:no","未认证"],["authenticated:unknown","认证未检查"],
     ...[...new Set(records.map(source=>source.sync && source.sync.state || "unknown"))].sort().map(state=>["sync:"+state,"同步: "+catalogLabel(state)])];
-  el.innerHTML=`<div class="catalog-tools"><input type="search" id="catalog-search" aria-label="搜索已登记的技能和插件" placeholder="搜索名称、路径或依赖" value="${esc(CATALOG_QUERY)}">
-      <select id="catalog-kind" aria-label="来源类型"><option value="">全部类型</option>${Object.entries(catalog && catalog.statistics || {}).map(([kind,count])=>`<option value="${esc(kind)}"${CATALOG_KIND===kind?" selected":""}>${esc(catalogLabel(kind))} (${count})</option>`).join("")}</select>
+  // 目录不再有自己的搜索框:页顶那一个同时筛技能、插件和这里(见 startResources)。
+  el.innerHTML=`<div class="catalog-tools"><select id="catalog-kind" aria-label="来源类型"><option value="">全部类型</option>${Object.entries(catalog && catalog.statistics || {}).map(([kind,count])=>`<option value="${esc(kind)}"${CATALOG_KIND===kind?" selected":""}>${esc(catalogLabel(kind))} (${count})</option>`).join("")}</select>
       <select id="catalog-client" aria-label="涉及客户端"><option value="">全部客户端</option>${clients.map(client=>`<option value="${esc(client)}"${client===CATALOG_CLIENT?" selected":""}>${esc(catalogLabel(client))}</option>`).join("")}</select>
       <select id="catalog-state" aria-label="组件状态"><option value="">全部状态</option>${states.map(([value,label])=>`<option value="${esc(value)}"${value===CATALOG_STATE?" selected":""}>${esc(label)}</option>`).join("")}</select><button class="icon-only" data-reset-filters="catalog" title="清除筛选"><svg class="ic" aria-hidden="true"><use href="#i-filter-clear"/></svg><span class="control-label">清除筛选</span></button><span>${catalog && catalog.available?records.length+" 项":"尚未读取目录"}</span><span id="catalog-count"></span></div>
     <div id="catalog-results" class="ops-scroll"></div>
     <div class="catalog-heading health-heading"><h2>自动化检查结果 <span style="color:var(--${coverageTone})">${esc(cov.checked ?? "?")}/${esc(cov.expected ?? "?")}</span></h2><span>异常 ${problemCount} · 未检查 ${uncheckedCount}</span>
       <select id="health-state" aria-label="健康检查状态"><option value="">全部结论</option>${["healthy","degraded","unhealthy","unknown"].map(state=>`<option value="${state}"${state===HEALTH_STATE?" selected":""}>${catalogLabel(state)}</option>`).join("")}</select></div>
     <div class="catalog-tools"><span class="faint">${esc(catalogCoverageText(catalog && catalog.coverage))}</span><span id="health-count"></span></div><div id="health-results" class="ops-scroll"></div>`;
-  $("catalog-search").addEventListener("input",event=>{CATALOG_QUERY=event.target.value;renderCatalogResults();renderCatalogHealth();});
   $("catalog-kind").addEventListener("change",event=>{CATALOG_KIND=event.target.value;renderCatalogResults();});
   $("catalog-client").addEventListener("change",event=>{CATALOG_CLIENT=event.target.value;renderCatalogResults();});
   $("catalog-state").addEventListener("change",event=>{CATALOG_STATE=event.target.value;renderCatalogResults();});
@@ -163,4 +162,15 @@ function renderCatalogResults(){
   $("catalog-count").textContent=`显示 ${rows.length}/${(catalog.records||[]).length}`;
   el.innerHTML=rows.length?`<table class="ops-table catalog-table"><thead><tr><th>名称 / 入口</th><th>类型 / 客户端</th>${CATALOG_DIMENSIONS.map(key=>`<th>${catalogLabel(key)}</th>`).join("")}<th>同步 / 认证</th><th>依赖</th></tr></thead><tbody>${rows.map(source=>catalogRow(source)+(source.entrypoints||[]).map(entry=>catalogRow(source,entry)).join("")).join("")}</tbody></table>`:'<p class="review-empty">没有符合筛选条件的技能或插件</p>';
   if((catalog.problems||[]).length){const note=document.createElement("p");note.className="review-notice";note.textContent=(catalog.problems||[]).map(p=>typeof p==="string"?p:p.reason||p.message||p.code||"来源检查异常").join("；");el.appendChild(note);}
+}
+
+// ── 客户端技能与记忆这一屏的挂点 ──(从 events.js 搬来,原因见 tasks.js 的 startTasksPage 上方)
+function startResources(){
+  // 一个搜索词同时写进两个筛选:技能与插件按名字,资源目录按名称、路径和依赖。
+  $('resources-search').addEventListener('input',event=>{
+    RUNTIME_QUERY=CATALOG_QUERY=event.target.value;
+    renderSkills();renderClientPlugins();renderCatalogResults();renderCatalogHealth();
+  });
+  $('runtime-state').addEventListener('change',event=>{RUNTIME_STATE=event.target.value;renderSkills();renderClientPlugins();});
+  $('runtime-sort').addEventListener('change',event=>{RUNTIME_SORT=event.target.value;renderSkills();});
 }

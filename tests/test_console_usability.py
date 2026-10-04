@@ -72,10 +72,10 @@ def test_trigger_formatting_preserves_frequency_disabled_and_unknown_states():
 
 
 def test_filter_reset_clears_task_visibility_without_running_tasks():
-    result=run("""$('q').value='acme';$('cat').value='acme';$('only').checked=true;$('hideoff').checked=true;
+    result=run("""$('q').value='acme';$('cat').value='acme';TASK_STATUS='bad';$('hideoff').checked=true;
       DATA=null;resetFilters('tasks');
-      [$('q').value,$('cat').value,$('only').checked,$('hideoff').checked]""")
-    assert result==['','',False,False]
+      [$('q').value,$('cat').value,TASK_STATUS,$('hideoff').checked]""")
+    assert result==['','','',False]
 
 
 def test_run_and_stop_feedback_do_not_claim_payload_success():

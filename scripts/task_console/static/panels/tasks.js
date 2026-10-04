@@ -3,15 +3,59 @@
 let DATA=null, ROWS=[], VIEW=[], cur=0, sel=new Set(), sortKey="name", asc=true, busy=false;
 // Keep routine operation compact; retain saved column and safeguards choices.
 const HYGIENE = ["catchup","retries","timeout","artifact","inAllow","inHealth"];
-let HYG_OPEN = false;
-let TASK_COLUMNS = new Set(['sl','ops','triggers','nextRun']);
-try{
-  HYG_OPEN = localStorage.getItem("tc.hyg") === "1";
-  const saved=JSON.parse(localStorage.getItem('tc.taskColumns'));
-  if(Array.isArray(saved)) TASK_COLUMNS=new Set(saved.filter(key=>typeof key==='string'));
-}catch(e){}
-const shownCols = () => C.filter(c=>['selc','name'].includes(c[0]) ||
-  (HYGIENE.includes(c[0])?HYG_OPEN:TASK_COLUMNS.has(c[0])));
+// 显示哪些列只存一处:tc.taskColumns。保障配置那六列以前由工具栏上单独一个按钮整组开合,存在 tc.hyg;
+// 现在它们在「显示列」里自成一组、逐列勾选。旧的 tc.hyg 读进来并入一次就删掉,免得两份设置互相打架。
+// 存储读不了(隐私窗口、禁用存储)就用默认列,这只是本机浏览器里的一点便利。
+function loadTaskColumns(getStorage){
+  let columns=new Set(['sl','ops','triggers','nextRun']);
+  try{
+    const storage=getStorage();
+    const saved=JSON.parse(storage.getItem('tc.taskColumns'));
+    if(Array.isArray(saved)) columns=new Set(saved.filter(key=>typeof key==='string'));
+    const legacy=storage.getItem('tc.hyg');
+    if(legacy==='1'){
+      HYGIENE.forEach(key=>columns.add(key));
+      storage.setItem('tc.taskColumns',JSON.stringify([...columns]));
+    }
+    if(legacy!=null) storage.removeItem('tc.hyg');
+  }catch(e){}
+  return columns;
+}
+let TASK_COLUMNS = loadTaskColumns(()=>localStorage);
+const shownCols = () => C.filter(c=>['selc','name'].includes(c[0]) || TASK_COLUMNS.has(c[0]));
+// 运行状态筛选,由表格上方那四个计数按钮切换:'' 全部,bad 上次运行失败,warn 有警告,off 已停用。
+// 以前只有一个「只看异常与警告」勾选框,把失败和警告混在一起,而那四个计数看着像按钮却点不动。
+let TASK_STATUS='';
+const TASK_STATUS_LABEL={'':'全部任务',bad:'只看失败',warn:'只看有警告',off:'只看停用'};
+const TASK_STATUS_EMPTY={bad:'没有上次运行失败的任务',warn:'没有带警告的任务',off:'没有停用的任务'};
+function taskMatchesStatus(row,status=TASK_STATUS){
+  if(status==='bad') return row.sk==='bad';
+  if(status==='warn') return !!sev(row);
+  if(status==='off') return row.state==='Disabled';
+  return true;
+}
+function taskStatusCounts(rows){
+  return {'':rows.length,bad:rows.filter(row=>taskMatchesStatus(row,'bad')).length,
+    warn:rows.filter(row=>taskMatchesStatus(row,'warn')).length,off:rows.filter(row=>taskMatchesStatus(row,'off')).length};
+}
+// 按钮的按下态跟着筛选走。数到零的那一类灰着并说明为什么(正在用的那一个除外,它还要能点回全部);
+// 计划任务还没读到时四个都灰着:那时点下去什么也筛不出来。
+function syncTaskStatus(counts){
+  document.querySelectorAll?.('.task-summary [data-task-status]').forEach(button=>{
+    const key=button.dataset.taskStatus, active=key===TASK_STATUS;
+    button.setAttribute('aria-pressed',String(active));
+    button.dataset.label=TASK_STATUS_LABEL[key];
+    const reason=!counts?'计划任务还没读到':(key && !active && !counts[key])?TASK_STATUS_EMPTY[key]:'';
+    setDisabled(button,reason);
+    if(!reason) button.title=!key?'显示全部任务，清除状态筛选':active?`${TASK_STATUS_LABEL[key]}：再点一次显示全部任务`:`${TASK_STATUS_LABEL[key]}，再点一次显示全部`;
+  });
+}
+function setTaskStatus(status){
+  TASK_STATUS=(status && status!==TASK_STATUS)?status:'';
+  // 选「只看停用」时把「隐藏停用」取消掉:两个同时生效,表就是空的,而人看不出是哪一个造成的。
+  if(TASK_STATUS==='off' && $('hideoff').checked) $('hideoff').checked=false;
+  if(DATA) render(); else syncTaskStatus(null);
+}
 
 // Metadata presentation is shared by all automation tabs. No inferred verdicts.
 // 建议徽章不借用状态徽章的符号(✓ 正常、Ⅱ 停用),外框另用虚线(workbench.css 的 .task-verdict):
@@ -141,8 +185,10 @@ function taskInfoHtml(row){
 }
 function renderTaskColumns(){
   const box=$('task-column-options');if(!box) return;
-  box.innerHTML=C.filter(c=>!['selc','name',...HYGIENE].includes(c[0])).map(c=>
-    `<label><input type="checkbox" data-task-column="${c[0]}"${TASK_COLUMNS.has(c[0])?' checked':''}> ${c[1]}</label>`).join('');
+  const option=c=>`<label><input type="checkbox" data-task-column="${c[0]}"${TASK_COLUMNS.has(c[0])?' checked':''}> ${c[1]}</label>`;
+  const group=(label,columns)=>`<div class="task-column-group" role="group" aria-label="${label}"><div class="task-column-heading" aria-hidden="true">${label}</div>${columns.map(option).join('')}</div>`;
+  box.innerHTML=group('常用',C.filter(c=>!['selc','name',...HYGIENE].includes(c[0])))
+    +group('保障配置',C.filter(c=>HYGIENE.includes(c[0])));
 }
 // 时间轴可视窗口,单位分钟。整天是 [0,1440];缩放和拖动只改这两个数,所有位置都由它们算出来。
 let tlFrom=0, tlTo=1440;
@@ -196,7 +242,7 @@ async function load(){
     s.value=keep;
     render();
     if(typeof renderPipelines==="function") renderPipelines();
-  }catch(e){ DATA=null; ROWS=[]; TASKS_LOAD_ERROR=e.message || '读取失败'; updateBadges(); if(typeof renderPipelines==="function") renderPipelines(); $("tbl").innerHTML=`<tbody><tr><td style="color:var(--bad);padding:10px">读取失败:${esc(e.message)}</td></tr></tbody>`; }
+  }catch(e){ DATA=null; ROWS=[]; TASKS_LOAD_ERROR=e.message || '读取失败'; syncTaskStatus(null); updateBadges(); if(typeof renderPipelines==="function") renderPipelines(); $("tbl").innerHTML=`<tbody><tr><td style="color:var(--bad);padding:10px">读取失败:${esc(e.message)}</td></tr></tbody>`; }
 }
 
 // 把渲染合并到一帧里。之前滚轮和拖动都是每个事件同步渲染一次,而浏览器一次拖动可以
@@ -294,75 +340,6 @@ function tlPan(dxPct){
   scheduleTL();
 }
 function tlReset(){ tlFrom=0; tlTo=1440; scheduleTL(); }
-
-// 新鲜度灯板。状态由后端现算(freshness.py),这里只负责把它画出来,不在前端重新判定 :
-// 两处各判一次必然漂移,而漂移的那一方看起来同样理直气壮。
-const FR_LABEL={up:"正常",running:"运行中",grace:"宽限",down:"失败",never:"未跑过",
-                paused:"停用",unknown:"未查成"};
-const FR_ORDER=["down","never","grace","unknown","paused","running","up"];
-const FR_COLOR={up:"var(--ok)",running:"var(--cyan)",grace:"var(--warn)",down:"var(--bad)",
-                paused:"var(--idle)",never:"var(--amber)",unknown:"var(--faint)"};
-
-function renderFresh(){
-  const F=DATA.freshness;
-  if(!F){ $("frbox").style.display="none"; return; }
-  $("frbox").style.display="";
-  const S=F.summary||{}, ts=F.tasks||[];
-  // 没有清单就说没有清单。画一块空的绿板等于用「没检查」冒充「没问题」。
-  if(F.reason){
-    $("frstack").innerHTML="";
-    // 这里原来写 "0%"。控制台是轮询刷新的,而这个分支只设 textContent 不碰颜色和 tooltip,
-    // 所以上一轮覆盖率 >=80% 染成绿色之后清单被删,这一轮会渲染出一个**绿色的 0%**
-    // 外加一句陈旧的「12/12 个任务拿到了判据」。三样都要一起重置。
-    $("frcov").textContent="-";
-    $("frcov").style.color=""; $("frcov").title="";
-    $("frkey").innerHTML=""; $("frboard").innerHTML="";
-    $("frlist").innerHTML=`<div class="fr-off">${esc(F.reason)}</div>`;
-    return;
-  }
-  const counts=S.counts||{}, total=S.total||0;
-  $("frstack").innerHTML=FR_ORDER.filter(k=>counts[k]).map(k=>
-    `<i style="width:${(counts[k]/total*100).toFixed(2)}%;background:${FR_COLOR[k]}" `
-    +`title="${FR_LABEL[k]} ${counts[k]}"></i>`).join("");
-
-  const cov=Math.round((S.coverage||0)*100);
-  const covEl=$("frcov");
-  covEl.textContent=cov+"%";
-  // 覆盖率本身就是判据的体检:一个被喂了空的检查器,打印的绿色和真没查出问题的一模一样。
-  covEl.style.color = `var(--${toneOf(S.coverageVerdict)})`;
-  covEl.title=`${S.judged||0}/${total} 个任务拿到了判据`;
-
-  $("frkey").innerHTML=FR_ORDER.filter(k=>counts[k]).map(k=>
-    `<span><i class="fr-c s-${k}" style="width:9px;height:9px"></i>${FR_LABEL[k]} ${counts[k]}</span>`
-  ).join("");
-
-  // 按 FR_ORDER 排:坏的聚到左上角。乱序的灯板等于把「有 5 个红的」这个事实
-  // 摊平成「你自己去 40 格里数」,而这块板子存在的理由就是一眼看出坏了几个。
-  // 排序只改显示顺序,data-fr 仍是任务名,点击与 title 的路径一个字没动。
-  const tsSorted=ts.slice().sort((a,b)=>
-    FR_ORDER.indexOf(a.state)-FR_ORDER.indexOf(b.state) || a.name.localeCompare(b.name));
-  $("frboard").innerHTML=tsSorted.map(t=>{
-    const why=(t.reasons||[]).join(" · ");
-    // 加 tabindex 和 role:这一格是概览屏两个核心导航之一,原来只能用鼠标。
-    // 折叠进同一个任务的几件事在灯板上是各自一格。它们的 data-fr 都指向那个任务
-    // (点了跳过去是对的),但 title 必须说清是哪一件,否则同名的几格看起来像重复渲染。
-    const who = t.check ? `${t.name} · ${t.check}` : t.name;
-    return `<i class="fr-c s-${t.state}" data-fr="${esc(t.name)}" tabindex="0" role="button" `
-      +`title="${esc(who)} : ${FR_LABEL[t.state]}${why?" : "+esc(why):""}"></i>`;
-  }).join("");
-
-  // 明细搬到了上面的「要人管的事」:那张清单列的就是这几条,一字不差。
-  // 同一段文字在一屏里出现两次,读的人得先分辨这是两件事还是一件事。
-  // 这块保留聚合视图(条形图、覆盖率、热力图),它回答的是「整体什么样」,清单回答「是哪几条」。
-  // 但不能就这么让明细消失 : 留一行指路,否则下次有人会以为它坏了。
-  // 这里的口径必须和「要人管的事」清单**逐字**一致,否则这句话会指着一张
-  // 不包含那几条的清单报数。清单收的是 down / never / unknown 三种:
-  // grace 是「还在宽限期内」,不算要人管;unknown 是「查不成」,算。
-  const bad=ts.filter(t=>FR_ATT().indexOf(t.state) >= 0);
-  $("frlist").innerHTML = bad.length
-    ? `<div class="fr-off">${bad.length} 项未通过检查，原因见上方「技术问题」</div>`
-    : `<div class="fr-none">所有已检查的输出文件均按时更新</div>`;
-}
 
 // 维护面板。单独一次 fetch:它要跑 `claude plugin list`,几秒起步,不该拖住主表。
 function relTime(s){
@@ -535,70 +512,24 @@ function render(){
   const S=DATA.summary;
   // 零态改色而不是隐藏。「0 个失败」和「这一项没采到」必须保持可分辨 ——
   // 藏起来之后它们都表现为「顶栏上没有这一段」。
+  // 计数取自同一份行和同一个判定,点下去筛出来的行数就等于按钮上的数。
+  // 「有警告」数的是带警告的任务个数;后端那个 issues 是警告条数(一个任务可以有好几条),只放进提示里。
+  const counts=taskStatusCounts(ROWS);
   $("s-total").textContent=S.total;
-  $("s-bad").textContent=S.bad; $("s-bad").className=S.bad?"bad":"zero";
-  $("s-iss").textContent=S.issues; $("s-iss").className=S.issues?"warn":"zero";
-  $("s-off").textContent=S.disabled; $("s-off").className=S.disabled?"":"zero";
-  $("s-src").innerHTML=`<span class="k">数据</span>${esc(S.generated)}`
-    +((DATA.history&&DATA.history.available)?` <span class="faint">观察${DATA.history.days.length}d</span>`:` <span class="faint">无观察</span>`)
-    // 摄入器最后一次跑成没跑成,原来查出来了却在 server 里被丢掉:数据库存在但摄入器已经
-    // 连续失败几周时,页面照常显示 available=true、热力图照画、健康% 仍是一个具体数字,
-    // 而**没有任何一处告诉人这些数字最后一次更新是什么时候**。
-    +(()=>{
-       // lastIngest 是 {来源: {at, ok}} 的字典,不是一个时间串。第一版直接 String() 它,
-       // 顶栏印出「最后摄入 [object Object]」 : 一个显示出来却读不懂的字段,
-       // 和没有这个字段差不多。
-       const li = DATA.history && DATA.history.lastIngest;
-       if(!li || typeof li !== "object") return "";
-       const rows = Object.entries(li).filter(([,v])=>v && v.at);
-       if(!rows.length) return "";
-       // 取最旧的那一条:摄入器是几条流水线,任何一条停了这些数字就有一部分停在那一刻。
-       rows.sort((a,b)=>String(a[1].at).localeCompare(String(b[1].at)));
-       const [oldName, oldest] = rows[0];
-       // 判定由后端给。以前这里只按 ok 标红,而**时间有多旧完全没人看** ——
-       // 一个九天前成功的摄入,在屏幕上和刚跑完的摄入长得一模一样:灰色、一个时间串,
-       // 而热力图和健康% 全部停在九天前照常显示。没有人会读一眼时间再在心里减出九天。
-       const V = INGEST();
-       const tip = rows.map(([k,v])=>`${k}: ${v.at}${v.ok===false?" (失败)":""}`).join(" · ")
-         + (V.why ? " — " + V.why
-                  : " — 摄入器停了的话,上面这些数字会一直停在那一刻,而页面看起来毫无异常");
-       const sev = INGEST_SEV(V.state);          // 3 红 / 2 黄 / 0 不着色
-       const col = sev >= 3 ? "var(--bad)" : sev >= 2 ? "var(--warn)" : "";
-       const tail = V.state === "failed" ? ` · ${esc((V.failed||[]).join("/"))} 失败`
-                  : (V.state === "stale" || V.state === "loss")
-                      ? ` · ${(V.ageHours/24).toFixed(1)}d 没摄入`
-                  : V.state === "unknown" ? " · 时间读不出来" : "";
-       return ` <span class="${col?"":"faint"}" style="${col?`color:${col}`:""}"
-         title="${esc(tip)}">最后摄入 ${esc(String(oldest.at).slice(0,16))}${tail}</span>`;
-     })()
-    +(()=>{
-       const R=DATA.runlog;
-       if(!R||!R.available) return ` <span class="faint">无运行日志</span>`;
-       // 读不懂的条数要跟着 count 一起显示。它们一直在被数,但以前只留在后端:
-       // 事件格式一变、大批事件被丢掉时,页面上只看得到运行次数变少、成功率漂移,
-       // 没有任何一处说明有多少条读不懂 —— 一个看起来精确、实则不完整的数字,
-       // 而它旁边那个 count 还在替它背书。
-       const bad = R.partial || (R.dropped>0);
-       const tip = (R.countScope||"")
-         + (R.dropped>0?` · 有 ${R.dropped} 条事件解析不了,没有计入`:"")
-         + (R.partial?" · 日志读到一半失败,下面的条数是不完整的":"");
-       return ` <span class="${bad?"":"faint"}" style="${bad?"color:var(--warn)":""}"
-         title="${esc(tip)}">运行日志${R.count}${R.countScope?" · "+esc(R.countScope):""}${
-         R.dropped>0?` · 读不懂 ${R.dropped}`:""}${R.partial?" · 不完整":""}</span>`;
-     })();
-  // 含「历史」的那条警告不在这里重复:热力图不可用时会把它印在图的标题上(renderHeat),
-  // 贴在图上比躺在警告堆里有用 : 人是在图空着的时候才想知道为什么空。
-  $("warns").innerHTML=(DATA.warnings||[])
-    .filter(w=>w.indexOf("历史")<0)
-    .map(w=>`<div class="warn-line">${esc(w)}</div>`).join("");
+  $("s-bad").textContent=counts.bad; $("s-bad").className=counts.bad?"bad":"zero";
+  $("s-iss").textContent=counts.warn; $("s-iss").className=counts.warn?"warn":"zero";
+  $("s-iss").title=`${counts.warn} 个任务带警告，共 ${S.issues} 条`;
+  $("s-off").textContent=counts.off; $("s-off").className=counts.off?"":"zero";
+  syncTaskStatus(counts);
+  renderDataLine();
   renderFresh();
   updateBadges();
   renderTL(); renderHeat(); renderScores();
 
   const q=$("q").value.trim().toLowerCase(), cat=$("cat").value;
-  const onlyBad=$("only").checked, hideOff=$("hideoff").checked;
+  const hideOff=$("hideoff").checked;
   const candidates=ROWS.filter(r=>(!cat||r.cat===cat)&&!(hideOff&&r.state==="Disabled")
-    &&!(onlyBad&&r.sk!=="bad"&&!sev(r))
+    &&taskMatchesStatus(r)
     &&taskMatches(r,q));
   const verdict=$('task-verdict').value;
   updateTaskVerdictFilter('task-verdict',candidates,verdict);
@@ -727,7 +658,7 @@ function focusTask(name){
   const q = $("q");
   // A detail link always opens the named task, even with stale filters or selections.
   q.value = name;
-  $("cat").value = "";$('task-verdict').value='';$("only").checked=false;$("hideoff").checked=false;sel.clear();
+  $("cat").value = "";$('task-verdict').value='';TASK_STATUS='';$("hideoff").checked=false;sel.clear();
   if (DATA) render();
   cur=VIEW.findIndex(row=>row.name===name);
   const tr = document.querySelector(`#tbl tbody tr[data-i="${cur}"]`);
@@ -803,3 +734,88 @@ function focusCur(){
 // 一次误击只会打开一份计划。但确认之后的那一串(add 逐条路径、commit、push、
 // 等钩子跑完、把钩子输出原样摊出来)全部由这里完成 —— 要省掉的是那串机械动作,
 // 不是那个决定。
+
+// ── 运行详情这一屏自己的挂点 ──
+// 从 events.js 搬到这里:每个页面的包只改自己的文件,不必都去挤 events.js。
+// events.js 在原来的位置调用它们,挂上的都是元素自己的监听,先后顺序不影响结果。
+// 时间轴:滚轮缩放(以指针为中心)、按住拖动平移、双击回到整天
+function startTimeline(){
+  const tl=$("tl");
+  tl.addEventListener("wheel",e=>{
+    const track=e.target.closest(".tltrack")||tl.querySelector(".tltrack");
+    if(!track) return;
+    // 无条件接管滚轮会造出一条**整页宽的滚轮死区**:.tl 有 820px 最小宽度,窄窗口里它
+    // 横向铺满整屏、高约 400px,鼠标落进去就滚不动页面,只会把时间轴越缩越小 ——
+    // 而人在那一刻想做的多半只是往下看后面的内容。
+    // 所以只有明确表达了缩放意图(Ctrl / Shift / 横向滚轮)才接管,平滚一律交回页面。
+    // 图例里写了这句提示:一个只有作者知道的手势等于没有。
+    if(!(e.ctrlKey||e.metaKey||e.shiftKey||Math.abs(e.deltaX)>Math.abs(e.deltaY))) return;
+    e.preventDefault();
+    const rect=track.getBoundingClientRect();
+    const pct=Math.min(1,Math.max(0,(e.clientX-rect.left)/rect.width));
+    const d = e.deltaY || e.deltaX;
+    tlZoom(d>0?1.25:0.8, pct);   // tlZoom 内部走 scheduleTL,一帧只渲染一次
+  },{passive:false});
+  // 这里是拖动真正的 bug:原来在 .tltrack 上 setPointerCapture,而 renderTL() 第一次平移
+  // 就把那个元素连同整个 innerHTML 换掉了。捕获目标一消失,后续 pointermove 就不再送到
+  // 这个监听器,拖动于是走走停停。捕获必须放在渲染不会替换的元素上,也就是 #tl 本身。
+  // (2026-09-02 实测:渲染成本 2.1ms 中位数,从来不是瓶颈,我之前的诊断错了。)
+  let dragging=false, lastX=0, w=1;
+  tl.addEventListener("pointerdown",e=>{
+    const track=e.target.closest(".tltrack");
+    if(!track) return;
+    dragging=true; lastX=e.clientX;
+    w=track.getBoundingClientRect().width || 1;
+    tl.classList.add("drag");
+    tl.setPointerCapture(e.pointerId);
+  });
+  tl.addEventListener("pointermove",e=>{
+    if(!dragging) return;
+    const dx=e.clientX-lastX; lastX=e.clientX;
+    tlPan(dx/w);
+  });
+  const endDrag=e=>{
+    if(!dragging) return;
+    dragging=false; tl.classList.remove("drag");
+    try{ tl.releasePointerCapture(e.pointerId); }catch(_){}
+  };
+  tl.addEventListener("pointerup",endDrag);
+  tl.addEventListener("pointercancel",endDrag);
+  tl.addEventListener("dblclick",tlReset);
+  $("tlin").addEventListener("click",()=>tlZoom(0.7,0.5));
+  $("tlout").addEventListener("click",()=>tlZoom(1.4,0.5));
+  $("tlreset").addEventListener("click",tlReset);
+}
+function startTasksPage(){
+  $('tasks').querySelector('.task-summary').addEventListener('click',event=>{
+    const button=event.target.closest('[data-task-status]');
+    if(button && !button.disabled) setTaskStatus(button.dataset.taskStatus);
+  });
+  syncTaskStatus(null);
+  renderTaskColumns();
+  $('task-column-options').addEventListener('change',event=>{
+    const key=event.target.dataset.taskColumn;if(!key) return;
+    if(event.target.checked) TASK_COLUMNS.add(key);else TASK_COLUMNS.delete(key);
+    try{localStorage.setItem('tc.taskColumns',JSON.stringify([...TASK_COLUMNS]));}catch(e){}
+    if(DATA) render();
+  });
+  // 明细行要贴着可视区左沿,所以它需要知道 .pad 现在多宽。CSS 算不出这个数(td 跨满整张表,
+  // 而表可以比容器宽),只能量。用 ResizeObserver 而不是 window.resize:侧栏折叠、
+  // 纵向滚动条出现/消失都会改变可视宽度,而这两件事都不触发 window.resize ——
+  // 一个只听 resize 的版本在最常见的那两种情况下会安静地用一个过期的数。
+  (function(){
+    const pad = document.querySelector("#dtbox .pad");
+    if(!pad) return;
+    // 宽度为 0 只有一个含义:这一屏当前是隐藏的(section[hidden] 走 display:none)。
+    // 把 0 写进去会让明细行的 width:var(--padw) 变成零宽 —— 一个「量不到」被当成一个值用。
+    // 隐藏时什么都不写,保留上一次的好值;分区一显示,观察器立刻带着真实宽度再触发一次。
+    const set = () => { const w = pad.clientWidth; if(w > 0) pad.style.setProperty("--padw", w + "px"); };
+    set();
+    // 没有 ResizeObserver 就退回 window.resize。少量场景会用到过期的宽度,
+    // 但 --padw 缺席时 CSS 回落到 100%,也就是改动前的行为,不会塌。
+    if(window.ResizeObserver) new ResizeObserver(set).observe(pad);
+    else window.addEventListener("resize", set);
+  })();
+  $("q").addEventListener("input",()=>{ if(DATA) render(); });
+  ["cat","hideoff","task-verdict"].forEach(id=>$(id).addEventListener("change",()=>{ if(DATA) render(); }));
+}

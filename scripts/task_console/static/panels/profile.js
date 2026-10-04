@@ -1,33 +1,4 @@
 // Classic script module; loaded in app.js dependency order.
-let SCK=null;
-async function loadSelfcheck(){
-  try{ SCK=await api("/api/selfcheck"); }
-  catch(e){ $("scksum").innerHTML=`<span class="bad">数据来源检查失败：${esc(e.message)}</span>`; return; }
-  renderSelfcheck();
-  updateBadges();
-}
-function renderSelfcheck(){
-  if(!SCK) return;
-  $("sckdots").innerHTML=SCK.rows.map(r=>
-    `<i class="d ${r.state}" title="${esc(r.title)}: ${esc(r.state)}${r.why?" ("+esc(r.why)+")":""}"></i>`
-  ).join("");
-  const c=SCK.counts||{};
-  const parts=[`读到 ${SCK.probed}/${SCK.total}`];
-  if(c.unset) parts.push(`未配 ${c.unset}`);
-  if(c.stale) parts.push(`未更新 ${c.stale}`);
-  $("scksum").innerHTML = SCK.ok
-    ? `<span>${parts.join(" · ")}</span>`
-    : `<span class="bad">${SCK.broken.length?("读不到 "+SCK.broken.join(", ")):"必需来源不可用"}</span>`
-      +` <span>· ${parts.join(" · ")}</span>`;
-  $("sckd").innerHTML=SCK.rows.map(r=>`<div class="r">
-    <i class="d ${r.state}"></i>
-    <span>${esc(r.title)}</span>
-    <span class="p" title="${esc(r.path||r.why||"")}">${esc(r.path||r.why||"")}</span>
-    <span class="w">${r.state==="ok"||r.state==="stale"
-      ? (r.ageHours!=null? r.ageHours.toFixed(1)+"h":"")+(r.entries!=null?" · "+r.entries+" 项":"")
-      : esc(r.state)}</span></div>`).join("");
-}
-
 // 仓库面板。整片仓一秒多扫完(并发 + 每仓两次 git 调用),所以可以随手重扫。
 let CODEX=null;
 async function loadCodex(){
@@ -41,14 +12,16 @@ const CX_LAB={"AGENTS.md":"指令文件","config.toml":"配置",
   "sessions":"会话","archived_sessions":"归档会话",
   "history.jsonl":"命令历史","log":"日志","cache":"缓存"};
 
+// 「Codex 存储」只在卡片标题上写一次,总量跟在标题后面(#codex-total)。以前卡片里又印了一遍标题和总量,
+// 外加一句和数据一样粗的「扫描完成」:同一个名字读两遍,真正的数反倒不显眼。
+// 总量只在读到了才写;读取中、读不到和没扫完各有各的说法,标题后面留空,不写一个 0。
 function renderCodex(){
   const el=$("mt-codex"); if(!el) return;
-  if(!CODEX){ el.innerHTML=`<div class="mt-t">Codex 存储</div>
-    <div class="mt-note">读取中</div>`; return; }
-  if(CODEX.error){ el.innerHTML=`<div class="mt-t">Codex 存储</div>
-    <div class="warn-line">读取失败:${esc(CODEX.error)}</div>`; return; }
-  if(!CODEX.available){ el.innerHTML=`<div class="mt-t">Codex 存储</div>
-    <div class="mt-note">${esc(CODEX.reason)}</div>`; return; }
+  const total=$("codex-total");
+  if(total){ total.textContent=""; total.title=""; }
+  if(!CODEX){ el.innerHTML=`<div class="mt-note">读取中</div>`; return; }
+  if(CODEX.error){ el.innerHTML=`<div class="warn-line">读取失败:${esc(CODEX.error)}</div>`; return; }
+  if(!CODEX.available){ el.innerHTML=`<div class="mt-note">${esc(CODEX.reason)}</div>`; return; }
 
   const rows=Object.keys(CX_LAB).map(k=>{
     const it=CODEX.items[k]||{};
@@ -72,9 +45,9 @@ function renderCodex(){
   const bad=[];
   if(CODEX.incomplete.length) bad.push(`${CODEX.incomplete.length} 项未扫完，总量偏小`);
   if(CODEX.unread.length) bad.push(`${CODEX.unread.length} 项读不了`);
-  el.innerHTML=`<div class="mt-t">Codex 存储 <b>${kb(CODEX.bytes)}</b>
-      <span class="sub">${CODEX.incomplete.length||CODEX.unread.length?"":"扫描完成"}</span></div>
-    ${bad.length?`<div class="warn-line">${esc(bad.join(" · "))}</div>`:""}
+  const partial=CODEX.incomplete.length||CODEX.unread.length;
+  if(total){ total.textContent=kb(CODEX.bytes)+(partial?"+":""); total.title=partial?"有项目没扫完或读不了，实际总量更大":"全部项目已扫完"; }
+  el.innerHTML=`${bad.length?`<div class="warn-line">${esc(bad.join(" · "))}</div>`:""}
     <div class="mt-rows">${rows}</div>`;
 }
 
@@ -203,4 +176,36 @@ async function cxDelete(){
     loadCodex(); loadSys();
   }catch(e){ cxState(e.message,"bad");toast(e.message,"bad");await loadCxList(); }
   finally{CX_DELETING=false;}
+}
+
+// ── 存储清理这一屏的挂点 ──(从 events.js 搬来,原因见 tasks.js 的 startTasksPage 上方)
+function startStorage(){
+  // 每张卡片自己的刷新按钮都删了:顶栏的刷新会把这一屏的全部读取再跑一遍,同一屏摆两个一样的图标只会让人猜哪个更全。
+  // 只留会话库的「重新扫描」:它只扫所选的那个库,比整页刷新便宜得多。扫描期间灰着,免得被连点。
+  $("cxload").addEventListener("click",async()=>{
+    const button=$("cxload");setDisabled(button,"正在扫描所选的会话库");
+    try{ await loadCxList(); }finally{ setDisabled(button,""); }
+  });
+  // 换库要重扫,换排序不用:排序是纯前端的事,重扫一遍几千个文件只为了换个顺序,
+  // 会让这个下拉用起来像卡住了。
+  $("cxwhich").addEventListener("change",loadCxList);
+  $("cxsort").addEventListener("change",()=>{ if(CXL) renderCxList(); });
+  // 清单里的全选、清空、删除和逐行勾选。清单整块重画,所以挂在不重画的 #cxbody 上。
+  $("cxbody").addEventListener("click",e=>{
+    const target=e.target.closest('button') || e.target;
+    if(target.id==="cxall"){
+      (CXL&&CXL.items||[]).forEach(i=>CXSEL.add(i.rel)); renderCxList(); return; }
+    if(target.id==="cxnone"){ CXSEL.clear(); renderCxList(); return; }
+    if(target.id==="cxdel"){ cxDelete(); return; }
+    const cx = e.target.closest("[data-cxrel]");
+    if(cx){ const k=cx.dataset.cxrel;
+      // ⚠ 只改这一行,不重画整张表。2382 行重画一次要几十毫秒,而且会把滚动位置
+      // 弹回顶部 —— 在一张两千行的清单上挑东西时,那等于每勾一个就把人送回开头。
+      // (实测还有一个更隐蔽的后果:重画会把已有的行节点全部换掉,
+      // 于是任何「先取一批节点再逐个点」的用法只有第一次生效。)
+      if(CXSEL.has(k)) CXSEL.delete(k); else CXSEL.add(k);
+      cx.classList.toggle("on", CXSEL.has(k));
+      const box=cx.querySelector("input"); if(box) box.checked=CXSEL.has(k);
+      cxSelSummary(); return; }
+  });
 }

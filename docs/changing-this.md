@@ -343,7 +343,12 @@
    `static/panels/<name>.js` 一个文件,登记进 `static/app.js` 的 `CONSOLE_MODULES`
    (顺序即依赖顺序,`events.js` 永远最后),新样式表单开一个 `static/<name>.css`
    并在 `console.html` 里 `<link>`;两者都要进 `server.py` 的 `STATIC_FILES`,
-   否则服务端 404(`test_panel_parity` 要求三处集合完全相等)。分区的名字在
+   否则服务端 404(`test_panel_parity` 要求三处集合完全相等)。
+   已有页面区的样式不再往共用表里加:每个页面区有自己的 `static/page-<区>.css`
+   (automation / diagnostics / work / llm / resources),选择器限定在本区的 section 里,
+   覆盖共用规则也在那里写。某一屏自己的元素挂点同理,放在它的面板文件里的 `start<Name>()`
+   (如 `startTasksPage`、`startStorage`、`startCalls`),`events.js` 只在原位置调用它,
+   自己只留下两个 document 级点击监听里依赖先后顺序的分支。分区的名字在
    `static/navigation.js` 的 `VIEW_GROUPS`,首次读取挂在 `static/operations.js` 的 `PAGE_READS`。
    要标成 `OPTIONAL_PANELS` 的面板有三条硬要求:载入时不碰 DOM(只定义全局,挂点放进
    一个 `start<Name>()`,由 `events.js` 用 `typeof` 守卫调用);它的容器写死在静态 HTML 里,
@@ -354,7 +359,9 @@
    参数交给面板自己的路由函数(`convoChainRoute` 是现成的例子)。
 4. ★ 侧栏徽章:`setBadge()`,外加 `BADGE_SOURCES` / `BADGE_LOADERS` 两张表(见上面「外框」那一节)。
    不加的话这一屏「有事」时没人知道,而页面看起来很正常。
-5. ★ 总清单 `renderTodo()` 里的对应项,如果这一屏会产出「要人管的事」。
+5. ★ 总清单 `attentionRows()`(在 `panels/overview.js`)里的对应项,如果这一屏会产出「要人管的事」。
+   诊断屏的 `renderTodo()` 和工作台摘要用的 `attentionSummary()` 都读这一份;新的一类还要在
+   `ATTENTION_SOURCES` 里登记它读哪条 `/api/` 路径,否则摘要分不出它是「读取中」还是「零条」。
 6. ★ 新读的环境变量要同时进 `scripts/task_console/README.md` 的表**和**
    `selfcheck.py` 的 `SOURCES` 或 `OVERRIDES`, 那两处各有一条双向对账测试,
    漏了会红(这是好事:它是这个仓里少数几处「漏了会喊」的地方)。

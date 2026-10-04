@@ -1,0 +1,12 @@
+/* 会话与模型调用这一区的样式。每个页面区一份表,只写本区自己的规则;要覆盖共用规则时,选择器限定在本区的 section 里。
+   这样几个页面可以各改各的,不必都挤进 styles.css,一页的改动也不会漏到别的页上。 */
+
+/* 服务统计和调用顺序放在页底并排。服务统计是一张宽表,占大的那一栏;调用顺序是窄的竖列表。
+   沿用 .llm-summary 的网格,只把两栏的位置和宽度对调;窄屏和原来一样排成一列。 */
+#llm .llm-config{grid-template-columns:minmax(0,1.5fr) minmax(280px,1fr)}
+#llm .llm-config>.module-section:has(#lrungs){grid-column:1;grid-row:1}
+#llm .llm-config>.module-section:has(#lchain){grid-column:2;grid-row:1}
+@media(max-width:1100px){
+  #llm .llm-config{grid-template-columns:1fr}
+  #llm .llm-config>.module-section:has(#lrungs),#llm .llm-config>.module-section:has(#lchain){grid-column:auto;grid-row:auto}
+}

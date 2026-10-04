@@ -99,8 +99,9 @@ function fixBtn(fix, arg){
     title="${esc(FIX_LAB[fix])}: ${esc(arg)}">${FIX_LAB[fix]}</button>`;
 }
 
-function renderTodo(){
-  const box = $("todod"); if(!box) return;
+// 要人管的那些行。诊断屏的清单(renderTodo)和工作台顶上的摘要(attentionSummary)读的是这同一份,
+// 一处判定、两处显示,两边的数字对得上。key 说明一行来自哪一类,摘要按它分组。
+function attentionRows(){
   const rows = [];
 
   // 任务:sk 是任务模块自己的判定键,bad 这一档就是它判失败的那些。
@@ -108,7 +109,7 @@ function renderTodo(){
   // 看不出哪一份是对的。
   if(typeof DATA !== "undefined" && DATA && Array.isArray(DATA.groups))
     DATA.groups.flatMap(g=>g.rows||[]).filter(r=>r.sk==="bad").forEach(r=>rows.push(
-      {v:"tasks", src:"任务", nm:r.name, task:r.name, description:r.desc, why:r.sl || "上次运行失败", sev:3,
+      {key:"tasks", v:"tasks", src:"任务", nm:r.name, task:r.name, description:r.desc, why:r.sl || "上次运行失败", sev:3,
        fix:"run"}));
 
   if(typeof DATA !== "undefined" && DATA && DATA.freshness && Array.isArray(DATA.freshness.tasks))
@@ -118,7 +119,7 @@ function renderTodo(){
       // ⚠ 名字要带上 check。一个任务可以把好几件不相干的事折叠进来,每件各写一条声明,
       // 而它们在这里全叫同一个任务名 —— 光看名字只知道「这个任务有问题」,
       // 说不出是它底下哪一件。折叠带来的盲区就是在这一行被补上的。
-      {v:"tasks", src:"产物", nm:r.check ? `${r.name} · ${r.check}` : r.name, task:r.name,
+      {key:"outputs", v:"tasks", src:"产物", nm:r.check ? `${r.name} · ${r.check}` : r.name, task:r.name,
        why:(r.reasons && r.reasons[0]) ||
            (r.state==="never" ? "从未运行过" : r.state==="unknown" ? "查不成" : "产物过期"),
        sev:r.state==="down" ? 3 : 2}));
@@ -128,7 +129,7 @@ function renderTodo(){
       // fix 是「这一条能不能一键处理」。只有 dirty / unpushed 能:它们的处理方式
       // 逐字相同,而且已经有一条带计划的两步通路。error(扫不动)不给 fix ——
       // 那是要人去看的,给它一个按钮等于假装这里有个办法。
-      {v:"repos", src:"仓库", nm:r.name, why:REPO_WHY[r.state] || r.state, sev:2,
+      {key:"repos", v:"repos", src:"仓库", nm:r.name, why:REPO_WHY[r.state] || r.state, sev:2,
        fix:(r.state==="dirty"||r.state==="unpushed") ? "commitpush" : null}));
 
   // 摄入器停摆。这一条要出现在清单上,而不是只在顶栏当一个灰色时间串:
@@ -137,12 +138,12 @@ function renderTodo(){
   // 且滚动日志过了窗口就永久没了。
   {
     const V = INGEST(), sev = INGEST_SEV(V.state);
-    if(sev) rows.push({v:"tasks", src:"摄入", nm:"运行日志摄入",
+    if(sev) rows.push({key:"ingest", v:"tasks", src:"摄入", nm:"运行日志摄入",
                        why:V.why || ("摄入状态 " + V.state), sev:sev});
   }
 
   if(SYS && SYS.disk && SYS.disk.verdict && SYS.disk.verdict.attention)
-    rows.push({v:"storage", src:"存储", nm:"系统盘",
+    rows.push({key:"disk", v:"storage", src:"存储", nm:"系统盘",
                why:"已用 "+SYS.disk.usedPct+"%", sev:3});
 
   // available 只说「目录读到了」,不说 MEMORY.md 读到了。MEMORY.md 被改名或删掉时
@@ -151,12 +152,54 @@ function renderTodo(){
   // 而屏幕上说它离上限还有 100%。
   if(MEM && MEM.available && (MEM.linePct != null || MEM.bytePct != null)){
     const p = Math.max(MEM.linePct||0, MEM.bytePct||0);
-    if(MEM.verdict && MEM.verdict.attention) rows.push({v:"resources", src:"存储", nm:"MEMORY.md",
+    if(MEM.verdict && MEM.verdict.attention) rows.push({key:"memory", v:"resources", src:"存储", nm:"MEMORY.md",
       why:"索引 "+p+"%,逼近硬上限", sev:toneOf(MEM.verdict)==="bad"?3:2});
   }
 
+  return rows;
+}
+
+function renderTodo(){
+  const box = $("todod"); if(!box) return;
   const dataBroken = !DATA || !Array.isArray(DATA.groups);
-  return renderReviewQueue(rows, dataBroken);
+  return renderReviewQueue(attentionRows(), dataBroken);
+}
+
+// 工作台顶上那条摘要要的数:每一类要人管的事有几条,以及这个数此刻能不能信。
+// state 只有三种:pending 还没读到(第一次读取没回来,或者根本还没开始读),failed 读了但读不到,
+// ok 读到了。只有 ok 时 count 才是一个结论;另外两种 count 记 0,但调用方必须先看 state,
+// 否则「没读到」会被画成「没有问题」。
+// 刷新途中旧数据还在就照旧算 ok,不让摘要在每次刷新时闪成「读取中」。
+// 读到了却没在查的那一类(没有产物清单、没配仓库根目录、没量到磁盘)仍是 ok、count 为 0,另带一个 unchecked 说明原因,
+// 调用方不能把它画成零。它也不能算 pending:那份数据已经回来了,再等也不会变,一直写「读取中」等于撒谎。
+const TASKS_LOADED=()=>!!(DATA && Array.isArray(DATA.groups));
+const ATTENTION_SOURCES={
+  tasks:{path:"/api/tasks",loaded:TASKS_LOADED},
+  outputs:{path:"/api/tasks",loaded:TASKS_LOADED,
+    unchecked:()=>!DATA.freshness?"这份数据没带产物检查":(DATA.freshness.reason || null)},
+  ingest:{path:"/api/tasks",loaded:TASKS_LOADED},
+  repos:{path:"/api/repos",loaded:()=>!!REPOS,
+    unchecked:()=>REPOS.available?null:(REPOS.reason || "仓库没在查")},
+  disk:{path:"/api/sys",loaded:()=>!!(SYS && !SYS.error),
+    unchecked:()=>SYS.disk && SYS.disk.usedPct != null?null:((SYS.disk && SYS.disk.reason) || "磁盘没量到")},
+  memory:{path:"/api/mem",loaded:()=>!!(MEM && !MEM.error),
+    unchecked:()=>!MEM.available?(MEM.reason || "记忆池没在查")
+      :(MEM.linePct == null && MEM.bytePct == null)?"索引大小没读到":null}
+};
+function attentionSummary(){
+  const rows = attentionRows(), out = {};
+  for(const [key, source] of Object.entries(ATTENTION_SOURCES)){
+    const read = API_READS.get(source.path);
+    if(read && !read.pending && read.error){ out[key] = {state:"failed", count:0, reason:read.error}; continue; }
+    if(!source.loaded()){ out[key] = {state:"pending", count:0}; continue; }
+    out[key] = {state:"ok", count:rows.filter(row=>row.key===key).length};
+    const unchecked = source.unchecked ? source.unchecked() : null;
+    if(unchecked) out[key].unchecked = unchecked;
+  }
+  // 磁盘和记忆索引的数是「有没有逼近上限」,摘要里要的是那个百分比本身。
+  if(out.disk.state==="ok" && !out.disk.unchecked) out.disk.usedPct = SYS.disk.usedPct;
+  if(out.memory.state==="ok" && !out.memory.unchecked) out.memory.pct = Math.max(MEM.linePct||0, MEM.bytePct||0);
+  return out;
 }
 
 const REPO_WHY = {dirty:"有未提交改动", unpushed:"有未推送提交",

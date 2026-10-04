@@ -1,0 +1,13 @@
+/* 自动化(任务开关、同步与备份、运行详情)这一区的样式。每个页面区一份表,只写本区自己的规则;要覆盖共用规则时,选择器限定在本区的 section 里。
+   这样几个页面可以各改各的,不必都挤进 styles.css,一页的改动也不会漏到别的页上。 */
+
+/* 运行详情顶上的四个计数是筛选按钮。外观沿用原来的计数块(review.css 的 .task-summary),
+   按下的那一个加一圈青色描边;失败、警告照旧用各自的底色,按下与否只看描边,颜色不改含义。 */
+#tasks .task-summary>button{display:inline-flex;align-items:center;gap:var(--space-2);min-height:32px;padding:6px 10px;border:1px solid var(--line);border-radius:4px;background:var(--panel);color:var(--dim)}
+#tasks .task-summary>button:has(.bad){color:var(--bad);background:var(--badb);border-color:transparent}
+#tasks .task-summary>button:has(.warn){color:var(--warn);background:var(--warnb);border-color:transparent}
+#tasks .task-summary>button[aria-pressed="true"]{border-color:var(--cyan);box-shadow:inset 0 0 0 1px var(--cyan)}
+#tasks .task-summary>button[aria-pressed="true"]:not(:has(.bad,.warn)){background:var(--cur);color:var(--ink)}
+/* 「显示列」里分两组:常用列和保障配置六列,各带一个小标题。 */
+#task-column-options .task-column-heading{padding:2px 5px;color:var(--dim);font-size:var(--fs-meta);font-weight:600}
+#task-column-options .task-column-group+.task-column-group{margin-top:6px;padding-top:6px;border-top:1px solid var(--line2)}

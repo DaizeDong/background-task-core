@@ -1,0 +1,5 @@
+/* 工作台与工作记录这一区的样式。每个页面区一份表,只写本区自己的规则;要覆盖共用规则时,选择器限定在本区的 section 里。
+   这样几个页面可以各改各的,不必都挤进 styles.css,一页的改动也不会漏到别的页上。 */
+
+/* 工作台里「Agent 未完成 / 出错」那一张卡的标题符号是红的。 */
+#overview .section-symbol.bad{color:var(--bad);background:var(--badb)}

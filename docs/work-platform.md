@@ -5,8 +5,10 @@ what was delivered, and which automations are enabled. Backend names are not nav
 
 Primary views:
 
-- Workbench: explicit decision coverage, current agent work, recent agent deliveries,
-  tracked commitments, and a compact source status strip.
+- Workbench: in order of urgency, a technical-trouble summary strip, interrupted agent work,
+  tracked commitments beside current agent work, recent agent deliveries, and a compact source
+  status strip. The decision strip is shown only when the projection carries decisions (an
+  approval source is connected); it is not a permanent placeholder.
 - Work records: searchable work, results and activity. Conversations and model calls are
   supporting records, not proof that a work item was completed.
 - Automations: readable enable/disable controls; schedules, execution diagnostics and
