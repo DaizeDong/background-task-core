@@ -106,10 +106,8 @@ function pipelineSteps(key, components){
 }
 
 async function loadComponents(){
-  const button=$("pipeline-refresh"); if(button) button.disabled=true;
   try{COMPONENTS=await api("/api/components");}
   catch(error){COMPONENTS={available:false,reason:error.message,tasks:[]};}
-  finally{if(button) button.disabled=false;}
   renderPipelines(); renderCatalog();
   if(typeof renderPlatformSignals==='function') renderPlatformSignals();
 }

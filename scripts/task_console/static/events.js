@@ -1,4 +1,8 @@
 // Classic script module; loaded in app.js dependency order.
+// 下钻的点击在捕获阶段先记下「从哪一屏点的」(navigation.js 的 markDrill),紧接着的 showView 取走它。
+// 捕获阶段是因为真正跳转的处理器散在好几个模块里,而且有的会 stopImmediatePropagation。
+// 这一下没有跳成(比如点的是行里的删除按钮),下一个任务开头就清掉,不会算到之后无关的那次切换头上。
+document.addEventListener("click", e=>{ if(markDrill(e.target)) setTimeout(()=>{ DRILL_FROM=null; },0); }, true);
 document.addEventListener("click", e=>{
   const target=e.target.closest('button') || e.target;
   const launch=e.target.closest('[data-launch]');
@@ -85,7 +89,8 @@ document.addEventListener("click", e=>{
   const nv = e.target.closest(".nv");
   // 分区项现在是 <a href="#xxx">。让浏览器自己跳会同时触发 hashchange,
   // 于是 showView 跑两遍;更糟的是原生跳转会把页面滚到那个 id 上(并不存在)。
-  if(nv){ if(e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return; e.preventDefault(); showView(nv.dataset.view, true); return; }
+  // 回到这个分组上次停留的标签;从侧栏进来不算下钻,不带「← 返回」。
+  if(nv){ if(e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return; e.preventDefault(); showView(groupEntry(nv.dataset.view), true, {reset:true}); return; }
 });
 // 方向键在侧栏项之间移焦点,但**不切视图**。APG 把 tab 模式拆成 manual 和 automatic
 // 两种,面板要发请求的场景必须选 manual:仓库、配置、会话三个分区各自会真扫一遍,
@@ -255,15 +260,17 @@ document.addEventListener("keydown",e=>{
   tl.addEventListener("pointercancel",endDrag);
   tl.addEventListener("dblclick",tlReset);
 })();
-$("mtreload").addEventListener("click",()=>{loadMaint();loadSys();loadCodex();});
-$("memreload").addEventListener("click",()=>{loadMem();});
-$("cxload").addEventListener("click",loadCxList);
+// 每张卡片自己的刷新按钮都删了:顶栏的刷新会把这一屏的全部读取再跑一遍,同一屏摆两个一样的图标只会让人猜哪个更全。
+// 只留会话库的「重新扫描」:它只扫所选的那个库,比整页刷新便宜得多。扫描期间灰着,免得被连点。
+$("cxload").addEventListener("click",async()=>{
+  const button=$("cxload");setDisabled(button,"正在扫描所选的会话库");
+  try{ await loadCxList(); }finally{ setDisabled(button,""); }
+});
 // 换库要重扫,换排序不用:排序是纯前端的事,重扫一遍几千个文件只为了换个顺序,
 // 会让这个下拉用起来像卡住了。
 $("cxwhich").addEventListener("change",loadCxList);
 $("cxsort").addEventListener("change",()=>{ if(CXL) renderCxList(); });
 $("scktog").addEventListener("click",()=>{const open=$("sckd").classList.toggle("on");setIconControl($("scktog"),open?'i-up':'i-down',open?'收起检查':'展开检查');});
-$("rpreload").addEventListener("click",loadRepos);
 // 过滤只改看得见什么,不重新扫描 —— 扫一遍所有仓要一秒多,而每敲一个字符重扫一次
 // 既慢又会让选中的那个仓在脚下换位置。
 $("rpq").addEventListener("input", renderRepoList);
@@ -279,10 +286,8 @@ $("rplist").addEventListener("keydown", e=>{
   e.preventDefault();
   RP_SEL = row.dataset.rp; renderRepoList();
 });
-$("cvreload").addEventListener("click",loadConvos);
 
 // ── 调用屏的挂点 ──
-$("lcreload").addEventListener("click", loadLLM);
 $("lcsave").addEventListener("click", lcSave);
 $("lcreset").addEventListener("click", ()=>{ LCDRAFT = null; renderChain(); });
 $("lmprov").addEventListener("change", e=>{ LMQ.provider = e.target.value; LMQ.offset = 0; loadCalls(); });
@@ -330,9 +335,16 @@ $("sidetoggle").addEventListener("click",()=>{
 });
 try{ if(localStorage.getItem("tc.narrow")==="1") $("sidetoggle").click(); }catch(e){}
 ConsoleTheme.apply();
-$('theme-select').addEventListener('change',event=>ConsoleTheme.set(event.target.value));
+// 「⋯」菜单里的外观三选一。菜单留着不关,换完能直接看到效果再决定;点别处或 Esc 收起。
+$('theme-select').addEventListener('click',event=>{
+  const choice=event.target.closest('[data-theme-choice]');
+  if(choice) ConsoleTheme.set(choice.dataset.themeChoice);
+});
 $('page-refresh').addEventListener('click',refreshPage);
-$('page-export').addEventListener('click',exportPage);
+$('page-export').addEventListener('click',()=>{
+  try{ $('page-menu').hidePopover(); }catch(error){}
+  exportPage();
+});
 $('review-search').addEventListener('input',event=>{REVIEW_QUERY=event.target.value;renderTodo();});
 startConvos();
 if(typeof startConversationActions==='function') startConversationActions();
@@ -353,10 +365,13 @@ startWorkActions();
 if(typeof startIntegrations==='function') startIntegrations();
 if(typeof startConvoChain==='function') startConvoChain();
 showView(location.hash.slice(1) || VIEWS[0], false);
+// 徽章要在人点进各分区之前就有数:当前这一屏读完后,把徽章还没读过的来源补读一遍。
+loadPageOnce(CURVIEW).then(prefetchBadgeSources);
+// 「N 分钟前刷新」要跟着时间走,半分钟重写一次就够。
+setInterval(renderRefreshAge,30000);
 $("tlin").addEventListener("click",()=>tlZoom(0.7,0.5));
 $("tlout").addEventListener("click",()=>tlZoom(1.4,0.5));
 $("tlreset").addEventListener("click",tlReset);
-$("refresh").addEventListener("click",load);
 function syncHygBtn(){
   const b=$("hygtog"); if(!b) return;
   setIconControl(b,'i-tools',HYG_OPEN?'收起保障配置':'保障配置');
@@ -396,7 +411,6 @@ $('pipeline-verdict').addEventListener('change',renderPipelines);
 $("q").addEventListener("input",()=>{ if(DATA) render(); });
 ["cat","only","hideoff","task-verdict"].forEach(id=>$(id).addEventListener("change",()=>{ if(DATA) render(); }));
 
-$("pipeline-refresh").addEventListener("click",loadComponents);
 $("review-filter").addEventListener("change",event=>{REVIEW_FILTER=event.target.value;renderTodo();});
 
 document.addEventListener("click",pipelineClick);

@@ -91,8 +91,11 @@ function api(p,o){
   if(!options.signal && API_PENDING.has(key)) return API_PENDING.get(key);
   if(!read && !inspect) API_READ_EPOCH++;
   const sequence=++API_SEQUENCE;
-  const record=state=>{if(read && (API_READS.get(p)?.sequence || 0)<=sequence)
-    API_READS.set(p,{path:p,sequence,observedAt:new Date().toISOString(),...state});};
+  // 侧栏徽章靠这份记录分辨「还在读」和「读不到」,所以每记一次就告诉它(navigation.js 的 noteRead)。
+  const record=state=>{if(read && (API_READS.get(p)?.sequence || 0)<=sequence){
+    API_READS.set(p,{path:p,sequence,observedAt:new Date().toISOString(),...state});
+    if(typeof noteRead==='function') noteRead(p,state);
+  }};
   record({pending:true});
   const operation=!read && !inspect && typeof ConsoleActions!=='undefined' ? ConsoleActions.begin?.(p,options) : null;
   const controller=!options.signal && typeof AbortController!=='undefined' ? new AbortController() : null;

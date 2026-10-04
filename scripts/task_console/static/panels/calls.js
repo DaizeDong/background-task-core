@@ -40,19 +40,18 @@ function renderLLM(){
   renderChain(); renderWins(); renderRungs(); renderRuns(); llmBadge();
 }
 
-// 侧栏徽章。这一屏平时不需要人盯着,所以徽章要只在**有事**的时候亮,
+// 侧栏徽章(工作记录)和「模型调用」标签上的那一枚。这一屏平时不需要人盯着,所以徽章只在**有事**的时候亮,
 // 而「有事」在这里有两种,数的是同一个徽章但理由不同:
-//   近 7 日里有整链失败(四级全挂,那次调用没有答案);
-//   或者链的顺序被一个看不见的环境变量压着,页面上的设置不作数。
-// 第二种不加进计数而是单独把徽章标红:它不是「几件事」,是「这一屏在骗你」。
+//   近 7 日里有整链失败(四级全挂,那次调用没有答案):失败是红的,数字就是失败次数;
+//   或者链的顺序被一个看不见的环境变量压着,页面上的设置不作数:它不是「几件事」,
+//   是「这一屏在骗你」,至少亮成 1 并写进说明。
+// 以前这里把徽章的字改写成「7日」,数字反而看不见了;时间范围改写在说明里。
 function llmBadge(){
   const w = (LLM.windows || [])[1] || {};
   const c = LLM.chain || {};
-  const bad = (LLM.ledger || {}).malformed || 0;
   const n = (w.failed || 0); // Undated/cumulative parse errors belong in ledger diagnostics.
-  setBadge("llm", c.shadowed_by_env ? Math.max(n, 1) : n, true);
-  const badge=$("bg-llm");
-  if(badge){badge.textContent="7日";badge.title=`近 7 日失败 ${n} 次${c.shadowed_by_env ? "；路由被环境覆盖" : ""}`;badge.setAttribute("aria-label",badge.title);}
+  setBadge("llm", c.shadowed_by_env ? Math.max(n, 1) : n, false,
+    `模型调用：近 7 日整链失败 ${n} 次${c.shadowed_by_env ? "；调用顺序被环境变量覆盖，页面上的设置不生效" : ""}`);
 }
 
 // ── 链顺序 ──

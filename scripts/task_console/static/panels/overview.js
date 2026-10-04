@@ -1,24 +1,10 @@
 // Classic script module; loaded in app.js dependency order.
-// 侧栏徽章。这是「合并」这件事的安全带:分区把东西收了起来,徽章负责让要人管的东西
-// 不用点进去也看得见。少了它,合并就是纯粹的藏。
-function setBadge(key, n, warn){
-  const el = $("bg-" + key);
-  if(!el) return;
-  el.textContent = n > 99 ? "99+" : String(n);
-  // 用 hidden 而不是一个 .zero 类来藏:侧栏收起时有一条规则把徽章绝对定位到图标角上,
-  // 一个「宽高为零但仍在文档流里」的徽章会在那里留下一个看不见的偏移。
-  el.hidden = !n;
-  el.className = "badge ms-auto " + (warn ? "bg-warning" : "bg-danger");
-  // 一个只有数字的红块说不出自己是什么。加可读名字之后它才是「这一区有 N 项要人管」,
-  // 而不是「这里有个红色的东西」。
-  el.title = `${n} 项技术问题，点击查看`;
-  el.setAttribute("aria-label", el.title);
-}
-
+// 侧栏和标签上的徽章由 navigation.js 的 setBadge() 画;这里只负责算数,
+// 每个数都取自那一屏自己的判定,不另立一套。
 function updateBadges(){
   renderTiles();
   const todoN = renderTodo();
-  // 概览徽章 = **这一屏上那张清单的条数** + 自检读不到的来源。
+  // 诊断徽章 = **这一屏上那张清单的条数**,也就是不筛选时「技术问题」里的行数。
   //
   // ⚠ 它以前是自己另算一套(产物新鲜度 attention + 自检 broken),而清单收的是
   // 任务 bad + 产物 attention + 仓库 attention + 磁盘 + 记忆索引 ——
@@ -26,23 +12,27 @@ function updateBadges(){
   // 于是侧栏写着 3、点进去列着 7,**同一件事的两个数,而没有任何一处对账**。
   // 现在徽章直接用清单算出来的条数:清单是这一屏唯一在回答「有哪些事」的东西,
   // 徽章只是它的一个投影。**同一个事实只留一个来源,比让两个来源互相解释便宜得多。**
-  // 自检单独加,是因为它是「这张清单本身可不可信」那一层,不在清单里。
-  let ov = todoN;
-  if(SCK && !SCK.ok) ov += (SCK.broken || []).length || 1;
-  setBadge("diagnostics", ov, false);
+  // 自检读不到的来源是「这张清单本身可不可信」那一层,不在清单里,所以不加进数字(加了就对不上行数),
+  // 而是写进徽章的说明并把它标红。
+  const sckBroken = SCK && !SCK.ok ? ((SCK.broken || []).length || 1) : 0;
+  setBadge("diagnostics", todoN, !(REVIEW_TOTALS.bad || sckBroken),
+    `技术问题：${todoN} 个对象要处理` + (sckBroken ? `；另有 ${sckBroken} 个数据来源读不到，清单可能不全` : ""));
   if(typeof renderPlatformSignals === "function") { renderPlatformSignals(); renderAutomations(); }
 
   if(typeof DATA !== "undefined" && DATA && DATA.summary)
-    setBadge("tasks", DATA.summary.bad || 0, false);
+    setBadge("tasks", DATA.summary.bad || 0, false, `运行详情：${DATA.summary.bad || 0} 个任务上次运行失败`);
 
-  if(REPOS && REPOS.available && REPOS.summary)
-    setBadge("repos", REPOS.summary.attention || 0, false);
+  if(REPOS && REPOS.available && REPOS.summary){
+    // 有改动、没推送是要人处理但还没坏,琥珀色;扫不动的仓才是红的。
+    const attention = REPOS.summary.attention || 0, broken = (REPOS.summary.counts || {}).error || 0;
+    setBadge("repos", attention, !broken, `代码仓库：${attention} 个有未提交、未推送的改动或读不出来`);
+  }
 
-  // 存储:磁盘吃紧或记忆索引逼近硬上限。两者都是「还没坏但快了」,所以用警告色而不是红色。
-  let st = 0, stWarn = true;
-  if(SYS && SYS.disk && SYS.disk.verdict && SYS.disk.verdict.attention) st += 1;
-  if(MEM && MEM.available && MEM.verdict && MEM.verdict.attention) st += 1;
-  setBadge("storage", st, stWarn);
+  // 存储:磁盘吃紧或记忆索引逼近硬上限。还没坏但快了是琥珀色;判成坏的(比如磁盘已满)才是红的。
+  let st = 0, stBad = false;
+  if(SYS && SYS.disk && SYS.disk.verdict && SYS.disk.verdict.attention){ st += 1; stBad = stBad || toneOf(SYS.disk.verdict) === "bad"; }
+  if(MEM && MEM.available && MEM.verdict && MEM.verdict.attention){ st += 1; stBad = stBad || toneOf(MEM.verdict) === "bad"; }
+  setBadge("storage", st, !stBad, `存储清理：${st} 项接近上限（磁盘、记忆索引）`);
 }
 
 function tile(view, key, val, sub, cls, pct, pctWhat){

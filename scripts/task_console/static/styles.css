@@ -724,13 +724,23 @@ body{font-size:var(--fs-body)}
 }
 #side .navbar-brand{font-size:var(--fs-lead);padding:6px 4px 4px;font-weight:600;margin-inline:0}
 #side .nav-link{padding:4px 8px 4px 10px;font-size:var(--fs-body);border-radius:3px}
-#side .nav-link-icon{width:15px;text-align:center;opacity:.85;margin-right:6px}
+/* 图标取自页内 sprite,18px、不打折扣:侧栏折叠成窄条时它们是唯一的线索,以前 8px 的 Unicode 字形认不出来。 */
+#side .nav-link-icon{width:18px;height:18px;display:inline-flex;align-items:center;justify-content:center;margin-right:8px;flex:none}
+#side .nav-link-icon .ic{width:18px;height:18px;vertical-align:0}
 /* 徽章原来贴在每一项的上沿,看起来像浮在两行之间的红块,而不是那一项的属性。
    min-width 让一位数和两位数不再是两种宽度 —— 现在 6 那个明显窄一圈,
    读起来像另一种东西。 */
 #side .nav-link{display:flex;align-items:center}
-#side .nav-link .badge{font-size:var(--fs-chip);padding:1px 5px;align-self:center;
-  line-height:1.45;min-width:20px;text-align:center}
+#side .nav-link .nav-badge{margin-left:auto}
+/* 侧栏和标签共用的徽章。红是失败、琥珀是警告,都是实心;第一次读取还没回来是一个淡色的「…」,
+   读不到是虚线框里的「?」:四种样子不靠颜色也分得开。 */
+.nav-badge{display:inline-flex;align-items:center;justify-content:center;min-width:20px;min-height:18px;padding:0 5px;
+  border:1px solid transparent;border-radius:9px;font:600 var(--fs-chip)/1 var(--mono);font-variant-numeric:tabular-nums;flex:none}
+.nav-badge[hidden]{display:none}
+.nav-badge.bad{background:var(--bad);color:var(--panel)}
+.nav-badge.warn{background:var(--warn);color:var(--panel)}
+.nav-badge.pending{color:var(--faint);border-color:var(--line);font-weight:400}
+.nav-badge.broken{color:var(--bad);border:1px dashed var(--bad);background:transparent}
 /* 这些小按钮一度是单字符图标,同一个 ⏸ 在三处分别表示归档移出、禁用、归档进冷层,
    而它长得像暂停,三个含义一个都不是;于是全部换成了文字。
    现在换回图标,但换的是**另一件东西**:一个含义一个图形,取自页内的 SVG sprite,
@@ -763,7 +773,7 @@ button.icon-only.go:not(:disabled):hover{background:var(--cyan);color:#fff}
 /* 徽章是「合并」这件事的安全带:分区把东西收了起来,徽章负责让要人管的东西不用点进去
    也看得见。所以折叠时它不能跟着藏,而是贴到图标角上 : 折叠恰恰是最需要它的时候。 */
 #side.navbar-folded .nav-link{position:relative}
-#side.navbar-folded .nav-link .badge{position:absolute;top:1px;right:3px;font-size:var(--fs-chip);
+#side.navbar-folded .nav-link .nav-badge{position:absolute;top:1px;right:1px;min-width:16px;min-height:15px;
   padding:0 3px;margin:0!important}
 #side.navbar-folded #sidetoggle{padding:2px 0;font-size:var(--fs-meta)}
 /* 低于 navbar-expand-sm 的断点(576px)时,Tabler 把 navbar-vertical 变成页面顶部一条
@@ -790,7 +800,6 @@ button.icon-only.go:not(:disabled):hover{background:var(--cyan);color:#fff}
 #bar b{font-variant-numeric:tabular-nums}
 #bar b.bad{color:var(--bad)} #bar b.warn{color:var(--warn)}
 #bar b.zero{color:var(--faint);font-weight:400}
-#bar #s-src{opacity:.75}
 
 .page-body{margin-top:0;padding:7px 0 18px}
 /* Workspace width is fluid. Individual panels manage their own content columns. */

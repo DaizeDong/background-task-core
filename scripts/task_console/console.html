@@ -61,6 +61,13 @@
 <symbol id="i-memory" viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="14" rx="2"/><path d="M9 9h6v6H9zM9 2v3m6-3v3M9 19v3m6-3v3M2 9h3m-3 6h3m14-6h3m-3 6h3"/></symbol>
 <symbol id="i-branch" viewBox="0 0 24 24"><circle cx="6" cy="4" r="2"/><circle cx="6" cy="20" r="2"/><circle cx="18" cy="4" r="2"/><path d="M6 6v12M18 6c0 8-12 2-12 10"/></symbol>
 <symbol id="i-range-start" viewBox="0 0 24 24"><path d="M5 4v16m14-8H8m5-5-5 5 5 5"/></symbol>
+<!-- 侧栏五个分区的图标:折叠成窄条时它们是唯一的线索,所以五个形状各不相同,而且不借用别处已有含义的图形
+     (以前诊断用的「⋯」读起来像「更多」)。 -->
+<symbol id="i-nav-home" viewBox="0 0 24 24"><path d="M3 11 12 4l9 7"/><path d="M5 10v10h5v-6h4v6h5V10"/></symbol>
+<symbol id="i-nav-work" viewBox="0 0 24 24"><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 3h6v3H9zM9 11h6M9 15h6M9 19h3"/></symbol>
+<symbol id="i-nav-auto" viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.3-5.7"/><path d="M20 4v5h-5"/><path d="M12 8v4l3 2"/></symbol>
+<symbol id="i-nav-stack" viewBox="0 0 24 24"><ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v6c0 1.7 3.6 3 8 3s8-1.3 8-3V6M4 12v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/></symbol>
+<symbol id="i-nav-pulse" viewBox="0 0 24 24"><path d="M3 12h4l3-7 4 14 3-7h4"/></symbol>
 <symbol id="i-range-end" viewBox="0 0 24 24"><path d="M19 4v16M5 12h11m-5-5 5 5-5 5"/></symbol>
 </defs></svg>
 
@@ -75,11 +82,12 @@
     </h1>
     <div class="navbar-collapse collapse show" id="sidenav">
       <ul class="navbar-nav pt-2" aria-label="主导航">
-<li class="nav-item"><a class="nav-link nv" data-view="overview" href="#overview"><span class="nav-link-icon">◎</span><span class="nav-link-title">工作台</span></a></li>
-<li class="nav-item"><a class="nav-link nv" data-view="work" href="#work"><span class="nav-link-icon">▤</span><span class="nav-link-title">工作记录</span></a></li>
-<li class="nav-item"><a class="nav-link nv" data-view="automations" href="#automations"><span class="nav-link-icon">⇄</span><span class="nav-link-title">自动化</span></a></li>
-<li class="nav-item"><a class="nav-link nv" data-view="resources" href="#resources"><span class="nav-link-icon">▢</span><span class="nav-link-title">资源</span></a></li>
-<li class="nav-item"><a class="nav-link nv" data-view="diagnostics" href="#diagnostics"><span class="nav-link-icon">⋯</span><span class="nav-link-title">诊断</span></a></li>
+<!-- 徽章 bg-<分区> 由 navigation.js 的 renderBadges() 写:第一次读取没回来时「…」,读不到时「?」,零就藏起来。 -->
+<li class="nav-item"><a class="nav-link nv" data-view="overview" href="#overview"><span class="nav-link-icon"><svg class="ic" aria-hidden="true"><use href="#i-nav-home"/></svg></span><span class="nav-link-title">工作台</span></a></li>
+<li class="nav-item"><a class="nav-link nv" data-view="work" href="#work"><span class="nav-link-icon"><svg class="ic" aria-hidden="true"><use href="#i-nav-work"/></svg></span><span class="nav-link-title">工作记录</span><span class="nav-badge pending" id="bg-work">…</span></a></li>
+<li class="nav-item"><a class="nav-link nv" data-view="automations" href="#automations"><span class="nav-link-icon"><svg class="ic" aria-hidden="true"><use href="#i-nav-auto"/></svg></span><span class="nav-link-title">自动化</span><span class="nav-badge pending" id="bg-automations">…</span></a></li>
+<li class="nav-item"><a class="nav-link nv" data-view="resources" href="#resources"><span class="nav-link-icon"><svg class="ic" aria-hidden="true"><use href="#i-nav-stack"/></svg></span><span class="nav-link-title">资源</span><span class="nav-badge pending" id="bg-resources">…</span></a></li>
+<li class="nav-item"><a class="nav-link nv" data-view="diagnostics" href="#diagnostics"><span class="nav-link-icon"><svg class="ic" aria-hidden="true"><use href="#i-nav-pulse"/></svg></span><span class="nav-link-title">诊断</span><span class="nav-badge pending" id="bg-diagnostics">…</span></a></li>
       </ul>
       <div class="mt-auto pb-2 px-3">
         <button class="icon-only btn btn-sm" id="sidetoggle" title="收起侧栏"><svg class="ic" aria-hidden="true"><use href="#i-sidebar"/></svg><span class="control-label">收起侧栏</span></button>
@@ -93,10 +101,17 @@
 
 <header class="navbar sticky-top" id="bar"><div class="container-fluid">
   <div class="view-heading"><h1 id="view-title">工作台</h1></div>
+  <!-- 顶栏只留两个控件:刷新(把这一屏的全部读取再跑一遍)和「⋯」。导出和外观不常用,收进菜单,不跟刷新抢位置。
+       窄屏时 .page-tools 挪进最上面的品牌行,省出一整行。 -->
   <div class="page-actions"><span id="console-mode" class="mode-badge" hidden></span>
     <span id="page-refresh-state" class="faint" role="status"></span>
-    <button class="icon-only" id="page-refresh" title="刷新"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg><span class="control-label">刷新</span></button><button class="icon-only" id="page-export" title="下载当前已加载的数据（JSON）；调用记录仅含当前页"><svg class="ic" aria-hidden="true"><use href="#i-fetch"/></svg><span class="control-label">导出数据</span></button>
-    <select id="theme-select" aria-label="外观"><option value="system">跟随系统</option><option value="light">浅色</option><option value="dark">深色</option></select>
+    <span class="page-tools"><button type="button" class="icon-only" id="page-refresh" title="刷新这一页"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg><span class="control-label">刷新</span></button><button type="button" class="icon-only" id="page-more" popovertarget="page-menu" title="更多：导出数据、外观"><svg class="ic" aria-hidden="true"><use href="#i-more"/></svg><span class="control-label">更多</span></button></span>
+    <div class="pop-menu page-menu" id="page-menu" popover aria-label="更多">
+      <button type="button" class="menu-item" id="page-export" title="下载当前已加载的数据（JSON）；调用记录仅含当前页"><svg class="ic" aria-hidden="true"><use href="#i-fetch"/></svg><span>导出数据（JSON）</span></button>
+      <div class="menu-sep"></div>
+      <div class="menu-facts" id="theme-label">外观</div>
+      <div id="theme-select" role="group" aria-labelledby="theme-label"><button type="button" class="menu-item" data-theme-choice="system" aria-pressed="false">跟随系统</button><button type="button" class="menu-item" data-theme-choice="light" aria-pressed="false">浅色</button><button type="button" class="menu-item" data-theme-choice="dark" aria-pressed="false">深色</button></div>
+    </div>
   </div>
 </div></header>
 <!-- 最近操作:全部结束 5 秒后收成一行(失败的不收),✕ 藏到下一次操作开始。 -->
@@ -205,7 +220,7 @@
         <select id="cxsort" aria-label="排序">
           <option value="size">按大小</option><option value="old">最旧在前</option>
           <option value="new">最新在前</option></select>
-        <button class="icon-only mini" id="cxload" title="刷新"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg><span class="control-label">刷新</span></button>
+        <button type="button" class="mini" id="cxload" title="只重新扫描所选的会话库，不重读页面上的其他内容">重新扫描</button>
       </div></div>
     <p id="cxstate" class="cx-state" role="status" hidden></p>
     <div class="pad" id="cxbody"><div class="mt-note">正在读取会话存储</div></div>
@@ -244,7 +259,7 @@
     <input id="pipeline-task-search" type="search" placeholder="搜索标题、用途、建议或任务名" aria-label="搜索同步与备份任务">
     <select id="pipeline-verdict" aria-label="按建议筛选同步与备份"><option value="">全部建议</option></select>
     <button class="icon-only" data-reset-filters="pipelines" title="清除筛选"><svg class="ic" aria-hidden="true"><use href="#i-filter-clear"/></svg><span class="control-label">清除筛选</span></button>
-    <span id="pipeline-sample" class="faint"></span><span class="repair-read-state" data-repair-read></span><button class="icon-only" id="pipeline-refresh" title="刷新记录"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg><span class="control-label">刷新记录</span></button>
+    <span id="pipeline-sample" class="faint"></span><span class="repair-read-state" data-repair-read></span>
   </div>
   <div id="pipeline-body">正在读取运行记录</div>
 
@@ -262,7 +277,7 @@
     <button type="button" class="btn btn-sm dropdown-toggle" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false">显示列</button>
     <div class="dropdown-menu" id="task-column-options"></div>
   </div>
-  <button class="icon-only" id="refresh" title="刷新任务"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg><span class="control-label">刷新任务</span></button><button class="icon-only" data-reset-filters="tasks" title="清除筛选"><svg class="ic" aria-hidden="true"><use href="#i-filter-clear"/></svg><span class="control-label">清除筛选</span></button>
+  <button class="icon-only" data-reset-filters="tasks" title="清除筛选"><svg class="ic" aria-hidden="true"><use href="#i-filter-clear"/></svg><span class="control-label">清除筛选</span></button>
   <span class="faint" id="cnt"></span><span class="repair-read-state" data-repair-read></span>
 </div>
 <div class="card" id="dtbox">
@@ -299,7 +314,7 @@
   </section>
   <section id="repos" data-view="repos" data-label="仓库" hidden>
 <div class="card" id="rpbox">
-    <div class="card-header"><h3 class="card-title">仓库<span class="n" id="rpnote">读取中</span></h3><div class="card-actions"><button class="icon-only" id="rpreload" title="重新扫描仓库"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg><span class="control-label">刷新</span></button></div></div>
+    <div class="card-header"><h3 class="card-title">仓库<span class="n" id="rpnote">读取中</span></h3></div>
     <div class="pad">
       <div class="rp-head" id="rphead"></div>
       <div class="rp-filters">
@@ -331,9 +346,7 @@
   <section id="resources" data-view="resources" data-label="能力与配置" hidden>
 <div class="card catalog-card"><div class="card-header"><h2 class="card-title">资源目录</h2><div class="card-actions" aria-label="资源管理快捷入口"><button class="icon-only" data-goto="#mt-skills" title="技能管理"><svg class="ic" aria-hidden="true"><use href="#i-tools"/></svg><span class="control-label">技能管理</span></button><button class="icon-only" data-goto="#mt-plugins" title="插件管理"><svg class="ic" aria-hidden="true"><use href="#i-puzzle"/></svg><span class="control-label">插件管理</span></button><button class="icon-only" data-goto="#membox" title="记忆管理"><svg class="ic" aria-hidden="true"><use href="#i-memory"/></svg><span class="control-label">记忆管理</span></button></div></div><div class="pad" id="mt-catalog">正在读取技能和插件</div></div>
   <div class="module-section"><div class="card" id="membox">
-    <div class="card-header"><h3 class="card-title">Claude 记忆与索引<span class="n" id="memnote">读取中</span></h3>
-      <div class="card-actions"><button class="icon-only" id="memreload" title="重新读取记忆池"
-        aria-label="重新读取记忆池"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg></button></div></div>
+    <div class="card-header"><h3 class="card-title">Claude 记忆与索引<span class="n" id="memnote">读取中</span></h3></div>
     <div class="pad" id="mt-memory"></div>
   </div></div>
 <div class="card" id="mtbox">
@@ -341,7 +354,7 @@
   <div class="catalog-tools runtime-tools">
     <input type="search" id="runtime-search" aria-label="搜索技能和插件" placeholder="搜索技能 / 插件">
     <select id="runtime-state" aria-label="技能和插件状态"><option value="">全部状态</option><option value="active">启用中</option><option value="inactive">归档 / 停用</option></select>
-    <select id="runtime-sort" aria-label="技能排序"><option value="name">按名称</option><option value="budget">按描述大小</option></select><button class="icon-only" data-reset-filters="runtime" title="清除筛选"><svg class="ic" aria-hidden="true"><use href="#i-filter-clear"/></svg><span class="control-label">清除筛选</span></button><button class="mini ib" id="mtreload" title="重新读取" aria-label="重新读取"><svg class="ic"><use href="#i-refresh"/></svg></button>
+    <select id="runtime-sort" aria-label="技能排序"><option value="name">按名称</option><option value="budget">按描述大小</option></select><button class="icon-only" data-reset-filters="runtime" title="清除筛选"><svg class="ic" aria-hidden="true"><use href="#i-filter-clear"/></svg><span class="control-label">清除筛选</span></button>
   </div></div><div class="mt-grid">
       <div class="runtime-section"><h3>Claude 技能</h3><div class="mt-col" id="mt-skills"></div></div>
       <div class="runtime-section"><h3>Claude 插件</h3><div class="mt-col" id="mt-plugins"></div></div>
@@ -350,7 +363,7 @@
   </section>
   <section id="convos" data-view="convos" data-label="会话记录" hidden>
 <div class="card" id="cvbox">
-    <div class="card-header"><h3 class="card-title">会话<span class="n" id="cvnote">读取中</span></h3><div class="card-actions"><button class="icon-only" id="cvreload" title="重新扫描会话"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg><span class="control-label">刷新</span></button></div></div>
+    <div class="card-header"><h3 class="card-title">会话<span class="n" id="cvnote">读取中</span></h3></div>
     <div class="pad">
       <div class="catalog-tools"><input id="cv-search" type="search" aria-label="搜索全部会话" placeholder="搜索会话名称、内容或项目"><button class="icon-only" data-reset-filters="convos" title="清除筛选"><svg class="ic" aria-hidden="true"><use href="#i-filter-clear"/></svg><span class="control-label">清除筛选</span></button></div>
       <div class="cv-head" id="cvhead"></div>
@@ -364,9 +377,10 @@
   <!-- 对话链:会话列表的下钻,不是一个新分区。由可选面板 panels/convchain.js 渲染;
        容器写在静态 HTML 里,那个模块载入失败时 app.js 才有地方写「加载失败」。
        放在 #cvgroups 外面,于是会话列表重扫重画时它不会被一起冲掉。 -->
+  <!-- 返回列表是标题左边一条带字的面包屑「‹ 会话列表 / 会话名」,不是右上角一个光秃秃的「<」:
+       往回走的入口按习惯在左边、挨着标题。它、Esc 和浏览器后退走的是同一个 chClose()。 -->
   <div class="card" id="chbox" hidden>
-    <div class="card-header"><h3 class="card-title">会话内容<span class="n" id="chnote"></span></h3>
-      <div class="card-actions"><button class="icon-only mini" id="chclose" title="返回会话列表" aria-label="返回会话列表"><svg class="ic" aria-hidden="true"><use href="#i-left"/></svg><span class="control-label">返回列表</span></button></div></div>
+    <div class="card-header"><nav class="ch-back" aria-label="位置"><button type="button" class="ch-back-link" id="chclose" title="返回会话列表"><svg class="ic" aria-hidden="true"><use href="#i-left"/></svg>会话列表</button><span class="ch-back-sep" aria-hidden="true">/</span><h3 class="card-title" id="chtitle">会话内容</h3><span class="n" id="chnote"></span></nav></div>
     <div class="pad">
       <div class="ch-crumb" id="chcrumb"></div>
       <div class="ch-head" id="chhead"></div>
@@ -404,8 +418,7 @@
   <section id="llm" data-view="llm" data-label="模型调用" hidden>
   <div class="llm-summary">
   <div class="module-section"><div class="card" id="lchain">
-    <div class="card-header"><h3 class="card-title">调用顺序<span class="n" id="lcnote">读取中</span></h3>
-      <div class="card-actions"><button class="icon-only" id="lcreload" title="重新读取模型调用记录"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg><span class="control-label">刷新</span></button></div></div>
+    <div class="card-header"><h3 class="card-title">调用顺序<span class="n" id="lcnote">读取中</span></h3></div>
     <div class="pad">
       <div id="lcwarn"></div>
       <div id="lcdrift"></div>

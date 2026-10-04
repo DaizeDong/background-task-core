@@ -58,26 +58,46 @@ const PAGE_READS={
   convos:[loadConvos,()=>typeof reloadConvoChain==='function'?reloadConvoChain():undefined],llm:[loadLLM]
 };
 const PAGE_INITIAL_READS=new Map();
+// 每一屏上次读完的时刻,和上次刷新时读失败的那句话。刷新按钮旁边据此写「刚刚刷新」「N 分钟前刷新」:
+// 光写「读取完成」的话,过了半小时它还这么写,人分不出眼前的数是新是旧。
+const PAGE_READ_AT=new Map(), PAGE_READ_FAILED=new Map();
+let PAGE_REFRESHING_VIEW=null;
 function loadPageOnce(view){
   if(!PAGE_INITIAL_READS.has(view)){
-    PAGE_INITIAL_READS.set(view,Promise.allSettled((PAGE_READS[view]||[]).map(load=>load())));
+    PAGE_INITIAL_READS.set(view,Promise.allSettled((PAGE_READS[view]||[]).map(load=>load())).then(results=>{
+      if(!PAGE_READ_AT.has(view)) PAGE_READ_AT.set(view,Date.now());
+      renderRefreshAge();
+      return results;
+    }));
   }
   return PAGE_INITIAL_READS.get(view);
+}
+function renderRefreshAge(){
+  const note=$('page-refresh-state');if(!note) return;
+  const at=PAGE_READ_AT.get(CURVIEW), failed=PAGE_READ_FAILED.get(CURVIEW);
+  const reading=PAGE_REFRESHING_VIEW===CURVIEW || !at && PAGE_INITIAL_READS.has(CURVIEW);
+  note.textContent=reading?'读取中':failed || (at?fmtTime(at)+'刷新':'');
+  note.title=at?'这一屏上次读完：'+fullTime(at):'';
+  if(note.dataset) note.dataset.tone=!reading && failed?'bad':'';
 }
 async function refreshPage(){
   if(PAGE_REFRESHING) return;
   PAGE_REFRESHING=true;
-  const view=CURVIEW, button=$('page-refresh'), note=$('page-refresh-state');
+  const view=CURVIEW, button=$('page-refresh');
   const before=API_SEQUENCE;
-  button.disabled=true; note.textContent='读取中';
+  // 读的这段时间按钮灰着、图标转着:扫仓库、扫会话要十几秒,一个看不出在忙的按钮会被连点。
+  PAGE_REFRESHING_VIEW=view;setDisabled(button,'正在读取这一页，读完后可再刷新');button.classList?.add('spinning');renderRefreshAge();
   try{
     const results=await Promise.allSettled(PAGE_READS[view].map(load=>load()));
     const failed=[...API_READS.values()].filter(read=>read.sequence>before && read.error);
     const broken=failed.length+results.filter(result=>result.status==='rejected').length;
-    const text=broken ? `${broken} 项读取失败或不可用` : '读取完成';
-    if(CURVIEW===view) note.textContent=text;
+    const text=broken ? `${broken} 项读取失败或不可用` : '';
+    PAGE_READ_AT.set(view,Date.now());PAGE_READ_FAILED.set(view,text);
     if(broken) toast(text,'bad');
-  }finally{PAGE_REFRESHING=false;button.disabled=false;}
+  }finally{
+    PAGE_REFRESHING=false;PAGE_REFRESHING_VIEW=null;
+    setDisabled(button,'');button.classList?.remove('spinning');renderRefreshAge();
+  }
 }
 function pageSnapshot(view){
   const value=id=>$(id)?.value || '';

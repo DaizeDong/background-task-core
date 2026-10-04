@@ -15,6 +15,9 @@ let CH_POS={}, CH_ORDER=[], CH_TR=[], CH_FKS={}, CH_AGTURN={}, CH_SUBQ="";
 const CH_NODE=new Map();
 let CH_SEQ=0, CH_NSEQ=0, CH_NT=null, CH_ROUTING=false;
 let CH_LIST_SCROLL=0, CH_LIST_FOCUS=null, CH_MOREOPEN=false;
+// 从列表打开的是哪一条会话。关掉链回到列表时焦点要落回那一行的「打开」按钮;
+// 列表在这期间重画过的话,原来那个按钮已经不在了,就按这个 id 找新画出来的那一个。
+let CH_LIST_ID=null;
 const CH_UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const CH_AGENT=/^[A-Za-z0-9_-]{1,80}$/;
 // 字形、类名、可读名。类名逐字写在这里(不拼接),死 CSS 闸才找得到它们。
@@ -90,7 +93,7 @@ async function openConvoChain(id, opts){
     try{ showView("convos", false); }finally{ CH_ROUTING=false; }
   }
   if(!$("cvbox").hidden){
-    CH_LIST_SCROLL=window.scrollY;CH_LIST_FOCUS=document.activeElement;
+    CH_LIST_SCROLL=window.scrollY;CH_LIST_FOCUS=document.activeElement;CH_LIST_ID=id;
     $("cvbox").hidden=true;
     if(typeof CV_OBSERVER!=='undefined') CV_OBSERVER?.disconnect();
   }
@@ -169,12 +172,26 @@ function chClose(keepHash){
   requestAnimationFrame(()=>{
     if(CH_ID || CURVIEW!=="convos") return;
     window.scrollTo({top:CH_LIST_SCROLL,behavior:'instant'});
-    if(CH_LIST_FOCUS?.isConnected) CH_LIST_FOCUS.focus({preventScroll:true});
+    const opener=CH_LIST_FOCUS?.isConnected && CH_LIST_FOCUS!==document.body ? CH_LIST_FOCUS : chListOpener(CH_LIST_ID);
+    if(opener) opener.focus({preventScroll:true});
     if(typeof cvObserve==='function') cvObserve();
   });
   if(!keepHash && location.hash.slice(1).indexOf("convos/")===0){
     try{ history.replaceState(null, "", "#convos"); }catch(e){}
   }
+}
+
+function chListOpener(id){
+  if(!id || typeof CSS==='undefined') return null;
+  return $("cvgroups")?.querySelector?.(`[data-cvopen="${CSS.escape(id)}"]`) || null;
+}
+// 卡片标题就是会话名,接在面包屑「会话列表 /」后面。链还没读回来时先用列表里的名字,
+// 列表里也没有(从地址直接打开)就写会话 id 的前 8 位,不写一个笼统的「会话内容」。
+function chTitleText(){
+  if(CH && CH.title) return CH.title;
+  const row=typeof CONVOS!=='undefined' && CONVOS && Array.isArray(CONVOS.groups)
+    ? CONVOS.groups.flatMap(group=>group.shown || []).find(item=>item.id===CH_ID) : null;
+  return row?.title || (CH_ID ? "会话 "+String(CH_ID).slice(0,8) : "会话内容");
 }
 
 // 链上每个节点的位置。范围、起止、分叉菜单都按它算,所以只算一遍。
@@ -234,6 +251,8 @@ function chRender(){
 
 function chRenderHead(){
   const cr=$("chcrumb"), hd=$("chhead"), wn=$("chwarn");
+  const title=$("chtitle");
+  if(title){ title.textContent=chTitleText(); title.title=CH_ID || ""; }
   if(CH_SUB){
     cr.innerHTML=`<button class="icon-only mini" data-chact="back" title="‹ 返回主会话"><svg class="ic" aria-hidden="true"><use href="#i-left"/></svg><span class="control-label">‹ 返回主会话</span></button>`
       +`<span>${CH_PARENT && CH_PARENT.title ? esc(CH_PARENT.title)+" › " : ""}子代理 <code>${esc(CH_SUB)}</code> · 只读</span>`;
@@ -253,8 +272,7 @@ function chRenderHead(){
   const item=(icon,label,attrs,cls='')=>`<button type="button" class="menu-item${cls?' '+cls:''}" ${attrs}><svg class="ic" aria-hidden="true"><use href="#${icon}"/></svg><span>${label}</span></button>`;
   // 「更多操作与详情」是一个真菜单(popover):点别处、按 Esc 收起,浮在链上面不挤开它。
   // 删除会话收在菜单最底下、和别的项隔开,标题栏上不再常驻一个垃圾桶。
-  hd.innerHTML=`<span class="ttl">${esc(CH.title || CH.id)}</span>`
-    +`<span><b>${nT}</b> 轮</span>`
+  hd.innerHTML=`<span><b>${nT}</b> 轮</span>`
     +(CH.leafIsDefault ? "" : `<span class="alt">正在看一条非默认分支</span><button class="icon-only mini" data-chact="latest" title="回到最新分支"><svg class="ic" aria-hidden="true"><use href="#i-branch"/></svg><span class="control-label">回到最新分支</span></button>`)
     +`<button type="button" class="mini ch-more" popovertarget="ch-more" title="更多操作与详情"><svg class="ic" aria-hidden="true"><use href="#i-more"/></svg>更多操作与详情</button>`
     +`<div class="pop-menu ch-more-menu" id="ch-more" popover aria-label="更多操作与详情">`

@@ -159,6 +159,12 @@ meet that boundary before being marked optional.
 
 Initial page reads run when the user opens that view. Explicit refresh repeats
 its reads; navigating to another view does not scan unrelated resource stores.
+The one exception is the sidebar badges: once per page load, after the opened
+view's reads settle, the badge sources that have never been read (tasks,
+repositories, system, memory and the model call ledger) are read once, so the
+badges have a number before the owner opens each section. A source that was
+read already, even unsuccessfully, is not read again; refreshing is the job of
+the refresh button.
 The script loader preloads a window of four assets while preserving sequential
 execution. Downloads overlap without allowing dependent modules to run before
 their prerequisites succeed; preload links and script tags use the same URL.

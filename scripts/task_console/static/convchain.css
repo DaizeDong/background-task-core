@@ -15,7 +15,6 @@
 .ch-crumb code{font-family:var(--mono);overflow-wrap:anywhere}
 .ch-head{display:flex;flex-wrap:wrap;gap:3px 12px;align-items:baseline;font-size:var(--fs-meta);
   color:var(--dim);margin-bottom:6px;min-width:0}
-.ch-head .ttl{font-size:var(--fs-lead);color:var(--ink);font-weight:600;min-width:0;overflow-wrap:anywhere}
 .ch-head .cwd{font-family:var(--mono);color:var(--faint);overflow-wrap:anywhere;min-width:0}
 .ch-head .alt{color:var(--amber)}
 .ch-head .bad{color:var(--bad)}
@@ -128,3 +127,12 @@
   max-height:60vh;overflow:auto}
 .ch-pre.bad{border-color:var(--bad)}
 .ch-det details>summary{cursor:pointer;color:var(--dim);margin:6px 0 2px}
+/* 面包屑「‹ 会话列表 / 会话名」占满标题行:返回在最左,会话名紧跟着,名字太长就换行,不把返回挤出去。 */
+.ch-back{display:flex;align-items:center;flex-wrap:wrap;gap:2px 6px;min-width:0;flex:1 1 auto}
+.ch-back-link{display:inline-flex;align-items:center;gap:4px;min-height:32px;padding:4px 8px 4px 4px;border:0;border-radius:4px;
+  background:transparent;color:var(--cyan);font-size:var(--fs-lead);font-weight:500;white-space:nowrap}
+.ch-back-link .ic{width:16px;height:16px}
+.ch-back-link:not(:disabled):hover{background:var(--cur);color:var(--cyan)}
+.ch-back-link:focus-visible{outline:2px solid var(--cyan);outline-offset:1px}
+.ch-back-sep{color:var(--faint)}
+#chbox .ch-back .card-title{min-width:0;overflow-wrap:anywhere;margin:0}

@@ -9,7 +9,124 @@ const VIEW_GROUPS={
 const VIEWS=Object.values(VIEW_GROUPS).flatMap(group=>Object.keys(group.views));
 let CURVIEW=null;
 const viewGroup=key=>Object.keys(VIEW_GROUPS).find(group=>key in VIEW_GROUPS[group].views) || 'overview';
-function showView(key,push){
+
+// ── 侧栏和标签上的徽章 ──
+// 徽章是「合并」这件事的安全带:分区把东西收进了标签里,徽章负责让要人管的东西不用点进去也看得见。
+// 少了它,合并就是纯粹的藏。徽章按视图记数(运行详情、代码仓库、存储清理、模型调用、技术问题),
+// 侧栏那一枚是它所在分组的合计,标签上那一枚是它自己的数。
+//
+// 一枚徽章有四种样子,对应这一页「读取中、未检查、零、读取失败」不许长得一样的规矩:
+// 第一次读取还没回来是「…」,读到零就藏起来,读不到是虚线框里的「?」,其余是数字。
+// 数字之外的三种不靠颜色区分,靠字形,所以色弱和黑白截图里也分得开。
+const BADGE_SOURCES={tasks:['/api/tasks'],repos:['/api/repos'],storage:['/api/sys','/api/mem'],llm:['/api/llmcall'],
+  diagnostics:['/api/tasks','/api/repos','/api/sys','/api/mem']};
+const BADGE_NAMES={tasks:'计划任务',repos:'代码仓库',storage:'磁盘和记忆索引',llm:'模型调用账本',diagnostics:'技术问题清单'};
+const BADGE_COUNTS={};
+// 至少读完过一次的来源(成功和失败都算)。API_READS 只留最新一条,刷新时那一条变回「读取中」,
+// 拿它判断「第一次还没回来」的话,每点一次刷新所有徽章都会闪回「…」。
+const BADGE_SETTLED=new Set();
+// failures 是红、warnings 是琥珀。title 说清这个数是什么,一个只有数字的色块说不出自己是什么。
+function setBadge(key,n,warn,title){
+  const count=Math.max(0,Number(n) || 0);
+  BADGE_COUNTS[key]={n:count,tone:warn?'warn':'bad',title:title || `${BADGE_NAMES[key] || key}：${count} 项要处理`};
+  renderBadges();
+}
+function badgeState(key){
+  const paths=BADGE_SOURCES[key] || [], name=BADGE_NAMES[key] || key;
+  const failed=paths.map(path=>API_READS.get(path)).filter(read=>read && !read.pending && read.error);
+  if(failed.length) return {state:'broken',title:`${name}读取失败：${failed.map(read=>read.error).join('；')}`};
+  const count=BADGE_COUNTS[key];
+  if(!count || paths.some(path=>!BADGE_SETTLED.has(path))) return {state:'pending',title:`正在读取${name}`};
+  return {state:'count',n:count.n,tone:count.tone,title:count.title};
+}
+// 分组合计:一个来源读不到,整组就是「?」(合计里少了一块,写个数字等于把缺口说成没事);
+// 一个还在读就是「…」。都读到了才相加,颜色按最严重的那一个。
+function groupBadge(group){
+  const states=Object.keys(VIEW_GROUPS[group]?.views || {}).filter(view=>BADGE_SOURCES[view]).map(view=>badgeState(view));
+  if(!states.length) return null;
+  const broken=states.filter(state=>state.state==='broken');
+  if(broken.length) return {state:'broken',title:broken.map(state=>state.title).join('\n')};
+  if(states.some(state=>state.state==='pending')) return {state:'pending',title:states.filter(state=>state.state==='pending').map(state=>state.title).join('\n')};
+  const live=states.filter(state=>state.n);
+  return {state:'count',n:live.reduce((sum,state)=>sum+state.n,0),tone:live.some(state=>state.tone==='bad')?'bad':'warn',
+    title:live.map(state=>state.title).join('\n') || `${VIEW_GROUPS[group].label}：没有要处理的项`};
+}
+function badgeText(badge){
+  return badge.state==='pending'?'…':badge.state==='broken'?'?':badge.n>99?'99+':String(badge.n);
+}
+function paintBadge(el,badge){
+  if(!el) return;
+  if(!badge){ el.hidden=true; return; }
+  // 用 hidden 而不是一个「零」类来藏:侧栏收起时徽章绝对定位到图标角上,
+  // 一个宽高为零但仍在文档流里的徽章会在那里留下一个看不见的偏移。
+  el.hidden=badge.state==='count' && !badge.n;
+  el.textContent=badgeText(badge);
+  el.className='nav-badge '+(badge.state==='count'?badge.tone:badge.state);
+  el.title=badge.title;
+  el.setAttribute?.('aria-label',badge.title);
+}
+function renderBadges(){
+  Object.keys(VIEW_GROUPS).forEach(group=>paintBadge($('bg-'+group),groupBadge(group)));
+  document.querySelectorAll?.('#view-tabs [data-badge-for]').forEach(el=>paintBadge(el,badgeState(el.dataset.badgeFor)));
+}
+// api() 每读完一次就告诉这里,读失败的来源不用等哪个面板重画,徽章自己变成「?」。
+function noteRead(path,state){
+  if(!Object.values(BADGE_SOURCES).some(paths=>paths.includes(path))) return;
+  if(!state.pending) BADGE_SETTLED.add(path);
+  renderBadges();
+}
+// 徽章要在人点进去之前就有数,所以当前这一屏读完以后,把各徽章还没读过的来源补读一遍。
+// 等当前屏读完再读,是为了不跟它抢:扫一遍仓库要十几秒。读过的(哪怕失败了)不再重复读,刷新归刷新按钮。
+const BADGE_LOADERS={'/api/tasks':()=>load(),'/api/repos':()=>loadRepos(),'/api/sys':()=>loadSys(),
+  '/api/mem':()=>loadMem(),'/api/llmcall':()=>loadLLM()};
+function prefetchBadgeSources(){
+  return Promise.allSettled(Object.entries(BADGE_LOADERS).filter(([path])=>!API_READS.has(path)).map(([,loader])=>loader()));
+}
+
+// ── 每个分组记住上次停在哪个标签 ──
+// 从侧栏点进一个分组,回到上次在那里看的标签,而不是每次都落回第一个。
+// 只是本机浏览器里的一点便利:存不进去(隐私窗口、禁用存储)就照旧落到分组的默认标签。
+function groupEntry(group){
+  const views=VIEW_GROUPS[group]?.views || {};
+  let saved=null;
+  try{ saved=localStorage.getItem('tc.view.'+group); }catch(error){}
+  if(saved && Object.hasOwn(views,saved)) return saved;
+  return Object.hasOwn(views,group) ? group : Object.keys(views)[0] || 'overview';
+}
+
+// ── 从哪儿来,回哪儿去 ──
+// 下钻(从一行的「查看详情」、一个指标格、一条问题跳到别的屏)会把人带离原处。这里记下来源,
+// 目的屏的标签栏里给一个「← 返回 来源」,Esc 退到最后一层时也回去一次。回去之后来源就用掉了,
+// 再按 Esc 不会接着往回走。从侧栏、标签或者直接打开地址到达的屏没有来源:
+// 不加区分地「Esc 就后退」的话,关掉对话框之后紧跟的那一下 Esc 会把人带离这一页。
+const DRILL_TARGETS='[data-task],[data-fr],[data-review-repo],[data-work-filter],[data-integration-open],[data-goto]:not([data-goto^="#"]),[data-fix="commitpush"]';
+let DRILL_FROM=null, VIEW_ORIGIN=null;
+// 点击的捕获阶段调这里:这一下要是下钻,就记下点之前在哪一屏,由紧接着的那次 showView 取走。
+function markDrill(target){
+  DRILL_FROM=target?.closest?.(DRILL_TARGETS) ? CURVIEW : null;
+  return DRILL_FROM;
+}
+function noteOrigin(key,reset){
+  const from=DRILL_FROM;DRILL_FROM=null;
+  if(reset) VIEW_ORIGIN=null;
+  else if(from && from!==key) VIEW_ORIGIN={view:from,to:key};
+  // 同一屏再进一次(地址跳转回来的 hashchange、同一屏里的下钻)保留来源;去了别的屏就作废。
+  else if(VIEW_ORIGIN && VIEW_ORIGIN.to!==key) VIEW_ORIGIN=null;
+}
+const viewLabel=key=>VIEW_GROUPS[viewGroup(key)].views[key] || key;
+function originChip(){
+  if(!VIEW_ORIGIN || VIEW_ORIGIN.to!==CURVIEW) return '';
+  return `<a class="view-origin" href="#${esc(VIEW_ORIGIN.view)}" data-origin-back title="回到刚才所在的「${esc(viewLabel(VIEW_ORIGIN.view))}」">← 返回 ${esc(viewLabel(VIEW_ORIGIN.view))}</a>`;
+}
+// Esc 的最后一层:这一屏是下钻来的,就回来源一次,并把来源用掉。
+function returnToOrigin(){
+  if(!VIEW_ORIGIN || VIEW_ORIGIN.to!==CURVIEW) return false;
+  const origin=VIEW_ORIGIN.view;VIEW_ORIGIN=null;
+  showView(origin,true,{reset:true});
+  return true;
+}
+
+function showView(key,push,options){
   // 会话屏有一级下钻:#convos/<会话 id>[/<子代理 id>][/leaf=<uuid>],由可选面板 convchain 接。
   // 只按第一个 / 切;别的分区后面跟了东西就当没跟,照旧落到那一屏。
   let arg=null;
@@ -17,9 +134,10 @@ function showView(key,push){
   if(slash>0){arg=key.slice(slash+1);key=key.slice(0,slash);}
   if(!VIEWS.includes(key)) key='overview';
   if(key!=='convos') arg=null;
+  noteOrigin(key,options?.reset);
   CURVIEW=key;
   const group=viewGroup(key), definition=VIEW_GROUPS[group];
-  $('page-refresh-state').textContent='';
+  try{ localStorage.setItem('tc.view.'+group,key); }catch(error){}
   document.querySelectorAll('section[data-view]').forEach(section=>section.hidden=section.dataset.view!==key);
   document.querySelectorAll('#side .nv').forEach(link=>{
     const selected=link.dataset.view===group;
@@ -28,12 +146,16 @@ function showView(key,push){
     if(selected) link.setAttribute('aria-current','page');else link.removeAttribute('aria-current');
     link.tabIndex=selected?0:-1;
   });
-  const tabs=Object.entries(definition.views);
-  $('view-tabs').hidden=tabs.length===1;
-  $('view-tabs').innerHTML=tabs.map(([id,label])=>`<a href="#${id}" data-open-view="${id}" ${key===id?'aria-current="page"':''}>${esc(label)}</a>`).join('');
-  $('view-title').textContent=definition.label;
+  const tabs=Object.entries(definition.views), back=originChip();
+  // 只有一个视图的分组不显示标签,但下钻到那里时标签栏照样出来,好放「← 返回」。
+  $('view-tabs').hidden=tabs.length===1 && !back;
+  $('view-tabs').innerHTML=(tabs.length>1?tabs.map(([id,label])=>`<a href="#${id}" data-open-view="${id}" ${key===id?'aria-current="page"':''}><span>${esc(label)}</span>${BADGE_SOURCES[id]?`<span class="nav-badge pending" data-badge-for="${id}">…</span>`:''}</a>`).join(''):'')+back;
+  renderBadges();
+  // 标题说清在哪一个标签上:「自动化 · 运行详情」。只写分组名的话,侧栏亮着的是同一个词,标题等于没说。
+  $('view-title').textContent=tabs.length>1?`${definition.label} · ${definition.views[key]}`:definition.label;
   document.title=definition.views[key]+' · 本机工作台';
   loadPageOnce(key);
+  renderRefreshAge();
   if(key==='automations') renderAutomations();
   // 修复进度每次进入自动化的任一标签都重读,不只第一次:工单在别处(工作记录、Discord)推进,这里没有别的消息来源。
   if(group==='automations') loadRepairs();
@@ -98,6 +220,8 @@ function handleEscape(event){
   }
   const step=ESC_STEPS[CURVIEW];
   if(step && step()){ event.preventDefault(); return true; }
+  // 这一屏已经没有可退的层了:是下钻来的就回来源一次。
+  if(returnToOrigin()){ event.preventDefault(); return true; }
   return false;
 }
 

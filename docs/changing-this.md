@@ -140,6 +140,19 @@
 不在表里的分区什么都不做,这样 Esc 不会去改一屏看不见的东西。逻辑放在 `navigation.js` 而不是 `events.js`,
 是为了让 node:vm 台架能测到它(`tests/test_keyboard_conventions.py`)。
 
+这一屏没有可退的层时,Esc 的最后一步是 `returnToOrigin()`:只有下钻来的屏才有来源,回去一次就用掉。
+「下钻」由 `navigation.js` 的 `DRILL_TARGETS` 认(`data-task`、`data-goto` 等),`events.js` 在点击的捕获阶段调 `markDrill()`。
+新加一种「跳到别的屏去看细节」的按钮,把它的属性加进 `DRILL_TARGETS`,否则目的屏不会有「← 返回」。
+从侧栏进来要传 `showView(key, true, {reset:true})`,那样到达的屏没有来源。测试在 `tests/test_shell.py`。
+
+### 外框:一个刷新、标签上的徽章
+
+顶栏的刷新会把 `PAGE_READS[当前屏]` 全部重跑一遍,所以卡片上不要再加一个同样的刷新图标;
+新面板的读取挂进 `PAGE_READS` 就有了刷新。只有比整页刷新便宜得多、而且只读一小块的,才单独给一个带字的按钮
+(会话库的「重新扫描」是唯一的例子)。徽章用 `setBadge(视图, 数, 是否只是警告, 说明)`,
+来源路径登记在 `BADGE_SOURCES`,补读的函数登记在 `BADGE_LOADERS`:「…」和「?」是靠这两张表和 `api()` 报上来的读取记录判断的,
+漏登记的徽章会一直是「…」。
+
 ### 对话框、确认框和菜单
 
 对话框一律用 `console-dialog` 外壳(`.dialog-head` 里标题加 ✕,`.dialog-body`,`.dialog-foot` 里次要按钮在前、主按钮在后),
@@ -339,7 +352,8 @@
    它没载入时调用方要退回原来的行为(会话行退回「复制路径」就是这么做的)。
    一个分区里的下钻用 `#<分区>/<参数>` 的地址:`showView` 只按第一个 `/` 切,
    参数交给面板自己的路由函数(`convoChainRoute` 是现成的例子)。
-4. ★ 侧栏徽章:`setBadge()`。不加的话这一屏「有事」时没人知道,而页面看起来很正常。
+4. ★ 侧栏徽章:`setBadge()`,外加 `BADGE_SOURCES` / `BADGE_LOADERS` 两张表(见上面「外框」那一节)。
+   不加的话这一屏「有事」时没人知道,而页面看起来很正常。
 5. ★ 总清单 `renderTodo()` 里的对应项,如果这一屏会产出「要人管的事」。
 6. ★ 新读的环境变量要同时进 `scripts/task_console/README.md` 的表**和**
    `selfcheck.py` 的 `SOURCES` 或 `OVERRIDES`, 那两处各有一条双向对账测试,

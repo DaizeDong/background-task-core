@@ -9,8 +9,13 @@ window.ConsoleTheme = (() => {
     root.dataset.theme=effective;
     root.dataset.bsTheme=effective;
     root.style.colorScheme=effective;
+    // 外观在顶栏「⋯」菜单里,是三个按钮;按下的那个跟着偏好走。value 留着给仍按值读它的代码。
     const control=document.getElementById('theme-select');
-    if(control) control.value=preference;
+    if(control){
+      control.value=preference;
+      control.querySelectorAll?.('[data-theme-choice]').forEach(choice=>
+        choice.setAttribute('aria-pressed',String(choice.dataset.themeChoice===preference)));
+    }
   }
   function set(value){
     preference=valid(value);

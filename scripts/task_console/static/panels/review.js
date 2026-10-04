@@ -1,7 +1,7 @@
 // Group owner verdicts by affected object; filters never recalculate health.
 let REVIEW_FILTER="all", REVIEW_QUERY="";
-const VIEW_COPY={overview:"审查概览",pipelines:"流水线",tasks:"计划任务",repos:"仓库",
-  storage:"配置与存储",convos:"会话记录",llm:"模型调用"};
+// 清单的总数和其中判为异常(红)的对象数,侧栏徽章按它定颜色。筛选不改它:徽章说的是全部。
+let REVIEW_TOTALS={objects:0,bad:0};
 function renderReviewQueue(rows,dataBroken){
   const box=$("todod");
   if(dataBroken){
@@ -22,6 +22,7 @@ function renderReviewQueue(rows,dataBroken){
   const query=REVIEW_QUERY.trim().toLowerCase();
   const selected=all.filter(row=>(REVIEW_FILTER==="all" || row.v===REVIEW_FILTER || REVIEW_FILTER==='storage' && row.v==='resources') &&
     (!query || JSON.stringify([row.nm,row.description,row.reasons]).toLowerCase().includes(query)));
+  REVIEW_TOTALS={objects:all.length,bad:all.filter(row=>row.sev>=3).length};
   $("todon").textContent=`${all.length} 个对象`;
   $("review-count").textContent=`${selected.length}/${all.length} 个对象 · ${rows.length} 条检查`;
   box.innerHTML=selected.map(row=>`<article class="review-row">
@@ -32,10 +33,6 @@ function renderReviewQueue(rows,dataBroken){
     <button class="icon-only" ${row.task?`data-task="${esc(row.task)}"`:row.v==="repos"?`data-review-repo="${esc(row.nm)}"`:`data-goto="${esc(row.v)}"`} title="查看详情"><svg class="ic" aria-hidden="true"><use href="#i-eye"/></svg><span class="control-label">查看详情</span></button></div>
     </article>`).join("") || '<p class="review-empty">没有符合筛选条件的技术问题</p>';
   return all.length;
-}
-function updateViewHeading(key){
-  const title=VIEW_COPY[key] || VIEW_COPY.overview;
-  $("view-title").textContent=title;document.title=title+" · 基建维护台";
 }
 function reviewClick(event){
   const repo=event.target.closest("[data-review-repo]");

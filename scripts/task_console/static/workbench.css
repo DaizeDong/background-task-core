@@ -1,9 +1,18 @@
 /* Work-centric composition over the existing theme and domain widgets. */
 #side .nav-item:last-child{margin-top:22px}
-#view-tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin:0 0 12px;overflow:auto}
+/* 标签是这一屏的二级导航,不是正文链接:14px、500 字重、40px 高的点击区,带自己的徽章。
+   放不下就换行,不横向滚动:横向滚动的标签条在手机上把第四个标签切成半截,又不提示还能往右划。 */
+#view-tabs{display:flex;flex-wrap:wrap;align-items:flex-end;gap:0 4px;border-bottom:1px solid var(--line);margin:0 0 12px}
 #view-tabs[hidden]{display:none}
-#view-tabs a{padding:7px 12px;color:var(--dim);text-decoration:none;white-space:nowrap;border-bottom:2px solid transparent}
+#view-tabs a{display:inline-flex;align-items:center;gap:6px;min-height:40px;padding:8px 12px 6px;color:var(--dim);text-decoration:none;
+  white-space:nowrap;border-bottom:2px solid transparent;margin-bottom:-1px;font-size:var(--fs-lead);font-weight:500}
+#view-tabs a:hover{color:var(--ink);background:var(--cur)}
 #view-tabs a[aria-current]{color:var(--cyan);border-color:var(--cyan);font-weight:600}
+#view-tabs a:focus-visible{outline:2px solid var(--cyan);outline-offset:-2px}
+/* 「← 返回 来源」只在下钻来的屏上出现,贴在标签栏右端,是一枚芯片而不是又一个标签。 */
+#view-tabs a.view-origin{margin:0 0 4px auto;min-height:30px;padding:4px 10px;border:1px solid var(--line);border-radius:4px;
+  background:var(--panel);color:var(--cyan);font-size:var(--fs-body);font-weight:500}
+#view-tabs a.view-origin:hover{border-color:var(--cyan);background:var(--cur)}
 .mode-badge{color:var(--warn);background:var(--warnb);padding:3px 7px;border:1px solid var(--line);border-radius:4px;font-size:var(--fs-meta)}
 .workspace-meta{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;color:var(--dim);font-size:var(--fs-meta);margin:0}
 .decision-strip{display:flex;gap:var(--space-3);align-items:center;padding:8px var(--section-inset);border:1px solid var(--line);border-radius:var(--card-radius);background:var(--panel)}
@@ -241,3 +250,33 @@ dialog#work-detail{width:min(760px,calc(100vw - 32px))}#work-detail h3{font-size
 .check-chip>.status-chip{min-height:20px;padding-block:1px;border-radius:0 3px 3px 0}
 /* 时间轴每行只有 15px 高,22px 的芯片放进去会被裁掉:形状(圆角、字号、左右内距)照统一的来,高度让给行。 */
 .tl .tlbadge{min-height:0;padding-block:0;line-height:13px}
+
+/* ================= 外框:品牌、顶栏、侧栏 ================= */
+/* 品牌字挨着图标,不再被推到侧栏最右边。 */
+#side .navbar-brand{display:flex;align-items:center;justify-content:flex-start;gap:8px}
+#side .navbar-brand>span{margin-left:0!important}
+/* 深色下图标本身的深色格子会融进底色:给它垫一块浅底。 */
+:root[data-theme="dark"] #side .navbar-brand img{background:var(--ink);border-radius:4px;padding:2px;box-sizing:content-box}
+/* 顶栏右侧:只读标识、刷新时间、刷新、「⋯」。 */
+.page-tools{display:inline-flex;align-items:center;gap:4px}
+#page-refresh-state{font-size:var(--fs-meta);white-space:nowrap;color:var(--dim)}
+#page-refresh-state[data-tone="bad"]{color:var(--bad)}
+#page-refresh.spinning>.ic{animation:state-spin .9s linear infinite}
+.page-menu{min-width:180px}
+.page-menu .menu-facts{padding-top:2px;padding-bottom:0}
+.page-menu [data-theme-choice][aria-pressed="true"]{color:var(--cyan);font-weight:600}
+.page-menu [data-theme-choice][aria-pressed="true"]::after{content:"✓";margin-left:auto}
+@media(max-width:767px){
+  /* 窄屏时刷新和「⋯」挪进最上面的品牌行,顶栏少一整行;只读标识和刷新时间留在标题下面。 */
+  .page{position:relative}
+  .page-tools{position:absolute;top:4px;right:10px;z-index:31}
+  #side .navbar-brand{padding-right:96px}
+  #page-refresh-state{order:0;width:auto}
+  /* 横排的侧栏用下划线标出当前项,竖排时那道左边条在这里像一个错位的竖线。 */
+  #side .nav-link.active{box-shadow:inset 0 -2px var(--cyan)}
+  /* 带上徽章后五项在 390px 宽放不进一行:换行而不是横向滚动,免得最后的「诊断」被切掉一半。 */
+  #side .navbar-nav{flex-wrap:wrap;overflow:visible}
+  #side .nav-link{padding:8px 5px;gap:3px}
+  #side .nav-link .nav-badge{min-width:18px;padding:0 4px}
+  #view-tabs a{padding-inline:10px}
+}
