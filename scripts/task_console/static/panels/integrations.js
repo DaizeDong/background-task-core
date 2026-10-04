@@ -14,12 +14,24 @@ async function loadIntegrations(){
   try{INTEGRATIONS=await api('/api/integrations');renderIntegrations();note.textContent='';}
   catch(error){note.textContent='读取失败：'+error.message;}
 }
+function integrationReasonText(raw){
+  if(!/^[a-z0-9_]+$/.test(raw)) return raw;
+  return INTEGRATION_REASONS[raw] || (typeof reasonLabel==='function' ? reasonLabel(raw) : '原因未识别');
+}
 function integrationReason(reason){
   const raw=String(reason ?? '').trim();
   if(!raw) return '';
   if(!/^[a-z0-9_]+$/.test(raw)) return `<small>${esc(raw)}</small>`;
-  const text=INTEGRATION_REASONS[raw] || (typeof reasonLabel==='function' ? reasonLabel(raw) : '原因未识别');
-  return `<small title="${esc('原始代号：'+raw)}">${esc(text)}</small>`;
+  return `<small title="${esc('原始代号：'+raw)}">${esc(integrationReasonText(raw))}</small>`;
+}
+// 重读的结果怎么说。接口回了 200 不等于读到了:工作服务读不到时回的是 {available:false, reason},
+// 那一行的状态格还写着「读取失败」,下面再闪一句绿色的「刚刚读取成功」就是自相矛盾。
+// 只有回来的内容没说不可用、也没带错误时才算成功。
+function integrationRecheckFlash(result){
+  const failed=result && typeof result==='object' && !Array.isArray(result) && (result.available===false || result.error);
+  if(!failed) return {ok:true,text:'刚刚读取成功'};
+  const raw=String(result.error || result.reason || '').trim();
+  return {ok:false,text:'仍不可用'+(raw?'：'+integrationReasonText(raw):'')};
 }
 function integrationRow(row){
   const state=row.connection||{}, tone=state.state==='ready'?'ok':['stale','unavailable'].includes(state.state)?'warn':'idle';
@@ -66,7 +78,7 @@ function startIntegrations(){
     const endpoint=check.dataset.integrationCheck, top=window.scrollY;
     setDisabled(check,'正在重新读取这一项');check.classList.add('spinning');
     INTEGRATION_FLASH.delete(endpoint);
-    try{await api(endpoint);INTEGRATION_FLASH.set(endpoint,{ok:true,text:'刚刚读取成功'});}
+    try{INTEGRATION_FLASH.set(endpoint,integrationRecheckFlash(await api(endpoint)));}
     catch(error){INTEGRATION_FLASH.set(endpoint,{ok:false,text:'读取失败：'+error.message});toast('读取失败：'+error.message,'bad');}
     await loadIntegrations();
     // 清单没能重画(读接入信息本身失败)时,旧按钮还在页面上,把它恢复过来。

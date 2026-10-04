@@ -28,7 +28,17 @@ function renderResourceAnchors(){
   paint("#membox","记忆",!mem?countCell("loading"):mem.error?countCell("broken",null,mem.error):
     !mem.available?countCell("unchecked"):countCell("ok",(mem.live||0)+(mem.cold||0)));
   const components=catalogComponents(), catalog=components && components.catalog;
-  paint("#catalog-box","目录",!components?countCell("loading"):catalog && catalog.available?countCell("ok",(catalog.records||[]).length):countCell("unchecked"));
+  // 组件接口读失败(loadComponents 的 catch)是故障,画「!」;读到了但目录没配置才是「—」。
+  paint("#catalog-box","目录",!components?countCell("loading"):components.readFailed?countCell("broken",null,components.reason)
+    :catalog && catalog.available?countCell("ok",(catalog.records||[]).length):countCell("unchecked"));
+  // 检查结果排在三百多行的目录下面,不给锚点就得往下翻两万像素才看得到。数字和那一块的标题一样写「已查/应查」,
+  // 异常和未检查各几个放在悬停里。
+  const tasks=components && components.tasks || [], cov=components && components.coverage || {};
+  const problems=tasks.filter(task=>["unhealthy","degraded"].includes(task.verdict)).length;
+  const unchecked=tasks.filter(task=>!task.verdict || task.verdict==="unknown").length;
+  paint("#catalog-health","检查结果",!components?countCell("loading"):components.readFailed?countCell("broken",null,components.reason)
+    :!components.available?countCell("unchecked")
+    :`<span class="count-cell" title="${esc(`异常 ${problems} · 未检查 ${unchecked}`)}">${esc(cov.checked ?? "?")}/${esc(cov.expected ?? "?")}</span>`);
 }
 
 // 机器代号换成人话。原代号仍放在悬停里,排查时照样查得到。不认识的代号按形状猜一个大类,
@@ -143,6 +153,10 @@ let CATALOG_QUERY="", CATALOG_KIND="", CATALOG_CLIENT="", CATALOG_STATE="", HEAL
 // 展开过的行记在 CATALOG_OPEN 里,重画时保持展开。
 let CATALOG_SORT={key:"",asc:true};
 const CATALOG_OPEN=new Set();
+// 目录先只列前 25 行,「展开全部 N」在表尾。三百多行全摊开时,目录卡片两万多像素高,
+// 下面的自动化检查结果要翻十几屏才看得到。默认排序有问题的在前,前 25 行里就是要人管的那些。
+const CATALOG_ROW_LIMIT=25;
+let CATALOG_ALL=false;
 function catalogComponents(){return (typeof COMPONENTS !== "undefined" && COMPONENTS) || (MAINT && MAINT.components);}
 function catalogName(source){
   return source.registry_key || (source.relative_path && source.relative_path!=="." ? source.relative_path : null)
@@ -180,7 +194,7 @@ function renderCatalog(){
       <select id="catalog-client" aria-label="涉及客户端"><option value="">全部客户端</option>${clients.map(client=>`<option value="${esc(client)}"${client===CATALOG_CLIENT?" selected":""}>${esc(catalogLabel(client))}</option>`).join("")}</select>
       <select id="catalog-state" aria-label="组件状态"><option value="">全部状态</option>${states.map(([value,label])=>`<option value="${esc(value)}"${value===CATALOG_STATE?" selected":""}>${esc(label)}</option>`).join("")}</select><button class="icon-only" data-reset-filters="catalog" title="清除筛选"><svg class="ic" aria-hidden="true"><use href="#i-filter-clear"/></svg><span class="control-label">清除筛选</span></button><span id="catalog-count">${catalog && catalog.available?"":"尚未读取目录"}</span>${catalog && catalog.available?catalogCoverageChip(catalog.coverage):""}</div>
     <div id="catalog-results" class="catalog-results"></div>
-    <div class="catalog-heading health-heading"><h2>自动化检查结果 <span style="color:var(--${coverageTone})">${esc(cov.checked ?? "?")}/${esc(cov.expected ?? "?")}</span></h2><span>异常 ${problemCount} · 未检查 ${uncheckedCount}</span>
+    <div class="catalog-heading health-heading" id="catalog-health"><h2>自动化检查结果 <span style="color:var(--${coverageTone})">${esc(cov.checked ?? "?")}/${esc(cov.expected ?? "?")}</span></h2><span>异常 ${problemCount} · 未检查 ${uncheckedCount}</span>
       <select id="health-state" aria-label="健康检查状态"><option value="">全部结论</option>${["healthy","degraded","unhealthy","unknown"].map(state=>`<option value="${state}"${state===HEALTH_STATE?" selected":""}>${catalogLabel(state)}</option>`).join("")}</select><span id="health-count"></span></div>
     <div id="health-results" class="catalog-results"></div>`;
   $("catalog-kind").addEventListener("change",event=>{CATALOG_KIND=event.target.value;renderCatalogResults();});
@@ -259,14 +273,16 @@ function renderCatalogResults(){
   const components=catalogComponents(), catalog=components && components.catalog, el=$("catalog-results");if(!el) return;
   if(!catalog || !catalog.available){el.innerHTML=`<p class="review-notice">${esc(catalog && catalog.reason || "来源目录尚未读取")}</p>`;return;}
   const all=catalog.records||[], rows=all.filter(catalogMatches).sort(catalogCompare);
-  $("catalog-count").textContent=matchCount(rows.length,all.length);
-  const main=rows.filter(source=>!catalogSystem(source)), system=rows.filter(catalogSystem);
+  const shown=CATALOG_ALL?rows:rows.slice(0,CATALOG_ROW_LIMIT);
+  $("catalog-count").textContent=matchCount(shown.length,all.length);
+  const main=shown.filter(source=>!catalogSystem(source)), system=shown.filter(catalogSystem), systemAll=rows.filter(catalogSystem).length;
   const sortHead=(key,label)=>{
     const on=CATALOG_SORT.key===key, sort=on?(CATALOG_SORT.asc?"ascending":"descending"):"none";
     return `<th aria-sort="${sort}"><button type="button" class="sort-head" data-catalog-sort="${key}" title="按${label}排序${on?"，再点一下反过来":""}">${label}<span aria-hidden="true">${on?(CATALOG_SORT.asc?" ▲":" ▼"):""}</span></button></th>`;
   };
   el.innerHTML=rows.length?`<table class="ops-table catalog-table"><thead><tr>${sortHead("name","名称")}${sortHead("kind","类型 / 客户端")}${sortHead("state","状态")}<th>同步 / 认证</th><th>依赖</th></tr></thead>
-    <tbody>${main.map(catalogRow).join("")}</tbody>${system.length?`<tbody class="catalog-system"><tr class="catalog-group"><th scope="rowgroup" colspan="5">客户端内部组件（.system） <span class="faint">${system.length}</span></th></tr>${system.map(catalogRow).join("")}</tbody>`:""}</table>`
+    <tbody>${main.map(catalogRow).join("")}</tbody>${system.length?`<tbody class="catalog-system"><tr class="catalog-group"><th scope="rowgroup" colspan="5">客户端内部组件（.system） <span class="faint">${systemAll}</span></th></tr>${system.map(catalogRow).join("")}</tbody>`:""}</table>${rows.length>CATALOG_ROW_LIMIT
+      ?`<div class="catalog-more"><button type="button" class="link-button" data-catalog-more aria-expanded="${CATALOG_ALL}">${CATALOG_ALL?"收起，只列前 "+CATALOG_ROW_LIMIT+" 项":`展开全部 ${fmtNum(rows.length)}`}</button></div>`:""}`
     :emptyBlock("没有符合筛选条件的技能或插件",{filtered:CATALOG_QUERY.trim()?"resources":"catalog"});
   if((catalog.problems||[]).length){const note=document.createElement("p");note.className="review-notice";note.textContent=(catalog.problems||[]).map(p=>typeof p==="string"?p:p.reason||p.message||p.code||"来源检查异常").join("；");el.appendChild(note);}
 }
@@ -287,6 +303,10 @@ function startResources(){
       const key=sort.dataset.catalogSort;
       CATALOG_SORT=CATALOG_SORT.key===key?{key,asc:!CATALOG_SORT.asc}:{key,asc:true};
       renderCatalogResults();$('catalog-results').querySelector(`[data-catalog-sort="${key}"]`)?.focus();return;
+    }
+    if(event.target.closest('[data-catalog-more]')){
+      CATALOG_ALL=!CATALOG_ALL;renderCatalogResults();
+      $('catalog-results').querySelector('[data-catalog-more]')?.focus();return;
     }
     const toggle=event.target.closest('[data-catalog-toggle]');
     if(toggle){

@@ -110,7 +110,8 @@ function pipelineSteps(key, components){
 
 async function loadComponents(){
   try{COMPONENTS=await api("/api/components");}
-  catch(error){COMPONENTS={available:false,reason:error.message,tasks:[]};}
+  // 读失败要和「读到了、没有配置」分得开:资源页的锚点前者画「!」,后者画「—」。
+  catch(error){COMPONENTS={available:false,reason:error.message,tasks:[],readFailed:true};}
   renderPipelines(); renderCatalog();
   if(typeof renderPlatformSignals==='function') renderPlatformSignals();
 }

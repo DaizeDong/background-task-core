@@ -547,7 +547,14 @@ function renderRepoDetail(){
         + (r.dirty?` 有 ${r.dirty} 个改动`:"") + ((r.ahead||0)?` · ${r.ahead} 个提交没推`:""))
     : rpBtn("i-push","提交并推送","提交并推送","","","没有未提交的改动，也没有未推送的提交");
   h += `</div><div class="rp-out" id="rpout"></div>`;
+  // 详情会被整块重画:选中有改动的仓时自动读改动列表,读之前画一次「读取中」,读完再画一次。
+  // 焦点原来在详情里的某个控件上(手机上点开一个仓,焦点交给了「← 返回列表」),重画会把它扔回 body,
+  // 读屏器就落在一张看不见的页上。记下是哪个控件,重画后放回同一个上。
+  const had = document.activeElement;
+  const keep = had && had!==box && typeof box.contains==="function" && box.contains(had)
+    ? (had.id ? "#"+had.id : had.dataset && had.dataset.rpact ? `[data-rpact="${had.dataset.rpact}"]` : null) : null;
   box.innerHTML = h;
+  if(keep) box.querySelector?.(keep)?.focus?.({preventScroll:true});
   const report=RP_REPORTS.get(r.name);
   if(report) $("rpout").textContent=report;
 }

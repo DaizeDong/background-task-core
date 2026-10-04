@@ -7,10 +7,11 @@
 #resources .resources-anchors button{min-height:32px;padding:4px 6px;border:0;background:none;color:var(--cyan);font-size:var(--fs-body)}
 #resources .resources-anchors button:not(:disabled):hover{text-decoration:underline;background:none;color:var(--cyan)}
 #resources .resources-anchors .count-cell{margin-left:2px;color:var(--dim);font-size:var(--fs-meta)}
-#resources .runtime-section:has(#mt-skills),#resources .runtime-section:has(#mt-plugins),#resources #catalog-box{scroll-margin-top:120px}
+#resources .runtime-section:has(#mt-skills),#resources .runtime-section:has(#mt-plugins),#resources #catalog-box,#resources #catalog-health{scroll-margin-top:120px}
 
 /* 技能与插件、记忆、目录、检查结果都不再有内部滚动框:页面本身有的是地方,
-   一个截在 320px / 440px 里的列表要人去找第二根滚动条,而且看不出下面还有没有东西。 */
+   一个截在 320px / 440px 里的列表要人去找第二根滚动条,而且看不出下面还有没有东西。
+   目录太长(三百多行)就先只列前 25 行,表尾「展开全部 N」(skills.js 的 CATALOG_ROW_LIMIT),页顶另有「检查结果」锚点。 */
 #resources .mt-rows{max-height:none;overflow:visible}
 #resources .catalog-results{overflow-x:auto;min-width:0}
 
@@ -54,6 +55,7 @@
 #resources .catalog-dims{display:flex;flex-wrap:wrap;gap:4px 14px;align-items:center}
 #resources .catalog-dim .lb{margin-right:4px;color:var(--dim);font-size:var(--fs-meta)}
 #resources .catalog-entry-line{display:flex;flex-wrap:wrap;gap:4px 10px;align-items:center;margin-top:8px;padding-top:6px;border-top:1px dashed var(--line)}
+#resources .catalog-more{margin:8px 0 4px}
 #resources .catalog-group th{background:var(--panel2);color:var(--dim);font-weight:600}
 #resources .coverage-chip{display:inline-flex}
 #resources .reason-tag{white-space:nowrap}

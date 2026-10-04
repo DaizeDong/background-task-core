@@ -1,6 +1,7 @@
 """资源区四页(控制台接入、技能与记忆、代码仓库、存储清理)的交互约定。只用合成数据,在 node:vm 台架里跑真实模块。"""
 import json
 import re
+from pathlib import Path
 
 from test_operations_ui import run
 from tools.make_fixtures import catalog_snapshot
@@ -86,18 +87,40 @@ def test_anchor_bar_shows_four_section_counts_in_their_own_states():
 document.querySelector=sel=>{const m=/data-goto="([^"]+)"/.exec(sel);return m?(anchors[m[1]] ||= {innerHTML:''}):{content:'synthetic'};};
 """
     loading = run("renderResourceAnchors();Object.fromEntries(Object.entries(anchors).map(([k,v])=>[k,v.innerHTML]))", setup)
-    assert set(loading) == {"#mt-skills", "#mt-plugins", "#membox", "#catalog-box"}
+    assert set(loading) == {"#mt-skills", "#mt-plugins", "#membox", "#catalog-box", "#catalog-health"}
     assert all("count-loading" in html for html in loading.values())
+    # 每个画了数的锚点在页面上都真有一个按钮:少了按钮,数照算,人却点不到。
+    page = (Path(__file__).resolve().parents[1] / "scripts" / "task_console" / "console.html").read_text(encoding="utf-8")
+    bar = re.search(r'<nav class="resources-anchors".*?</nav>', page, re.S).group(0)
+    assert set(re.findall(r'data-goto="([^"]+)"', bar)) == set(loading)
     catalog = component_status.catalog_view(catalog_snapshot())
     ready = run("renderResourceAnchors();Object.fromEntries(Object.entries(anchors).map(([k,v])=>[k,v.innerHTML]))",
                 setup + "MAINT=" + json.dumps({**SKILLS, **PLUGINS}) + ";MEM=" + json.dumps(MEMORY)
-                + ";COMPONENTS=" + json.dumps({"available": True, "catalog": catalog}) + ";")
+                + ";COMPONENTS=" + json.dumps({"available": True, "catalog": catalog, "coverage": {"checked": 41, "expected": 49},
+                                               "tasks": [{"verdict": "unhealthy"}, {"verdict": "healthy"}, {"verdict": "unknown"}]}) + ";")
     assert ready["#mt-skills"].startswith("技能 ") and '<span class="count-cell">2</span>' in ready["#mt-skills"]
     assert '<span class="count-cell">4</span>' in ready["#mt-plugins"]
     assert '<span class="count-cell">46</span>' in ready["#membox"]
     assert '<span class="count-cell">3</span>' in ready["#catalog-box"]
+    # 检查结果排在三百多行的目录下面,页顶要有一个锚点直接跳过去,数字和那一块的标题一样是「已查/应查」。
+    assert ready["#catalog-health"].startswith("检查结果 ") and ">41/49</span>" in ready["#catalog-health"]
+    assert "异常 1 · 未检查 1" in ready["#catalog-health"]
     broken = run("renderResourceAnchors();anchors['#mt-skills'].innerHTML", setup + "MAINT_ERROR='HTTP 500';")
     assert "count-broken" in broken
+
+
+def test_a_failed_components_read_marks_catalog_and_checks_broken_not_unchecked():
+    setup = """const anchors={};
+document.querySelector=sel=>{const m=/data-goto="([^"]+)"/.exec(sel);return m?(anchors[m[1]] ||= {innerHTML:''}):{content:'synthetic'};};
+"""
+    # 走真实的 loadComponents:接口抛错时,目录和检查结果两个锚点都要画「!」,不能是「没配置」的「—」。
+    failed = run("""(async()=>{api=async()=>{throw new Error('HTTP 500');};renderPipelines=()=>{};
+      await loadComponents();renderResourceAnchors();return [anchors['#catalog-box'].innerHTML,anchors['#catalog-health'].innerHTML];})()""", setup)
+    assert all("count-broken" in html and "count-unchecked" not in html for html in failed)
+    # 读到了、只是没有配置目录:这才是「未检查」。
+    unset = run("renderResourceAnchors();[anchors['#catalog-box'].innerHTML,anchors['#catalog-health'].innerHTML]",
+                setup + "COMPONENTS={available:false,reason:'not configured',tasks:[]};")
+    assert all("count-unchecked" in html and "count-broken" not in html for html in unset)
 
 
 # ---------- 资源目录与检查结果 ----------
@@ -131,6 +154,26 @@ def test_catalog_rows_summarise_seven_checks_and_never_call_unknown_normal():
     by_name = run("CATALOG_SORT={key:'name',asc:true};renderCatalogResults();$('catalog-results').innerHTML", setup)
     assert re.findall(r'data-catalog-toggle="([^"]+)"', by_name)[0] == "synthetic:acme-connector"
     assert 'aria-sort="ascending"' in by_name
+
+
+def test_long_catalog_lists_its_first_rows_and_expands_and_the_checks_have_an_anchor_target():
+    catalog = catalog_case()
+    base = catalog["records"][0]
+    catalog["records"] = [dict(base, source_id=f"synthetic:acme-extra-{i:02d}", registry_key=f"acme-extra-{i:02d}") for i in range(30)]
+    setup = "COMPONENTS=" + json.dumps({"available": True, "tasks": [], "catalog": catalog}) + ";"
+    html = run("renderCatalog();$('catalog-results').innerHTML", setup)
+    assert html.count("data-catalog-toggle=") == 25
+    assert re.search(r'data-catalog-more aria-expanded="false">展开全部 30<', html)
+    assert run("renderCatalog();$('catalog-count').textContent", setup) == "显示 25 / 共 30 项"
+    opened = run("CATALOG_ALL=true;renderCatalogResults();$('catalog-results').innerHTML", setup)
+    assert opened.count("data-catalog-toggle=") == 30 and 'aria-expanded="true">收起' in opened
+    # 点「展开全部」走 #mt-catalog 上的那个监听。
+    clicked = run("""(()=>{let handler;$('mt-catalog').addEventListener=(type,fn)=>{if(type==='click') handler=fn;};
+      $('catalog-results').querySelector=()=>null;startResources();
+      handler({target:{closest:sel=>sel==='[data-catalog-more]'?{}:null}});return [CATALOG_ALL,$('catalog-results').innerHTML.split('data-catalog-toggle=').length-1];})()""", setup)
+    assert clicked == [True, 30]
+    # 页顶「检查结果」锚点跳到的那个标题。
+    assert 'class="catalog-heading health-heading" id="catalog-health"' in run("renderCatalog();$('mt-catalog').innerHTML", setup)
 
 
 def test_catalog_groups_system_internals_last():
@@ -251,6 +294,20 @@ $('rpissue').options=[{value:''},{value:'upstream'}];"""
     assert restored == ["pub", "upstream", "clean", "sample-notes", "AcmeCorp", "other"]
 
 
+def test_redrawing_the_detail_keeps_focus_on_the_control_that_had_it():
+    # 手机上点开一个仓,焦点在「← 返回列表」;改动列表读回来把详情整块重画,焦点要回到新画的那个按钮上。
+    setup = REPO_SETUP + """const focused=[];const box=$('rpdetail');
+box.querySelector=sel=>({focus:()=>focused.push(sel)});
+box.contains=el=>el===document.activeElement && el.inside;"""
+    back = run("RP_SEL='sample-notes';document.activeElement={id:'rpback',dataset:{},inside:true};renderRepoDetail();focused", setup)
+    assert back == ["#rpback"]
+    act = run("RP_SEL='sample-notes';document.activeElement={id:'',dataset:{rpact:'status'},inside:true};renderRepoDetail();focused", setup)
+    assert act == ['[data-rpact="status"]']
+    # 焦点不在详情里(在列表或搜索框上)时,重画不许把焦点抢过来。
+    outside = run("RP_SEL='sample-notes';document.activeElement={id:'rpq',dataset:{},inside:false};renderRepoDetail();focused", setup)
+    assert outside == []
+
+
 def test_escape_returns_from_the_phone_detail_to_the_list_only_when_narrow():
     setup = REPO_SETUP + "let narrow=false;getComputedStyle=()=>({display:narrow?'inline-flex':'none'});CURVIEW='repos';"
     result = run("""(()=>{renderRepos();RP_SEL='acme-tools';RP_SHEET=true;
@@ -336,3 +393,26 @@ def test_integrations_are_one_table_broken_first_with_translated_reasons():
     # 读不到工作服务是故障,用告警样式,不和「真的没有记录」一样灰。
     business = html.split("通知与线索来源", 1)[1].split('class="integration-layer"', 1)[0]
     assert 'class="review-notice"' in business and "state-empty" not in business and "review-empty" not in business
+
+
+def recheck(answer):
+    """点一行的「重读」,接口按 answer 回话;返回这一行闪出的结果和重画后的那一行。"""
+    setup = "INTEGRATIONS=" + json.dumps(integrations_case()) + ";"
+    return run("""(async()=>{let handler;document.addEventListener=(type,fn)=>{if(type==='click') handler=fn;};
+      globalThis.CSS={escape:s=>s};globalThis.setTimeout=()=>0;toast=()=>{};startIntegrations();
+      api=async path=>{if(path==='/api/integrations') return INTEGRATIONS;""" + answer + """};
+      const check={dataset:{integrationCheck:'/api/acme-broken',label:'重读'},disabled:false,title:'',classList:{add(){},remove(){}},isConnected:false};
+      await handler({target:{closest:sel=>sel==='[data-integration-check]'?check:null}});
+      const row=$('integration-list').innerHTML.split('data-integration-row="/api/acme-broken"')[1].split('</tr>')[0];
+      return [INTEGRATION_FLASH.get('/api/acme-broken'),row];})()""", setup)
+
+
+def test_recheck_says_success_only_when_the_endpoint_returned_data():
+    # 200 回来但内容是 available:false:那一行写着「读取失败」,下面不许再闪一句绿色的「刚刚读取成功」。
+    flash, row = recheck("return {available:false,reason:'work_reader_failed'};")
+    assert flash == {"ok": False, "text": "仍不可用：工作服务读取失败"}
+    assert "刚刚读取成功" not in row and 'integration-flash bad' in row
+    flash, row = recheck("return {available:true,items:[]};")
+    assert flash == {"ok": True, "text": "刚刚读取成功"} and 'integration-flash ok' in row
+    flash, row = recheck("throw new Error('HTTP 502');")
+    assert flash == {"ok": False, "text": "读取失败：HTTP 502"}
