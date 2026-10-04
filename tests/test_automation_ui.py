@@ -85,7 +85,8 @@ def test_rows_show_title_verdict_summary_name_and_category_context():
     html = run("renderAutomations();$('automation-list').innerHTML", setup())
     for text in ("同步示例文件", "要修", "检查并同步合成文件。", "AcmeSync", "Generated test tasks", "1 项"):
         assert text in html
-    assert 'data-task="AcmeSync"' in html and 'data-act="run"' in html
+    # 任务开关上的「详情」就地展开(data-task-peek),不再是跳到运行详情的 data-task。
+    assert 'data-task-peek="AcmeSync"' in html and 'data-task="AcmeSync"' not in html and 'data-act="run"' in html
     cell = run("C.find(c=>c[0]==='name')[2](row)", setup())
     assert '<strong' in cell and 'title="检查并同步合成文件。"' in cell
 
@@ -107,15 +108,17 @@ def test_verdict_chip_never_reads_like_the_live_state_chip():
 
 def test_an_opened_detail_survives_a_table_rebuild_until_closed():
     # render() rebuilds the whole table; the page re-reads and re-renders right after a details link
-    # switches tabs, which used to collapse the detail the link had just opened.
+    # switches tabs, which used to collapse the detail the link had just opened. The open detail is now
+    # drawn by render() itself, right under its row.
     result = run("""const inserted=[];
 const fakeRow={dataset:{i:'0',name:'AcmeSync'},insertAdjacentHTML:where=>inserted.push(where)};
 document.querySelectorAll=selector=>selector.startsWith('#tbl tbody tr')?[fakeRow]:[];
 render();fakeRow.dataset.i=String(VIEW.findIndex(r=>r.name==='AcmeSync'));
 openDetail(fakeRow);const opened=inserted.length;
-render();const rebuilt=inserted.length;
-closeDetail();render();({opened,rebuilt,afterClose:inserted.length,open:OPEN_DETAIL})""", table_setup())
-    assert result == {"opened": 1, "rebuilt": 2, "afterClose": 2, "open": None}
+render();const html=$('tbl').innerHTML, det=html.indexOf('<tr class="det">');
+const rebuilt=det>html.indexOf('data-name="AcmeSync"') && det<html.indexOf('</tbody>');
+closeDetail();render();({opened,rebuilt,afterClose:$('tbl').innerHTML.includes('class="det"'),open:OPEN_DETAIL})""", table_setup())
+    assert result == {"opened": 1, "rebuilt": True, "afterClose": False, "open": None}
 
 
 def test_next_run_distinguishes_missing_empty_broken_and_invalid_time():
@@ -132,7 +135,8 @@ def test_next_run_distinguishes_missing_empty_broken_and_invalid_time():
 def test_relative_time_under_half_a_minute_reads_as_now_not_zero_minutes():
     assert run("relTime(new Date(Date.now()+10000).toISOString())") == "即将运行"
     assert run("relTime(new Date(Date.now()-10000).toISOString())") == "刚刚"
-    assert run("relTime(new Date(Date.now()+5*60000).toISOString())") == "5分后"
+    # 相对时间和全页统一的 fmtTime 是同一个说法。
+    assert run("relTime(new Date(Date.now()+5*60000).toISOString())") == "5 分钟后"
 
 
 def test_a_disabled_task_never_shows_the_next_run_the_scheduler_still_reports():
@@ -183,10 +187,10 @@ asc=false;render();VIEW[cur].name""", table_setup())
     assert result == "AcmeSync"
 
 
-def test_sorting_by_a_column_that_is_then_hidden_falls_back_to_the_name():
+def test_sorting_by_a_column_that_is_then_hidden_falls_back_to_severity():
     result = run("""sortKey='lastRun';asc=false;render();
 ({sortKey,asc,order:VIEW.map(r=>r.name)})""", table_setup())
-    assert result == {"sortKey": "name", "asc": True, "order": ["AcmeOther", "AcmeSync"]}
+    assert result == {"sortKey": "severity", "asc": True, "order": ["AcmeOther", "AcmeSync"]}
 
 
 def test_timeline_rows_are_labelled_with_task_titles():
@@ -326,7 +330,7 @@ def test_pipeline_issue_reasons_read_in_chinese_and_stay_searchable_by_code():
     html = run("renderPipelines();$('pipeline-issues').innerHTML", prefix)
     assert 'title="原因码 managed_block_modified_by_user">同步管理的配置段被手动改过' in html
     # A code with no wording yet is shown as it is, never hidden or guessed.
-    assert "<td>synthetic_unknown_code</td>" in html
+    assert "<span>synthetic_unknown_code</span>" in html
     for query in ("手动改过", "managed_block"):
         rows = run(f"PIPELINE_QUERY={json.dumps(query)};renderPipelineIssues();$('pipeline-issues').innerHTML", prefix)
         assert rows.count("<tr>") == 2 and "synthetic-mcp" in rows

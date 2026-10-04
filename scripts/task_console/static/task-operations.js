@@ -271,6 +271,11 @@ function syncTaskRepairSubmit(){
 function taskRepairOrderLink(itemId,name,label='查看工单'){
   return itemId?`<button class="record-link" data-repair-order="${esc(itemId)}" data-name="${esc(name)}">${esc(label)}</button>`:'';
 }
+// 后端给的是原因码时,码只进悬停;给的是一句中文时照原样跟在后面。
+function taskRepairWorkNotice(reason){
+  const why=workReasonText(reason);
+  return `<p class="review-notice"${why.code?` title="原因码 ${esc(why.code)}"`:''}>工作记录服务尚未连接，无法提交修复工单${!why.code && reason?'（'+esc(reason)+'）':''}。</p>`;
+}
 async function openTaskRepair(name){
   if(!ConsoleActions.allowWrite() || TASK_REPAIR.busy) return;
   TASK_REPAIR={name,preview:null,busy:true,done:false};
@@ -290,7 +295,7 @@ async function openTaskRepair(name){
     if(resubmit) $('repair-submit').textContent='为现有工单补交 Agent 处理';
     $('repair-body').innerHTML=(resubmit?`<p class="review-notice">这个任务已有一张修复工单，但还没有交给 Agent（${esc(taskRepairStatus(preview.existing).label)}）。提交会为这张工单补交 Agent 处理，不会新建。${taskRepairOrderLink(preview.existing.item_id,name)}</p>`:
       blocker==='existing'?`<p class="review-notice">这个任务已有修复工单（${esc(taskRepairStatus(preview.existing).label)}），不再新建。${taskRepairOrderLink(preview.existing.item_id,name)}</p>`:
-      blocker==='work'?`<p class="review-notice">工作记录服务尚未连接，无法提交修复工单${preview.work.reason?'（'+esc(preview.work.reason)+'）':''}。</p>`:'')+taskRepairFactsHtml(preview);
+      blocker==='work'?taskRepairWorkNotice(preview.work.reason):'')+taskRepairFactsHtml(preview);
   }catch(error){$('repair-body').innerHTML='';$('repair-state').textContent=error.message;}
   finally{TASK_REPAIR.busy=false;syncTaskRepairSubmit();}
 }
@@ -375,18 +380,45 @@ function taskRepairChip(name){
   return order.item_id?`<button class="repair-chip" data-repair-order="${esc(order.item_id)}" data-name="${esc(name)}" title="${esc(title)}">${badge}</button>`:
     `<span class="repair-chip" title="${esc(title)}">${badge}</span>`;
 }
+// 工作记录服务读不到时后端给的是原因码。页面上说人话,原码只进悬停;认不出的码不猜,只说看不到。
+// 后端直接给的中文原因照原样用。
+const WORK_REASON_TEXT={
+  work_reader_failed:'工作记录服务未连接，修复进度暂时看不到',
+  work_reader_not_configured:'没有配置工作记录服务，修复进度看不到',
+  work_binding_invalid:'工作记录服务的连接配置有误，修复进度看不到',
+  work_contract_invalid:'工作记录服务返回的格式认不出，修复进度看不到'
+};
+function workReasonText(reason){
+  const code=String(reason ?? '').trim();
+  if(!code) return {text:'修复进度暂时看不到',code:''};
+  if(Object.hasOwn(WORK_REASON_TEXT,code)) return {text:WORK_REASON_TEXT[code],code};
+  return /^[A-Za-z0-9_.:\-]+$/.test(code)?{text:'修复进度暂时看不到',code}:{text:code,code:''};
+}
 function taskRepairReadState(){
   if(REPAIRS_ERROR) return {text:'修复工单状态读取失败：'+REPAIRS_ERROR,tone:'bad'};
   if(!REPAIRS) return {text:REPAIRS_PENDING?'正在读取修复工单':'尚未读取修复工单',tone:'pending'};
-  if(!REPAIRS.available) return {text:'修复工单状态未读取'+(REPAIRS.reason?'（'+REPAIRS.reason+'）':''),tone:'warn'};
+  if(!REPAIRS.available){
+    const why=workReasonText(REPAIRS.reason);
+    return {text:why.text,tone:'warn',title:why.code?`${why.text}（原因码 ${why.code}）`:why.text};
+  }
   const orders=Object.values(REPAIRS.orders || {});
   if(!orders.length) return {text:'没有修复工单',tone:'muted'};
   const open=orders.filter(order=>REPAIR_ACTIVE_TODOS.includes(order.state)).length;
   return {text:`修复工单 ${orders.length} 张${open?'，未关闭 '+open:''}`,tone:'muted'};
 }
+// 工具栏上原来是一整句橙色的字,三个标签页各挂一句。读不到修复进度不是这一页的主事:
+// 现在只摆一个小的「!」,整句在悬停里;读取失败是红色「!」加一句短话(「读坏了」和「没连上」不能长得一样)。
+// 其余几种(读取中、没有工单、几张工单)是安静的小字,照旧写出来。
 function renderRepairReadState(){
   const state=taskRepairReadState();
-  document.querySelectorAll?.('[data-repair-read]').forEach(el=>{el.textContent=state.text;el.dataset.tone=state.tone;});
+  const icon=state.tone==='warn' || state.tone==='bad';
+  const html=!icon?esc(state.text):`<span class="repair-read-icon" aria-hidden="true">!</span>`+
+    (state.tone==='bad'?'修复进度读取失败':'')+`<span class="control-label">${esc(state.text)}</span>`;
+  document.querySelectorAll?.('[data-repair-read]').forEach(el=>{
+    el.innerHTML=html;el.dataset.tone=state.tone;
+    el.title=icon?(state.title || state.text):'';
+    if(el.setAttribute) el.setAttribute('role','status');
+  });
 }
 function repairsInFlight(){
   return !!REPAIRS?.available && Object.values(REPAIRS.orders || {}).some(order=>

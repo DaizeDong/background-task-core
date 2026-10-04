@@ -22,6 +22,9 @@ const PIPELINE_REASONS = {
   external_installer_required:"由外部安装程序管理，需另行安装"
 };
 const pipelineReason = code => Object.hasOwn(PIPELINE_REASONS, code) ? PIPELINE_REASONS[code] : code;
+// 收据里的运行模式同样是英文代号。认不出的照原样显示,不猜。
+const PIPELINE_MODES = {apply:"正式写入", preview:"预览", plan:"预览"};
+const pipelineMode = mode => mode == null || mode === "" ? "未记录" : Object.hasOwn(PIPELINE_MODES, mode) ? PIPELINE_MODES[mode] : mode;
 // 运行记录来自一份采集好的快照,不是打开页面时现查的。采集停了以后,「最近运行」和各环节结果
 // 会一直停在那一刻,而它们看起来和刚采集的记录一模一样,所以快照多旧必须说出来。
 // 两条流水线都至少每天跑一次,超过一天没更新的快照一定已经过时。
@@ -61,7 +64,7 @@ function pipelineSteps(key, components){
     const applied = receipt && receipt.version===1 && receipt.mode==="apply" && receipt.finished_at &&
       ["ok","success","healthy","degraded"].includes(receipt.status);
     if(receipt){
-      files.evidence=[...evidence,["同步结果",receipt.status],["运行模式",receipt.mode],
+      files.evidence=[...evidence,["同步结果",pipeState(receipt.status)],["运行模式",pipelineMode(receipt.mode)],
         ["完成时间",pipeTime(receipt.finished_at)],["本次改动",receipt.change_count ?? "未记录"],
         ["剩余差异",receipt.remaining_changes ?? "未记录"]];
       if(applied && receipt.remaining_changes===0){
@@ -127,6 +130,25 @@ function pipelineRows(){
   });
 }
 
+// 卡片开头一句合起来的结论。以前三种信号各说各的、还会互相打架:任务行上绿色的「已启用」、
+// 快照「9 天前」、运行记录「× 异常」。现在按最坏的那一个定颜色,几件事用「·」连成一句,
+// 例如「× 备份异常 · 记录停在 9 天前」;计划程序的状态退到任务行上的小字里。
+const PIPELINE_SHORT = {sync:"同步", backup:"备份"};
+const PIPELINE_TONE_RANK = {bad:0, warn:1, pending:2, idle:3, active:4, ok:5, muted:6};
+function pipelineVerdict(key, row, task, snap){
+  const parts=[], tones=[];
+  const add=(text,tone)=>{parts.push(text);tones.push(tone);};
+  if(row && row.sk==="bad") add("任务上次运行失败","bad");
+  const status=task && (task.last_run_v1 && task.last_run_v1.status || task.verdict);
+  if(task){
+    const tone=componentTone(status);
+    add(PIPELINE_SHORT[key]+(tone==="ok"?"正常":pipeState(status)), tone);
+  }else if(!COMPONENTS) add("正在读取运行记录","pending");
+  else add("未找到对应记录","idle");
+  if(task && snap.stale) add(`记录停在 ${snap.age}`,"warn");
+  const tone=tones.sort((a,b)=>(PIPELINE_TONE_RANK[a] ?? 9)-(PIPELINE_TONE_RANK[b] ?? 9))[0] || "idle";
+  return statusBadge(parts.join(" · "), tone, undefined, "pipeline-verdict");
+}
 function renderPipelines(){
   const box=$("pipeline-body");if(!box) return;
   const focused=box.contains?.(document.activeElement)?taskControlKey(document.activeElement):null;
@@ -149,18 +171,18 @@ function renderPipelines(){
       const status=task && (receipt && receipt.status || task.verdict);
       const steps=pipelineSteps(key,COMPONENTS);
       return `<div class="card pipeline-run" id="pipeline-${key}">
-        <div class="card-header"><h2 class="card-title">${esc(def.title)}</h2></div>
-        ${taskListRow(displayRow,{controls:row?taskActionButtons(row,{deletable:false}):'',showDetails:!!row,
+        <div class="card-header"><h2 class="card-title">${esc(def.title)}</h2>${pipelineVerdict(key,row,task,snap)}</div>
+        ${taskListRow(displayRow,{controls:row?taskActionButtons(row,{deletable:false,scope:'pipe'}):'',showDetails:!!row,inline:false,
           state:row?null:statusBadge(missing[0],missing[1])})}
         <div class="pipeline-result">运行记录 ${statusBadge(task?pipeState(status):'未找到对应记录',task?componentTone(status):'idle',undefined,'review-status')}</div>
         <div class="pipeline-metrics"><span>最近运行 <b>${esc(pipeTime(task && task.execution && task.execution.started_at))}</b></span>
           <span>运行标识 <b>${esc(task && task.run_id || "未提供")}</b></span>
           <span>任务标识 <b>${esc(task && task.task_id || "未关联")}</b></span>
-          ${receipt?`<span>模式 <b>${esc(receipt.mode || "未记录")}</b></span><span>本次改动 <b>${esc(receipt.change_count ?? "未记录")}</b></span><span>剩余差异 <b>${esc(receipt.remaining_changes ?? "未记录")}</b></span>`:""}
+          ${receipt?`<span>模式 <b title="${esc(receipt.mode || "")}">${esc(pipelineMode(receipt.mode))}</b></span><span>本次改动 <b>${esc(receipt.change_count ?? "未记录")}</b></span><span>剩余差异 <b>${esc(receipt.remaining_changes ?? "未记录")}</b></span>`:""}
         </div>
-        <div class="ops-scroll"><table class="ops-table pipeline-table"><thead><tr><th>环节</th><th>结果</th><th>检查记录</th></tr></thead><tbody>
-        ${steps.map((step,i)=>`<tr><th scope="row"><span class="step-index">${i+1}</span>${esc(step.title)}</th><td>${statusBadge(step.label,step.tone,step.symbol,'review-status')}</td>
-          <td><div>${esc(step.detail.replace("展开问题查看具体对象。","见下方问题清单。"))}</div>
+        <div class="ops-scroll pipeline-steps"><table class="ops-table pipeline-table"><thead><tr><th>环节</th><th>结果</th><th>检查记录</th></tr></thead><tbody>
+        ${steps.map((step,i)=>`<tr><th scope="row"><span class="step-index">${i+1}</span>${esc(step.title)}</th><td data-label="结果">${statusBadge(step.label,step.tone,step.symbol,'review-status')}</td>
+          <td data-label="检查记录"><div>${esc(step.detail.replace("展开问题查看具体对象。","见下方问题清单。"))}</div>
             ${(step.checks||[]).map(check=>`<span class="check-chip">${esc(check.check_id)} ${statusBadge(pipeState(check.state),componentTone(check.state))}</span>`).join("")}
             <div class="pipeline-evidence">${(step.evidence||[]).filter(([label])=>!["任务","任务标识","运行标识","开始时间"].includes(label)).map(([label,value])=>`<span>${esc(label)} <b>${esc(value ?? "未记录")}</b></span>`).join("")}</div>
           </td></tr>`).join("")}</tbody></table></div></div>`;
@@ -183,11 +205,25 @@ function renderPipelineIssues(){
   // 中文说法也要搜得到,原因码照旧能搜。
   const rows=(Array.isArray(findings)?findings:[]).filter(f=>!query ||
     (JSON.stringify(f)+" "+(f.reason?pipelineReason(f.reason):"")).toLowerCase().includes(query));
-  $("pipeline-issue-count").textContent=Array.isArray(findings)?`显示 ${rows.length} 项，共 ${findings.length} 项`:"尚无问题清单";
-  const reasonCell=f=>f.reason
-    ? `<td${pipelineReason(f.reason)!==f.reason?` title="原因码 ${esc(f.reason)}"`:""}>${esc(pipelineReason(f.reason))}</td>`
-    : `<td>${esc(catalogLabel(f.status))}</td>`;
-  $("pipeline-issues").innerHTML=rows.length?`<table class="ops-table"><thead><tr><th>类型</th><th>对象</th><th>状态 / 原因</th></tr></thead><tbody>${rows.map(f=>`<tr><td>${esc(catalogLabel(f.area))}</td><th scope="row">${esc(f.name || "未命名")}</th>${reasonCell(f)}</tr>`).join("")}</tbody></table>`:
+  $("pipeline-issue-count").textContent=Array.isArray(findings)?matchCount(rows.length,findings.length):"尚无问题清单";
+  // 按原因分组:一组一个标题行,写原因和这一组有几项,下面逐行列出对象。以前 54 行里大半是同一句「受阻」,
+  // 一行行重复同一个原因,看不出一共有几种问题。每一行照旧都在,不折叠,也不用 details。
+  // 原因码认得的写中文,原码进悬停;认不出的照原样显示。没有原因码的按状态分组。
+  const groups=new Map();
+  rows.forEach(f=>{
+    const key=f.reason?"reason:"+f.reason:"status:"+(f.status ?? "");
+    if(!groups.has(key)) groups.set(key,{finding:f,rows:[]});
+    groups.get(key).rows.push(f);
+  });
+  const groupHead=({finding,rows:items})=>{
+    const label=finding.reason?pipelineReason(finding.reason):catalogLabel(finding.status);
+    const title=finding.reason && label!==finding.reason?` title="原因码 ${esc(finding.reason)}"`:"";
+    return `<tr class="issue-group"><th colspan="2" scope="rowgroup"><span${title}>${esc(label)}</span><span class="n">${items.length} 项</span></th></tr>`;
+  };
+  // 项数多的原因排在前面;一样多的保持清单里的先后。
+  const ordered=[...groups.values()].sort((a,b)=>b.rows.length-a.rows.length);
+  $("pipeline-issues").innerHTML=rows.length?`<table class="ops-table pipeline-issue-table"><thead><tr><th>类型</th><th>对象</th></tr></thead>${ordered.map(group=>
+    `<tbody>${groupHead(group)}${group.rows.map(f=>`<tr><td>${esc(catalogLabel(f.area))}</td><th scope="row">${esc(f.name || "未命名")}</th></tr>`).join("")}</tbody>`).join("")}</table>`:
     `<p class="review-empty">${Array.isArray(findings)?findings.length?"没有符合筛选条件的问题":"本次同步记录未列出问题":"尚未读到问题清单，无法确认功能是否可用"}</p>`;
 }
 function pipelineClick(event){

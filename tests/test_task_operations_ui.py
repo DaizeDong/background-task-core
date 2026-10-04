@@ -48,7 +48,9 @@ def test_rows_offer_repair_everywhere_and_delete_everywhere_but_the_backbone_tas
     assert "disabled" not in repair and "disabled" not in delete
     assert 'title="修复' in repair and 'title="删除' in delete
     assert '#i-repair' in html and '#i-trash' in html
-    assert '<span class="control-label">修复</span>' in html and '<span class="control-label">删除</span>' in html
+    # 修复和删除收进「⋯」菜单,菜单项上的字看得见。
+    assert '<span class="task-op-label">修复</span>' in html and '<span class="task-op-label">删除</span>' in html
+    assert 'popovertarget="tkm-tbl-Acme%20Backup%20Daily"' in html and 'id="tkm-tbl-Acme%20Backup%20Daily" popover' in html
     card = run("taskActionButtons({name:'Acme Backup Daily',state:'Ready'},{deletable:false})")
     assert 'data-task-repair="Acme Backup Daily"' in card and "data-task-delete" not in card
     # 流水线上的任务不靠调用方记得传 deletable:false,默认就没有删除按钮(名字不分大小写)。
@@ -351,14 +353,16 @@ def test_not_read_unreadable_failed_and_empty_are_four_different_displays():
       replies['/api/task/repairs']=()=>{throw new Error('合成网络错误');};await loadRepairs();
       out.failed=[taskRepairReadState().text,taskRepairChip('AcmeSync'),repairsInFlight()];
       replies['/api/task/repairs']={available:false,reason:'work_reader_not_configured',orders:{}};await loadRepairs();
-      out.unavailable=[taskRepairReadState().text,taskRepairChip('AcmeSync')];
+      out.unavailable=[taskRepairReadState().text,taskRepairChip('AcmeSync'),taskRepairReadState().title];
       replies['/api/task/repairs']={available:true,orders:{}};await loadRepairs();
       out.empty=[taskRepairReadState().text,taskRepairChip('AcmeSync')];
       return out;})()""", harness() + "const order=" + json.dumps(task_repair_order_case("running")) + ";")
     texts = [result[key][0] for key in ("never", "failed", "unavailable", "empty")]
     assert len(set(texts)) == 4
     assert result["never"][0] == "尚未读取修复工单" and "读取失败" in result["failed"][0] and "合成网络错误" in result["failed"][0]
-    assert "work_reader_not_configured" in result["unavailable"][0] and result["empty"][0] == "没有修复工单"
+    # 原因码不摆在正文里:正文说人话,原码进悬停。
+    assert "work_reader_not_configured" not in result["unavailable"][0] and "工作记录服务" in result["unavailable"][0]
+    assert "work_reader_not_configured" in result["unavailable"][2] and result["empty"][0] == "没有修复工单"
     assert "修复中" in result["loaded"][1] and result["loaded"][2] is True
     # 读失败就不留上一次的芯片:一张停在旧值上的「修复中」看起来和正在修一模一样。
     assert result["failed"][1] == "" and result["failed"][2] is False

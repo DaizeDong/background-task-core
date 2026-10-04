@@ -11,3 +11,109 @@
 /* 「显示列」里分两组:常用列和保障配置六列,各带一个小标题。 */
 #task-column-options .task-column-heading{padding:2px 5px;color:var(--dim);font-size:var(--fs-meta);font-weight:600}
 #task-column-options .task-column-group+.task-column-group{margin-top:6px;padding-top:6px;border-top:1px solid var(--line2)}
+
+/* ── 健康状况一眼可见 ──
+   失败的任务左边一道红色内描边,和它的「× 失败」芯片一起,在一列绿色里认得出来。
+   计划程序的状态(已启用、正在运行)退成芯片下面的一行小字。 */
+#automations .automation-row.is-failing,#pipelines .automation-row.is-failing{box-shadow:inset 3px 0 0 var(--bad)}
+#tasks #tbl tbody tr.is-failing>td:first-child{box-shadow:inset 3px 0 0 var(--bad)}
+.automation-scheduler{flex-basis:100%;color:var(--dim);font-size:var(--fs-meta);line-height:1.4}
+.task-health{display:inline-flex;max-width:100%}
+
+/* ── 一行的构图 ──
+   建议徽章紧跟在标题后面,不再被推到这一格的最右边(运行详情里两者隔着六百多像素)。
+   摘要只占一行,完整内容在悬停里。 */
+#automations .task-heading strong,#pipelines .task-heading strong,#tasks #tbl .task-heading strong{flex:0 1 auto}
+#tasks #tbl .task-heading .row-toggle{flex:0 1 auto}
+#automations .task-summary-text,#pipelines .task-summary-text{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.task-op-label{white-space:nowrap}
+
+/* 任务开关和同步与备份的一行:状态列放得下「失败 · 退出码 1」,操作列放得下运行、停用、⋯ 和详情,不再折成两行。 */
+@media(min-width:1101px){
+  #automations .automation-row,#automations .automation-list-heading,#pipelines .automation-row{grid-template-columns:minmax(0,1fr) minmax(150px,220px) 150px 260px}
+}
+
+/* ── 运行详情的操作列 ──
+   一行三个按钮:运行、停用或启用(带字),外加「⋯」。覆盖 review.css 那条两列网格:那条把五个图标排成三行,
+   一行任务 125px 高。名称格把任务名挪到摘要同一行的右边,一行任务只剩两行字高。 */
+#tasks #tbl td.ops .task-controls{display:flex;flex-wrap:nowrap;gap:var(--space-1)}
+#tasks #tbl th[data-column="ops"]{width:13rem}
+#tasks #tbl td{padding-top:6px;padding-bottom:6px}
+#tasks #tbl td.nm .automation-name{display:grid;grid-template-columns:minmax(0,1fr) auto;column-gap:10px;align-items:baseline}
+#tasks #tbl td.nm .task-heading{grid-column:1 / -1}
+#tasks #tbl td.nm .task-summary-text{grid-column:1;margin-top:2px}
+#tasks #tbl td.nm .task-machine-name{grid-column:2;margin-top:2px;max-width:16rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* 菜单里的删除平时和别的项一样颜色,瞄准(悬停、键盘聚焦)时才变红;灰着的时候不变。 */
+.pop-menu.task-menu .menu-danger:not(:disabled){color:var(--ink)}
+.pop-menu.task-menu .menu-danger:not(:disabled):hover,.pop-menu.task-menu .menu-danger:not(:disabled):focus-visible{color:var(--bad);background:var(--badb)}
+.task-menu{min-width:180px}
+
+/* ── 整页滚动,表头跟着走 ──
+   表格原来在自己的盒子里滚(最高 100vh-190px),滚轮先滚完整张表才轮到页面,时间轴和热力图要找缝隙才滚得到。
+   现在去掉内部滚动,页面自己滚;#dtbox 的圆角裁切改用 overflow:clip,它不造滚动容器,表头的 sticky 才能贴住视口
+   (贴在顶栏和操作面板下面,--sticky-stack 由 actions.js 量出来)。勾选了很多列、表比卡片宽时才横向滚,那时表头只在表内粘。 */
+#tasks #dtbox{overflow:clip}
+#tasks #dtbox .pad{max-height:none;overflow:visible}
+#tasks #dtbox .pad:has(>#tbl.task-table-expanded){overflow-x:auto}
+#tasks #tbl thead th{top:var(--sticky-stack,0px)}
+#tasks #tbl .det-bar{top:calc(var(--sticky-stack,0px) + 40px)}
+#tasks #dtbox .card-header{justify-content:space-between;flex-wrap:wrap;gap:6px 12px}
+#tasks .task-sort{display:flex;align-items:center;gap:8px;font-size:var(--fs-meta)}
+
+/* ── 明细开头的原因条 ── 失败是红色,只有警告是橙色;右边是修复和运行一次。 */
+.task-alert{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px 16px;margin:0 0 14px;padding:8px 12px;border-left:3px solid;border-radius:4px;font-size:var(--fs-body);line-height:1.5}
+.task-alert.bad{color:var(--bad);background:var(--badb);border-color:var(--bad)}
+.task-alert.warn{color:var(--warn);background:var(--warnb);border-color:var(--warn)}
+.task-alert p{margin:0;min-width:0;flex:1 1 280px;overflow-wrap:anywhere}
+.task-alert .status-symbol{margin-right:6px;font-weight:700}
+.task-alert-actions{display:flex;gap:var(--space-1);flex-wrap:wrap}
+.task-alert-actions button{display:inline-flex;align-items:center;gap:5px;min-height:var(--control-height)}
+.task-alert+.iss{margin:-6px 0 14px}
+.task-technical-heading{margin:16px 0 8px;padding-top:12px;border-top:1px solid var(--line2);color:var(--dim);font-size:var(--fs-meta);font-weight:600}
+
+/* ── 任务开关的就地明细 ── 占满这一行的整宽,在标题、计划、状态、操作下面。 */
+#automations .automation-detail{grid-column:1 / -1;margin-top:4px;padding:14px 16px;background:var(--panel2);border:1px solid var(--line2);border-radius:4px;white-space:normal}
+#automations .automation-detail .det-bar{top:calc(var(--sticky-stack,0px) + 8px)}
+
+/* ── 时间轴 ── 行高至少 20px,点得准;点一下轨道就打开那个任务。 */
+#tasks .tlrow{height:20px}
+
+/* ── 修复进度读不到时只是一个小「!」,整句在悬停里 ── */
+.repair-read-icon{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;border:1px solid currentColor;font-weight:700;font-size:11px;line-height:1;cursor:help}
+.repair-read-state[data-tone="bad"] .repair-read-icon{margin-right:4px}
+
+/* ── 同步与备份 ── 卡片标题右边是合起来的结论;问题清单按原因分组,组标题写原因和项数。 */
+#pipelines .pipeline-run>.card-header{justify-content:space-between;flex-wrap:wrap;gap:6px 12px}
+#pipelines .pipeline-verdict{font-size:var(--fs-body);white-space:normal;text-align:left;max-width:100%;height:auto}
+#pipelines .pipeline-issue-table tr.issue-group th{background:var(--panel2);color:var(--ink);font-weight:600}
+#pipelines .pipeline-issue-table tr.issue-group .n{margin-left:8px;color:var(--dim);font-weight:400}
+
+/* ── 窄屏 ── */
+@media(max-width:767px){
+  /* 运行详情拆成一张张卡片:标题、健康芯片、下次运行、操作,没有横向滚动。
+     每一格前面用 data-label 写出列名;勾选框、标题、状态和操作本身不需要。 */
+  #tasks #dtbox .pad,#tasks #dtbox .pad:has(>#tbl.task-table-expanded){overflow:visible}
+  #tasks #tbl,#tasks #tbl.task-table-expanded{display:block;min-width:0;table-layout:auto}
+  #tasks #tbl thead{display:none}
+  #tasks #tbl tbody{display:block}
+  #tasks #tbl tbody tr:not(.det){display:grid;grid-template-columns:auto minmax(0,1fr);gap:6px 10px;padding:10px 12px;border-bottom:1px solid var(--line2)}
+  #tasks #tbl tbody tr:not(.det)>td{display:block;padding:0;border:0;min-width:0;width:auto;text-align:left}
+  #tasks #tbl tbody tr:not(.det)>td[data-c="selc"]{grid-row:1;grid-column:1}
+  #tasks #tbl tbody tr:not(.det)>td:not([data-c="selc"]){grid-column:2}
+  #tasks #tbl tbody tr:not(.det)>td[data-c]:not([data-c="selc"]):not([data-c="name"]):not([data-c="ops"]):not([data-c="sl"])::before{content:attr(data-label) "：";color:var(--dim);font-family:var(--ui)}
+  #tasks #tbl tbody tr.is-failing:not(.det){box-shadow:inset 3px 0 0 var(--bad)}
+  #tasks #tbl tbody tr.is-failing>td:first-child{box-shadow:none}
+  #tasks #tbl td.nm .automation-name{grid-template-columns:minmax(0,1fr)}
+  #tasks #tbl td.nm .task-machine-name{grid-column:1;max-width:none}
+  #tasks #tbl tr.det,#tasks #tbl tr.det>td{display:block}
+  #tasks #tbl tr.det>td>.det{width:auto}
+  #tasks #tbl td.ops .task-controls{flex-wrap:wrap}
+  /* 同步与备份的环节表在窄屏上叠起来:环节名一行,结果和检查记录跟在下面,不再横向裁掉。 */
+  #pipelines .pipeline-steps .ops-table{min-width:0}
+  #pipelines .pipeline-steps .ops-table thead{display:none}
+  #pipelines .pipeline-steps .ops-table,#pipelines .pipeline-steps .ops-table tbody,#pipelines .pipeline-steps .ops-table tr,
+  #pipelines .pipeline-steps .ops-table th,#pipelines .pipeline-steps .ops-table td{display:block}
+  #pipelines .pipeline-steps .ops-table tr{padding:8px 0;border-bottom:1px solid var(--line2)}
+  #pipelines .pipeline-steps .ops-table th,#pipelines .pipeline-steps .ops-table td{border:0;padding:3px var(--section-inset)}
+  #pipelines .pipeline-issue-table{min-width:0}
+}

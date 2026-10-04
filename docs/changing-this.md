@@ -139,6 +139,9 @@
 在那张表里给它所在的分区加一步,并让那一步只在状态真的开着时返回 true;
 不在表里的分区什么都不做,这样 Esc 不会去改一屏看不见的东西。逻辑放在 `navigation.js` 而不是 `events.js`,
 是为了让 node:vm 台架能测到它(`tests/test_keyboard_conventions.py`)。
+页面自己的那一层也可以由页面在启动函数里登记,不必改 `navigation.js`:任务开关的就地明细由
+`tasks.js` 的 `registerAutomationKeys()` 往 `ESC_STEPS.automations` 和 `SEARCH_ENTER['automation-search']` 里登记,
+原来那一项(如果有)接在后面照旧执行。
 
 这一屏没有可退的层时,Esc 的最后一步是 `returnToOrigin()`:只有下钻来的屏才有来源,回去一次就用掉。
 「下钻」由 `navigation.js` 的 `DRILL_TARGETS` 认(`data-task`、`data-goto` 等),`events.js` 在点击的捕获阶段调 `markDrill()`。

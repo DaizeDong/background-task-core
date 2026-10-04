@@ -180,24 +180,46 @@ function taskOutcome(reply,verb){
 // (task_delete.PIPELINE_BLOCK)。修复只开工单不改任务,哪里都可以给。
 const taskIsPipeline=name=>typeof PIPELINE_DEFS!=='undefined' &&
   Object.values(PIPELINE_DEFS).some(def=>String(def.name).toLowerCase()===String(name).toLowerCase());
-function taskActionButtons(row,{deletable=!taskIsPipeline(row.name)}={}){
+// 行内两个常用动作(运行、停用或启用)和明细里「运行一次」共用这一份:不可用的原因、悬停说明、按钮长相只写一处。
+const TASK_VERB_HINTS={enable:'恢复按计划启动',disable:'不再按计划启动；正在运行的任务继续执行',run:'立即运行一次，保留原计划',stop:'请求停止当前运行，保留后续计划'};
+// 停用是把定时关掉,不是暂停这一次运行:用开关的「关」,不用暂停键。
+const TASK_VERB_SYMBOLS={enable:'i-on',disable:'i-toggle-off',run:'i-play',stop:'i-stop'};
+function taskVerbReason(row){
   const known=['Ready','Running','Disabled','Queued'].includes(row.state);
-  const reason=ConsoleActions.readOnly?ConsoleActions.reason:busy?'正在执行操作':!known?'任务状态未确认':'';
-  const hints={enable:'恢复按计划启动',disable:'不再按计划启动；正在运行的任务继续执行',run:'立即运行一次，保留原计划',stop:'请求停止当前运行，保留后续计划'};
-  // 停用是把定时关掉,不是暂停这一次运行:用开关的「关」,不用暂停键。
-  const symbols={enable:'i-on',disable:'i-toggle-off',run:'i-play',stop:'i-stop'};
-  // 灰着的按钮也先说自己是哪个动作:一行里四个图标,只写原因的话悬停上去分不出是谁。
-  const title=(label,why,hint)=>esc(why?disabledTitle(label,why):hint);
-  const control=(verb,label,extraReason='')=>`<button class="mini task-control icon-only" data-act="${verb}" data-name="${esc(row.name)}" ${reason || extraReason?'disabled':''} title="${title(label,reason || extraReason,hints[verb])}"><svg class="ic" aria-hidden="true"><use href="#${symbols[verb]}"/></svg><span class="control-label">${label}</span></button>`;
+  return ConsoleActions.readOnly?ConsoleActions.reason:busy?'正在执行操作':!known?'任务状态未确认':'';
+}
+// 运行一次在三种状态下按不动,各说各的原因。
+const taskRunReason=row=>row.state==='Disabled'?'请先启用':row.state==='Queued'?'已在队列中':row.state==='Running'?'任务正在运行':'';
+// 灰着的按钮也先说自己是哪个动作:一行里几个按钮,只写原因的话悬停上去分不出是谁。
+const taskControlTitle=(label,why,hint)=>esc(why?disabledTitle(label,why):hint);
+// label 是动作的全名(进 title 和不可用说明),text 是按钮上看得见的短字。停用带 danger:常态和别的按钮一样灰,
+// 悬停才变红,和批量条上的停用一个样子。
+function taskVerbButton(row,verb,label,{text=label,extraReason=''}={}){
+  const why=taskVerbReason(row) || extraReason;
+  return `<button type="button" class="mini task-control${verb==='disable'?' danger':''}" data-act="${verb}" data-name="${esc(row.name)}" data-label="${esc(label)}" ${why?'disabled':''} title="${taskControlTitle(label,why,TASK_VERB_HINTS[verb])}"><svg class="ic" aria-hidden="true"><use href="#${TASK_VERB_SYMBOLS[verb]}"/></svg><span class="task-op-label">${esc(text)}</span></button>`;
+}
+function taskMenuItem(icon,label,attrs,cls=''){
+  return `<button type="button" class="menu-item${cls?' '+cls:''}" ${attrs}><svg class="ic" aria-hidden="true"><use href="#${icon}"/></svg><span class="task-op-label">${label}</span></button>`;
+}
+// 同一个任务同时出现在运行详情、任务开关和同步与备份三处,菜单的 id 带上是哪一处,整页不重名。
+const taskMenuId=(scope,name)=>'tkm-'+scope+'-'+encodeURIComponent(String(name || ''));
+// 一行只摆两个常用动作,带字;启动方式、修复、删除收进「⋯」菜单。原来五个灰色图标方块排成两列三行,
+// 一行 125px 高,一屏只看得到五个任务,图标还互相认不出。删除在菜单最底下、和别的项隔开。
+function taskActionButtons(row,{deletable=!taskIsPipeline(row.name),scope='tbl'}={}){
   // 修复不看任务状态:状态读不出来、任务在跑,恰恰是最需要诊断的时候。
   const repairReason=ConsoleActions.readOnly?ConsoleActions.reason:'';
   const removeReason=ConsoleActions.readOnly?ConsoleActions.reason:busy?'正在执行操作':row.state==='Running'?'任务正在运行，请先停止本次运行再删除':'';
+  const menu=taskMenuId(scope,row.name);
   return '<span class="task-controls">'+
-    control(row.state==='Disabled'?'enable':'disable',row.state==='Disabled'?'启用':'停用')+
-    (row.state==='Running'?control('stop','停止本次'):control('run','运行一次',row.state==='Disabled'?'请先启用':row.state==='Queued'?'已在队列中':''))+
-    `<button class="icon-only mini task-control" data-launch="${esc(row.name)}" title="查看完整命令、身份和运行条件"><svg class="ic" aria-hidden="true"><use href="#i-terminal"/></svg><span class="control-label">启动方式</span></button>`+
-    `<button class="mini task-control icon-only" data-task-repair="${esc(row.name)}" ${repairReason?'disabled':''} title="${title('修复',repairReason,'修复：查看任务事实，开一张工单交给 Agent 诊断；不会改动任务本身')}"><svg class="ic" aria-hidden="true"><use href="#i-repair"/></svg><span class="control-label">修复</span></button>`+
-    (deletable?`<button class="mini task-control icon-only" data-task-delete="${esc(row.name)}" ${removeReason?'disabled':''} title="${title('删除',removeReason,'删除：先预览每一步要改哪里，输入完整任务名后才执行')}"><svg class="ic" aria-hidden="true"><use href="#i-trash"/></svg><span class="control-label">删除</span></button>`:'')+'</span>';
+    (row.state==='Running'?taskVerbButton(row,'stop','停止本次',{text:'停止'}):taskVerbButton(row,'run','运行一次',{text:'运行',extraReason:taskRunReason(row)}))+
+    (row.state==='Disabled'?taskVerbButton(row,'enable','启用'):taskVerbButton(row,'disable','停用'))+
+    `<button type="button" class="mini icon-only task-more" popovertarget="${esc(menu)}" data-task-menu="${esc(row.name)}" title="更多操作：启动方式、修复${deletable?'、删除':''}"><svg class="ic" aria-hidden="true"><use href="#i-more"/></svg><span class="control-label">更多操作</span></button>`+
+    `<div class="pop-menu task-menu" id="${esc(menu)}" popover aria-label="更多操作">`+
+    taskMenuItem('i-terminal','启动方式',`data-launch="${esc(row.name)}" title="查看完整命令、身份和运行条件"`)+
+    taskMenuItem('i-repair','修复',`data-task-repair="${esc(row.name)}" data-label="修复" ${repairReason?'disabled':''} title="${taskControlTitle('修复',repairReason,'修复：查看任务事实，开一张工单交给 Agent 诊断；不会改动任务本身')}"`)+
+    (deletable?'<div class="menu-sep" role="separator"></div>'+
+      taskMenuItem('i-trash','删除',`data-task-delete="${esc(row.name)}" data-label="删除" ${removeReason?'disabled':''} title="${taskControlTitle('删除',removeReason,'删除：先预览每一步要改哪里，输入完整任务名后才执行')}"`,'menu-danger'):'')+
+    '</div></span>';
 }
 
 function taskStartCommand(row){

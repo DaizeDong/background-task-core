@@ -1,6 +1,6 @@
 // Classic script module; loaded in app.js dependency order.
 
-let DATA=null, ROWS=[], VIEW=[], cur=0, sel=new Set(), sortKey="name", asc=true, busy=false;
+let DATA=null, ROWS=[], VIEW=[], cur=0, sel=new Set(), sortKey="severity", asc=true, busy=false;
 // Keep routine operation compact; retain saved column and safeguards choices.
 const HYGIENE = ["catchup","retries","timeout","artifact","inAllow","inHealth"];
 // 显示哪些列只存一处:tc.taskColumns。保障配置那六列以前由工具栏上单独一个按钮整组开合,存在 tc.hyg;
@@ -22,6 +22,53 @@ function loadTaskColumns(getStorage){
   return columns;
 }
 let TASK_COLUMNS = loadTaskColumns(()=>localStorage);
+// 默认按严重程度排:失败、有警告、正常、停用,同一档里按标题。按名字排时,失败的任务散在第 7 到第 42 行,
+// 要找有事的得把整张表读一遍。人点了列标题换过排序,就记在本机浏览器里(tc.taskSort),下次照旧。
+// 存的列现在被「显示列」藏起来了,render() 会退回默认排序;存储读不了就用默认,这只是一点便利。
+const TASK_SORT_DEFAULT='severity';
+function loadTaskSort(getStorage){
+  try{
+    const saved=JSON.parse(getStorage().getItem('tc.taskSort'));
+    if(saved && typeof saved.key==='string' && saved.key) return {key:saved.key,asc:saved.asc!==false};
+  }catch(e){}
+  return {key:TASK_SORT_DEFAULT,asc:true};
+}
+({key:sortKey,asc}=loadTaskSort(()=>localStorage));
+let SAVED_TASK_SORT=sortKey+':'+asc;
+function saveTaskSort(){
+  const value=sortKey+':'+asc;
+  if(value===SAVED_TASK_SORT) return;
+  SAVED_TASK_SORT=value;
+  try{localStorage.setItem('tc.taskSort',JSON.stringify({key:sortKey,asc}));}catch(e){}
+}
+// 问题等级:有一条 bad 就是 bad,否则有 warn 就是 warn。issues 缺失的行(同步与备份卡片上占位用的那种)当没有问题。
+const taskIssueLevel=row=>{const issues=row.issues || [];return issues.some(i=>i[0]==='bad')?'bad':issues.some(i=>i[0]==='warn')?'warn':'';};
+function taskSeverityRank(row){
+  if(row.sk==='bad') return 0;
+  if(row.state==='Disabled') return 3;
+  return taskIssueLevel(row)?1:2;
+}
+function taskSeverityCompare(a,b){
+  return taskSeverityRank(a)-taskSeverityRank(b) || taskText(a).title.localeCompare(taskText(b).title,'zh') || String(a.name).localeCompare(String(b.name));
+}
+// 列表本身的顺序(任务开关、同步与备份照它排):分组照后端给的,组内失败的排到最前,其余保持原样。
+function taskRowsInOrder(groups){
+  return groups.flatMap(group=>{
+    const rows=group.rows.map(row=>Object.assign({cat:group.cat},row));
+    return [...rows.filter(row=>row.sk==='bad'),...rows.filter(row=>row.sk!=='bad')];
+  });
+}
+// 排序状态写在任务列表的卡片标题旁:默认那一档不在任何列标题上,不写出来就没人知道表是按什么排的。
+function syncTaskSortState(){
+  const state=$('task-sort-state'), back=$('task-sort-severity');
+  const column=C.find(c=>c[0]===sortKey);
+  if(state) state.textContent=sortKey===TASK_SORT_DEFAULT?'按严重程度：失败在前':`按「${column?column[1]:sortKey}」${asc?'升序':'降序'}`;
+  if(back) setDisabled(back,sortKey===TASK_SORT_DEFAULT?'已经按严重程度排序':'');
+}
+function sortTasksBySeverity(){
+  sortKey=TASK_SORT_DEFAULT;asc=true;
+  if(DATA) render(); else syncTaskSortState();
+}
 const shownCols = () => C.filter(c=>['selc','name'].includes(c[0]) || TASK_COLUMNS.has(c[0]));
 // 运行状态筛选,由表格上方那四个计数按钮切换:'' 全部,bad 上次运行失败,warn 有警告,off 已停用。
 // 以前只有一个「只看异常与警告」勾选框,把失败和警告混在一起,而那四个计数看着像按钮却点不动。
@@ -45,7 +92,7 @@ function syncTaskStatus(counts){
     const key=button.dataset.taskStatus, active=key===TASK_STATUS;
     button.setAttribute('aria-pressed',String(active));
     button.dataset.label=TASK_STATUS_LABEL[key];
-    const reason=!counts?'计划任务还没读到':(key && !active && !counts[key])?TASK_STATUS_EMPTY[key]:'';
+    const reason=!counts?(TASKS_LOAD_ERROR?'计划任务读取失败':'计划任务还没读到'):(key && !active && !counts[key])?TASK_STATUS_EMPTY[key]:'';
     setDisabled(button,reason);
     if(!reason) button.title=!key?'显示全部任务，清除状态筛选':active?`${TASK_STATUS_LABEL[key]}：再点一次显示全部任务`:`${TASK_STATUS_LABEL[key]}，再点一次显示全部`;
   });
@@ -139,6 +186,49 @@ function taskVerdictSummary(rows){
   return [...Object.entries(TASK_VERDICTS),...Object.entries(TASK_VERDICT_EXTRA)]
     .filter(([key])=>counts[key]).map(([key,value])=>`${value.label} ${counts[key]}`).join(' · ');
 }
+// ================= 健康状况 ========================================================
+// 计划程序的「已启用」只说它会不会按时启动,不说上次跑得好不好。任务开关和同步与备份以前只摆前者,
+// 于是十几个失败的任务个个挂着绿色的「✓ 已启用」,和健康的一模一样。现在三处都先摆健康状况,
+// 和运行详情的「状态」列是同一个芯片;计划程序的状态退成旁边一行小字。
+// 上次运行结果码。常见的几种直接说人话,其余只给十进制的退出码;十六进制原码一律留在悬停里。
+const TASK_RC_MEANINGS={'0x1':'程序以 1 退出，通常是脚本自己报错','0x2':'找不到要运行的文件','0x41306':'任务被强行终止',
+  '0x8004131f':'上一次运行还没结束，这次没有启动','0x800710e0':'计划程序拒绝了这次启动，常见于账户或登录条件不满足',
+  '0xc000013a':'程序被中断（Ctrl+C 或关机）','0xffffffff':'程序以 -1 退出','0x80070002':'找不到要运行的文件',
+  // 这几个是计划程序自己的状态码,不是程序的退出码:写成「267009」没人看得懂。
+  '0x0':'成功','0x41300':'任务已就绪','0x41301':'正在运行','0x41302':'任务已停用','0x41303':'还没有运行过'};
+function taskExitCode(row){
+  const raw=String(row.rcHex || (/^失败\s+(\S+)$/.exec(row.sl || '') || [])[1] || '').trim();
+  const match=/^0x([0-9a-f]+)$/i.exec(raw);
+  if(!match){const text=raw && raw!=='?'?raw:'未知';return {text,hex:raw,meaning:'',label:'退出码 '+text};}
+  const value=parseInt(match[1],16), hex='0x'+match[1].toUpperCase();
+  // 32 位的系统错误码按无符号十进制写是一串没人认得的长数字;按有符号写,和命令行里 %ERRORLEVEL% 看到的一样。
+  const meaning=TASK_RC_MEANINGS['0x'+match[1].toLowerCase().replace(/^0+(?=.)/,'')] || '';
+  return {text:String(value>0x7fffffff?value-0x100000000:value),hex,meaning,
+    // 大于 0xFFFF 的是系统或计划程序的码,十进制没有意义;认得的就只说含义。
+    label:meaning && value>0xffff?meaning:'退出码 '+String(value>0x7fffffff?value-0x100000000:value)};
+}
+// 「退出码 1（程序以 1 退出…）」;系统码认得时只说含义,例如「正在运行」。
+const taskExitCodeText=rc=>rc.label+(rc.meaning && rc.label.startsWith('退出码')?'（'+rc.meaning+'）':'');
+function taskHealth(row){
+  if(row.state==='Disabled' || row.sk==='disabled') return {label:'已停用',tone:'muted',symbol:'Ⅱ',title:'已停用，不会按计划运行'};
+  if(row.sk==='bad'){
+    const rc=taskExitCode(row);
+    return {label:`失败 · ${rc.text==='未知'?'退出码未知':rc.label}`,tone:'bad',title:`上次运行结果 ${rc.hex || '未知'}${rc.meaning?'：'+rc.meaning:''}`};
+  }
+  if(row.sk==='running') return {label:row.sl || '运行中',tone:'active',title:'任务正在运行'};
+  if(row.sk==='pending') return {label:row.sl || '尚未首跑',tone:'pending',title:'还没有运行过'};
+  if(row.sk==='unknown') return {label:row.sl || '信息读不到',tone:'idle',title:'读不到这个任务的运行信息'};
+  if(row.sk==='ok'){
+    const first=(row.issues || [])[0];
+    if(taskIssueLevel(row)) return {label:'有警告',tone:'warn',title:first?first[1]:'有警告'};
+    return {label:row.sl || '正常',tone:'ok',title:'上次运行正常'};
+  }
+  return {label:'未知',tone:'idle',title:'没有读到上次运行结果'};
+}
+function taskHealthBadge(row){
+  const health=taskHealth(row);
+  return `<span class="task-health" title="${esc(health.title)}">${statusBadge(health.label,health.tone,health.symbol,'st')}</span>`;
+}
 // toggle=true 只给运行详情那张表用:标题做成一个真按钮,展开和点整行是同一件事。
 // 键盘上没有了 j/k,这个按钮就是走到一行、打开它的那条路;另外两处列表的标题照旧是文字。
 function taskIdentityHtml(row,{toggle=false}={}){
@@ -159,13 +249,50 @@ function taskNextRun(row,relative=false){
   if(Number.isNaN(new Date(row.nextRun).getTime())) return '时间无法识别';
   return relative?relTime(row.nextRun):workTime(row.nextRun);
 }
-function taskListRow(row,{controls=taskActionButtons(row),state=null,showDetails=true}={}){
-  const badge=state || statusBadge(taskStateLabel(row.state),({Ready:'ok',Running:'active',Queued:'pending',Disabled:'muted'})[row.state] || 'idle',row.state==='Disabled'?'Ⅱ':undefined,'work-state');
-  const next=(row.nextRun && !row.infoError && row.state!=='Disabled'?'下次 ':'')+taskNextRun(row);
-  return `<article class="automation-row">${taskIdentityHtml(row)}
-    <div class="automation-schedule" title="${esc(taskSchedule(row,true))}">${esc(taskSchedule(row))}<small>${esc(next)}</small></div>
-    <div class="automation-state">${badge}${taskRepairChip(row.name)}</div><div class="automation-actions">${controls}
-    ${showDetails?`<button class="icon-only record-link" data-task="${esc(row.name)}" title="查看详情"><svg class="ic" aria-hidden="true"><use href="#i-eye"/></svg><span class="control-label">查看详情</span></button>`:''}</div></article>`;
+// 下次运行写成相对时间(「2 小时后」),和运行详情的「下次」列一个说法;完整时刻在悬停里。
+// 停用、读取失败、没有时间这几种照旧用整句,它们之间必须分得开。
+function taskNextRunLine(row){
+  const valid=row.nextRun && !row.infoError && row.state!=='Disabled' && Number.isFinite(timeValue(String(row.nextRun).replace(' ','T')));
+  if(!valid) return `<small>${esc(taskNextRun(row))}</small>`;
+  return `<small title="${esc('下次运行 '+fullTime(String(row.nextRun).replace(' ','T')))}">下次 ${esc(taskNextRun(row,true))}</small>`;
+}
+// 任务开关上「查看详情」就地展开在这一行下面(AUTO_DETAIL 记的是哪一个),不再跳到运行详情、
+// 顺手把那边的搜索框和筛选全改掉。同步与备份的卡片上 inline=false,照旧跳去运行详情。
+let AUTO_DETAIL=null;
+function taskListRow(row,{controls=taskActionButtons(row,{scope:'auto'}),state=null,showDetails=true,inline=true}={}){
+  const badge=state || taskHealthBadge(row);
+  // 计划程序的状态退成小字;停用时芯片本身已经说了,不再重复。
+  const scheduler=state || row.state==='Disabled' || row.sk==='disabled'?'':`<small class="automation-scheduler" title="Windows 计划程序里的状态">计划程序：${esc(taskStateLabel(row.state))}</small>`;
+  const open=inline && showDetails && AUTO_DETAIL===row.name;
+  const details=!showDetails?'':inline
+    ?`<button type="button" class="mini task-peek" data-task-peek="${esc(row.name)}" aria-expanded="${open}" title="${open?'收起这个任务的明细':'在这一行下面展开明细'}"><svg class="ic" aria-hidden="true"><use href="#${open?'i-up':'i-eye'}"/></svg><span class="task-op-label">${open?'收起':'详情'}</span></button>`
+    :`<button class="icon-only record-link" data-task="${esc(row.name)}" title="在运行详情里查看"><svg class="ic" aria-hidden="true"><use href="#i-eye"/></svg><span class="control-label">在运行详情里查看</span></button>`;
+  return `<article class="automation-row${row.sk==='bad'?' is-failing':''}" data-task-row="${esc(row.name)}">${taskIdentityHtml(row)}
+    <div class="automation-schedule" title="${esc(taskSchedule(row,true))}">${esc(taskSchedule(row))}${taskNextRunLine(row)}</div>
+    <div class="automation-state">${badge}${scheduler}${taskRepairChip(row.name)}</div><div class="automation-actions">${controls}
+    ${details}</div>${open?`<div class="automation-detail det">${taskDetailBody(row,{close:`data-task-peek="${esc(row.name)}"`})}</div>`:''}</article>`;
+}
+function toggleAutomationDetail(name){
+  AUTO_DETAIL=AUTO_DETAIL===name?null:name;
+  renderAutomations();
+}
+// 搜索框里按 Enter:只剩一个任务时就地展开它。
+// 剩下几个按列表自己的那套筛选算,不数 DOM:列表还没画出来时也答得对。
+function openOnlyAutomation(){
+  if(!DATA) return false;
+  const verdict=$('automation-verdict')?.value || '';
+  const rows=automationRows(ROWS,AUTO_QUERY,AUTO_STATE).filter(row=>taskMatchesVerdict(row,verdict));
+  if(rows.length!==1) return false;
+  const name=rows[0].name;
+  if(AUTO_DETAIL!==name){AUTO_DETAIL=name;renderAutomations();}
+  return true;
+}
+function collapseAutomationDetail(){
+  if(!AUTO_DETAIL) return false;
+  const name=AUTO_DETAIL;AUTO_DETAIL=null;renderAutomations();
+  const button=findTaskControl($('automation-list'),{attr:'data-task-peek',value:name,name});
+  if(button) try{button.focus({preventScroll:true});button.scrollIntoView({block:'nearest'});}catch(e){}
+  return true;
 }
 function taskInfoHtml(row){
   // 写坏了的说明不能画成一排「未填写」:那会让人去补写,而真正要做的是去改那条写错的配置。
@@ -208,7 +335,8 @@ function taskSchedule(row,full=false){
   if(!row.triggersRaw?.length) return row.triggers || '未记录触发计划';
   return row.triggersRaw.map(trigger=>{
     const kind=(trigger.kind || '').toLowerCase();
-    const clock=trigger.start?.match(/T(\d\d:\d\d(?::\d\d)?)/)?.[1] || '';
+    // 整分的时刻不写秒:「每天 22:40」,不是「每天 22:40:00」。秒不是零时照写,那是真有的信息。
+    const clock=(trigger.start?.match(/T(\d\d:\d\d(?::\d\d)?)/)?.[1] || '').replace(/^(\d\d:\d\d):00$/,'$1');
     const time=clock?' '+clock:'';
     const events={logon:'登录时',boot:'开机时',registration:'注册任务时',idle:'系统空闲时',event:'指定事件发生时',sessionstatechange:'会话状态变化时'};
     let label=events[kind];
@@ -229,20 +357,28 @@ function taskSchedule(row,full=false){
 
 // 最近一次读计划任务失败的原因。读失败和还没读完在别的分区(同步与备份)要显示成两回事。
 let TASKS_LOAD_ERROR=null;
+// 计划任务还没读到时,顶上四个计数是「…」;读失败是红色「!」,原因在悬停里。以前两种情况都是同一个「-」。
+// 读到了以后由 render() 写数字。
+function renderTaskCountsPending(){
+  const cell=TASKS_LOAD_ERROR?countCell('broken',null,TASKS_LOAD_ERROR):countCell('loading');
+  const title=TASKS_LOAD_ERROR?'读取失败：'+TASKS_LOAD_ERROR:'正在读取';
+  ['s-total','s-bad','s-iss','s-off'].forEach(id=>{const el=$(id);if(!el) return;el.innerHTML=cell;el.className='';el.title=title;});
+}
 async function load(){
   // 新的一次读取一开始就清掉上一次的失败:读取中的那段时间,同步与备份要说「正在读取」,
   // 而不是把已经过去的那次失败当成现在的状态。
   TASKS_LOAD_ERROR=null;
+  if(!DATA) renderTaskCountsPending();
   try{
     DATA=await api("/api/tasks");
     if(DATA.error) throw new Error(DATA.error);
-    ROWS=[]; for(const g of DATA.groups) for(const r of g.rows) ROWS.push(Object.assign({cat:g.cat},r));
+    ROWS=taskRowsInOrder(DATA.groups);
     const s=$("cat"), keep=s.value;
     s.innerHTML='<option value="">全部分类</option>'+DATA.groups.map(g=>`<option>${esc(g.cat)}</option>`).join("");
     s.value=keep;
     render();
     if(typeof renderPipelines==="function") renderPipelines();
-  }catch(e){ DATA=null; ROWS=[]; TASKS_LOAD_ERROR=e.message || '读取失败'; syncTaskStatus(null); updateBadges(); if(typeof renderPipelines==="function") renderPipelines(); $("tbl").innerHTML=`<tbody><tr><td style="color:var(--bad);padding:10px">读取失败:${esc(e.message)}</td></tr></tbody>`; }
+  }catch(e){ DATA=null; ROWS=[]; TASKS_LOAD_ERROR=e.message || '读取失败'; syncTaskStatus(null); renderTaskCountsPending(); updateBadges(); if(typeof renderPipelines==="function") renderPipelines(); $("tbl").innerHTML=`<tbody><tr><td>${errorBlock('计划任务',e)}</td></tr></tbody>`; }
 }
 
 // 把渲染合并到一帧里。之前滚轮和拖动都是每个事件同步渲染一次,而浏览器一次拖动可以
@@ -266,7 +402,22 @@ function tlTicks(){
   }
   return out.join("");
 }
+// 缩放按钮到了头就灰着并说为什么:整天时缩小和回到整天什么也不做,放到 TL_MIN_SPAN 时放大也一样。
+function syncTLZoom(){
+  const span=tlTo-tlFrom, full=span>=1440 && tlFrom<=0;
+  setDisabled($("tlout"),span>=1440?'已是整天':'');
+  setDisabled($("tlreset"),full?'已是整天':'');
+  setDisabled($("tlin"),span<=TL_MIN_SPAN?'已放到最大':'');
+}
+// 时间轴上按下又松开、中间移动不到 4px,算一次点击,打开那一行的任务;再多就是拖动平移。
+// #tl 上有指针捕获,浏览器自己的 click 落不到那一行上,所以点击要从按下和松开两头自己认。
+const TL_CLICK_SLOP=4;
+function tlClickTask(down,up){
+  if(!down || !down.task || !up) return null;
+  return Math.hypot(up.x-down.x,up.y-down.y)<TL_CLICK_SLOP?down.task:null;
+}
 function renderTL(){
+  syncTLZoom();
   const T=DATA.timeline;
   if(!T||!T.rows||!T.rows.length){ $("tlbox").hidden=true; return; }
   $("tlbox").hidden=false;
@@ -342,14 +493,12 @@ function tlPan(dxPct){
 function tlReset(){ tlFrom=0; tlTo=1440; scheduleTL(); }
 
 // 维护面板。单独一次 fetch:它要跑 `claude plugin list`,几秒起步,不该拖住主表。
+// 相对时间走全页统一的 fmtTime(「5 分钟后」「2 小时后」),任务开关、运行详情、同步与备份一个说法。
+// 一分钟以内的将来说「即将运行」:「0 分后」读起来像出错了。
 function relTime(s){
-  const t=new Date(String(s).replace(" ","T"));
-  if(isNaN(t)) return String(s).slice(5);   // 解析不了就照实回显原文,不编一个数出来
-  const d=(t-Date.now())/36e5, a=Math.abs(d);
-  // 不到半分钟会四舍五入成「0分后」,读起来像出错了。
-  if(Math.round(a*60)===0) return d<0?"刚刚":"即将运行";
-  const u=a<1?`${Math.round(a*60)}分`:a<48?`${a.toFixed(a<10?1:0)}小时`:`${(a/24).toFixed(0)}天`;
-  return d<0?u+"前":u+"后";
+  const t=timeValue(String(s).replace(" ","T"));
+  if(!Number.isFinite(t)) return String(s).slice(5);   // 解析不了就照实回显原文,不编一个数出来
+  return fmtTime(t,{soon:"即将运行"});
 }
 
 function pc(v){ if(v==null) return `<td class="num u" title="未检查">-</td>`;
@@ -387,7 +536,8 @@ const C=[
    data-selname="${esc(r.name)}"${sel.has(r.name)?" checked":""}
    aria-label="选中 ${esc(r.name)}"></td>`,()=>0],
  ["name","任务",r=>`<td class="nm">${taskIdentityHtml(r,{toggle:true})}</td>`,r=>taskText(r).title],
- ["sl","状态",r=>`<td>${statusBadge(r.sl,({ok:'ok',bad:'bad',running:'active',pending:'pending',disabled:'muted',unknown:'idle'})[r.sk] || 'idle',undefined,'st')}${taskRepairChip(r.name)}</td>`,r=>r.sl],
+ // 和任务开关、同步与备份同一个健康芯片。按这一列排就是按严重程度的档位排,不按芯片上的字排。
+ ["sl","状态",r=>`<td>${taskHealthBadge(r)}${taskRepairChip(r.name)}</td>`,r=>taskSeverityRank(r)],
  ["cat","大类",r=>`<td class="dim">${esc(r.cat)}</td>`,r=>r.cat],
  // 健康% 旁边要能看出它是拿什么算出来的。判词表认不出来的那些进 other 桶,
  // 它只进分母不出现在任何地方:监控器换一种措辞之后,每一行会显示 0.0% 而
@@ -462,37 +612,64 @@ const C=[
  ["inHealth","监控",r=>`<td class="${r.inHealth?"y":r.elsewhere?"u":"n"}" title="${esc(r.elsewhere||"")}">${r.inHealth?"是":r.elsewhere?"另有监控":"否"}</td>`,r=>r.inHealth?1:0],
 ];
 
-function detail(r){
-  const rcs=r.runs?Object.keys(r.runs.rcs||{}).map(k=>k+"x"+r.runs.rcs[k]).join(", "):"";
-  const dl=[
+// 明细一打开先说为什么出事:失败或有问题时,第一块是一条色条「上次运行 · 退出码 · 第一条问题」,
+// 旁边就是修复和运行一次。以前原因列表排在最末,在命令和身份那一大段下面,读完还得回到行上去找按钮。
+// 这两个按钮和行上的不是同一套的残缺副本:它们只为眼前这条原因服务,所以只放这两个。
+function taskAlertHtml(r){
+  const issues=r.issues || [], failing=r.sk==='bad';
+  if(!failing && !issues.length) return '';
+  const tone=failing || taskIssueLevel(r)==='bad'?'bad':'warn';
+  const parts=[];
+  if(r.lastRun) parts.push(`<span title="${esc(fullTime(String(r.lastRun).replace(' ','T')) || r.lastRun)}">上次运行 ${esc(relTime(r.lastRun))}</span>`);
+  else if(failing) parts.push('从未成功运行');
+  if(failing){
+    const rc=taskExitCode(r);
+    parts.push(`<span title="${esc('上次运行结果 '+(rc.hex || '未知'))}">${esc(taskExitCodeText(rc))}</span>`);
+  }
+  const first=issues.find(i=>i[0]==='bad') || issues[0];
+  if(first) parts.push(esc(first[1]));
+  const rest=issues.filter(i=>i!==first);
+  const repair=`<button type="button" class="mini" data-task-repair="${esc(r.name)}" data-label="修复" ${ConsoleActions.readOnly?'disabled':''} title="${taskControlTitle('修复',ConsoleActions.readOnly?ConsoleActions.reason:'','修复：查看任务事实，开一张工单交给 Agent 诊断；不会改动任务本身')}"><svg class="ic" aria-hidden="true"><use href="#i-repair"/></svg>修复</button>`;
+  return `<div class="task-alert ${tone}" role="note"><p><span class="status-symbol" aria-hidden="true">${tone==='bad'?'×':'!'}</span>${parts.join(' · ')}</p>`+
+    `<span class="task-alert-actions">${repair}${taskVerbButton(r,'run','运行一次',{extraReason:taskRunReason(r)})}</span></div>`+
+    (rest.length?`<ul class="iss">${rest.map(i=>`<li class="${esc(i[0])}">${esc(i[1])}</li>`).join("")}</ul>`:"");
+}
+// 明细的正文,运行详情的表格行和任务开关的就地展开共用。close 是收起按钮的属性:
+// 表格里是 data-detail-close(events.js 接),任务开关里是那一行自己的 data-task-peek(再点一次就是收起)。
+function taskDetailBody(r,{close='data-detail-close'}={}){
+  // 返回码按「码 ×次数」写,码是十进制:原来写成「0x7755」,读起来像一个十六进制错误码。
+  const rcs=r.runs?Object.keys(r.runs.rcs||{}).map(k=>`${k} ×${r.runs.rcs[k]}`).join(" · "):"";
+  const rc=taskExitCode(r);
+  const facts=[
    ["运行计划",esc(taskSchedule(r,true))],
-   ["命令",`<code>${esc(r.exec)} ${esc(r.args)}</code>`],
-   ["工作目录",esc(r.cwd || '未设置')],
-   ["身份",`${esc(r.userId)} · ${esc(r.runLevel)} · ${esc(r.multi)}`],
-   ["退出码",`${esc(r.rcHex)||"-"}${r.okCodes?` <span class="faint">声明 ${esc(r.okCodes)} 也算正常</span>`:""}`],
+   ["退出码",rc.hex?`<span title="${esc(rc.hex)}">${esc(taskExitCodeText(rc).replace(/^退出码 /,''))}</span>${r.okCodes?` <span class="faint">声明 ${esc(r.okCodes)} 也算正常</span>`:""}`:'<span class="u">未读取</span>'],
    ["产物",r.artifact?`${esc(r.artifact)} · ${esc(r.artifactMax)}h`:"未声明"],
-   ["电池",`${r.refuseOnBattery?"用电池时拒绝启动":"电池可启动"} · ${r.stopOnBattery?"拔电源时停止":"拔电源后继续运行"}`],
    // 「体征」那一格只画比例,精确值在这里。少了这一条,失败与陈旧的具体条数
    // 就只剩 tooltip 一个出口 —— 而 tooltip 是发现不了的。
    ["观察",r.hist?`正常 ${r.hist.ok} · 失败 ${r.hist.bad} · 陈旧 ${r.hist.stale}`
      +(r.hist.other?` · 判词认不出 ${r.hist.other}`:"")
      +` / 共 ${r.hist.judged} 条`:'<span class="u">没有观察记录</span>'],
    ["真实运行",r.runs?`启动 ${r.runs.starts} · 完成 ${r.runs.done} · 被终止 ${r.runs.killed} · 超时 ${r.runs.timedOut} · 启动失败 ${r.runs.failStart} · 返回码 ${rcs||"无"}${r.runs.okApplied?` (声明 ${r.runs.okApplied.join(",")} 也算成功)`:""}`:'<span class="u">运行日志里还没有记录</span>'],
-  ].map(x=>`<dt>${x[0]}</dt><dd>${x[1]}</dd>`).join("");
-  const iss=r.issues.length?`<ul class="iss">${r.issues.map(i=>`<li class="${i[0]}">${esc(i[1])}</li>`).join("")}</ul>`:"";
-  // 展开态原来还有一组 启用/停用/立即运行/停止 按钮,是行内操作列的真子集(少一个退役)。
-  // 而这个文件里早就写下过决定:「动作长在每一行上,而不是藏在展开态和键盘快捷键里」。
-  // 动作提到行上之后,展开态那份没删,于是同一个按钮在同一屏出现两次,
-  // 而其中一份还比另一份少一个动作 : 两份不完全一样的重复,比完全一样的更糟,
-  // 因为人会以为差别是有意义的。
+  ];
+  // 命令、工作目录、身份、电池是排查时才看的,放到最后一块「技术细节」。
+  const technical=[
+   ["命令",`<code>${esc(r.exec)} ${esc(r.args)}</code>`],
+   ["工作目录",esc(r.cwd || '未设置')],
+   ["身份",`${esc(r.userId)} · ${esc(r.runLevel)} · ${esc(r.multi)}`],
+   ["电池",`${r.refuseOnBattery?"用电池时拒绝启动":"电池可启动"} · ${r.stopOnBattery?"拔电源时停止":"拔电源后继续运行"}`],
+  ];
+  const list=rows=>rows.map(x=>`<dt>${x[0]}</dt><dd>${x[1]}</dd>`).join("");
   // 明细有十几行高,原来只能回头找到那一行再点一次才收得起来。收起按钮钉在明细右上角。
-  return `<tr class="det"><td colspan="${shownCols().length}"><div class="det"><div class="det-bar"><button type="button" class="mini det-close" data-detail-close title="收起明细"><svg class="ic" aria-hidden="true"><use href="#i-up"/></svg>收起</button></div>${taskInfoHtml(r)}<dl class="task-technical-fields">${dl}</dl>${iss}</div></td></tr>`;
+  return `<div class="det-bar"><button type="button" class="mini det-close" ${close} title="收起明细"><svg class="ic" aria-hidden="true"><use href="#i-up"/></svg>收起</button></div>${taskAlertHtml(r)}${taskInfoHtml(r)}<dl class="task-technical-fields">${list(facts)}</dl><h4 class="task-technical-heading">技术细节</h4><dl class="task-technical-fields">${list(technical)}</dl>`;
+}
+function detail(r){
+  return `<tr class="det"><td colspan="${shownCols().length}"><div class="det">${taskDetailBody(r)}</div></td></tr>`;
 }
 
 // 行内控件按「是哪一种控件 + 属于哪个任务」记下,不记 DOM 节点:整块 innerHTML 重建之后节点全是新的。
 // 以前只认 data-act,焦点落在启动方式、修复、删除或修复进度上时,重建一次就掉回整行甚至 body,
 // 下一次 Tab 从头来过。三处列表(运行详情、任务开关、同步与备份)共用这一份。
-const TASK_ROW_CONTROLS=['data-row-toggle','data-act','data-launch','data-task-repair','data-task-delete','data-repair-order'];
+const TASK_ROW_CONTROLS=['data-row-toggle','data-act','data-launch','data-task-repair','data-task-delete','data-repair-order','data-task-menu','data-task-peek'];
 function taskControlKey(el){
   const attr=el && el.getAttribute ? TASK_ROW_CONTROLS.find(name=>el.hasAttribute(name)) : null;
   if(!attr) return null;
@@ -504,8 +681,20 @@ function findTaskControl(scope,key){
     ((el.dataset && el.dataset.name) || el.getAttribute(key.attr))===key.name) || null;
 }
 function restoreTaskControlFocus(scope,key){
+  // 菜单先打开,焦点才放得进菜单里的那一项。
+  reopenTaskMenu(scope);
   const target=findTaskControl(scope,key);
   if(target) try{ target.focus({preventScroll:true}); }catch(e){}
+}
+// 「⋯」菜单开着时列表被重画(修复进度轮询、刷新),菜单元素被整个换掉,会一声不响地关上。
+// TASK_MENU_OPEN 跟着 toggle 事件记下开着的是哪一个,重画之后再把它打开。
+let TASK_MENU_OPEN=null;
+function reopenTaskMenu(scope){
+  if(!TASK_MENU_OPEN || !scope || typeof document.getElementById!=='function') return;
+  const menu=document.getElementById(TASK_MENU_OPEN);
+  if(!menu || typeof menu.showPopover!=='function' || !scope.contains?.(menu)) return;
+  const opener=typeof CSS!=='undefined'?scope.querySelector?.(`[popovertarget="${CSS.escape(menu.id)}"]`):null;
+  try{ if(!menu.matches(':popover-open')) menu.showPopover(opener?{source:opener}:undefined); }catch(error){}
 }
 
 function render(){
@@ -515,6 +704,7 @@ function render(){
   // 计数取自同一份行和同一个判定,点下去筛出来的行数就等于按钮上的数。
   // 「有警告」数的是带警告的任务个数;后端那个 issues 是警告条数(一个任务可以有好几条),只放进提示里。
   const counts=taskStatusCounts(ROWS);
+  $("s-total").title="";$("s-bad").title="";$("s-off").title="";
   $("s-total").textContent=S.total;
   $("s-bad").textContent=counts.bad; $("s-bad").className=counts.bad?"bad":"zero";
   $("s-iss").textContent=counts.warn; $("s-iss").className=counts.warn?"warn":"zero";
@@ -535,20 +725,26 @@ function render(){
   updateTaskVerdictFilter('task-verdict',candidates,verdict);
   // cur 是下标,高亮跟着任务名走。筛选或排序一变,同一个下标会指到另一个任务上,
   // 高亮就跳到一个人没点过的行。所以先记下光标所在的任务,重排之后按名字找回来。
-  const curName=VIEW[cur]&&VIEW[cur].name;
+  // 从别处点「查看详情」时 PENDING_CUR 指定要落在哪一行:高亮和展开的明细必须是同一行。
+  const curName=PENDING_CUR || (VIEW[cur]&&VIEW[cur].name);
+  PENDING_CUR=null;
   VIEW=candidates.filter(r=>taskMatchesVerdict(r,verdict));
   const CC=shownCols();
   // 排序列被「显示列」藏起来时,表还按一列看不见的列排着,表头上却没有任何一处显示方向。
-  // 退回按任务名排,并把 sortKey 一起改过去,让表头上的方向和实际顺序一致。
-  if(!CC.some(c=>c[0]===sortKey)){ sortKey="name"; asc=true; }
-  const col=C.find(c=>c[0]===sortKey)||C[1];
-  VIEW.sort((a,b)=>{const x=col[3](a),y=col[3](b);
-    const c=(typeof x==="number"&&typeof y==="number")?x-y:String(x).localeCompare(String(y),"zh");
-    return asc?c:-c;});
+  // 退回默认的按严重程度排,并把 sortKey 一起改过去,让卡片标题旁写的排序和实际顺序一致。
+  if(sortKey!==TASK_SORT_DEFAULT && !CC.some(c=>c[0]===sortKey)){ sortKey=TASK_SORT_DEFAULT; asc=true; }
+  if(sortKey===TASK_SORT_DEFAULT) VIEW.sort(taskSeverityCompare);
+  else{
+    const col=C.find(c=>c[0]===sortKey)||C[1];
+    VIEW.sort((a,b)=>{const x=col[3](a),y=col[3](b);
+      const c=(typeof x==="number"&&typeof y==="number")?x-y:String(x).localeCompare(String(y),"zh");
+      return asc?c:-c;});
+  }
+  saveTaskSort();syncTaskSortState();
   const found=curName?VIEW.findIndex(r=>r.name===curName):-1;
   if(found>=0) cur=found;
   else if(cur>=VIEW.length) cur=Math.max(0,VIEW.length-1);
-  $("cnt").textContent=`${VIEW.length}/${ROWS.length} 行`+(sel.size?` · 已选 ${sel.size}`:"");
+  $("cnt").textContent=matchCount(VIEW.length,ROWS.length,"个任务")+(sel.size?` · 已选 ${sel.size}`:"");
   // 记下焦点落在哪一行的哪个控件上,重建之后放回去。
   const ae = document.activeElement;
   const aeRow = ae && ae.closest ? ae.closest("#tbl tbody tr[data-name]") : null;
@@ -570,7 +766,9 @@ function render(){
       return `<th data-column="${c[0]}"${sortable?` data-k="${c[0]}"`:""}${tab}${aria} class="${cur?"s"+(asc?" a":""):""}">${c[0]==="selc"?selectAllHtml(pick):c[1]}</th>`;
     }).join("")}</tr></thead>`
     // tabindex=-1 让 focusCur() 能把焦点放到从别处跳来的那一行上,aria-selected 让选中态可播报。
-    +`<tbody>${VIEW.map((r,i)=>`<tr data-i="${i}" data-name="${esc(r.name)}" tabindex="-1" aria-selected="${sel.has(r.name)}" class="${i===cur?"cur":""}${sel.has(r.name)?" sel":""}">${CC.map(c=>c[2](r)).join("")}</tr>`).join("")}</tbody>`;
+    // 每一格带上列名(data-c 是列键,data-label 是列标题):窄屏上表格拆成一张张卡片时,格子靠它们认出自己是哪一列。
+    // 展开着的那一行,明细跟着一起画出来:整表重建(切换分区后的重读、定时刷新)不会把它抹掉。
+    +`<tbody>${VIEW.map((r,i)=>`<tr data-i="${i}" data-name="${esc(r.name)}" tabindex="-1" aria-selected="${sel.has(r.name)}" class="${i===cur?"cur":""}${sel.has(r.name)?" sel":""}${r.sk==="bad"?" is-failing":""}">${CC.map(c=>c[2](r).replace(/^<td/,`<td data-c="${c[0]}" data-label="${esc(c[1])}"`)).join("")}</tr>${r.name===OPEN_DETAIL?detail(r):""}`).join("")}</tbody>`;
   // 半选态只能用属性设,写不进 HTML。
   const allBox = $("tbl").querySelector ? $("tbl").querySelector("input.selall") : null;
   if(allBox) allBox.indeterminate = pick.some && !pick.all;
@@ -587,7 +785,7 @@ function render(){
       try{ (target||row).focus({preventScroll:true}); }catch(e){}
     }
   }
-  reopenDetail();
+  reopenTaskMenu($("tbl"));
   renderBulk();
 }
 
@@ -653,16 +851,21 @@ async function act(names, verb){
 //
 // 所以凡是跨区的动作都必须先把目标分区切出来。下面两个函数是唯一的入口,
 // 所有「显示了任务名的地方」都走它们,而不是各自去改一次过滤框。
+// 已经在运行详情里(时间轴、热力图上点一个任务)就不再切分区:切换会把页面滚回顶上,
+// 而要看的那一行就在下面。
+let PENDING_CUR=null;
 function focusTask(name){
-  showView("tasks", true);
+  if(CURVIEW!=="tasks") showView("tasks", true);
   const q = $("q");
   // A detail link always opens the named task, even with stale filters or selections.
   q.value = name;
   $("cat").value = "";$('task-verdict').value='';TASK_STATUS='';$("hideoff").checked=false;sel.clear();
+  // 搜索框里是子串匹配,同名前缀的任务会一起留下。高亮和明细都要落在名字完全相同的那一行:
+  // 以前先重画再定位,高亮画在了旧下标指的那一行上,明细却展开在另一行下面。
+  const known=ROWS.some(row=>row.name===name);
+  if(known){ OPEN_DETAIL=name; PENDING_CUR=name; }
   if (DATA) render();
-  cur=VIEW.findIndex(row=>row.name===name);
-  const tr = document.querySelector(`#tbl tbody tr[data-i="${cur}"]`);
-  if (tr){openDetail(tr);focusCur();}
+  if(known && VIEW[cur] && VIEW[cur].name===name) focusCur();
   else toast('没有读到该任务，请刷新运行详情','bad');
 }
 
@@ -712,12 +915,6 @@ function openOnlyTask(){
   openDetail(tr);
   return true;
 }
-function reopenDetail(){
-  if(!OPEN_DETAIL) return;
-  const tr=[...document.querySelectorAll("#tbl tbody tr[data-name]")].find(row=>row.dataset.name===OPEN_DETAIL);
-  const r=tr && VIEW[+tr.dataset.i];
-  if(r) tr.insertAdjacentHTML("afterend", detail(r));
-}
 function focusCur(){
   const tr=document.querySelector(`#tbl tbody tr[data-i="${cur}"]`);
   if(!tr) return;
@@ -760,10 +957,12 @@ function startTimeline(){
   // 就把那个元素连同整个 innerHTML 换掉了。捕获目标一消失,后续 pointermove 就不再送到
   // 这个监听器,拖动于是走走停停。捕获必须放在渲染不会替换的元素上,也就是 #tl 本身。
   // (2026-09-02 实测:渲染成本 2.1ms 中位数,从来不是瓶颈,我之前的诊断错了。)
-  let dragging=false, lastX=0, w=1;
+  let dragging=false, lastX=0, w=1, down=null;
   tl.addEventListener("pointerdown",e=>{
     const track=e.target.closest(".tltrack");
     if(!track) return;
+    const row=track.closest(".tlrow");
+    down={x:e.clientX,y:e.clientY,task:row && row.dataset.task};
     dragging=true; lastX=e.clientX;
     w=track.getBoundingClientRect().width || 1;
     tl.classList.add("drag");
@@ -779,12 +978,32 @@ function startTimeline(){
     dragging=false; tl.classList.remove("drag");
     try{ tl.releasePointerCapture(e.pointerId); }catch(_){}
   };
-  tl.addEventListener("pointerup",endDrag);
+  tl.addEventListener("pointerup",e=>{
+    const name=dragging?tlClickTask(down,{x:e.clientX,y:e.clientY}):null;
+    endDrag(e);down=null;
+    if(name) focusTask(name);
+  });
   tl.addEventListener("pointercancel",endDrag);
   tl.addEventListener("dblclick",tlReset);
   $("tlin").addEventListener("click",()=>tlZoom(0.7,0.5));
   $("tlout").addEventListener("click",()=>tlZoom(1.4,0.5));
   $("tlreset").addEventListener("click",tlReset);
+}
+// 任务开关这一屏的 Esc 和 Enter。键盘约定的表在 navigation.js,这里只往里登记本屏自己的一层:
+// Esc 先收起就地展开的明细,Enter 在搜索框里展开唯一剩下的那个任务。原来登记过的那一项(如果有)照旧接在后面。
+function registerAutomationKeys(){
+  const previous=ESC_STEPS.automations;
+  ESC_STEPS.automations=()=>collapseAutomationDetail() || (typeof previous==='function' && previous());
+  SEARCH_ENTER['automation-search']=()=>openOnlyAutomation();
+}
+// 排序状态和「改回按严重程度」放进任务列表的卡片标题行。console.html 不归这一页改,所以由这里补上。
+function mountTaskSortState(){
+  const header=document.querySelector('#dtbox .card-header');
+  if(!header || $('task-sort-state')) return;
+  header.insertAdjacentHTML('beforeend','<div class="card-actions task-sort"><span id="task-sort-state" class="faint" role="status"></span>'+
+    '<button type="button" class="mini" id="task-sort-severity" title="改回按严重程度排序：失败在前">按严重程度</button></div>');
+  $('task-sort-severity').addEventListener('click',()=>{ if(!$('task-sort-severity').disabled) sortTasksBySeverity(); });
+  syncTaskSortState();
 }
 function startTasksPage(){
   $('tasks').querySelector('.task-summary').addEventListener('click',event=>{
@@ -792,6 +1011,36 @@ function startTasksPage(){
     if(button && !button.disabled) setTaskStatus(button.dataset.taskStatus);
   });
   syncTaskStatus(null);
+  if(!DATA){
+    renderTaskCountsPending();
+    $('tbl').innerHTML=`<tbody><tr><td>${loadingBlock('计划任务')}</td></tr></tbody>`;
+  }
+  mountTaskSortState();
+  registerAutomationKeys();
+  // 任务开关上的「详情」和明细里的「收起」:就地开合,不跳分区。
+  $('automation-list').addEventListener('click',event=>{
+    const peek=event.target.closest('[data-task-peek]');
+    if(peek){ event.preventDefault(); toggleAutomationDetail(peek.dataset.taskPeek); }
+  });
+  // 「⋯」菜单开合时记下是哪一个,列表重画后 reopenTaskMenu() 照着再打开。toggle 不冒泡,所以在捕获阶段听。
+  document.addEventListener('toggle',event=>{
+    const menu=event.target;
+    if(!menu || !menu.classList || !menu.classList.contains('task-menu')) return;
+    if(event.newState==='open') TASK_MENU_OPEN=menu.id;
+    else if(TASK_MENU_OPEN===menu.id && document.getElementById(menu.id)===menu) TASK_MENU_OPEN=null;
+  },true);
+  // 运行详情的一整行点了会开合明细(events.js 的 document 监听)。「⋯」和菜单的空白处不能把这一下传上去,
+  // 否则开菜单的同时明细也跟着开合。菜单里的动作项不在这里拦:events.js 自己会接走它们并停止传播。
+  $('tbl').addEventListener('click',event=>{
+    const target=event.target.closest && event.target.closest('.task-more,.task-menu');
+    if(target && !event.target.closest('.task-menu [data-launch],.task-menu [data-task-repair],.task-menu [data-task-delete]')) event.stopPropagation();
+  });
+  // 菜单里的一项点下去:先收起菜单、焦点交回「⋯」,再由 events.js 打开对应的对话框。
+  // 捕获阶段先跑,对话框关掉时焦点才回得到一个还看得见的按钮上。
+  document.addEventListener('click',event=>{
+    const item=event.target.closest && event.target.closest('.task-menu .menu-item');
+    if(item && !item.disabled){ TASK_MENU_OPEN=null; closeMenuFor(item); }
+  },true);
   renderTaskColumns();
   $('task-column-options').addEventListener('change',event=>{
     const key=event.target.dataset.taskColumn;if(!key) return;
