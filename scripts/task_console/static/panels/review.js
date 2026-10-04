@@ -5,12 +5,27 @@ let REVIEW_TOTALS={objects:0,bad:0};
 const REVIEW_SCOPES={tasks:"任务与产物",repos:"仓库",storage:"存储与记忆"};
 // 范围筛选记在本机浏览器里,下次打开还是这个范围;搜索词不记:一个上次留下的搜索词会让清单
 // 悄悄少掉几条,而人回来时不会想到去看搜索框。存不进去(隐私窗口、禁用存储)就照旧从「全部」开始。
+// 只记人在这一屏自己选的范围(下拉框、格子、灯板图例、清除筛选)。从别的屏跳过来时顺手设的范围
+// (工作台「要处理」的芯片)只管这一趟:点过一次芯片,这一屏不该从此一直只显示那一类。
 const REVIEW_FILTER_KEY="tc.review-filter";
-let REVIEW_FILTER_SAVED=null;
+let REVIEW_FILTER_SAVED=null, REVIEW_FILTER_DRILL=false;
 function rememberReviewFilter(){
+  REVIEW_FILTER_DRILL=false;
   if(REVIEW_FILTER===REVIEW_FILTER_SAVED) return;
   REVIEW_FILTER_SAVED=REVIEW_FILTER;
   try{ localStorage.setItem(REVIEW_FILTER_KEY,REVIEW_FILTER); }catch(e){}
+}
+// 设范围的唯一入口。remember:false 给下钻用:这一趟生效,不写进本机浏览器。
+function applyReviewFilter(value,{remember=true}={}){
+  REVIEW_FILTER=REVIEW_SCOPES[value]?value:"all";
+  $("review-filter").value=REVIEW_FILTER;
+  if(remember) rememberReviewFilter();
+  else REVIEW_FILTER_DRILL=REVIEW_FILTER!==(REVIEW_FILTER_SAVED ?? "all");
+  renderTodo();
+}
+// 离开这一屏时(navigation.js 的 showView 调):这一趟的范围是下钻设的,就换回人自己上次选的。
+function endReviewDrillScope(){
+  if(REVIEW_FILTER_DRILL) applyReviewFilter(REVIEW_FILTER_SAVED ?? "all",{remember:false});
 }
 
 // 后端给的原因是写给排查的人看的:退出码的十六进制、带一位小数的小时数、异常类名。
@@ -74,7 +89,6 @@ function renderReviewQueue(rows,status){
     box.innerHTML=errorBlock("任务",st.reason || "",'data-review-retry');
     return 1;
   }
-  rememberReviewFilter();
   const groups=new Map();
   rows.forEach(row=>{
     const key=JSON.stringify([row.v,row.task || row.nm]);
@@ -122,9 +136,7 @@ function renderReviewQueue(rows,status){
 }
 // 点格子、灯板图例或「技术问题」链接:在这一屏里把清单切到那一类,再把清单带到眼前。
 function setReviewFilter(value){
-  REVIEW_FILTER=REVIEW_SCOPES[value]?value:"all";
-  $("review-filter").value=REVIEW_FILTER;
-  renderTodo();
+  applyReviewFilter(value);
   const card=$("todo");
   card.scrollIntoView?.({block:"start",behavior:"smooth"});
   // 焦点交给清单本身:用键盘点的人接下来按 Tab 就进到第一行,不用从页顶再走一遍。
@@ -160,7 +172,7 @@ function startDiagnostics(){
   if(REVIEW_SCOPES[stored]){ REVIEW_FILTER=stored; $("review-filter").value=stored; }
   REVIEW_FILTER_SAVED=REVIEW_FILTER;
   $('review-search').addEventListener('input',event=>{REVIEW_QUERY=event.target.value;renderTodo();});
-  $("review-filter").addEventListener("change",event=>{REVIEW_FILTER=event.target.value;renderTodo();});
+  $("review-filter").addEventListener("change",event=>applyReviewFilter(event.target.value));
   $("scktog").addEventListener("click",()=>{
     SCK_OPEN=!sckOpen();
     try{ localStorage.setItem("tc.sck",SCK_OPEN?"open":"closed"); }catch(e){}

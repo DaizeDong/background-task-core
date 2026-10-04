@@ -31,8 +31,12 @@ const WORK_ROLES=['work','agent_work','tracked_item','signal','all'];
 const WORK_FILTER_STATES=['unfinished','','active','tracked_active',...Object.keys(WORK_STATES)];
 // 只在「从存储里恢复了非默认筛选」到「人自己动了筛选」之间为真,用来提示列表为什么不是默认的样子。
 let WORK_FILTERS_RESTORED=false;
+// 下钻(工作台的「查看全部 →」、接入页的「查看」)设的筛选只管这一趟,不存:点过一次的跳转不该让
+// 这一屏从此一直筛着。这里记着人自己上次选的那一份,离开这一屏时由 endWorkDrillFilters 放回去。
+let WORK_FILTERS_SAVED={role:'work',state:'unfinished',source:''}, WORK_FILTERS_DRILL=false;
 function saveWorkFilters(){
-  try{localStorage.setItem(WORK_FILTER_KEY,JSON.stringify({role:WORK_ROLE,state:WORK_STATE,source:WORK_SOURCE}));}catch(error){}
+  WORK_FILTERS_SAVED={role:WORK_ROLE,state:WORK_STATE,source:WORK_SOURCE};WORK_FILTERS_DRILL=false;
+  try{localStorage.setItem(WORK_FILTER_KEY,JSON.stringify(WORK_FILTERS_SAVED));}catch(error){}
 }
 function restoreWorkFilters(){
   let saved=null;
@@ -41,7 +45,7 @@ function restoreWorkFilters(){
   const {role,state,source}=saved;
   // 存的值来自别的版本或被手改过时一概不用:一个下拉框里没有的值会让列表按看不见的条件在筛。
   if(!WORK_ROLES.includes(role) || !WORK_FILTER_STATES.includes(state) || typeof source!=='string' || source.length>200) return false;
-  WORK_ROLE=role;WORK_STATE=state;WORK_SOURCE=source;
+  WORK_ROLE=role;WORK_STATE=state;WORK_SOURCE=source;WORK_FILTERS_SAVED={role,state,source};
   $('work-role').value=role;$('work-state').value=state;
   WORK_FILTERS_RESTORED=typeof activeFilterCount==='function'?activeFilterCount('work')>0:true;
   return WORK_FILTERS_RESTORED;
@@ -57,12 +61,21 @@ function workRestoredHint(){
   return hint;
 }
 
-function setWorkFilters({role='work',state=role==='all'?'':'unfinished',source='',query=''}={}){
+// remember:false 给从别的屏跳过来的那一下:筛选这一趟生效,不写进本机浏览器。
+function setWorkFilters({role='work',state=role==='all'?'':'unfinished',source='',query='',remember=true}={}){
   WORK_ROLE=role;WORK_STATE=state;WORK_SOURCE=source;WORK_QUERY=query;WORK_FILTERS_RESTORED=false;
   $('work-role').value=role;$('work-state').value=state;$('work-search').value=query;
-  saveWorkFilters();
+  if(remember) saveWorkFilters();
+  else WORK_FILTERS_DRILL=role!==WORK_FILTERS_SAVED.role || state!==WORK_FILTERS_SAVED.state || source!==WORK_FILTERS_SAVED.source;
   renderWorkPlatform();
   $('work-list').scrollTop=0;
+}
+// 离开工作与结果时(navigation.js 的 showView 调):这一趟是下钻设的筛选,就换回人自己上次选的,搜索词不动。
+function endWorkDrillFilters(){
+  if(!WORK_FILTERS_DRILL) return;
+  setWorkFilters({...WORK_FILTERS_SAVED,query:WORK_QUERY,remember:false});
+  WORK_FILTERS_RESTORED=typeof activeFilterCount==='function'?activeFilterCount('work')>0:false;
+  renderWorkPlatform();
 }
 function selectedWorkRows(){return workGroups(WORK,{role:WORK_ROLE,state:WORK_STATE,query:WORK_QUERY,source:WORK_SOURCE});}
 function workRelatedRecords(item){
@@ -202,7 +215,7 @@ function renderPlatformSignals(){
   if(!$('platform-sources')) return;
   const status=(path,available)=>API_READS.get(path)?.pending?statusBadge('读取中','pending'):API_READS.get(path)?.error?statusBadge('读取失败','bad'):available?statusBadge('已连接','ok'):statusBadge('未连接','idle');
   // 顶上的摘要出现时它已经带着「全部技术问题 →」,页底这一个就不再重复。
-  const link=$('attention-strip')?.hidden===false?'':'<a href="#diagnostics">查看技术问题 →</a>';
+  const link=$('attention-strip')?.hidden===false?'':'<a href="#diagnostics" data-open-view="diagnostics" data-drill>查看技术问题 →</a>';
   $('platform-sources').innerHTML=`<span>工作记录 ${status('/api/work',WORK?.available)}</span><span>计划任务 ${status('/api/tasks',!!DATA)}</span><span>技能与插件 ${status('/api/components',COMPONENTS?.catalog?.available)}</span>${link}`;
 }
 
@@ -244,7 +257,7 @@ function renderAttentionStrip(){
   let summary=null;
   try{summary=typeof attentionSummary==='function'?attentionSummary():null;}catch(error){summary=null;}
   const {chips,pending}=summary?attentionChips(summary):{chips:[],pending:false};
-  const html=chips.length?`<span class="attention-label">要处理</span>${chips.join('')}<a class="attention-all" href="#diagnostics" data-open-view="diagnostics">全部技术问题 →</a>`:'';
+  const html=chips.length?`<span class="attention-label">要处理</span>${chips.join('')}<a class="attention-all" href="#diagnostics" data-open-view="diagnostics" data-drill>全部技术问题 →</a>`:'';
   // role=status 的区域每写一次读屏就念一次,内容没变就不重写。
   if(html!==ATTENTION_HTML){strip.innerHTML=html;ATTENTION_HTML=html;}
   strip.hidden=!chips.length;
@@ -253,11 +266,12 @@ function renderAttentionStrip(){
   if(pending){ATTENTION_TIMER=setTimeout(renderAttentionStrip,2000);ATTENTION_TIMER?.unref?.();}
 }
 // 从摘要芯片去技术问题页:筛选设成那一类,搜索词清掉,好让页上的条数和芯片上的数对得上。
-// 用 change / input 事件交给那一页自己的监听,不在这里改它的状态变量。
+// 搜索词用 input 事件交给那一页自己的监听;范围走 review.js 的 applyReviewFilter,不在这里改它的状态变量。
+// 范围只管这一趟(remember:false):点过一次芯片,诊断页不该从此一直只显示那一类。
 function openDiagnosticsFiltered(filter){
-  const search=$('review-search'), select=$('review-filter');
+  const search=$('review-search');
   if(search?.value){search.value='';search.dispatchEvent(new Event('input',{bubbles:true}));}
-  if(select){select.value=filter;select.dispatchEvent(new Event('change',{bubbles:true}));}
+  applyReviewFilter(filter,{remember:false});
   showView('diagnostics',true);
 }
 
@@ -327,7 +341,7 @@ function routeWorkClick(event){
   const row=target.closest('[data-work-row]');
   if(row && !target.closest('button,a,input,select,textarea,summary,label,details') && !String(globalThis.getSelection?.() || '')) openWorkRecord(row.dataset.workRow);
   const source=target.closest('[data-work-source]');if(source){setWorkFilters({role:'all',source:source.dataset.workSource});$('work-search').focus({preventScroll:true});$('work-search').scrollIntoView({block:'center'});}
-  const filter=target.closest('[data-work-filter]');if(filter && !filter.disabled){setWorkFilters({role:filter.dataset.workFilter,state:filter.dataset.workState || ''});showView('work',true);}
+  const filter=target.closest('[data-work-filter]');if(filter && !filter.disabled){setWorkFilters({role:filter.dataset.workFilter,state:filter.dataset.workState || '',remember:false});showView('work',true);}
   const verdict=target.closest('[data-automation-verdict]');
   if(verdict){
     const key=verdict.dataset.automationVerdict, next=$('automation-verdict').value===key?'':key;

@@ -99,7 +99,9 @@ function groupEntry(group){
 // 目的屏的标签栏里给一个「← 返回 来源」,Esc 退到最后一层时也回去一次。回去之后来源就用掉了,
 // 再按 Esc 不会接着往回走。从侧栏、标签或者直接打开地址到达的屏没有来源:
 // 不加区分地「Esc 就后退」的话,关掉对话框之后紧跟的那一下 Esc 会把人带离这一页。
-const DRILL_TARGETS='[data-task],[data-fr],[data-review-repo],[data-work-filter],[data-integration-open],[data-goto]:not([data-goto^="#"]),[data-fix="commitpush"]';
+// 正文里换屏的链接(工作台「要处理」的芯片、「全部技术问题 →」、诊断的「查看进度」)也是下钻:
+// 芯片认 data-attention-filter,别的链接带 data-drill。标签栏的 [data-open-view] 不带它,点标签不算下钻。
+const DRILL_TARGETS='[data-task],[data-fr],[data-review-repo],[data-work-filter],[data-integration-open],[data-goto]:not([data-goto^="#"]),[data-fix="commitpush"],[data-attention-filter],[data-drill]';
 let DRILL_FROM=null, VIEW_ORIGIN=null;
 // 点击的捕获阶段调这里:这一下要是下钻,就记下点之前在哪一屏,由紧接着的那次 showView 取走。
 function markDrill(target){
@@ -137,6 +139,13 @@ function showView(key,push,options){
   if(key!=='convos' && key!=='repos') arg=null;
   // 同一屏里换一个仓(后退、前进)不是换页,不把人送回页顶。
   const sameRepos=key==='repos' && CURVIEW==='repos';
+  // 下钻顺手设在目的屏上的筛选只管这一趟(review.js / workbench.js 不把它存进本机浏览器)。
+  // 人离开那一屏(侧栏、标签、浏览器后退、Esc 回来源)时放回人自己上次选的;
+  // 离开本身又是一次下钻时不放回:从那里 Esc 回来,这一屏还该是刚才的样子。
+  if(CURVIEW && CURVIEW!==key && !DRILL_FROM){
+    if(CURVIEW==='diagnostics' && typeof endReviewDrillScope==='function') endReviewDrillScope();
+    if(CURVIEW==='work' && typeof endWorkDrillFilters==='function') endWorkDrillFilters();
+  }
   noteOrigin(key,options?.reset);
   CURVIEW=key;
   const group=viewGroup(key), definition=VIEW_GROUPS[group];

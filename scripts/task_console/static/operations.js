@@ -14,7 +14,7 @@ function resetFilters(scope){
   if(scope==='runtime'||scope==='resources'){renderSkills();renderClientPlugins();}
   if(scope==='convos'){clear(['cv-search']);CV_QUERY='';CV_HUMAN_ONLY=false;loadConvos();}
   if(scope==='llm'){clearTimeout(LMQT);clear(['lmq','lmprov','lmcaller','lmok']);Object.assign(LMQ,{q:'',provider:'',caller:'',ok:'',offset:0});LMOPEN=null;loadCalls();}
-  if(scope==='diagnostics'){clear(['review-search']);$('review-filter').value='all';REVIEW_QUERY='';REVIEW_FILTER='all';renderTodo();}
+  if(scope==='diagnostics'){clear(['review-search']);REVIEW_QUERY='';applyReviewFilter('all');}
   if(scope==='pipelines'){PIPELINE_QUERY='';clear(['pipeline-task-search','pipeline-verdict']);renderPipelines();}
   if(scope==='work') setWorkFilters();
   if(scope==='automations'){AUTO_QUERY='';AUTO_STATE='';clear(['automation-search','automation-state','automation-verdict']);renderAutomations();}

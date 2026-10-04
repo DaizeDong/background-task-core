@@ -190,12 +190,14 @@ def test_a_tile_click_filters_the_list_on_this_page():
 def test_the_scope_filter_is_remembered_but_the_search_text_is_not():
     result = run("""(()=>{STORE['tc.review-filter']='repos';startDiagnostics();
       REVIEW_QUERY='acme';renderTodo();
-      REVIEW_FILTER='storage';renderTodo();
+      applyReviewFilter('storage');
+      // 只是重画不算人选了范围:下钻设的范围要能只管这一趟(见 test_ux_drill_filters.py)。
+      REVIEW_FILTER='tasks';renderTodo();
       return [$('review-filter').value,STORE['tc.review-filter'],Object.values(STORE).includes('acme')];})()""",
                  loaded(tasks_data([])))
-    assert result == ["repos", "storage", False]
+    assert result == ["storage", "storage", False]
     denied = run("""(()=>{localStorage.getItem=()=>{throw new Error('denied')};localStorage.setItem=()=>{throw new Error('denied')};
-      startDiagnostics();REVIEW_FILTER='repos';renderTodo();return [REVIEW_FILTER,$('review-count').innerHTML];})()""",
+      startDiagnostics();applyReviewFilter('repos');return [REVIEW_FILTER,$('review-count').innerHTML];})()""",
                  loaded(tasks_data([])))
     assert denied[0] == "repos" and "仅显示：仓库" in denied[1]
 

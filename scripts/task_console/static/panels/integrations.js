@@ -56,7 +56,8 @@ function startIntegrations(){
   document.addEventListener('click',async event=>{
     const open=event.target.closest('[data-integration-open]');
     if(open){
-      if(open.dataset.integrationSource) setWorkFilters({source:open.dataset.integrationSource,role:'all',state:''});
+      // 只管这一趟:点过一次「查看」,工作与结果不该从此一直只看这个来源。
+      if(open.dataset.integrationSource) setWorkFilters({source:open.dataset.integrationSource,role:'all',state:'',remember:false});
       showView(open.dataset.integrationOpen,true);return;
     }
     const check=event.target.closest('[data-integration-check]');
