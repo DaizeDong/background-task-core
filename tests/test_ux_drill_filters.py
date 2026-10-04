@@ -12,7 +12,7 @@ from pathlib import Path
 from test_keyboard_conventions import tasks_setup
 from test_operations_ui import run
 from test_shell import SHOW
-from test_ux_diagnostics import DOM
+from test_ux_diagnostics import DOM, loaded, tasks_data
 
 ROOT = Path(__file__).resolve().parents[1]
 PAGE = ROOT / "scripts" / "task_console" / "console.html"
@@ -132,6 +132,49 @@ def test_a_chip_scopes_diagnostics_for_one_visit_without_overwriting_the_saved_s
     assert result["home"] == ["overview", "tasks", "tasks"]
     assert result["chosen"] == ["repos", "repos"]
 
+
+
+def test_each_attention_chip_opens_a_list_with_exactly_as_many_rows_as_its_number():
+    # 合成数据专挑会让两边对不上的形状:一个任务既失败又有两项输出过期,另一个任务三项输出过期,
+    # 摄入停摆,外加一个要处理的仓库。以前三枚芯片都落在「任务与产物」上,清单是 4 行,芯片写 2、5。
+    rows = [{"name": "AcmeSync", "sk": "bad", "sl": "失败 0x1", "issues": []},
+            {"name": "AcmeOther", "sk": "bad", "sl": "失败 0x1", "issues": []},
+            {"name": "AcmeDaily", "sk": "ok", "sl": "正常", "issues": []}]
+    fresh = [{"name": "AcmeSync", "check": "report", "state": "down", "reasons": ["产物过期 30h"]},
+             {"name": "AcmeSync", "check": "digest", "state": "never", "reasons": []},
+             {"name": "AcmeDaily", "check": "a", "state": "down", "reasons": []},
+             {"name": "AcmeDaily", "check": "b", "state": "down", "reasons": []},
+             {"name": "AcmeDaily", "check": "c", "state": "unknown", "reasons": []}]
+    data = tasks_data(rows, freshness={"tasks": fresh, "summary": {"total": 5, "attention": 5}},
+                      history={"ingest": {"state": "stale", "why": "synthetic stale ingest"}})
+    result = run(r"""(()=>{
+      API_READS.set('/api/tasks',{sequence:1,pending:false,error:null});
+      API_READS.set('/api/repos',{sequence:2,pending:false,error:null});
+      API_READS.set('/api/sys',{sequence:3,pending:true});API_READS.set('/api/mem',{sequence:4,pending:true});
+      REPOS={available:true,repos:[{name:'acme-repo',state:'dirty'}],summary:{}};
+      startDiagnostics();renderAttentionStrip();
+      const chips=[...$('attention-strip').innerHTML.matchAll(/data-attention-filter="([^"]+)"[^>]*>(.*?)<\/a>/g)]
+        .map(m=>({filter:m[1],text:m[2].replace(/<[^>]*>/g,'')}));
+      return chips.map(chip=>{
+        openDiagnosticsFiltered(chip.filter);
+        const rows=[...$('todod').innerHTML.matchAll(/<article class="review-row">[\s\S]*?<h3>([^<]*)<\/h3>/g)].map(m=>m[1]);
+        return {...chip,rows,caption:$('review-count').innerHTML};
+      });
+    })()""", tasks_setup(SHOW + loaded(data)))
+    by = {chip["filter"]: chip for chip in result}
+    assert set(by) == {"failed", "outputs", "ingest", "repos"}, result
+    for chip in result:
+        number = re.match(r"\D*(\d+)", chip["text"])
+        if number:
+            assert int(number.group(1)) == len(chip["rows"]), chip
+    assert "2 个任务失败" in by["failed"]["text"] and len(by["failed"]["rows"]) == 2
+    assert "2 个任务输出过期" in by["outputs"]["text"] and len(by["outputs"]["rows"]) == 2
+    assert by["ingest"]["rows"] == ["运行日志摄入"]
+    assert "仅显示：任务失败" in by["failed"]["caption"] and "显示 2 / 共 5 个对象" in by["failed"]["caption"]
+    # 下拉框里有这几个范围,下钻设的范围才看得见、也才能被人自己换回去。
+    page = PAGE.read_text(encoding="utf-8")
+    for scope in ("failed", "outputs", "ingest"):
+        assert f'<option value="{scope}">' in page, scope
 
 def test_overview_arrows_and_integration_links_filter_work_for_one_visit():
     work = {"available": True, "items": [], "events": [], "sources": [], "coverage": {"total": 0, "returned": 0},

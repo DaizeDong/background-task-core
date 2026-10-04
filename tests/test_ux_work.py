@@ -63,7 +63,8 @@ def test_attention_strip_names_each_source_state_and_hides_only_when_all_clear()
     mixed = run(strip, "attentionSummary=()=>({tasks:{state:'ok',count:2},disk:{state:'failed',reason:'HTTP 500'}});")
     assert mixed[0] is False
     assert "2 个任务失败" in mixed[1] and "读取失败" in mixed[1]
-    assert 'data-attention-filter="tasks"' in mixed[1]
+    # 失败的任务落在只装失败任务的范围上,不落在混着输出过期和摄入的「任务与产物」上。
+    assert 'data-attention-filter="failed"' in mixed[1]
     pending = run(strip, "attentionSummary=()=>({tasks:{state:'pending',count:0},repos:{state:'ok',count:0}});")
     assert pending[0] is False and "读取中" in pending[1]
     clear = run(strip, "attentionSummary=()=>({tasks:{state:'ok',count:0},repos:{state:'ok',count:0},disk:{state:'ok',count:0}});")

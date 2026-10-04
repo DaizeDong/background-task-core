@@ -222,12 +222,14 @@ function renderPlatformSignals(){
 // ── 工作台顶上的技术问题摘要 ──
 // 每一类要人管的事一枚芯片,点了去技术问题页并筛到那一类。数从诊断那份清单来(attentionSummary),
 // 这里只负责摆出来,不另算:两处各算一份,数字迟早对不上。
+// filter 是诊断清单上只装这一类的那个范围,芯片上的数就是点开后清单显示的对象数。数的是对象不是检查:
+// 一个任务底下几项输出过期,清单上是一行,这里也只记一个任务。
 // 一类的四种样子:还在读写「读取中」,读坏了写「读取失败」,没在查写「未检查」,是零就不占位置。
 // 整条只在每一类都读到了、而且全是零时才藏起来:还在读或读坏了的那一类,不能被藏成「没问题」。
 const ATTENTION_KINDS=[
-  {key:'tasks',filter:'tasks',name:'计划任务',tone:'bad',text:s=>`${fmtNum(s.count)} 个任务失败`},
-  {key:'outputs',filter:'tasks',name:'输出文件检查',tone:'warn',text:s=>`${fmtNum(s.count)} 个输出过期`},
-  {key:'ingest',filter:'tasks',name:'运行日志摄入',tone:'warn',text:()=>'运行日志摄入异常'},
+  {key:'tasks',filter:'failed',name:'计划任务',tone:'bad',text:s=>`${fmtNum(s.count)} 个任务失败`},
+  {key:'outputs',filter:'outputs',name:'输出文件检查',tone:'warn',text:s=>`${fmtNum(s.count)} 个任务输出过期`},
+  {key:'ingest',filter:'ingest',name:'运行日志摄入',tone:'warn',text:()=>'运行日志摄入异常'},
   {key:'repos',filter:'repos',name:'代码仓库',tone:'warn',text:s=>`${fmtNum(s.count)} 个仓库要处理`},
   {key:'disk',filter:'storage',name:'系统盘',tone:'bad',text:s=>s.usedPct!=null?`磁盘 ${s.usedPct}%`:'系统盘空间不足'},
   {key:'memory',filter:'storage',name:'记忆索引',tone:'warn',text:s=>s.pct!=null?`记忆索引 ${s.pct}%`:'记忆索引逼近上限'}

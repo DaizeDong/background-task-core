@@ -222,7 +222,8 @@ function attentionSummary(){
     const read = readState(source);
     if(read.state === "failed"){ out[key] = {state:"failed", count:0, reason:read.reason}; continue; }
     if(read.state === "pending"){ out[key] = {state:"pending", count:0}; continue; }
-    out[key] = {state:"ok", count:rows.filter(row=>row.key===key).length};
+    // 数对象不数检查,对象怎么认由清单那边的 attentionObject(review.js)定,芯片上的数才等于点开后的行数。
+    out[key] = {state:"ok", count:new Set(rows.filter(row=>row.key===key).map(attentionObject)).size};
     if(read.unchecked) out[key].unchecked = read.unchecked;
   }
   // 磁盘和记忆索引的数是「有没有逼近上限」,摘要里要的是那个百分比本身。

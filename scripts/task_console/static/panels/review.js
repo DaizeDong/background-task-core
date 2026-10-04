@@ -2,7 +2,23 @@
 let REVIEW_FILTER="all", REVIEW_QUERY="";
 // 清单的总数和其中判为异常(红)的对象数,侧栏徽章按它定颜色。筛选不改它:徽章说的是全部。
 let REVIEW_TOTALS={objects:0,bad:0};
-const REVIEW_SCOPES={tasks:"任务与产物",repos:"仓库",storage:"存储与记忆"};
+const REVIEW_SCOPES={tasks:"任务与产物",failed:"任务失败",outputs:"输出过期",ingest:"运行日志摄入",repos:"仓库",storage:"存储与记忆"};
+// 「任务与产物」底下再分三个范围,各对应清单行的一类(attentionRows 的 key)。工作台「要处理」的芯片
+// 按类各一枚,点哪一枚就落在哪一类上:都落在「任务与产物」时,失败的任务、输出过期和摄入混在一张清单里,
+// 芯片上的数和清单的条数哪一个都对不上。一个对象只要带着这一类的一条检查就算在这个范围里。
+const REVIEW_SCOPE_KEYS={failed:"tasks",outputs:"outputs",ingest:"ingest"};
+// 清单上的一个「对象」:同一个去处、同一个任务(或名字)的几条检查并成一行。清单和工作台摘要(attentionSummary)的条数
+// 都按它数,两处只有这一个定义。以前摘要数的是检查条数:一个任务底下三项输出过期,芯片记 3,
+// 点进去清单上是 1 行,而芯片带去的范围还混着失败的任务,于是芯片上的数和点开的清单永远对不上。
+// 定义放在清单这边:清单的渲染只靠这一个文件就能跑,摘要那边是读它的一方。
+function attentionObject(row){
+  return JSON.stringify([row.v,row.task || row.nm]);
+}
+function reviewInScope(row,scope){
+  if(scope==="all") return true;
+  if(REVIEW_SCOPE_KEYS[scope]) return row.keys.includes(REVIEW_SCOPE_KEYS[scope]);
+  return row.v===scope || scope==="storage" && row.v==="resources";
+}
 // 范围筛选记在本机浏览器里,下次打开还是这个范围;搜索词不记:一个上次留下的搜索词会让清单
 // 悄悄少掉几条,而人回来时不会想到去看搜索框。存不进去(隐私窗口、禁用存储)就照旧从「全部」开始。
 // 只记人在这一屏自己选的范围(下拉框、格子、灯板图例、清除筛选)。从别的屏跳过来时顺手设的范围
@@ -91,9 +107,10 @@ function renderReviewQueue(rows,status){
   }
   const groups=new Map();
   rows.forEach(row=>{
-    const key=JSON.stringify([row.v,row.task || row.nm]);
-    if(!groups.has(key)) groups.set(key,{...row,reasons:[],sev:row.sev,failed:false});
+    const key=attentionObject(row);
+    if(!groups.has(key)) groups.set(key,{...row,reasons:[],keys:[],sev:row.sev,failed:false});
     const group=groups.get(key);group.sev=Math.max(group.sev,row.sev);
+    if(!group.keys.includes(row.key)) group.keys.push(row.key);
     if(row.fix && !group.fix) group.fix=row.fix;
     if(row.key==="tasks") group.failed=true;
     const why=humanReason(row.why);
@@ -108,7 +125,7 @@ function renderReviewQueue(rows,status){
     return {...row,info,title:info?taskText(info).title:(row.task || row.nm)};
   }).sort((a,b)=>b.sev-a.sev || a.title.localeCompare(b.title));
   const query=REVIEW_QUERY.trim().toLowerCase();
-  const selected=all.filter(row=>(REVIEW_FILTER==="all" || row.v===REVIEW_FILTER || REVIEW_FILTER==='storage' && row.v==='resources') &&
+  const selected=all.filter(row=>reviewInScope(row,REVIEW_FILTER) &&
     (!query || JSON.stringify([row.nm,row.title,row.description,row.reasons]).toLowerCase().includes(query)));
   REVIEW_TOTALS={objects:all.length,bad:all.filter(row=>row.sev>=3).length};
   $("todon").textContent=`${all.length} 个对象`;
