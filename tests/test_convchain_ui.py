@@ -135,7 +135,7 @@ def test_export_request_carries_range_leaf_and_boolean_switches():
 def test_subagent_view_cannot_fork_and_fork_controls_are_guarded():
     chain = chain_case()
     html = run(f"CH_SUB='{AGENT}';CH_SEL='s:0:1';chRenderAct();$('chact').innerHTML", setup(chain))
-    assert 'data-ctfork="at" disabled' in html and "子代理的转录不能分叉" in html
+    assert 'data-ctfork="at" disabled' in html and "子代理不能新建会话" in html
     html = run("CH_SEL='s:0:1';chRenderAct();$('chact').innerHTML", setup(chain))
     assert 'data-ctfork="at" title' in html
     selector = run("ConsoleActions.selector", STUB)
@@ -302,8 +302,11 @@ def test_subagent_picker_filters_and_names_the_spawning_turn():
     assert "共 2 个" in all_ and "#1 · beta task (gz)" in all_
     some = run("chSubOptions('alpha')", setup(chain))
     assert "筛出 1 / 2 个" in some and "a1synthetic" in some and "a2synthetic" not in some
-    head = run("chRenderHead();$('chcrumb').innerHTML", setup(chain))
-    assert 'id="chsubq"' in head and 'id="chsubs"' in head
+    # 选择器收在「更多操作与详情」菜单里,写明有几个;面包屑那一行不再放它。
+    crumb, head = run("chRenderHead();[$('chcrumb').innerHTML,$('chhead').innerHTML]", setup(chain))
+    assert "<select" not in crumb and 'id="chsubq"' not in crumb
+    menu = head.split('id="ch-more" popover', 1)[1]
+    assert 'id="chsubq"' in menu and 'id="chsubs"' in menu and "子代理 (2)" in menu
 
 
 def test_rows_say_the_chain_can_be_opened():

@@ -527,6 +527,24 @@ def test_page_total_is_after_filter_before_paging():
     assert total == 10          # 不是 3
 
 
+def test_page_desc_returns_the_newest_rows_first_and_keeps_the_total():
+    """最新在前:第一页是行号最大的那几条,`total` 不因顺序改变。
+
+    账本按写入顺序排,正序的第一页是最旧、多半没有时间戳的那批;人要找的是最近的调用。
+    """
+    recs = _seq([ok_rec("codexg") for _ in range(10)])
+    asc_rows, asc_total = llmstats.page(recs, offset=0, limit=2, known_chain=CHAIN)
+    rows, total = llmstats.page(recs, offset=0, limit=2, known_chain=CHAIN, order="desc")
+    biggest = sorted((r[llmstats.INDEX_KEY] for r in recs), reverse=True)[:2]
+    assert [r["i"] for r in rows] == biggest
+    assert total == asc_total == 10
+    # 倒序的第二页紧接着第一页往前走,不跳也不重:offset 是当前顺序下的序号。
+    nxt, _ = llmstats.page(recs, offset=2, limit=2, known_chain=CHAIN, order="desc")
+    assert [r["i"] for r in nxt] == sorted((r[llmstats.INDEX_KEY] for r in recs), reverse=True)[2:4]
+    with pytest.raises(ValueError):
+        llmstats.page(recs, order="newest")
+
+
 def test_page_skipped_column_shows_who_never_played():
     recs = _seq([ok_rec("cc", chain=["codex", "cc", "claude"])])
     rows, _ = llmstats.page(recs, known_chain=CHAIN)

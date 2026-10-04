@@ -740,8 +740,12 @@ def runs(records, min_len=3):
 # --------------------------------------------------------------------------
 
 def page(records, offset=0, limit=50, provider=None, ok=None, q=None, caller=None,
-         known_chain=None):
+         known_chain=None, order="asc"):
     """明细分页,返回 `(rows, total)`。`total` 是**过滤之后、分页之前**的条数。
+
+    `order="desc"` 把筛选后的列表倒过来再切片:账本按写入顺序排,第一页是最旧的那批,
+    而它们恰好多是没有时间戳的早期记录;人要找的几乎总是最近的调用,原来得翻到几千页之后。
+    `offset` 永远是**当前顺序下**的序号,行号 `i` 不随顺序变。
 
     `total` 算在分页之前,否则分页器会显示一个翻不到的尾巴。
 
@@ -767,6 +771,8 @@ def page(records, offset=0, limit=50, provider=None, ok=None, q=None, caller=Non
         raise ValueError("offset 必须是非负整数")
     if not isinstance(limit, int) or isinstance(limit, bool) or limit < 0:
         raise ValueError("limit 必须是非负整数")
+    if order not in ("asc", "desc"):
+        raise ValueError("order 只能是 asc 或 desc")
     # 把 records 传下去:chain_config 的观测那一级本来要自己扫一遍账本,
     # 而这里手上已经有这批记录了,再扫一次纯属白读。
     known = (list(known_chain) if known_chain is not None
@@ -785,6 +791,9 @@ def page(records, offset=0, limit=50, provider=None, ok=None, q=None, caller=Non
         sel = [r for r in sel
                if isinstance(r.get("error"), str) and needle in r["error"].lower()]
     total = len(sel)
+    if order == "desc":
+        # 只倒序,不按时间重排:无时间戳的旧记录没有可比的时间,按行号倒着走才不会把它们插错位置。
+        sel = sel[::-1]
 
     rows = []
     for r in sel[offset:offset + limit]:

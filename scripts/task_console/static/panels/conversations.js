@@ -7,7 +7,28 @@ const CV_SESSION_ID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{1
 const CV_SRC={rename:"你指定的会话标题","ai-title":"自动生成的窗口标题",summary:"压缩时写的概括",
   "first-message":"第一条消息",slug:"自动代号",id:"只有会话号"};
 const cvKey=g=>g.id || g.cwd;
-const cvAge=h=>h==null?"时间未记录":h<1?"刚刚":h<24?Math.floor(h)+" 小时前":Math.floor(h/24)+" 天前";
+// 后端给的是「多少小时前」。换回时刻交给共用的 timeTag:措辞和别的页一致,悬停能看到完整时间。
+const cvAge=h=>h==null || !Number.isFinite(Number(h))?'<span class="u">时间未知</span>':timeTag(Date.now()-Number(h)*3600000);
+
+// 排序、「至少两次用户提问」和不搜索时展开了哪些项目记在本机,刷新后不用重来。
+// 搜索词不记:留在框里的旧词会让人以为会话只有这么几个。存储被禁用时读写都会抛错,那时就当没记过。
+const CV_PREF_KEY='tc.convos';
+function cvLoadPrefs(){
+  try{
+    const p=JSON.parse(localStorage.getItem(CV_PREF_KEY) || 'null');
+    if(!p || typeof p!=='object') return;
+    if(['new','count','old','size'].includes(p.sort)) CV_SORT=p.sort;
+    if(typeof p.humanOnly==='boolean') CV_HUMAN_ONLY=p.humanOnly;
+    if(p.open && typeof p.open==='object') CV_BASE_OPEN=Object.fromEntries(Object.entries(p.open).filter(([,v])=>v===true));
+  }catch(error){}
+}
+function cvSavePrefs(){
+  try{localStorage.setItem(CV_PREF_KEY,JSON.stringify({sort:CV_SORT,humanOnly:CV_HUMAN_ONLY,open:CV_BASE_OPEN}));}catch(error){}
+}
+// 不搜索时的展开状态单独存一份:搜索会临时把匹配的项目都展开,清空搜索后回到这一份,而不是全部收起。
+let CV_BASE_OPEN={};
+cvLoadPrefs();
+CV_OPEN={...CV_BASE_OPEN};
 
 function cvInvalidate(){
   CV_VERSION++;CV_REQUEST?.abort();CV_REQUEST=null;CV_OBSERVER?.disconnect();
@@ -23,13 +44,17 @@ async function loadConvos(){
   clearTimeout(CV_TIMER);cvInvalidate();
   const version=CV_VERSION, controller=new AbortController();CV_REQUEST=controller;
   const timer=setTimeout(()=>controller.abort(),45000);
-  CV_LOADING=true;$('cvnote').textContent='读取中';
+  CV_LOADING=true;$('cvnote').textContent='读取中';cvSavePrefs();
   try{
     const result=await api(cvQuery(),{signal:controller.signal});
     if(version!==CV_VERSION) return;
     CONVOS=result;$('cvnote').textContent='';renderConvos();
   }catch(error){
-    if(version===CV_VERSION) $('cvnote').textContent='读取失败：'+error.message;
+    // 读坏了是列表位置上一块红色的失败说明,带重试;不再是标题旁一行灰字,那行字读起来像普通的副标题。
+    if(version===CV_VERSION){
+      $('cvnote').textContent='';$('cv-match').textContent='';
+      $('cvgroups').innerHTML=errorBlock('会话列表',error,'data-cvretry');
+    }
   }finally{
     clearTimeout(timer);
     if(version===CV_VERSION){CV_LOADING=false;CV_REQUEST=null;cvObserve();}
@@ -146,7 +171,7 @@ function renderConvos(){
     $('cvgroups').innerHTML='';$('cv-match').textContent='';return;
   }
   const S=CONVOS.summary, query=CV_QUERY.trim().toLowerCase();
-  if(query!==CV_OPEN_QUERY){CV_OPEN={};CV_OPEN_QUERY=query;}
+  if(query!==CV_OPEN_QUERY){CV_OPEN=query?{}:{...CV_BASE_OPEN};CV_OPEN_QUERY=query;}
   $('cvhead').innerHTML=`<span class="cv-total"><b>${S.matched ?? S.files}</b> 个会话，分布在 <b>${S.groups}</b> 个项目</span>
     <label>排序 <select id="cvsort">${[['new','最近更新'],['count','会话最多'],['old','最早更新'],['size','占用空间']].map(([v,t])=>`<option value="${v}"${CV_SORT===v?' selected':''}>${t}</option>`).join('')}</select></label>
     <label title="根据已读取的内容识别，长会话可能只统计了一部分"><input type="checkbox" id="cvonly"${CV_HUMAN_ONLY?' checked':''}> 至少两次用户提问</label>
@@ -162,13 +187,12 @@ function renderConvos(){
     return `<div class="cv-g${open?' open':''}" data-cv="${esc(id)}" data-cvproject="${esc(id)}">
       <button class="cv-gh" aria-expanded="${open}" title="${esc(g.storagePath || cwd)}">
         <span class="caret" aria-hidden="true">${open?'▼':'▶'}</span><span class="dir"><span class="dn">${esc(tail)}</span><span class="dp">${esc(head)}</span></span>
-        <span class="n">${g.count} 个会话</span><span class="ag">${g.newest?cvAge((Date.now()/1000-g.newest)/3600):'时间未记录'}</span>
-        <span class="cv-expand">${open?'收起':'展开'}</span></button>
+        <span class="n">${g.count} 个会话</span><span class="ag">${g.newest?timeTag(g.newest):'<span class="u">时间未知</span>'}</span></button>
       <div class="cv-list">${open?cvLocation(g)+cvRows(g)+cvPage(g):''}</div></div>`;
   };
   const ephOpen=CV_OPEN[CV_EPH_KEY] ?? !!query;
   const ephHtml=eph.length?`<div class="cv-g${ephOpen?' open':''}" data-cv="${CV_EPH_KEY}">
-    <button class="cv-gh" aria-expanded="${ephOpen}"><span class="caret" aria-hidden="true">${ephOpen?'▼':'▶'}</span><span class="dir">临时运行记录（${eph.length} 个项目）</span><span class="n">${eph.reduce((n,g)=>n+g.count,0)} 个会话</span><span class="ag"></span><span class="cv-expand">${ephOpen?'收起':'展开'}</span></button>
+    <button class="cv-gh" aria-expanded="${ephOpen}"><span class="caret" aria-hidden="true">${ephOpen?'▼':'▶'}</span><span class="dir">临时运行记录（${eph.length} 个项目）</span><span class="n">${eph.reduce((n,g)=>n+g.count,0)} 个会话</span><span class="ag"></span></button>
     <div class="cv-list">${ephOpen?eph.map(groupHtml).join(''):''}</div></div>`:'';
   const top=window.scrollY;
   $('cvgroups').innerHTML=rest.map(groupHtml).join('')+ephHtml || '<p class="review-empty">没有匹配的会话</p>';
@@ -192,12 +216,16 @@ function cvClick(event){
   if(open){openConvoChain(open.dataset.cvopen);return;}
   // 菜单按钮和菜单里的点击各有归属(浏览器开合菜单,动作另有监听),不能落到下面去开合项目。
   if(event.target.closest('details,[data-cvmenu],[popover]')) return;
+  if(event.target.closest('[data-cvretry]')){loadConvos();return;}
   const more=event.target.closest('[data-cvmore]');
   if(more){cvLoadMore(more.dataset.cvmore);return;}
   const header=event.target.closest('.cv-gh');
   if(header){
     const id=header.parentElement.dataset.cv;
-    CV_OPEN[id]=header.getAttribute('aria-expanded')!=='true';renderConvos();
+    CV_OPEN[id]=header.getAttribute('aria-expanded')!=='true';
+    // 只记不搜索时的展开:搜索时的展开是临时的,清空搜索就该回到原来那样。
+    if(!CV_QUERY.trim()){if(CV_OPEN[id]) CV_BASE_OPEN[id]=true;else delete CV_BASE_OPEN[id];cvSavePrefs();}
+    renderConvos();
     const next=[...$('cvgroups').querySelectorAll('.cv-gh')].find(el=>el.parentElement.dataset.cv===id);
     next?.focus({preventScroll:true});return;
   }
@@ -216,7 +244,7 @@ function startConvos(){
   },true);
   $('cv-search').addEventListener('input',cvSearchChanged);
   $('cvhead').addEventListener('change',event=>{
-    if(event.target.id==='cvsort'){CV_SORT=event.target.value;renderConvos();}
+    if(event.target.id==='cvsort'){CV_SORT=event.target.value;cvSavePrefs();renderConvos();}
     if(event.target.id==='cvonly'){CV_HUMAN_ONLY=event.target.checked;loadConvos();}
   });
 }

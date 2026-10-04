@@ -1616,10 +1616,13 @@ class Handler(BaseHTTPRequestHandler):
                 # 一个超长的查询串除了让每一行都做一次白费的比较之外没有别的作用。
                 needle = (q.get("q") or [""])[0][:200]
                 caller = (q.get("caller") or [""])[0][:200]
+                # 不认识的顺序按旧行为走正序,而不是报错:旧页面不带这个参数,也得照常翻页。
+                order = "desc" if (q.get("order") or [""])[0] == "desc" else "asc"
                 rows, total = llmstats.page(recs, offset=_int("offset", 0, 0, 10 ** 9),
                                             limit=_int("limit", 50, 1, 200),
                                             provider=(prov or None), ok=ok,
-                                            q=(needle or None), caller=(caller or None))
+                                            q=(needle or None), caller=(caller or None),
+                                            order=order)
                 return self._json(200, {"rows": rows, "total": total})
             except Exception as e:
                 return self._json(500, {"error": f"{type(e).__name__}: {e}"})

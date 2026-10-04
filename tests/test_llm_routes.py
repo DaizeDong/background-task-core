@@ -201,6 +201,46 @@ def test_the_cache_actually_caches(ledger, monkeypatch):
     assert calls["n"] == 1, f"账本被重新解析了 {calls['n']} 次,缓存没起作用"
 
 
+# ── 明细的顺序参数 ──────────────────────────────────────────────────────────
+
+def _get_json(port, path, token):
+    import http.client
+    c = http.client.HTTPConnection("127.0.0.1", port, timeout=10)
+    c.request("GET", path, headers={"Host": f"127.0.0.1:{port}", "X-Console-Token": token})
+    r = c.getresponse()
+    body = r.read()
+    c.close()
+    return r.status, json.loads(body.decode("utf-8"))
+
+
+def test_calls_route_passes_the_order_through(ledger, monkeypatch):
+    """`/api/llmcall/calls?order=desc` 第一页是最新的几行;不带参数仍是旧的正序。
+
+    走真的 HTTP 路由,不是只调 page():参数在路由里丢掉的话,page() 的测试照样是绿的。
+    """
+    from http.server import ThreadingHTTPServer
+    base = time.time() - 3600
+    _write(ledger, [_rec(base + k) for k in range(6)])
+    token = "test-token-not-a-real-one"
+    monkeypatch.setattr(server.Handler, "token", token)
+    httpd = ThreadingHTTPServer(("127.0.0.1", 0), server.Handler)
+    port = httpd.server_address[1]
+    monkeypatch.setattr(server.Handler, "allowed_hosts", {f"127.0.0.1:{port}"})
+    t = threading.Thread(target=httpd.serve_forever, daemon=True)
+    t.start()
+    try:
+        st, desc = _get_json(port, "/api/llmcall/calls?offset=0&limit=2&order=desc", token)
+        assert st == 200, desc
+        st, asc = _get_json(port, "/api/llmcall/calls?offset=0&limit=2", token)
+        assert st == 200, asc
+    finally:
+        httpd.shutdown()
+        httpd.server_close()
+    assert [r["i"] for r in desc["rows"]] == [6, 5]
+    assert [r["i"] for r in asc["rows"]] == [1, 2]
+    assert desc["total"] == asc["total"] == 6
+
+
 # ── 索引形状 ─────────────────────────────────────────────────────────────────
 
 @pytest.mark.parametrize("raw", ["abc", "-1", "1.5", "", "..", "1 2", "٣"])

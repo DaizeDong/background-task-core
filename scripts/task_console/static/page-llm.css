@@ -10,3 +10,21 @@
   #llm .llm-config{grid-template-columns:1fr}
   #llm .llm-config>.module-section:has(#lrungs),#llm .llm-config>.module-section:has(#lchain){grid-column:auto;grid-row:auto}
 }
+
+/* 调用记录:每行自己说成没成。失败的行左边一道红色内边,和出错卡片的左边线同一个意思;
+   不给整行染红:一页里失败多的时候整张表会红成一片,反而分不出哪几行。 */
+#llm .l-calls td.no{white-space:nowrap}
+#llm .l-calls td.no .caret{display:inline-block;width:12px;margin-right:4px;color:var(--faint);font-size:var(--fs-chip)}
+#llm .l-calls tr.lrow.failed>td:first-child{box-shadow:inset 3px 0 0 var(--bad)}
+#llm .l-calls td.res{width:1%;white-space:nowrap}
+#llm .l-calls tr.lrow.jumped{background:var(--cur);outline:1px solid var(--cyan);outline-offset:-1px}
+#llm .l-calls .when.unk,#llm .l-run .when.unk{font-style:normal;color:var(--faint)}
+/* 翻页:首页、上一页、页码框、下一页、末页。窄屏上整排换行,不挤出横向滚动。 */
+#llm .l-page .l-pgno{display:inline-flex;align-items:center;gap:4px;white-space:nowrap}
+#llm .l-page .l-pgno input{width:6em;font-variant-numeric:tabular-nums}
+/* 「调用失败」组里每行写的是失败原因,不再是一个红色的「整链失败」。原因可能很长,截在一行里,全文在悬停。 */
+#llm .l-run .why{flex:0 1 24em;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink);font-family:var(--mono,inherit)}
+#llm .l-run .why.unk{color:var(--faint);font-family:inherit}
+@media(max-width:767px){
+  #llm .l-run .why{flex-basis:10em}
+}

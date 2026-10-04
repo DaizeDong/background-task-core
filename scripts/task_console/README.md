@@ -55,7 +55,7 @@ missing library stops the console from starting rather than degrading one panel.
 generation built from this version is installed, the runtime lock must carry the `convo-chain`
 wheel row; the package is not on PyPI, so no other install path resolves it.
 
-Project headers describe physical storage directories. Search runs before pagination, and an
+Project headers describe physical storage directories. A header is a caret, the folder name, the session count and the last update; it no longer repeats 展开 or 收起 next to the caret. The sort order, the 至少两次用户提问 filter and which projects are open while no search is typed are remembered in this browser; the search text is not, and clearing a search returns to the remembered open projects. A failed list read is a red block with 重试 in place of the list, not grey text beside the card title. Search runs before pagination, and an
 expanded project loads the next page near its footer; a failed page keeps existing rows and offers
 retry. Dragging onto a project or the destination tray performs the same move as the keyboard
 accessible Move button. The move preserves transcript bytes and session IDs, carries the complete
@@ -100,8 +100,8 @@ be exported but not forked. The page's refresh button re-reads an open chain too
 selection, the expanded turns and the range. The chain list is a list box: with focus on it the arrow keys, Home and End
 move between nodes and Enter or Space expands one; the start and end of the export range are set with their buttons. Esc
 steps back one layer from anywhere on the page: an open branch menu first, then a subagent back to its main conversation,
-then the chain back to the list. The 导出与新建会话 panel is open when a chain opens and can still be folded. Rename, move,
-the file facts and 删除会话 sit in the 更多操作与详情 menu; read warnings stay visible outside it. 新建会话 asks in an
+then the chain back to the list. The card title is the conversation's name, and the line under it gives the project folder and the number of turns. The 导出与新建会话 panel is open when a chain opens and can still be folded; its controls are labelled buttons: 从这里开始, 到这里结束, 清除范围, 导出 Markdown (the primary one) and 从这里新建会话. The range reads as `#3 06-30 20:43 → #10 06-30 22:20 · 共 n 条` instead of uuid fragments, and a disabled control says why in its tooltip (先在左侧选一条消息, 还没有设定范围, 子代理不能新建会话). The 含工具调用 and 含思考 switches are remembered in this browser. Rename, move,
+the subagent picker (子代理 (N), with its filter box), the file facts and 删除会话 sit in the 更多操作与详情 menu. Read warnings stay visible outside it on one line, such as 读取提示：坏行 2 · 悬空父节点 1 · 压缩边界 3 个无前驱, with the full sentences and uuid lists in its tooltip; a chain that cannot be read shows a red block with 重试. A collapsed turn row shows the user's message, its last reply, the step count and the time; the counts per kind (工具调用 63 · 回复 36 …) are in the step count's tooltip and on the first line of the expanded turn. 在本会话中搜索 above the chain keeps only the turns whose question or last reply contains the text, shows `1 / N 轮`, and Enter selects the next match (collapsed turns are not in the page, so the browser's own find cannot reach them). Every block of text in the detail pane has a 复制 button. 新建会话 asks in an
 in-page confirmation first. With only a start
 set, the range runs to the end of the chain. Export is a GET that returns the Markdown inside
 JSON and the page saves it itself, because the token only travels in a request header; one
@@ -145,7 +145,22 @@ into "inference is failing".
 
 Degradation is clustered, not spread out. An average dilutes one bad afternoon into a harmless
 looking fraction, so the page also draws consecutive runs: how many calls in a row landed on the
-same rung.
+same rung. In the 调用失败 group each run shows its most common error text instead of repeating
+整链失败, which the group title already says.
+
+The call records open newest first. `/api/llmcall/calls?order=desc` reverses the filtered list
+before it is paged; `offset` counts positions in the chosen order and `total` does not change,
+while each row's `i` stays the absolute ledger line. Without the parameter the order is the old
+oldest-first one. The table has 最新在前 / 最早在前, 首页 and 末页 buttons and a page box that jumps
+on Enter; a pager button that cannot move says 已是第一页 or 已是最后一页. Each row has a 结果 column
+with 成功 or 失败, a red edge on failed rows and a caret that shows it opens. A missing timestamp is
+a faint — whose tooltip says 无时间戳; the number of undated records is stated once, in the ledger
+line under the usage cards, not in every card. Jumping from a degraded run in newest-first order
+asks for the unfiltered total first and puts the run's first call at the bottom of the page, with
+the rest of the run above it, and marks that row. The service, result and caller filters and the
+order are remembered in this browser, the error search is not; a remembered service or caller that
+is no longer in the ledger is dropped. A failed read is a red block with 重试, not a grey note and
+not an empty table.
 
 A fresh artifact does **not** clear a bad exit code by default. Log-shaped artifacts are usually
 written on the crash path too, so a task can fail for days while its artifact stays fresh. Only an

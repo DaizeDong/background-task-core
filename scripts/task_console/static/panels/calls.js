@@ -1,18 +1,47 @@
 // Classic script module; loaded in app.js dependency order.
 let LLM=null, LCDRAFT=null, LMROWS=null, LMTOTAL=0, LMOPEN=null, LMBODY={};
 let LM_REQUEST=0;
+// 明细读失败时整张表换成红色的失败块(带重试),不再是标题旁一行灰字,也不画成「没有符合条件的记录」:
+// 读坏了和真的没有是两件事。
+let LMERR=null;
 let LLM_LOADING=null;
-const LMQ = {offset:0, limit:20, provider:"", ok:"", q:"", caller:""};
+// 默认最新在前:账本按写入顺序排,正序的第一页是最旧、多半没有时间戳的那批,
+// 要找的最近调用原来在几千页之后。
+const LMQ = {offset:0, limit:20, provider:"", ok:"", q:"", caller:"", order:"desc"};
+// 从「失败与回退」跳过来的那一行,在表里标出来,不然一页二十行里分不出是哪一条。
+let LMJUMP = null;
 
-const lnum = n => n==null ? "—" : Number(n).toLocaleString("en-US");
+// 筛选和顺序记在本机,刷新后不用重选;搜索词不记:一个留在框里的旧词会让人以为表里只有这么几条。
+// 存储被禁用(隐私窗口、策略)时读写都会抛错,那时就当没记过。
+const LM_PREF_KEY = "tc.llm.calls";
+function lmLoadPrefs(){
+  try{
+    const p = JSON.parse(localStorage.getItem(LM_PREF_KEY) || "null");
+    if(!p || typeof p !== "object") return;
+    if(typeof p.provider === "string") LMQ.provider = p.provider;
+    if(p.ok === "" || p.ok === "0" || p.ok === "1") LMQ.ok = p.ok;
+    if(typeof p.caller === "string") LMQ.caller = p.caller;
+    if(p.order === "asc" || p.order === "desc") LMQ.order = p.order;
+  }catch(e){}
+}
+function lmSavePrefs(){
+  try{ localStorage.setItem(LM_PREF_KEY, JSON.stringify({provider:LMQ.provider, ok:LMQ.ok, caller:LMQ.caller, order:LMQ.order})); }catch(e){}
+}
+lmLoadPrefs();
+// 记下的服务或调用方可能已经不在账本里了。留着它,下拉框会显示「全部」而表却按一个看不见的条件筛着。
+function lmDropStalePrefs(){
+  if(!LLM || LLM.error) return;
+  const provs = new Set((LLM.rungs || []).map(r=>r.name).concat(["NONE"]));
+  if(LMQ.provider && !provs.has(LMQ.provider)) LMQ.provider = "";
+  const callers = new Set((LLM.callers || []).map(c=>c.name));
+  if(LMQ.caller && !callers.has(LMQ.caller)) LMQ.caller = "";
+}
+
+const lnum = n => fmtNum(n);
 // 没量到 / 量到零 / 有值,三种要长得不一样。这个函数只负责前两种的区分。
 const lpct = f => f==null ? '<span class="faint">未计</span>' : (f*100).toFixed(0)+"%";
-function lts(t){
-  if(t==null) return null;
-  const d = new Date(t*1000);
-  const p = n => String(n).padStart(2,"0");
-  return d.getFullYear()+"-"+p(d.getMonth()+1)+"-"+p(d.getDate())+" "+p(d.getHours())+":"+p(d.getMinutes());
-}
+// 没有时间戳的记录在这一屏有十几万条,每行写一遍「无时间戳」只是噪音:写成淡色的「—」,原因放在悬停里。
+const lwhen = t => t==null ? '<span class="when unk" title="无时间戳">—</span>' : timeTag(t);
 
 function loadLLM(){
   if(LLM_LOADING) return LLM_LOADING;
@@ -22,6 +51,7 @@ function loadLLM(){
   catch(e){ LLM = {error: e.message}; }
   LCDRAFT = null;
   renderLLM();
+  lmDropStalePrefs();
   await loadCalls();
   })().finally(()=>{LLM_LOADING=null;});
   return LLM_LOADING;
@@ -30,10 +60,11 @@ function loadLLM(){
 function renderLLM(){
   if(!LLM) return;
   if(LLM.error){
-    $("lcnote").textContent = LLM.error;
+    // 读坏了是红色的一块并带重试,不是标题旁一行灰字:灰字在这里读起来像一句普通的副标题。
+    $("lcnote").textContent = "";
     $("lclist").innerHTML = "";
-    $("lwins").innerHTML = '<div class="l-win l-unk"><h4>用量</h4><div class="big">读不到</div>'
-      + '<div class="sub">'+esc(LLM.error)+'</div></div>';
+    $("lwins").innerHTML = errorBlock("调用统计", LLM.error, "data-llm-retry");
+    $("lledger").innerHTML = "";
     $("lrtab").innerHTML = ""; $("lstab").innerHTML = "";
     return;
   }
@@ -155,13 +186,13 @@ function renderWins(){
     const blind = (w.calls === 0 && (w.unstamped_excluded || 0) > 0);
     const cls = blind ? "l-win l-unk" : "l-win";
     const big = blind ? "无从得知" : lnum(w.calls) + " 次";
+    // 无时间戳的条数每个时段都一样,只在下面账本那一行说一次;每张卡各写一遍,读起来像四件事。
     const sub = blind
-      ? (lnum(w.unstamped_excluded) + " 条历史记录没有时间戳,无法归入这个窗口")
+      ? "这段时间里没有带时间戳的调用，无法统计"
       : ('<span class="ok">' + lnum(w.ok) + " 成功</span> · "
          + (w.failed ? '<span class="bad">' + lnum(w.failed) + " 失败</span>" : "0 失败")
          + " · 低成本服务占比 " + lpct(w.cheap_share)
-         + (w.avg_ms != null ? " · 平均 " + lnum(Math.round(w.avg_ms)) + "ms" : "")
-         + (w.unstamped_excluded ? " · 另有 " + lnum(w.unstamped_excluded) + " 条无时间戳未计入" : ""));
+         + (w.avg_ms != null ? " · 平均 " + lnum(Math.round(w.avg_ms)) + "ms" : ""));
     return '<div class="' + cls + '"><h4>' + esc(w.label) + "</h4>"
       + '<div class="big">' + esc(big) + "</div>"
       + '<div class="sub">' + sub + "</div></div>";
@@ -172,6 +203,7 @@ function renderWins(){
     + " · " + lnum(L.parsed) + " 条可解析"
     + (L.malformed ? ' · <span class="bad">' + lnum(L.malformed) + " 条坏行</span>" : "")
     + " · 带时间戳 " + lnum(L.stamped) + " 条 / 无时间戳 " + lnum(L.unstamped) + " 条"
+    + (L.unstamped ? "（不计入上面各时段）" : "")
     // 读侧承诺 parsed + malformed + blank == lines。这里当场验算,不是装饰:
     // 一个漏读了一段文件的解析器,报出来的每个数都自洽、都好看,
     // 只是全都偏小 —— 而偏小的统计和真实的低用量在屏幕上是同一个数字。
@@ -261,13 +293,22 @@ function more(list){
 function runRows(rs, max){
   return rs.map(r=>{
     const when = r.start_ts != null
-      ? '<span class="when">' + esc(lts(r.start_ts)) + "</span>"
-      : '<span class="when unk">无时间戳</span>';
+      ? '<span class="when">' + timeTag(r.start_ts) + "</span>"
+      : lwhen(null);
     // 整链失败的那一段里没有任何一级给出答案。判据只认后端给的布尔,不认 provider
     // 的值:整链失败在账本里是 null,而读侧为了让它能进计数器把它写成字符串 "NONE",
     // 于是页面上一度原样印出了四个字母 NONE —— 一个内部占位符漏到了人眼前。
     const dead = !!r.total_failure;
-    const who = dead ? "整链失败" : r.provider;
+    // 「调用失败」这一组的标题已经说了没有答案,每行再印一个红色「整链失败」是同一句话说十二遍。
+    // 这一组每行说的是**为什么**失败:那段里最常见的错误文本。
+    if(dead){
+      return '<div class="l-run jump" role="button" tabindex="0" data-jump="' + r.start_offset + '" title="看这一段的明细 · 起自第 ' + r.start_i + ' 行">'
+        + '<span class="why' + (r.error ? "" : " unk") + '" title="' + esc(r.error || "这一段没有记下错误信息") + '">'
+        + esc(r.error || "未记录错误信息") + "</span>"
+        + '<span class="barw"><span class="bar dead" style="width:' + (r.length / max * 100).toFixed(1) + '%"></span></span>'
+        + '<span class="len">' + r.length + " 连</span>" + when + "</div>";
+    }
+    const who = r.provider;
     // 看见一段「连着 82 次降级」之后,人接下来一定想问「那 82 次长什么样」。
     // 在这之前那是个死路:得自己记下行号,滚到下面那张表,再一页页翻过去。
     // 整段可点,点了把明细直接翻到那一段的第一行。
@@ -275,11 +316,9 @@ function runRows(rs, max){
     // **物理行号**(和明细表 # 列同一套)。账本里有空行,两者会差几位,
     // 所以这两个数必须各取各的字段,不能图省事用同一个。
     return '<div class="l-run jump" role="button" tabindex="0" data-jump="' + r.start_offset + '" title="看这一段的明细 · 起自第 ' + r.start_i + ' 行">'
-      + '<span class="who' + (dead ? " none" : "") + '">'
-      + esc(who) + "</span>"
+      + '<span class="who">' + esc(who) + "</span>"
       + (r.error ? '<span class="faint" title="' + esc(r.error) + '">' + esc(r.error.slice(0, 40)) + "</span>" : "")
-      + '<span class="barw"><span class="bar' + (r.total_failure ? " dead" : "")
-      + '" style="width:' + (r.length / max * 100).toFixed(1) + '%"></span></span>'
+      + '<span class="barw"><span class="bar" style="width:' + (r.length / max * 100).toFixed(1) + '%"></span></span>'
       + '<span class="len">' + r.length + " 连</span>" + when + "</div>";
   }).join("");
 }
@@ -288,7 +327,10 @@ function runRows(rs, max){
 async function loadCalls(){
   const request=++LM_REQUEST;
   $("lmnote").textContent='读取中';
+  // 每次查询都是筛选变了的时候:在这里记一次,清除筛选、跳转清筛选也都经过这里。
+  lmSavePrefs();
   const q = "?offset=" + LMQ.offset + "&limit=" + LMQ.limit
+    + (LMQ.order === "desc" ? "&order=desc" : "")
     + (LMQ.provider ? "&provider=" + encodeURIComponent(LMQ.provider) : "")
     + (LMQ.ok !== "" ? "&ok=" + LMQ.ok : "")
     + (LMQ.q ? "&q=" + encodeURIComponent(LMQ.q) : "")
@@ -296,10 +338,19 @@ async function loadCalls(){
   try{
     const r = await api("/api/llmcall/calls" + q);
     if(request!==LM_REQUEST) return;
-    LMROWS = r.rows || []; LMTOTAL = r.total || 0;
+    LMROWS = r.rows || []; LMTOTAL = r.total || 0; LMERR = null;
     $("lmnote").textContent = "";
-  }catch(e){ if(request!==LM_REQUEST) return; LMROWS = []; LMTOTAL = 0; $("lmnote").textContent = '读取失败：'+e.message; }
+  }catch(e){ if(request!==LM_REQUEST) return; LMROWS = []; LMTOTAL = 0; LMERR = e; $("lmnote").textContent = ""; }
   renderCalls();
+}
+const lmPages = () => Math.max(1, Math.ceil(LMTOTAL / LMQ.limit));
+function lmGoPage(n){
+  const page = Math.max(1, Math.min(lmPages(), Math.floor(Number(n)) || 1));
+  const offset = (page - 1) * LMQ.limit;
+  if(offset === LMQ.offset) return false;
+  LMQ.offset = offset; LMOPEN = null;
+  loadCalls();
+  return true;
 }
 
 function renderCalls(){
@@ -331,11 +382,13 @@ function renderCalls(){
     const caller = !("caller" in r) ? '<td class="unk">—</td>'
       : r.caller == null ? '<td class="unk">推断不出</td>'
       : '<td class="who">' + esc(r.caller) + "</td>";
-    const when = r.ts != null
-      ? "<td>" + esc(lts(r.ts)) + "</td>"
-      : '<td class="unk">无时间戳</td>';
-    let tr = '<tr class="lrow' + (open ? " open" : "") + '" data-i="' + r.i + '">'
-      + "<td>" + r.i + "</td>" + when + caller + who
+    // 每行自己说成没成:以前一次失败的调用和成功的长得一样,只有应答服务为空时才看得出来。
+    const result = '<td class="res">' + (r.ok ? statusBadge("成功", "ok") : statusBadge("失败", "bad")) + "</td>";
+    // 行首的三角和 aria-expanded:一眼看得出这一行点了能展开。
+    let tr = '<tr class="lrow' + (open ? " open" : "") + (r.ok ? "" : " failed") + (LMJUMP === r.i ? " jumped" : "")
+      + '" data-i="' + r.i + '" aria-expanded="' + open + '" title="' + (open ? "收起明细" : "展开明细") + '">'
+      + '<td class="no"><span class="caret" aria-hidden="true">' + (open ? "▼" : "▶") + "</span>" + r.i + "</td>"
+      + "<td>" + lwhen(r.ts) + "</td>" + result + caller + who
       + '<td class="sk">' + (r.skipped && r.skipped.length ? esc(r.skipped.join(",")) : "—") + "</td>"
       + "<td>" + esc(r.mode || "") + "</td>"
       + '<td class="r">' + lnum(r.prompt_chars) + "</td>"
@@ -343,29 +396,42 @@ function renderCalls(){
       + '<td class="r">' + (r.ms == null ? '<span class="faint">—</span>' : lnum(r.ms)) + "</td>"
       + '<td class="r">' + r.attempts + "</td></tr>";
     // 明细可能比一屏还高:收起按钮钉在明细右上角,不用回头去找那一行。
-    if(open) tr += '<tr><td class="det" colspan="10"><div class="det-bar"><button type="button" class="mini det-close" data-call-close title="收起明细"><svg class="ic" aria-hidden="true"><use href="#i-up"/></svg>收起</button></div>' + detailHTML(r) + "</td></tr>";
+    if(open) tr += '<tr><td class="det" colspan="' + LM_COLS + '"><div class="det-bar"><button type="button" class="mini det-close" data-call-close title="收起明细"><svg class="ic" aria-hidden="true"><use href="#i-up"/></svg>收起</button></div>' + detailHTML(r) + "</td></tr>";
     return tr;
   }).join("");
-  $("lmtab").innerHTML =
-    '<tr><th>行号</th><th>时间</th><th>调用方</th><th>应答服务</th><th>已跳过</th><th>模式</th>'
-    + '<th class="r">输入字符</th><th class="r">回复字符</th><th class="r">耗时（ms）</th><th class="r">尝试次数</th></tr>'
-    // 空结果必须说出**为什么**空。「搜错误文本」+「只看成功」是一个天然的空集:
-    // 成功的调用根本没有错误文本。不说破的话,一个用对了工具的人会以为工具坏了,
-    // 而这和工具真的坏了在屏幕上是同一句话。
-    + (rows || '<tr><td colspan="10" class="faint">'
-       + (LMQ.q && LMQ.ok === "1"
-          ? "成功记录没有错误信息。请清除搜索词，或将结果筛选改为「全部结果」。"
-          : LMQ.q ? "没有哪条调用的错误文本里含「" + esc(LMQ.q) + "」。"
-                  : "没有符合条件的记录。")
-       + "</td></tr>");
+  const head = '<tr><th>行号</th><th>时间</th><th>结果</th><th>调用方</th><th>应答服务</th><th>已跳过</th><th>模式</th>'
+    + '<th class="r">输入字符</th><th class="r">回复字符</th><th class="r">耗时（ms）</th><th class="r">尝试次数</th></tr>';
+  // 空结果必须说出**为什么**空。「搜错误文本」+「只看成功」是一个天然的空集:
+  // 成功的调用根本没有错误文本。不说破的话,一个用对了工具的人会以为工具坏了,
+  // 而这和工具真的坏了在屏幕上是同一句话。
+  const filtered = LMQ.provider || LMQ.ok !== "" || LMQ.q || LMQ.caller ? "llm" : "";
+  const empty = LMQ.q && LMQ.ok === "1"
+    ? "成功记录没有错误信息。请清除搜索词，或将结果筛选改为「全部结果」。"
+    : LMQ.q ? "没有哪条调用的错误文本里含「" + LMQ.q + "」。"
+    : filtered ? "没有符合筛选条件的调用记录。" : "账本里还没有调用记录。";
+  $("lmtab").innerHTML = head
+    + (LMERR ? '<tr><td colspan="' + LM_COLS + '">' + errorBlock("调用记录", LMERR, "data-lm-retry") + "</td></tr>"
+       : rows || '<tr><td colspan="' + LM_COLS + '">' + emptyBlock(empty, {filtered}) + "</td></tr>");
 
   const from = LMTOTAL ? LMQ.offset + 1 : 0;
   const to = Math.min(LMQ.offset + LMQ.limit, LMTOTAL);
-  $("lmpage").innerHTML =
-    ibtn('i-left','上一页','id="lmprev"','',LMQ.offset <= 0?'已是第一页':'')
-    + ibtn('i-right','下一页','id="lmnext"','',to >= LMTOTAL?'已是最后一页':'')
+  const pages = lmPages(), page = Math.floor(LMQ.offset / LMQ.limit) + 1;
+  const atFirst = LMQ.offset <= 0 ? "已是第一页" : "", atLast = to >= LMTOTAL ? "已是最后一页" : "";
+  // 页码框重画后焦点会掉:人刚在框里按了 Enter,焦点应该还在框里,接着能改下一个页码。
+  const typing = document.activeElement && document.activeElement.id === "lmpgno";
+  const txt = (id, label, reason) => '<button type="button" class="mini" id="' + id + '"' + (reason ? " disabled" : "")
+    + ' title="' + esc(reason ? disabledTitle(label, reason) : label) + '">' + label + "</button>";
+  $("lmpage").innerHTML = LMERR ? "" :
+    txt("lmfirst", "首页", atFirst)
+    + ibtn('i-left','上一页','id="lmprev"','',atFirst)
+    + '<label class="l-pgno">第 <input type="number" id="lmpgno" min="1" max="' + pages + '" value="' + page + '"'
+    + ' aria-label="页码，按 Enter 跳转" title="输入页码后按 Enter 跳转"' + (pages <= 1 ? " disabled" : "") + '> / ' + lnum(pages) + " 页</label>"
+    + ibtn('i-right','下一页','id="lmnext"','',atLast)
+    + txt("lmlast", "末页", atLast)
     + "<span>" + lnum(from) + "–" + lnum(to) + " / 共 " + lnum(LMTOTAL) + " 条</span>";
+  if(typing){ try{ $("lmpgno").focus(); }catch(e){} }
 }
+const LM_COLS = 11;
 
 function detailHTML(r){
   const b = LMBODY[r.i];
@@ -426,14 +492,31 @@ function detailHTML(r){
 // 不许再减一。这里原来写着 `startIndex - 1`,是当初以为传进来的是 1 基行号时留下的,
 // 于是每次跳转都稳定地落在段首的前一条上。差一条看起来非常像「对的」:
 // 落点仍在那段附近,屏幕上第一行甚至常常长得和段内的记录一样。
+// 最新在前时,段首在倒序列表里的位置是 total-1-start_offset。total 要现问一次不带筛选的总数:
+// 账本一直在长,用上一次查询(可能还带着筛选)留下的总数换算,会落到几行之外。
+// 段首放在那一页的最后一行:倒序页里它上面的几行正是这一段后面的调用,下面的是段前的,不相干。
+async function lmJumpOffset(startOffset){
+  if(LMQ.order !== "desc") return Math.max(0, startOffset);
+  const r = await api("/api/llmcall/calls?offset=0&limit=1");
+  const pos = (r.total || 0) - 1 - startOffset;
+  return Math.max(0, pos - (LMQ.limit - 1));
+}
 function jumpToCalls(startOffset){
   const had = LMQ.provider || LMQ.ok !== "" || LMQ.q || LMQ.caller;
   LMQ.provider = ""; LMQ.ok = ""; LMQ.q = ""; LMQ.caller = "";
   $("lmprov").value = ""; $("lmok").value = ""; $("lmq").value = ""; $("lmcaller").value = "";
-  LMQ.offset = Math.max(0, startOffset);
   LMOPEN = null;
-  loadCalls().then(()=>{
-    $("lcalls").scrollIntoView({block: "start"});
+  const seg = ((LLM && LLM.runs) || []).find(r=>r.start_offset === startOffset);
+  LMJUMP = seg ? seg.start_i : null;
+  return lmJumpOffset(startOffset).then(offset=>{ LMQ.offset = offset; return loadCalls(); }, e=>{
+    // 问不到总数就退回正序翻过去,不让跳转静默地落在一个算错的位置上。
+    LMQ.order = "asc"; LMQ.offset = Math.max(0, startOffset);
+    if($("lmorder")) $("lmorder").value = "asc";
+    toast("读不到调用总数，已改为最早在前显示这一段：" + e.message, "warn");
+    return loadCalls();
+  }).then(()=>{
+    const row = LMJUMP != null && document.querySelector ? document.querySelector('#lmtab tr.lrow[data-i="' + LMJUMP + '"]') : null;
+    (row || $("lcalls")).scrollIntoView({block: row ? "center" : "start"});
     if(had) toast("已清掉明细的筛选条件,否则跳过去的位置对不上");
   });
 }
@@ -481,10 +564,31 @@ let LCFROM = null;
 function startCalls(){
   $("lcsave").addEventListener("click", lcSave);
   $("lcreset").addEventListener("click", ()=>{ LCDRAFT = null; renderChain(); });
-  $("lmprov").addEventListener("change", e=>{ LMQ.provider = e.target.value; LMQ.offset = 0; loadCalls(); });
-  $("lmok").addEventListener("change", e=>{ LMQ.ok = e.target.value; LMQ.offset = 0; loadCalls(); });
-  $("lmcaller").addEventListener("change", e=>{ LMQ.caller = e.target.value; LMQ.offset = 0; loadCalls(); });
+  // 顺序不是筛选:清除筛选不动它,所以它不进 RESET_FILTER_COUNTS,挂在筛选前面。
+  $("lmprov").insertAdjacentHTML("beforebegin", '<select id="lmorder" class="l-sel" title="调用记录的排列顺序" aria-label="调用记录的排列顺序">'
+    + '<option value="desc">最新在前</option><option value="asc">最早在前</option></select>');
+  $("lmorder").value = LMQ.order;
+  $("lmorder").addEventListener("change", e=>{ LMQ.order = e.target.value === "asc" ? "asc" : "desc"; LMQ.offset = 0; LMOPEN = null; LMJUMP = null; loadCalls(); });
+  $("lmok").value = LMQ.ok;
+  $("lmprov").addEventListener("change", e=>{ LMQ.provider = e.target.value; LMQ.offset = 0; LMJUMP = null; loadCalls(); });
+  $("lmok").addEventListener("change", e=>{ LMQ.ok = e.target.value; LMQ.offset = 0; LMJUMP = null; loadCalls(); });
+  $("lmcaller").addEventListener("change", e=>{ LMQ.caller = e.target.value; LMQ.offset = 0; LMJUMP = null; loadCalls(); });
   $("lmq").addEventListener("input", e=>callSearchInput(e.target.value));
+  // 上一页 / 下一页由 events.js 的总监听接;首页、末页、页码框和重试是这一屏新加的,挂在这里。
+  $("lmpage").addEventListener("click", e=>{
+    const b = e.target.closest("button");
+    if(!b || b.disabled) return;
+    if(b.id === "lmfirst") lmGoPage(1);
+    else if(b.id === "lmlast") lmGoPage(lmPages());
+  });
+  $("lmpage").addEventListener("keydown", e=>{
+    if(e.target.id !== "lmpgno" || e.key !== "Enter" || e.isComposing || e.repeat) return;
+    e.preventDefault();
+    // 页码超出范围时按首末页算;算下来就是当前页的话不发请求,框里改回当前页码,别留着一个没生效的数。
+    if(!lmGoPage(e.target.value)) e.target.value = Math.floor(LMQ.offset / LMQ.limit) + 1;
+  });
+  $("lcalls").addEventListener("click", e=>{ if(e.target.closest("[data-lm-retry]")) loadCalls(); });
+  $("luse").addEventListener("click", e=>{ if(e.target.closest("[data-llm-retry]")) loadLLM(); });
   // 拖拽排序。上下箭头按钮是同一件事的键盘可达版本,两条路都留着:
   // 只有拖拽的话,这个控件对键盘用户不存在。
   $("lclist").addEventListener("dragstart", e=>{

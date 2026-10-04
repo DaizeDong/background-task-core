@@ -7,14 +7,15 @@
 #chbox .pad{padding:8px var(--section-inset,12px) 10px}
 .ch-crumb{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:var(--fs-meta);
   color:var(--dim);margin-bottom:4px;min-width:0}
-/* 子代理下拉框按最长的那一项撑宽,不收住的话窄屏上它比卡片还宽。
-   label 是 flex 项,默认 min-width:auto 不肯缩,所以两层都要放开。 */
-.ch-crumb label{display:flex;gap:6px;align-items:center;min-width:0;max-width:100%}
-.ch-crumb select{min-width:0;max-width:100%;flex:1 1 auto;font-size:var(--fs-meta)}
-.ch-crumb input{min-width:0;width:16em;max-width:100%;font-size:var(--fs-meta)}
+/* 子代理选择器收在「更多操作与详情」菜单里:标题、筛选框、下拉框上下排。
+   下拉框按最长的那一项撑宽,不收住的话它比菜单还宽。 */
+.ch-subs{display:flex;flex-direction:column;gap:4px;padding:4px 8px;min-width:0}
+.ch-subs-h{color:var(--dim);font-size:var(--fs-meta);font-weight:600}
+.ch-subs input,.ch-subs select{width:100%;min-width:0;max-width:100%;font-size:var(--fs-meta)}
 .ch-crumb code{font-family:var(--mono);overflow-wrap:anywhere}
 .ch-head{display:flex;flex-wrap:wrap;gap:3px 12px;align-items:baseline;font-size:var(--fs-meta);
   color:var(--dim);margin-bottom:6px;min-width:0}
+.ch-head .ch-proj b{color:var(--ink);font-weight:600}
 .ch-head .cwd{font-family:var(--mono);color:var(--faint);overflow-wrap:anywhere;min-width:0}
 .ch-head .alt{color:var(--amber)}
 .ch-head .bad{color:var(--bad)}
@@ -37,8 +38,6 @@
 .ch-t,.ch-s,.ch-cmp,.ch-sum{content-visibility:auto;contain-intrinsic-size:auto 26px}
 @media (max-width:760px){
   .ch-split{grid-template-columns:minmax(0,1fr);height:auto;overflow:visible}
-  /* 窄屏上计数徽章会把用户那句话挤到只剩几个字。徽章是次要信息,步数留着。 */
-  .ch-cnt .ch-bd{display:none}
   /* 高度跟内容走、封顶 55vh:两轮的短会话不该在手机上留出半屏空白。 */
   .ch-list{height:auto;min-height:120px;max-height:45vh;contain:layout paint}
   .ch-t .rp{grid-column:2 / -1}
@@ -63,6 +62,12 @@
 .ch-cnt{display:inline-flex;gap:7px;font-size:var(--fs-chip);color:var(--dim);white-space:nowrap}
 .ch-cnt .fk{color:var(--amber)}
 .ch-steps{border-left:1px solid var(--line);margin:0 0 4px 22px}
+/* 展开后的第一行:这一轮各类节点各有几个,写成字。收起时它只在步数的悬停里。 */
+.ch-kinds{padding:2px 8px 4px 8px;color:var(--dim);font-size:var(--fs-chip)}
+/* 本会话内搜索:一行,框在左,命中计数在右。 */
+.ch-find{display:flex;align-items:center;gap:8px;margin:0 0 6px;min-width:0}
+.ch-find input{flex:0 1 22em;min-width:0;font-size:var(--fs-meta)}
+.ch-find .faint{font-size:var(--fs-meta);white-space:nowrap;font-variant-numeric:tabular-nums}
 .ch-s{display:grid;grid-template-columns:16px auto minmax(0,1fr) auto;gap:6px;
   align-items:baseline;padding:2px 8px 2px 4px;cursor:pointer;font-size:var(--fs-meta)}
 .ch-s .g{text-align:center}
@@ -126,6 +131,13 @@
   color:var(--ink);background:var(--panel2);border:1px solid var(--line2);padding:6px 8px;margin:2px 0 6px;
   max-height:60vh;overflow:auto}
 .ch-pre.bad{border-color:var(--bad)}
+/* 每段原文右上角的「复制」。按钮压在原文的右上角,原文右边留出它的宽度,第一行字不被盖住。 */
+.ch-prew{position:relative;min-width:0}
+.ch-prew .ch-copy{position:absolute;top:4px;right:4px;z-index:1;display:inline-flex;align-items:center;gap:3px;background:var(--panel)}
+.ch-prew .ch-copy .ic{width:13px;height:13px}
+.ch-prew .ch-pre{padding-right:68px}
+/* 范围那一行是一句话:「范围 #3 06-30 20:43 → #10 06-30 22:20 · 共 n 条」。 */
+.ch-range{column-gap:6px}
 .ch-det details>summary{cursor:pointer;color:var(--dim);margin:6px 0 2px}
 /* 面包屑「‹ 会话列表 / 会话名」占满标题行:返回在最左,会话名紧跟着,名字太长就换行,不把返回挤出去。 */
 .ch-back{display:flex;align-items:center;flex-wrap:wrap;gap:2px 6px;min-width:0;flex:1 1 auto}
