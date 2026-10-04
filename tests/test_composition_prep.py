@@ -63,17 +63,18 @@ def test_page_bound_listeners_live_in_their_panels_not_in_events():
 
 def test_storage_list_clicks_are_handled_on_the_list_itself():
     # 清单的点击从 document 搬到 #cxbody 上:点一行只改这一行的勾选,不重画整张表。
+    # 行是包着勾选框的 label,勾选在浏览器转给勾选框的那一下点击里做,按它此刻的勾选状态。
     result = run("""(()=>{
       const handlers={};$('cxbody').addEventListener=(type,fn)=>handlers[type]=fn;
       CXL={available:true,exists:true,items:[{rel:'acme/a.jsonl',bytes:10}]};
-      const box={checked:false}, row={dataset:{cxrel:'acme/a.jsonl'},classList:{toggle(){}},querySelector:()=>box};
+      const row={dataset:{cxrel:'acme/a.jsonl'}};
+      const box={tagName:'INPUT',checked:true,closest:sel=>sel==='.cx-l'?row:null};
       startStorage();
-      const target={closest:sel=>sel==='[data-cxrel]'?row:null};
-      handlers.click({target});const picked=[CXSEL.has('acme/a.jsonl'),box.checked];
-      handlers.click({target});
-      return [picked,CXSEL.has('acme/a.jsonl'),box.checked];
+      handlers.click({target:box});const picked=CXSEL.has('acme/a.jsonl');
+      box.checked=false;handlers.click({target:box});
+      return [picked,CXSEL.has('acme/a.jsonl')];
     })()""", "cxSelSummary=()=>{};")
-    assert result == [[True, True], False, False]
+    assert result == [True, False]
 
 
 # ---------- 工作台 ----------

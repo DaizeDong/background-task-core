@@ -148,6 +148,10 @@
 新加一种「跳到别的屏去看细节」的按钮,把它的属性加进 `DRILL_TARGETS`,否则目的屏不会有「← 返回」。
 从侧栏进来要传 `showView(key, true, {reset:true})`,那样到达的屏没有来源。测试在 `tests/test_shell.py`。
 
+地址里 `/` 后面那段只放行给会话屏和仓库屏。仓库屏由 `repositories.js` 的 `repoRoute(arg)` 接:选中的仓写进 `#repos/<仓名>`,
+人点的选中用 `pushState` 加一条历史(浏览器后退回到上一个仓),自动选中和「原来那个仓不见了」用 `replaceState`;
+同一屏里换仓不把人送回页顶。新的屏要带参数,照这个样子给它一个 route 函数,再在 `showView` 里放行它的 arg。
+
 ### 外框:一个刷新、标签上的徽章
 
 顶栏的刷新会把 `PAGE_READS[当前屏]` 全部重跑一遍,所以卡片上不要再加一个同样的刷新图标;
@@ -363,7 +367,7 @@
 4. ★ 侧栏徽章:`setBadge()`,外加 `BADGE_SOURCES` / `BADGE_LOADERS` 两张表(见上面「外框」那一节)。
    不加的话这一屏「有事」时没人知道,而页面看起来很正常。
 5. ★ 总清单 `attentionRows()`(在 `panels/overview.js`)里的对应项,如果这一屏会产出「要人管的事」。
-   诊断屏的 `renderTodo()` 和工作台摘要用的 `attentionSummary()` 都读这一份;新的一类还要在
+   诊断屏的 `renderTodo()`、诊断屏的格子和工作台摘要用的 `attentionSummary()` 都读这一份;新的一类还要在
    `ATTENTION_SOURCES` 里登记它读哪条 `/api/` 路径,否则摘要分不出它是「读取中」还是「零条」;
    再在 `workbench.js` 的 `ATTENTION_KINDS` 里给它一行(名字、诊断筛选值、芯片文字),
    否则工作台顶上那条「要处理」不会出现这一类,而且不报错。

@@ -128,12 +128,15 @@ function returnToOrigin(){
 
 function showView(key,push,options){
   // 会话屏有一级下钻:#convos/<会话 id>[/<子代理 id>][/leaf=<uuid>],由可选面板 convchain 接。
+  // 仓库屏带选中的仓:#repos/<仓名>,由 repositories.js 的 repoRoute 接,浏览器后退就回到上一个选中的仓。
   // 只按第一个 / 切;别的分区后面跟了东西就当没跟,照旧落到那一屏。
   let arg=null;
   const slash=typeof key==='string'?key.indexOf('/'):-1;
   if(slash>0){arg=key.slice(slash+1);key=key.slice(0,slash);}
   if(!VIEWS.includes(key)) key='overview';
-  if(key!=='convos') arg=null;
+  if(key!=='convos' && key!=='repos') arg=null;
+  // 同一屏里换一个仓(后退、前进)不是换页,不把人送回页顶。
+  const sameRepos=key==='repos' && CURVIEW==='repos';
   noteOrigin(key,options?.reset);
   CURVIEW=key;
   const group=viewGroup(key), definition=VIEW_GROUPS[group];
@@ -161,11 +164,12 @@ function showView(key,push,options){
   if(group==='automations') loadRepairs();
   // 对话链开着时地址写成带 id 的那个:写成裸 #convos 的话,紧跟着的 hashchange
   // 会把它读成「后退回列表」而关掉对话链。面板没载入就照旧只写分区名。
-  const want=key==='convos' && typeof convoChainRoute==='function' ? convoChainRoute(arg,push) : key;
+  const want=key==='convos' && typeof convoChainRoute==='function' ? convoChainRoute(arg,push)
+    : key==='repos' && typeof repoRoute==='function' ? repoRoute(arg) : key;
   if(push && location.hash.slice(1)!==want) location.hash=want;
   // 批量操作条只属于运行详情:换到别的分区就收起来,选中的任务留着,回来还在。
   renderBulk();
-  window.scrollTo(0,0);
+  if(!sameRepos) window.scrollTo(0,0);
 }
 
 // ── 键盘约定 ──
@@ -182,6 +186,8 @@ const ESC_STEPS={
     return false;
   },
   llm:()=>closeCall(),
+  // 手机上仓库详情盖着列表时,Esc 回到列表;宽屏上没有这一层。
+  repos:()=>typeof repoEscape==='function' && repoEscape(),
   // 对话链是可选面板,没载入时这一屏没有可退的层。
   convos:()=>typeof convoChainEscape==='function' && convoChainEscape()
 };

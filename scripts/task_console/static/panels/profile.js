@@ -53,6 +53,10 @@ function renderCodex(){
 
 // 逐份转录的清单。默认不加载:这一扫要走几千个文件,而这一屏别的东西不该等它。
 let CXL=null, CXSEL=new Set();
+// 清单里的文字筛选、Shift 连选的起点,和「这一下点在行上时按着 Shift」(点的是行里的字,
+// 浏览器随后才把这次点击转给勾选框,转过去的那一下不一定带着 Shift)。
+let CX_QUERY="", CX_ANCHOR=null, CX_SHIFT=false;
+const CX_AGES=[30,90,180];
 let CX_REQUEST=0;
 let CX_DELETING=false;
 const CX_PENDING=new Map();
@@ -104,39 +108,104 @@ function renderCxList(){
   const lo=Math.log10(1+minB), span=Math.log10(1+maxB)-lo;
   const barW=b=>b<=0?0:(span<=0?100:Math.max(3,Math.round(3+97*(Math.log10(1+b)-lo)/span)));
   const now=Date.now()/1000;
+  // 每一行是一个包着勾选框的 label:点行上任何地方都勾它,Tab 能走到每一个勾选框,空格能勾。
   const rows=items.map(i=>{
-    const on=CXSEL.has(i.rel);
-    return `<div class="cx-l${on?" on":""}" data-cxrel="${esc(i.rel)}">
-      <input type="checkbox" ${on?"checked":""} tabindex="-1" aria-label="选中 ${esc(i.name)}">
-      <span class="p" title="${esc(i.rel)}">${esc(i.rel)}</span>
+    const on=CXSEL.has(i.rel), label=cxLabel(i);
+    return `<label class="cx-l${on?" on":""}" data-cxrel="${esc(i.rel)}"${cxMatches(i)?"":" hidden"}>
+      <input type="checkbox" ${on?"checked":""} aria-label="选中 ${esc(label.text)}">
+      <span class="p" title="${esc(i.rel)}">${label.html}</span>
       <span class="bar"><i style="width:${barW(i.bytes)}%"></i></span>
       <span class="sz">${kb(i.bytes)}</span>
-      <span class="ag" title="${esc(new Date(i.mtime*1000).toLocaleString())}">${
-        cvAge((now-i.mtime)/3600)}</span></div>`;
+      <span class="ag" title="${esc("修改于 "+fullTime(i.mtime))}">${
+        cvAge((now-i.mtime)/3600)}</span></label>`;
   }).join("");
 
   const selBytes=items.filter(i=>CXSEL.has(i.rel)).reduce((a,i)=>a+i.bytes,0);
+  const typing=document.activeElement && document.activeElement.id==="cxq";
   el.innerHTML=`<div class="cx-bar">
       <button class="icon-only mini" id="cxall" title="全选已列出的文件"><svg class="ic" aria-hidden="true"><use href="#i-select-all"/></svg><span class="control-label">全选已列出的文件</span></button>
       <button class="icon-only mini" id="cxnone" title="清空选择"><svg class="ic" aria-hidden="true"><use href="#i-filter-clear"/></svg><span class="control-label">清空选择</span></button>
+      <span class="cx-ages" role="group" aria-label="按修改时间快速选择">${CX_AGES.map(days=>
+        `<button type="button" class="mini cx-age" data-cx-older="${days}">超过 ${days} 天</button>`).join("")}</span>
+      <input id="cxq" type="search" class="cx-q" placeholder="按日期或编号筛选" aria-label="筛选会话文件" autocomplete="off" value="${esc(CX_QUERY)}">
+      <span class="cx-shown" id="cxshown"></span>
       <span class="sel">选中 <b>${CXSEL.size}</b> 份 · ${kb(selBytes)}</span>
       <button class="icon-only mini danger" id="cxdel" title="永久删除选中的文件，需要确认"><svg class="ic" aria-hidden="true"><use href="#i-trash"/></svg><span class="control-label">删除选中文件</span></button>
     </div><div class="cx-list">${rows}</div>`;
+  if(typing){ const q=$("cxq"); q?.focus?.(); q?.setSelectionRange?.(q.value.length,q.value.length); }
   cxSelButtons();
 }
 
-// 三个按钮各自什么时候能点:没选中就没得清空、没得删,已经全选了就没得再全选。
+// 文件名本身是一长串 rollout-日期-UUID,前面截掉以后只剩「…jsonl」,一份和一份分不出来。
+// 行上写会话开始的日期时刻和编号前 8 位;完整路径在悬停里。认不出的名字照原样写文件名。
+function cxLabel(item){
+  const name=String(item.name || String(item.rel||"").split("/").pop() || "");
+  const m=/(\d{4})-(\d\d)-(\d\d)T(\d\d)-(\d\d)(?:-\d\d)?-([0-9a-f]{8})/i.exec(name);
+  if(!m) return {text:name,html:esc(name)};
+  const year=String(new Date().getFullYear())===m[1]?"":m[1]+"-";
+  const when=`${year}${m[2]}-${m[3]} ${m[4]}:${m[5]}`, id=m[6].toLowerCase();
+  return {text:`${when} ${id}`,html:`<span class="cx-when">${esc(when)}</span><span class="cx-id">${esc(id)}</span>`};
+}
+function cxMatches(item){
+  const q=CX_QUERY.trim().toLowerCase();
+  return !q || (cxLabel(item).text+" "+item.rel).toLowerCase().includes(q);
+}
+// 筛出来、看得见的那些文件。全选、快选和 Shift 连选都只对它们动手,藏起来的不受影响。
+function cxVisibleItems(){ return ((CXL&&CXL.items)||[]).filter(cxMatches); }
+function cxOlderThan(days){
+  const cut=Date.now()/1000-days*86400;
+  return cxVisibleItems().filter(i=>i.mtime<cut);
+}
+
+// 按钮各自什么时候能点:没选中就没得清空、没得删,已经全选了就没得再全选,没有那么旧的文件就没得快选。
 function cxSelButtons(){
-  const items=(CXL&&CXL.items)||[];
+  const items=cxVisibleItems(), filtered=!!CX_QUERY.trim();
   const all=items.length>0 && items.every(i=>CXSEL.has(i.rel));
-  ConsoleActions.gate(document.getElementById("cxall"),!items.length?"列表里没有文件":all?"已列出的文件都已选中":"");
+  const allButton=document.getElementById("cxall");
+  if(allButton){ allButton.dataset.label=filtered?"全选筛出的文件":"全选已列出的文件"; if(!allButton.disabled) allButton.title=allButton.dataset.label; }
+  ConsoleActions.gate(allButton,!items.length?(filtered?"没有符合筛选的文件":"列表里没有文件"):all?(filtered?"筛出的文件都已选中":"已列出的文件都已选中"):"");
   ConsoleActions.gate(document.getElementById("cxnone"),CXSEL.size?"":"没有选中的文件");
   ConsoleActions.gate(document.getElementById("cxdel"),CXSEL.size?"":"请先选择文件");
+  document.querySelectorAll?.("#cxbody [data-cx-older]").forEach(button=>{
+    const days=Number(button.dataset.cxOlder), n=cxOlderThan(days).length;
+    button.dataset.label=`超过 ${days} 天`;
+    setDisabled(button,n?"":`没有修改时间超过 ${days} 天的文件`);
+    if(n) button.title=`选中修改时间超过 ${days} 天的 ${n} 份${filtered?"（只在筛出的文件里选）":""}，替换当前选择`;
+  });
+  const shown=$("cxshown"), total=((CXL&&CXL.items)||[]).length;
+  if(shown) shown.textContent=filtered?matchCount(items.length,total,"份"):"";
+}
+
+// 文字筛选只把不匹配的行藏起来,不重画清单:几千行重画一次会把滚动位置送回顶部,也会让输入框失焦。
+function cxApplyFilter(){
+  const byRel={}; ((CXL&&CXL.items)||[]).forEach(i=>byRel[i.rel]=i);
+  document.querySelectorAll?.("#cxbody .cx-l").forEach(row=>{
+    const item=byRel[row.dataset.cxrel]; row.hidden=!(item && cxMatches(item)); });
+  cxSelButtons();
+}
+// 把一批行的选中状态写进 CXSEL,并只改这些行自己的样子。
+function cxMark(rels,on){
+  const want=new Set(rels);
+  rels.forEach(rel=>{ if(on) CXSEL.add(rel); else CXSEL.delete(rel); });
+  document.querySelectorAll?.("#cxbody .cx-l").forEach(row=>{
+    if(!want.has(row.dataset.cxrel)) return;
+    row.classList.toggle("on",on);
+    const box=row.querySelector("input"); if(box) box.checked=on;
+  });
+  cxSelSummary();
+}
+// 勾一行。按着 Shift 时,从上一次勾的那一行到这一行(只算看得见的行)整段设成同一个状态。
+function cxToggle(rel,on,shift){
+  const visible=cxVisibleItems().map(i=>i.rel);
+  const from=shift && CX_ANCHOR ? visible.indexOf(CX_ANCHOR) : -1, to=visible.indexOf(rel);
+  if(from>=0 && to>=0) cxMark(visible.slice(Math.min(from,to),Math.max(from,to)+1),on);
+  else cxMark([rel],on);
+  CX_ANCHOR=rel;
 }
 
 // 只更新那一行统计,不碰列表本身。
 function cxSelSummary(){
-  const el=document.querySelector(".cx-bar .sel"); if(!el) return;
+  const el=document.querySelector(".cx-bar .sel"); if(!el){ cxSelButtons(); return; }
   const byRel={}; ((CXL&&CXL.items)||[]).forEach(i=>byRel[i.rel]=i);
   let b=0; CXSEL.forEach(r=>{ b += (byRel[r]||{}).bytes||0; });
   el.innerHTML=`选中 <b>${CXSEL.size}</b> 份 · ${kb(b)}`;
@@ -190,22 +259,34 @@ function startStorage(){
   // 会让这个下拉用起来像卡住了。
   $("cxwhich").addEventListener("change",loadCxList);
   $("cxsort").addEventListener("change",()=>{ if(CXL) renderCxList(); });
-  // 清单里的全选、清空、删除和逐行勾选。清单整块重画,所以挂在不重画的 #cxbody 上。
-  $("cxbody").addEventListener("click",e=>{
+  // 磁盘告警横幅上的「查看最大的会话文件」:跳转由 data-goto 做,这里把清单换回按体积从大到小。
+  $("storage-alert")?.addEventListener("click",e=>{
+    if(!e.target.closest("[data-cx-largest]") || $("cxsort").value==="size") return;
+    $("cxsort").value="size"; if(CXL) renderCxList();
+  });
+  // 清单里的全选、清空、删除、快选和逐行勾选。清单整块重画,所以挂在不重画的 #cxbody 上。
+  const body=$("cxbody");
+  // 按着 Shift 点行上的字会顺带拖选一段文字,在这里先拦掉;点击本身照常发生。
+  body.addEventListener("mousedown",e=>{ if(e.shiftKey && e.target.closest(".cx-l")) e.preventDefault(); });
+  body.addEventListener("input",e=>{ if(e.target.id==="cxq"){ CX_QUERY=e.target.value; cxApplyFilter(); } });
+  body.addEventListener("click",e=>{
     const target=e.target.closest('button') || e.target;
     if(target.id==="cxall"){
-      (CXL&&CXL.items||[]).forEach(i=>CXSEL.add(i.rel)); renderCxList(); return; }
-    if(target.id==="cxnone"){ CXSEL.clear(); renderCxList(); return; }
+      cxVisibleItems().forEach(i=>CXSEL.add(i.rel)); renderCxList(); return; }
+    if(target.id==="cxnone"){ CXSEL.clear(); CX_ANCHOR=null; renderCxList(); return; }
     if(target.id==="cxdel"){ cxDelete(); return; }
-    const cx = e.target.closest("[data-cxrel]");
-    if(cx){ const k=cx.dataset.cxrel;
-      // ⚠ 只改这一行,不重画整张表。2382 行重画一次要几十毫秒,而且会把滚动位置
-      // 弹回顶部 —— 在一张两千行的清单上挑东西时,那等于每勾一个就把人送回开头。
-      // (实测还有一个更隐蔽的后果:重画会把已有的行节点全部换掉,
-      // 于是任何「先取一批节点再逐个点」的用法只有第一次生效。)
-      if(CXSEL.has(k)) CXSEL.delete(k); else CXSEL.add(k);
-      cx.classList.toggle("on", CXSEL.has(k));
-      const box=cx.querySelector("input"); if(box) box.checked=CXSEL.has(k);
-      cxSelSummary(); return; }
+    const older=e.target.closest("[data-cx-older]");
+    if(older){ if(older.disabled) return;
+      CXSEL=new Set(cxOlderThan(Number(older.dataset.cxOlder)).map(i=>i.rel)); CX_ANCHOR=null; renderCxList(); return; }
+    const row=e.target.closest(".cx-l");
+    if(!row) return;
+    // 点在行上的字:浏览器会紧接着把这次点击转给行里的勾选框,真正的勾选在那一下里做。
+    if(e.target.tagName!=="INPUT"){ CX_SHIFT=e.shiftKey; return; }
+    // ⚠ 只改这一行(或 Shift 连选的那一段),不重画整张表。2382 行重画一次要几十毫秒,而且会把滚动位置
+    // 弹回顶部 —— 在一张两千行的清单上挑东西时,那等于每勾一个就把人送回开头。
+    // (实测还有一个更隐蔽的后果:重画会把已有的行节点全部换掉,
+    // 于是任何「先取一批节点再逐个点」的用法只有第一次生效。)
+    const shift=e.shiftKey || CX_SHIFT; CX_SHIFT=false;
+    cxToggle(row.dataset.cxrel, e.target.checked, shift);
   });
 }
