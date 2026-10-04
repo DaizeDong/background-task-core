@@ -791,6 +791,37 @@ def test_registered_read_dispatch_auth_negative_control():
     assert 'self._authed()' not in poisoned
 
 
+# ---------- 删除与修复:五条路由 ----------
+# 删除会从计划程序里拿掉任务,修复会让 Agent 开工。两件事都只能由带令牌的同源请求发起。
+_TASK_OP_ROUTES = [
+    ("POST", "/api/task/delete/plan", {"name": "AcmeSync", "reason": "合成"}),
+    ("POST", "/api/task/delete/apply", {"name": "AcmeSync", "token": "synthetic"}),
+    ("POST", "/api/task/repair/preview", {"name": "AcmeSync"}),
+    ("POST", "/api/task/repair", {"name": "AcmeSync", "request_id": "synthetic-request-01"}),
+    ("GET", "/api/task/repairs", None),
+]
+
+
+def test_the_route_scanner_sees_the_delete_and_repair_routes():
+    """五条都得进令牌通扫:写成 `in (...)` 一组时只有第一条会被正则认出来。"""
+    _src, routes = _api_route_literals()
+    assert {path for _m, path, _b in _TASK_OP_ROUTES} <= set(routes)
+
+
+@pytest.mark.parametrize("method,path,body", _TASK_OP_ROUTES)
+def test_delete_and_repair_routes_without_token_are_403_and_never_reach_their_module(srv, monkeypatch, method, path, body):
+    for module, names in ((S.task_delete, ("plan", "apply")), (S.task_repair, ("preview", "submit", "orders"))):
+        for name in names:
+            monkeypatch.setattr(module, name, lambda *a, **k: pytest.fail("reached without a token"))
+    assert call(srv, method, path, body=body)[0] == 403
+    assert call(srv, method, path, body=body, token="wrong")[0] == 403
+
+
+@pytest.mark.parametrize("method,path,body", _TASK_OP_ROUTES)
+def test_delete_and_repair_routes_reject_a_rebinding_host(srv, method, path, body):
+    assert call(srv, method, path, host="attacker.example:80", token=TOKEN, body=body)[0] == 400
+
+
 # ---------- 对话链:四条路由 ----------
 # 这四条读的是会话转录,其中一条(fork)会往会话目录里写一份新文件。
 # 客户端给的只有 id,所以控制是两层:令牌/Host(和别的路由一样),加上「id 先按形状拒绝,

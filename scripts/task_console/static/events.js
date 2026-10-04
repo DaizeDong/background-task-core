@@ -5,6 +5,14 @@ document.addEventListener("click", e=>{
   if(launch){e.preventDefault();e.stopImmediatePropagation();openTaskLaunch(launch.dataset.launch);return;}
   const deletion=e.target.closest('[data-delete]');
   if(deletion){e.preventDefault();e.stopImmediatePropagation();if(!deletion.disabled) previewDeletion(deletion.dataset);return;}
+  // 任务行上的修复、删除和修复进度。这三样长在运行详情的行里,而那一行本身点了会展开明细
+  // (下面第二个监听的最后一段):不在这里先接走,点「删除」会同时把明细展开或收起。
+  const repairOrder=e.target.closest('[data-repair-order]');
+  if(repairOrder){e.preventDefault();e.stopImmediatePropagation();openRepairOrder(repairOrder.dataset.repairOrder);return;}
+  const taskRepair=e.target.closest('[data-task-repair]');
+  if(taskRepair){e.preventDefault();e.stopImmediatePropagation();if(!taskRepair.disabled) openTaskRepair(taskRepair.dataset.taskRepair);return;}
+  const taskDelete=e.target.closest('[data-task-delete]');
+  if(taskDelete){e.preventDefault();e.stopImmediatePropagation();if(!taskDelete.disabled) openTaskDelete(taskDelete.dataset.taskDelete);return;}
   const reset=e.target.closest('[data-reset-filters]');
   if(reset){resetFilters(reset.dataset.resetFilters);return;}
   // ⚠ 这一段必须留在**这个**监听里,而且在最前面。
@@ -154,8 +162,6 @@ document.addEventListener("click",e=>{
     renderBulk(); $("cnt") && render();
     return;
   }
-  const rt=e.target.closest("button[data-retire]");
-  if(rt){ e.stopPropagation(); retireTask(rt.dataset.retire); return; }
   const mt=e.target.closest("button[data-mt]");
   if(mt){ e.stopPropagation(); maintAct(mt.dataset.mt, mt.dataset.name); return; }
   // 仓库详情里的动作。放在 data-mt 之后,因为 fetch 仍然走那条通用路;
@@ -433,6 +439,7 @@ $('runtime-sort').addEventListener('change',event=>{RUNTIME_SORT=event.target.va
 $('rpissue').addEventListener('change',event=>{RP_ISSUE=event.target.value;renderRepoList();});
 ConsoleActions.start();
 startDeletionControls();
+startTaskOperations();
 $('launch-close').addEventListener('click',()=>$('launch-dialog').close());
 $('launch-copy').addEventListener('click',async()=>{
   try{await navigator.clipboard.writeText($('launch-copy').dataset.command);toast('启动命令已复制');}

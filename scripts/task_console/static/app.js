@@ -19,6 +19,7 @@ const CONSOLE_MODULES = [
   "work-model.js",
   "work-actions.js",
   "workbench.js",
+  "task-operations.js",
   "navigation.js",
   "operations.js",
   "events.js"

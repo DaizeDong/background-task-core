@@ -117,7 +117,7 @@ function taskListRow(row,{controls=taskActionButtons(row),state=null,showDetails
   const next=(row.nextRun && !row.infoError && row.state!=='Disabled'?'下次 ':'')+taskNextRun(row);
   return `<article class="automation-row">${taskIdentityHtml(row)}
     <div class="automation-schedule" title="${esc(taskSchedule(row,true))}">${esc(taskSchedule(row))}<small>${esc(next)}</small></div>
-    <div class="automation-state">${badge}</div><div class="automation-actions">${controls}
+    <div class="automation-state">${badge}${taskRepairChip(row.name)}</div><div class="automation-actions">${controls}
     ${showDetails?`<button class="icon-only record-link" data-task="${esc(row.name)}" title="查看详情"><svg class="ic" aria-hidden="true"><use href="#i-eye"/></svg><span class="control-label">查看详情</span></button>`:''}</div></article>`;
 }
 function taskInfoHtml(row){
@@ -408,7 +408,7 @@ const C=[
    data-selname="${esc(r.name)}"${sel.has(r.name)?" checked":""}
    aria-label="选中 ${esc(r.name)}"></td>`,()=>0],
  ["name","任务",r=>`<td class="nm">${taskIdentityHtml(r)}</td>`,r=>taskText(r).title],
- ["sl","状态",r=>`<td>${statusBadge(r.sl,({ok:'ok',bad:'bad',running:'active',pending:'pending',disabled:'muted',unknown:'idle'})[r.sk] || 'idle',undefined,'st')}</td>`,r=>r.sl],
+ ["sl","状态",r=>`<td>${statusBadge(r.sl,({ok:'ok',bad:'bad',running:'active',pending:'pending',disabled:'muted',unknown:'idle'})[r.sk] || 'idle',undefined,'st')}${taskRepairChip(r.name)}</td>`,r=>r.sl],
  ["cat","大类",r=>`<td class="dim">${esc(r.cat)}</td>`,r=>r.cat],
  // 健康% 旁边要能看出它是拿什么算出来的。判词表认不出来的那些进 other 桶,
  // 它只进分母不出现在任何地方:监控器换一种措辞之后,每一行会显示 0.0% 而
@@ -474,7 +474,7 @@ const C=[
     r.lastRun?esc(relTime(r.lastRun)):'<span class="u">从未</span>'}</td>`,r=>r.lastRun||""],
  // 停用任务的排序键取空串:它不会运行,不该按计划程序推算出的那个时间排进「即将运行」的前面。
  ["nextRun","下次",r=>`<td class="dim num" data-col="nextRun" title="${esc(taskNextRun(r))}">${esc(taskNextRun(r,true))}</td>`,r=>r.state==="Disabled"?"":(r.nextRun||"")],
- ["ops","操作",r=>`<td class="ops">${taskActionButtons(r,true)}</td>`,r=>r.state],
+ ["ops","操作",r=>`<td class="ops">${taskActionButtons(r)}</td>`,r=>r.state],
  ["catchup","补跑",r=>`<td class="${r.catchup?"y":"n"}">${r.catchup?"是":"否"}</td>`,r=>r.catchup?1:0],
  ["retries","重试",r=>`<td class="num">${r.retries}</td>`,r=>r.retries],
  ["timeout","超时限制",r=>{const i=(r.timeout==="PT72H"||r.timeout==="PT0S");return `<td data-col="timeout" title="${esc(r.timeout)}" style="color:${i?"var(--warn)":"var(--dim)"}">${esc(r.timeout==='PT0S'?'不限时':taskDuration(r.timeout))}</td>`},r=>r.timeout||""],
@@ -507,6 +507,25 @@ function detail(r){
   // 而其中一份还比另一份少一个动作 : 两份不完全一样的重复,比完全一样的更糟,
   // 因为人会以为差别是有意义的。
   return `<tr class="det"><td colspan="${shownCols().length}"><div class="det">${taskInfoHtml(r)}<dl class="task-technical-fields">${dl}</dl>${iss}</div></td></tr>`;
+}
+
+// 行内控件按「是哪一种控件 + 属于哪个任务」记下,不记 DOM 节点:整块 innerHTML 重建之后节点全是新的。
+// 以前只认 data-act,焦点落在启动方式、修复、删除或修复进度上时,重建一次就掉回整行甚至 body,
+// 下一次 Tab 从头来过。三处列表(运行详情、任务开关、同步与备份)共用这一份。
+const TASK_ROW_CONTROLS=['data-act','data-launch','data-task-repair','data-task-delete','data-repair-order'];
+function taskControlKey(el){
+  const attr=el && el.getAttribute ? TASK_ROW_CONTROLS.find(name=>el.hasAttribute(name)) : null;
+  if(!attr) return null;
+  return {attr, value:el.getAttribute(attr), name:(el.dataset && el.dataset.name) || el.getAttribute(attr)};
+}
+function findTaskControl(scope,key){
+  if(!key || !scope || !scope.querySelectorAll) return null;
+  return [...scope.querySelectorAll(`[${key.attr}]`)].find(el=>el.getAttribute(key.attr)===key.value &&
+    ((el.dataset && el.dataset.name) || el.getAttribute(key.attr))===key.name) || null;
+}
+function restoreTaskControlFocus(scope,key){
+  const target=findTaskControl(scope,key);
+  if(target) try{ target.focus({preventScroll:true}); }catch(e){}
 }
 
 function render(){
@@ -600,7 +619,7 @@ function render(){
   const ae = document.activeElement;
   const aeRow = ae && ae.closest ? ae.closest("#tbl tbody tr[data-name]") : null;
   const keep = aeRow ? {name: aeRow.dataset.name,
-                        act: ae.dataset ? ae.dataset.act : null,
+                        control: taskControlKey(ae),
                         box: ae.classList && ae.classList.contains("selbox")} : null;
   // 排序是这张表最主要的整理手段,原来只有 click:纯键盘用户完全用不了,
   // 读屏用户既按不动也听不出当前按哪一列排(方向只存在于 ::after,没有 aria-sort 兜底)。
@@ -624,8 +643,8 @@ function render(){
   if(keep && keep.name){
     const row = document.querySelector(`#tbl tbody tr[data-name="${CSS.escape(keep.name)}"]`);
     if(row){
-      const target = keep.act
-        ? row.querySelector(`[data-act="${keep.act}"]`) || row
+      const target = keep.control
+        ? findTaskControl(row, keep.control) || row
         : (keep.box ? row.querySelector("input.selbox") : row);
       try{ (target||row).focus({preventScroll:true}); }catch(e){}
     }
@@ -729,28 +748,6 @@ function focusCur(){
   try{ tr.focus({preventScroll:true}); }catch(e){ tr.focus(); }
 }
 
-
-async function retireTask(name){
-  if(!ConsoleActions.allowWrite()) return;
-  let p;
-  try{ p=await api("/api/retire/plan",{method:"POST",body:JSON.stringify({name})}); }
-  catch(e){ toast(`${name}: ${e.message}`,"bad"); return; }
-  if(p.error){ toast(`${name}: ${p.error}`,"bad"); return; }
-  if(p.blocked&&p.blocked.length){
-    toast(`${name}: 这几处没配置,不能只做一半 (${p.blocked.join(", ")})`,"bad"); return;
-  }
-  const lines=p.steps.map(s=>`  ${s.step}: ${s.state}`).join("\n");
-  if(!confirm(`停用并移出清单：${name}\n\n任务将停用，并移出备份与健康检查清单。\n\n${lines}\n\n共 ${p.changes} 处会被改动。继续?`)) return;
-  const reason=prompt(`停用并移出清单的原因（必填，会写入任务说明）：`,"");
-  if(!reason||!reason.trim()){ toast("未填写原因，操作已取消",'bad'); return; }
-  try{
-    const r=await api("/api/maint/act",{method:"POST",
-      body:JSON.stringify({action:"task.retire",name,arg:reason})});
-    if(r.error){ toast(`${name}: ${r.error}`,"bad"); return; }
-    toast(`${name} 已停用并移出清单（${(r.done||[]).join("+")||"无需改动"}）`);
-    await load();
-  }catch(e){ toast(`${name}: ${e.message}`,"bad"); }
-}
 
 // 提交并推送。两步:先拿一份只读计划摊开给人看,确认之后才带着那份清单去执行。
 //

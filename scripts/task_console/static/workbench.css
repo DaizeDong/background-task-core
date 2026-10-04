@@ -62,7 +62,9 @@
 .activity-list .record-link{color:var(--ink)}
 .source-volume{padding:6px 12px;max-height:460px;overflow:auto}.source-volume button{display:flex;gap:12px;justify-content:space-between;width:100%;background:none;border:0;border-radius:0;border-bottom:1px solid var(--line2);padding:7px 0;overflow-wrap:anywhere;text-align:left}
 .source-volume b{font-size:12px;color:var(--dim);font-weight:400}
-.automation-row,.automation-list-heading{display:grid;grid-template-columns:minmax(0,1fr) minmax(150px,220px) 100px 152px;gap:12px 16px;align-items:center;padding:14px var(--section-inset)}
+/* 操作列放得下六个 32px 图标(运行控制三个、修复、删除、详情)加五道 4px 间隙,即 212px;
+   状态列多出一枚修复进度芯片,最长的「修复方案已出」要 105px 左右。两列都是定宽,表头和每一行才对得齐。 */
+.automation-row,.automation-list-heading{display:grid;grid-template-columns:minmax(0,1fr) minmax(150px,220px) 112px 216px;gap:12px 16px;align-items:center;padding:14px var(--section-inset)}
 .automation-row{border-top:1px solid var(--line2)}
 .automation-row:hover{background:var(--cur)}
 .automation-name{min-width:0}
@@ -84,17 +86,42 @@
 .automation-verdict-counts{color:var(--dim);font-size:12px;line-height:1.7;overflow-wrap:anywhere}
 .automation-list-heading{padding-top:7px;padding-bottom:7px;background:var(--panel2);color:var(--dim);font-size:12px}
 .automation-actions{display:flex;align-items:center;gap:var(--space-1);flex-wrap:wrap;min-width:0}
-.automation-state{min-width:0}
+.automation-state{min-width:0;display:flex;flex-wrap:wrap;align-items:center;gap:4px}
 .work-section-note{font-size:12px;color:var(--dim);padding:6px 12px;border-bottom:1px solid var(--line2)}
 .automation-schedule small{display:block;font-size:12px;color:var(--dim);overflow-wrap:anywhere;margin-top:5px}.automation-schedule{font-size:13px;line-height:1.5;overflow-wrap:anywhere;min-width:0}
 .task-controls{display:inline-flex;gap:var(--space-1);flex-wrap:wrap;align-items:center}.task-controls button{display:inline-flex;align-items:center;justify-content:center;gap:5px;min-height:var(--control-height);white-space:nowrap;font-size:var(--fs-meta)}
-.task-controls .ic{margin:0}.automation-row .task-controls{display:flex;flex-wrap:nowrap;max-width:100%}
+/* 触屏下图标按钮是 40px,六个放不进 216px:允许换行,不让它们挤出卡片右边。 */
+.task-controls .ic{margin:0}.automation-row .task-controls{display:flex;flex-wrap:wrap;max-width:100%}
 #mt-skills .mt-r.bar{grid-template-columns:minmax(0,1fr) auto 48px 40px auto auto}
 #mt-skills .mt-r.bar [data-delete]{grid-column:6}
 .task-control[data-act="run"]:not(:disabled){color:var(--cyan);background:var(--cur);border-color:var(--cyan)}
 .task-control[data-act="enable"]:not(:disabled){color:var(--ok);background:var(--okb);border-color:var(--ok)}
 .task-control[data-act="stop"]:not(:disabled){color:var(--warn);background:var(--warnb);border-color:var(--warn)}
-.task-control[data-retire]:not(:disabled):hover{color:var(--bad);border-color:var(--bad);background:var(--badb)}
+.task-control[data-task-delete]:not(:disabled):hover{color:var(--bad);border-color:var(--bad);background:var(--badb)}
+/* 修复进度和建议徽章同属虚线一族(都不是「此刻的状态」),但它保留状态色的底:
+   建议是透明底,修复进度是有底色的虚线,两枚挨在一起时分得开。 */
+.repair-chip{display:inline-flex;border:0;background:none;padding:0;min-height:0;border-radius:4px;max-width:100%}
+.repair-chip .status-chip.task-repair{border-style:dashed;border-color:currentColor;white-space:normal;text-align:left}
+button.repair-chip:hover .status-chip{text-decoration:underline}
+button.repair-chip:focus-visible{outline:2px solid var(--cyan);outline-offset:2px}
+td .repair-chip{margin-top:4px}
+.repair-read-state{font-size:12px;color:var(--dim);overflow-wrap:anywhere}
+.repair-read-state[data-tone="bad"]{color:var(--bad)}.repair-read-state[data-tone="warn"]{color:var(--warn)}
+/* 删除与修复两个对话框的内容。步骤列表要逐条看得清目标,拦下删除的原因要比别的都醒目。 */
+.task-op-dialog h3{font-size:14px;margin:16px 0 8px}
+.task-op-dialog label{display:block;margin-top:12px}
+#task-delete-reason,#repair-note,#task-delete-name{width:100%;margin-top:6px}
+#task-delete-reason{resize:vertical;font:inherit;color:var(--ink);background:var(--panel2);border:1px solid var(--line);border-radius:4px;padding:6px 8px}
+.task-op-row{margin-top:8px}
+.task-op-steps{padding-left:20px;margin:0}
+.task-op-steps>li{padding:6px 0;border-bottom:1px solid var(--line2)}
+.task-op-steps>li>p{margin:4px 0 0;color:var(--dim);overflow-wrap:anywhere}
+.task-op-steps small{display:block;color:var(--dim);overflow-wrap:anywhere}
+.task-op-step-head{display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px}
+.task-op-blocking{padding:8px 12px;margin:10px 0;border-left:3px solid var(--bad);background:var(--badb);color:var(--bad);overflow-wrap:anywhere}
+.task-op-blocking ul{margin:4px 0 0;padding-left:18px}
+#task-delete-state,#repair-state{overflow-wrap:anywhere;margin-top:10px}
+.task-op-dialog code{overflow-wrap:anywhere;color:var(--ink);background:var(--panel2)}
 td.ops .mini{opacity:1}button:disabled{opacity:1;color:var(--dim);background:var(--panel2);border-color:var(--line);cursor:not-allowed}
 button.mini.ib{width:var(--control-height);min-height:var(--control-height);display:inline-flex;align-items:center;justify-content:center}.ic use{pointer-events:none}
 #work-detail{width:min(760px,calc(100vw - 32px));max-height:85vh;padding:0;border:1px solid var(--line);border-radius:8px;background:var(--panel);color:var(--ink);overflow:auto}
@@ -107,7 +134,7 @@ button.mini.ib{width:var(--control-height);min-height:var(--control-height);disp
 .mt-r.bar .n{grid-column:1}.mt-r.bar .lk{grid-column:2}.mt-r.bar .ub{grid-column:3}.mt-r.bar .c{grid-column:4}.mt-r.bar button{grid-column:5;justify-self:end}
 @media(max-width:767px){.mt-r.bar,.mem-big .mt-r.bar{grid-template-columns:minmax(0,1fr) auto 30px 32px auto}}
 .record-fields{display:grid;grid-template-columns:80px minmax(0,1fr);gap:6px 14px;font-size:13px;margin:0}.record-fields dt{color:var(--dim);font-weight:400}.record-fields dd{margin:0;overflow-wrap:anywhere}.record-summary{white-space:pre-wrap;overflow-wrap:anywhere}.record-events{padding-left:18px;font-size:12px;color:var(--dim)}
-@media(max-width:1100px){.work-columns{grid-template-columns:1fr}.automation-row{grid-template-columns:minmax(0,1fr) 152px}.automation-list-heading{display:none}.automation-name{grid-column:1 / -1}.automation-schedule{grid-column:1;grid-row:2 / span 2}.automation-state,.automation-actions{grid-column:2}}
+@media(max-width:1100px){.work-columns{grid-template-columns:1fr}.automation-row{grid-template-columns:minmax(0,1fr) 216px}.automation-list-heading{display:none}.automation-name{grid-column:1 / -1}.automation-schedule{grid-column:1;grid-row:2 / span 2}.automation-state,.automation-actions{grid-column:2}}
 @media(max-width:767px){#side .nav-item:last-child{margin-top:0}.workspace-meta{gap:3px}.decision-strip{align-items:flex-start;flex-wrap:wrap}.work-row:has(>.work-actions),#overview .work-row:has(>.work-actions){grid-template-columns:minmax(0,1fr)}.work-context-panels{grid-template-columns:1fr}.work-row-heading{align-items:flex-start}.work-meta{gap:2px 8px}.work-toolbar input{width:100%}.work-toolbar select{max-width:100%;min-width:0;flex:1}.automation-row{grid-template-columns:minmax(0,1fr);gap:10px}.automation-name,.automation-schedule,.automation-state,.automation-actions{grid-column:1;grid-row:auto}.activity-list li{grid-template-columns:1fr;gap:2px}.source-strip{gap:7px 12px}.source-strip a{margin-left:0}}
 
 /* Fixed table tracks keep the default task list within a desktop panel. */

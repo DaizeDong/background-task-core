@@ -35,6 +35,8 @@ function showView(key,push){
   document.title=definition.views[key]+' · 本机工作台';
   loadPageOnce(key);
   if(key==='automations') renderAutomations();
+  // 修复进度每次进入自动化的任一标签都重读,不只第一次:工单在别处(工作记录、Discord)推进,这里没有别的消息来源。
+  if(group==='automations') loadRepairs();
   // 对话链开着时地址写成带 id 的那个:写成裸 #convos 的话,紧跟着的 hashchange
   // 会把它读成「后退回列表」而关掉对话链。面板没载入就照旧只写分区名。
   const want=key==='convos' && typeof convoChainRoute==='function' ? convoChainRoute(arg,push) : key;

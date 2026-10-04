@@ -14,11 +14,11 @@ function resetFilters(scope){
 }
 const PAGE_READS={
   overview:[loadWork,load,loadComponents],
-  work:[loadWork],automations:[load],
+  work:[loadWork],automations:[load,loadRepairs],
   integrations:[()=>typeof loadIntegrations==='function'?loadIntegrations():Promise.reject(new Error('接入面板加载失败'))],
   resources:[loadComponents,loadMaint,loadMem],
   diagnostics:[load,loadComponents,loadSelfcheck,loadRepos,loadSys,loadMem,loadConvos],
-  pipelines:[loadComponents,load],tasks:[load],repos:[loadRepos],
+  pipelines:[loadComponents,load,loadRepairs],tasks:[load,loadRepairs],repos:[loadRepos],
   storage:[loadComponents,loadMaint,loadMem,loadSys,loadCodex,loadCxList],
   convos:[loadConvos,()=>typeof reloadConvoChain==='function'?reloadConvoChain():undefined],llm:[loadLLM]
 };
@@ -50,12 +50,12 @@ function pageSnapshot(view){
     overview:()=>({work:WORK,tasks:DATA,components:COMPONENTS}),
     work:()=>({work:WORK,filters:{query:WORK_QUERY,role:WORK_ROLE,state:WORK_STATE,source:WORK_SOURCE}}),
     // 导出的 filters 要和屏幕上实际在用的筛选一一对上,少记一个,导出的列表就解释不了。
-    automations:()=>({tasks:DATA,filters:{query:AUTO_QUERY,state:AUTO_STATE,verdict:value('automation-verdict')}}),
+    automations:()=>({tasks:DATA,repairs:REPAIRS,filters:{query:AUTO_QUERY,state:AUTO_STATE,verdict:value('automation-verdict')}}),
     integrations:()=>({integrations:typeof INTEGRATIONS==='undefined'?null:INTEGRATIONS}),
     resources:()=>({components:catalogComponents(),maintenance:MAINT,memory:MEM}),
     diagnostics:()=>({tasks:DATA,components:COMPONENTS,selfcheck:SCK,repositories:REPOS,system:SYS,memory:MEM}),
-    pipelines:()=>({components:COMPONENTS,tasks:DATA,filters:{query:value('pipeline-task-search'),verdict:value('pipeline-verdict'),issueQuery:PIPELINE_QUERY}}),
-    tasks:()=>({tasks:DATA,visibleTaskNames:VIEW.map(row=>row.name),
+    pipelines:()=>({components:COMPONENTS,tasks:DATA,repairs:REPAIRS,filters:{query:value('pipeline-task-search'),verdict:value('pipeline-verdict'),issueQuery:PIPELINE_QUERY}}),
+    tasks:()=>({tasks:DATA,repairs:REPAIRS,visibleTaskNames:VIEW.map(row=>row.name),
       filters:{query:value('q'),category:value('cat'),verdict:value('task-verdict'),onlyProblems:!!$('only')?.checked,hideDisabled:!!$('hideoff')?.checked}}),
     repos:()=>({repositories:REPOS,filters:{query:value('rpq'),account:value('rpacc'),kind:value('rpkind'),visibility:value('rpvis'),state:RP_STATE,issue:RP_ISSUE}}),
     storage:()=>({components:catalogComponents(),maintenance:MAINT,memory:MEM,system:SYS,codex:CODEX,cleanup:CXL,cleanupLibrary:value('cxwhich')}),

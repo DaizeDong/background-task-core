@@ -29,7 +29,7 @@
 <symbol id="i-play" viewBox="0 0 24 24"><path d="M7 4v16l13-8z"/></symbol>
 <symbol id="i-stop" viewBox="0 0 24 24"><path d="M6 6h12v12H6z"/></symbol>
 <symbol id="i-pause" viewBox="0 0 24 24"><path d="M8 5h3v14H8zM13 5h3v14h-3z"/></symbol>
-<symbol id="i-retire" viewBox="0 0 24 24"><path d="M20 6H9l-5 6 5 6h11a1 1 0 0 0 1-1V7a1 1 0 0 0-1-1z"/><path d="m12 10 4 4M16 10l-4 4"/></symbol>
+<symbol id="i-repair" viewBox="0 0 24 24"><path d="M4.5 13.5 13.5 4.5a3.5 3.5 0 0 1 5 0l1 1a3.5 3.5 0 0 1 0 5l-9 9a3.5 3.5 0 0 1-5 0l-1-1a3.5 3.5 0 0 1 0-5z"/><path d="M10.5 12h.01M12 10.5h.01M12 13.5h.01M13.5 12h.01"/></symbol>
 <symbol id="i-archive" viewBox="0 0 24 24"><path d="M3 4h18v4H3z"/><path d="M5 8v11a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8"/><path d="M10 12h4"/></symbol>
 <symbol id="i-restore" viewBox="0 0 24 24"><path d="m9 13-4-4 4-4"/><path d="M5 9h11a4 4 0 0 1 0 8h-1"/></symbol>
 <symbol id="i-off" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="m9 9 6 6"/></symbol>
@@ -113,6 +113,21 @@
   <p id="delete-state" role="status"></p>
   <div class="record-toolbar"><button id="delete-cancel" autofocus>取消</button><button id="delete-confirm" class="danger" disabled>确认删除</button></div>
 </dialog>
+<dialog id="task-delete-dialog" class="task-op-dialog" aria-labelledby="task-delete-title">
+  <h2 id="task-delete-title">删除计划任务</h2><div id="task-delete-subject"></div>
+  <label for="task-delete-reason">删除原因（必填，会写进控制器墓碑或存档回执）</label><textarea id="task-delete-reason" rows="2" maxlength="500" spellcheck="false"></textarea>
+  <div class="task-op-row"><button id="task-delete-preview" type="button">生成删除预览</button></div>
+  <div id="task-delete-body"></div>
+  <label for="task-delete-name">输入完整任务名确认</label><input id="task-delete-name" type="text" autocomplete="off" spellcheck="false">
+  <p id="task-delete-state" role="status"></p>
+  <div class="record-toolbar"><button id="task-delete-cancel" autofocus>取消</button><button id="task-delete-confirm" class="danger" disabled>确认删除</button></div>
+</dialog>
+<dialog id="repair-dialog" class="task-op-dialog" aria-labelledby="repair-title">
+  <h2 id="repair-title">修复工单</h2><div id="repair-body"></div>
+  <label for="repair-note">给 Agent 的备注（可选，只保留一行，最多 500 字）</label><input id="repair-note" type="text" maxlength="500" autocomplete="off">
+  <p id="repair-state" role="status"></p>
+  <div class="record-toolbar"><button id="repair-cancel" autofocus>关闭</button><button id="repair-submit" disabled>提交修复工单</button></div>
+</dialog>
 
 <div class="page-body">
 <div class="container-fluid" id="view">
@@ -149,7 +164,7 @@
     <input id="automation-search" type="search" placeholder="搜索标题、用途、建议或任务名" aria-label="搜索自动化">
     <select id="automation-verdict" aria-label="按建议筛选"><option value="">全部建议</option></select>
     <select id="automation-state" aria-label="自动化状态"><option value="">全部状态</option><option value="enabled">已启用</option><option value="disabled">已停用</option><option value="running">正在运行</option></select>
-    <button class="icon-only" id="automation-reset" hidden title="清除筛选"><svg class="ic" aria-hidden="true"><use href="#i-filter-clear"/></svg><span class="control-label">清除筛选</span></button><span id="automation-count" role="status"></span>
+    <button class="icon-only" id="automation-reset" hidden title="清除筛选"><svg class="ic" aria-hidden="true"><use href="#i-filter-clear"/></svg><span class="control-label">清除筛选</span></button><span id="automation-count" role="status"></span><span class="repair-read-state" data-repair-read></span>
   </div>
   <div id="automation-list"></div>
 </section>
@@ -201,7 +216,7 @@
     <input id="pipeline-task-search" type="search" placeholder="搜索标题、用途、建议或任务名" aria-label="搜索同步与备份任务">
     <select id="pipeline-verdict" aria-label="按建议筛选同步与备份"><option value="">全部建议</option></select>
     <button class="icon-only" data-reset-filters="pipelines" title="清除筛选"><svg class="ic" aria-hidden="true"><use href="#i-filter-clear"/></svg><span class="control-label">清除筛选</span></button>
-    <span id="pipeline-sample" class="faint"></span><button class="icon-only" id="pipeline-refresh" title="刷新记录"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg><span class="control-label">刷新记录</span></button>
+    <span id="pipeline-sample" class="faint"></span><span class="repair-read-state" data-repair-read></span><button class="icon-only" id="pipeline-refresh" title="刷新记录"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg><span class="control-label">刷新记录</span></button>
   </div>
   <div id="pipeline-body">正在读取运行记录</div>
 
@@ -220,7 +235,7 @@
     <div class="dropdown-menu" id="task-column-options"></div>
   </div>
   <button class="icon-only" id="refresh" title="刷新任务"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg><span class="control-label">刷新任务</span></button><button class="icon-only" data-reset-filters="tasks" title="清除筛选"><svg class="ic" aria-hidden="true"><use href="#i-filter-clear"/></svg><span class="control-label">清除筛选</span></button>
-  <span class="faint" id="cnt"></span>
+  <span class="faint" id="cnt"></span><span class="repair-read-state" data-repair-read></span>
 </div>
 <div class="card" id="dtbox">
     <div class="card-header"><h3 class="card-title">任务列表 </h3></div>

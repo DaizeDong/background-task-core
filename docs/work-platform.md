@@ -46,6 +46,44 @@ validation, human decision requests or automatic remediation. Those capabilities
 explicitly unavailable until an owner provides receipts. No repair or retry is started
 just because an observation failed.
 
+A task repair order is the one exception in shape, not in principle: it is filed only when a
+person clicks repair on one task row, never by an observation. `task_repair.py` adds no runner of
+its own. `POST /api/task/repair {name, note, request_id}` re-checks the name against the live task
+payload, then calls the reminder owner's `ensure` verb (title `修复计划任务：<title>（<name>）`, source
+`task-console-repair`, an idempotency key derived from the task name and request ID, and a
+description that carries the console's known facts as reference data plus fixed limits: diagnose
+and propose only, change code only in a clone inside the work folder, never touch the live task,
+its registration, XML, launcher, backup or any working copy, never delete, push, send or publish,
+and write `report.md`). It then reads the owner's work feed for that item, requires an enabled
+`agent` offer, and submits it through `work_actions.submit` with the feed's revision, which wakes
+the existing drainer. A missing or disabled offer is reported as `agent_offer_unavailable`, not as
+success. The source is deliberately not one of the owner's signal sources, which receive no agent
+offer. The target task is marked on the description's first line
+(`task-console-repair/v1 {"task": "<name>"}`) and in `ext.x_task_console_repair`; the reviewed
+linkage key `ext.task_console.task_id` is never written. A second click for a task that already has
+an active order returns that order (dispatching it once if it never was). Because every browser tab
+sends its own request ID and the owner's similarity check is waived with `--distinct-reason`, the
+lookup, `ensure` and dispatch for one task name run under one per-task lock in the server process,
+so two concurrent submits cannot both see "no order" and file two. `POST
+/api/task/repair/preview {name}` shows the facts, limits and any active order without writing, and
+`GET /api/task/repairs` maps task names to their orders for the task rows; an unreadable feed is
+reported as unavailable, not as an empty map.
+
+The reply's top-level `uncertain` carries the dispatch receipt's own flag on both the new-order and
+the existing-order path, because the page reads only the top level: a receipt that may already be
+queued stays a warning that keeps the request, and a definite refusal releases it. A failed receipt
+that does not say either way counts as uncertain.
+
+On the page (`static/task-operations.js`) the request ID is generated once per submission and kept
+in session storage with the note until the owner answers definitely, so a retry after an uncertain
+reply replays the same request rather than filing a second order. The dialog blocks a new
+submission only when the task's active order has already been handed to the Agent; an order that
+was created but never dispatched (the execution service was not connected, or the last reply was
+uncertain) keeps the submit button enabled, labelled as re-submitting that order, so the backend's
+dispatch-once path is reachable from the page. A submission is reported as accepted, never as done. The row chip shows where the order stands, not whether the task is
+healthy; an agent that finished has produced a proposal, which the chip calls 修复方案已出. Not yet
+read, unreadable, read with no orders, and read with orders are four different displays.
+
 ## Frontend composition
 
 `work-model.js` provides pure selectors over the owner feed; `workbench.js` composes

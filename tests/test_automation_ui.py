@@ -227,20 +227,17 @@ def test_default_columns_are_compact_but_all_columns_remain_available():
     assert run("TASK_COLUMNS.clear();HYG_OPEN=false;shownCols().map(c=>c[0])") == ["selc", "name"]
 
 
-def test_retirement_still_requires_preview_confirmation_and_reason():
-    prefix = setup() + """
-const calls=[];toast=()=>{};load=async()=>{};
-api=async(path,options)=>{calls.push({path,body:JSON.parse(options.body)});
-  return path==='/api/retire/plan'?{steps:[],changes:1}:{done:['synthetic']};};
-globalThis.confirm=()=>false;globalThis.prompt=()=>{throw new Error('unexpected prompt');};
-"""
-    calls = run("retireTask(row.name).then(()=>calls)", prefix)
-    assert calls == [{"path": "/api/retire/plan", "body": {"name": "AcmeSync"}}]
-    calls = run("globalThis.confirm=()=>true;globalThis.prompt=()=>'synthetic reason';retireTask(row.name).then(()=>calls)", prefix)
-    assert calls == [
-        {"path": "/api/retire/plan", "body": {"name": "AcmeSync"}},
-        {"path": "/api/maint/act", "body": {"action": "task.retire", "name": "AcmeSync", "arg": "synthetic reason"}},
-    ]
+def test_delete_replaces_the_retire_button_on_every_tab_that_lists_tasks():
+    # 停用并移出清单只动了控制器自己的登记,留下监控清单、分类配置和备份;删除取代了它。
+    # 三处列表都不能再出现那个按钮,否则同一个任务会有两种「移除」,而少做的那一种看起来一样可点。
+    prefix = table_setup() + "PIPELINE_DEFS.sync.name='AcmeSync';COMPONENTS={available:true,tasks:[]};"
+    html = run("render();renderAutomations();renderPipelines();[$('tbl').innerHTML,$('automation-list').innerHTML,$('pipeline-body').innerHTML]", prefix)
+    for page in html:
+        assert "data-retire" not in page and "停用并移出清单" not in page and "i-retire" not in page
+    # AcmeSync 在这里被设成流水线任务,它在哪一页都没有删除按钮;普通任务在两张列表上都有。
+    assert 'data-task-delete="AcmeOther"' in html[0] and 'data-task-delete="AcmeOther"' in html[1]
+    assert all('data-task-delete="AcmeSync"' not in page for page in html)
+    assert run("typeof retireTask") == "undefined"
 
 
 def test_pipeline_uses_metadata_search_verdicts_and_shared_stop_controls():

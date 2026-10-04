@@ -65,6 +65,8 @@ import memops
 import repos as repos_mod
 import retire as retire_mod
 import controller as task_control
+import task_delete
+import task_repair
 import selfcheck
 import sysinfo
 import timeline
@@ -99,6 +101,7 @@ STATIC_FILES = {
     "panels/conversation-actions.js", "conversations.css",
     "panels/pipelines.js", "panels/review.js", "panels/convchain.js", "convchain.css",
     "navigation.js", "actions.js", "work-model.js", "workbench.js", "workbench.css", "work-actions.js", "work-actions.css",
+    "task-operations.js",
 }
 
 # 对话链唯一的 POST(分叉)的正文只有几个 id,几百字节。
@@ -457,9 +460,14 @@ def load_from_db():
 
 
 # --------------------------------------------------------------------------- merge
+def categories_path() -> Path | None:
+    """分类配置在哪。页面读它、删除任务时改它,两边必须是同一个文件,所以位置只在这里算一次。"""
+    return cfg_path("TASK_CONSOLE_CATEGORIES", ".task-console", "categories.json")
+
+
 def load_categories() -> tuple[list[dict], str | None]:
     """Return (categories, warning). A missing map is a stated condition, never a silent default."""
-    p = cfg_path("TASK_CONSOLE_CATEGORIES", ".task-console", "categories.json")
+    p = categories_path()
     if not p or not p.exists():
         return [], (f"没有分类配置({p}),所有任务归入「未分类」。"
                     f"复制仓里的 categories.example.json 过去并按你的实际任务改。")
@@ -944,6 +952,22 @@ def build_payload() -> dict:
     }
 
 
+def live_tasks() -> list[dict]:
+    """当场重新枚举一次在册任务(根路径、已剔掉厂商任务)。删除和修复都靠它核实 HTTP 来的名字。"""
+    rc, out, err = run_ps(COLLECT)
+    if rc != 0 or not out:
+        raise maint.Refused(f"重新枚举失败,拒绝执行动作: {err or out or '无输出'}", "enumeration_failed")
+    try:
+        return json.loads(out)["tasks"]
+    except (ValueError, KeyError, TypeError) as e:
+        raise maint.Refused(f"重新枚举的输出无法解析: {type(e).__name__}", "enumeration_failed") from None
+
+
+def task_facts(name: str) -> dict:
+    """修复工单的参考事实。取自任务页同一份载荷,所以工单里的判定和页面上的一字不差。"""
+    return task_repair.facts_from_payload(build_payload(), name)
+
+
 # --------------------------------------------------------------------------- http
 # ── llmcall 账本 ────────────────────────────────────────────────────────────────
 # 二十兆、十一万行,而这一屏一次打开会连着发四五个请求(总览 + 明细 + 翻页 + 展开)。
@@ -1337,6 +1361,80 @@ class Handler(BaseHTTPRequestHandler):
         except Exception as error:
             return self._json(500, {"error": f"{type(error).__name__}: {error}"})
 
+    def _task_body(self, allowed):
+        """删除与修复四条 POST 的读体:和 /api/maintenance/* 同一个 8192 字节上限,键必须在白名单里。
+        返回 body 或 None(已经回过 4xx)。鉴权留在各自处理器的第一行,路由鉴权通扫按处理器正文找它。"""
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+        except (TypeError, ValueError):
+            length = -1
+        if length > 8192 and not self.headers.get("Transfer-Encoding"):
+            # 超限但不离谱的先读掉再回(见 _drain):不读就关,客户端拿到的是连接被重置,不是这个 413。
+            self._drain()
+            self.close_connection = True
+            self._json(413, {"ok": False, "error": "请求体超过 8192 字节", "code": "too_large"})
+            return None
+        if length <= 0 or self.headers.get("Transfer-Encoding"):
+            self.close_connection = True
+            self._json(400, {"ok": False, "error": "invalid request size", "code": "bad_size"})
+            return None
+        try:
+            body = json.loads(self.rfile.read(length))
+        except (ValueError, UnicodeError):
+            self._json(400, {"ok": False, "error": "invalid JSON request", "code": "bad_json"})
+            return None
+        if (not isinstance(body, dict) or not set(body) <= allowed
+                or any(v is not None and not isinstance(v, str) for v in body.values())):
+            self._json(400, {"ok": False, "error": "请求体不是对象,或带了不认识的键、非文字的值",
+                             "code": "bad_request"})
+            return None
+        return body
+
+    def _task_delete(self):
+        """删除计划任务:/plan 只读预览并发一次性令牌,/apply 凭令牌执行。实现在 task_delete.py。"""
+        if not self._authed():
+            self._drain()
+            return self._json(403, {"error": "bad token"})
+        preview = self.path.split("?", 1)[0].endswith("/plan")
+        body = self._task_body(frozenset(("name", "reason")) if preview else frozenset(("token", "name")))
+        if body is None:
+            return None
+        try:
+            if preview:
+                result = task_delete.plan(body.get("name"), body.get("reason"),
+                                          live=live_tasks, categories_path=categories_path())
+            else:
+                result = task_delete.apply(body.get("token"), body.get("name"),
+                                           live=live_tasks, categories_path=categories_path())
+            # 计划程序那一步没做成(或读不出来做没做成)是 500(和 /api/act 一样);部分完成照样回 200,正文里 status 说清。
+            return self._json(500 if result.get("status") in ("failed", "unknown") else 200, result)
+        except maint.Refused as e:
+            status = (400 if e.code in task_delete.INPUT_CODES else
+                      500 if e.code in ("enumeration_failed", "state_unreadable") else 409)
+            return self._json(status, {"ok": False, "error": str(e), "code": e.code})
+        except Exception as e:
+            return self._json(500, {"ok": False, "error": f"{type(e).__name__}: {e}"[:400]})
+
+    def _task_repair(self):
+        """修复工单:/preview 只读汇总事实,不带后缀的那条经待办主人开单并提交 Agent。实现在 task_repair.py。"""
+        if not self._authed():
+            self._drain()
+            return self._json(403, {"error": "bad token"})
+        preview = self.path.split("?", 1)[0].endswith("/preview")
+        body = self._task_body(frozenset(("name",)) if preview else frozenset(("name", "note", "request_id")))
+        if body is None:
+            return None
+        try:
+            if preview:
+                return self._json(200, task_repair.preview(body.get("name"), facts=task_facts))
+            return self._json(200, task_repair.submit(body.get("name"), body.get("note"),
+                                                      body.get("request_id"), facts=task_facts))
+        except maint.Refused as e:
+            return self._json(500 if e.code == "enumeration_failed" else 400,
+                              {"ok": False, "error": str(e), "code": e.code})
+        except Exception as e:
+            return self._json(500, {"ok": False, "error": f"{type(e).__name__}: {e}"[:400]})
+
     def _maint_act(self):
         """维护动作。和 /api/act 分开是刻意的:两张动作表混在一起,加一个 skill 动作
         就等于同时扩大了任务动作的表面,而没有人会在评审时注意到这一点。"""
@@ -1466,6 +1564,13 @@ class Handler(BaseHTTPRequestHandler):
             if set(query) != {'item_id'} or len(query['item_id']) != 1 or not 0 < len(item_id) <= 300:
                 return self._json(400, {'error': 'invalid context request'})
             return self._json(200, work_actions.context_view(item_id))
+        if path == "/api/task/repairs":
+            if not self._authed():
+                return self._json(403, {"error": "bad token"})
+            try:
+                return self._json(200, task_repair.orders())
+            except Exception as e:
+                return self._json(500, {"error": f"{type(e).__name__}: {e}"[:400]})
         if path == "/api/hours":
             if not self._authed():
                 return self._json(403, {"error": "bad token"})
@@ -1657,6 +1762,15 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(200, reply)
         if self.path.split("?", 1)[0] == "/api/retire/plan":
             return self._retire_plan()
+        # 四条分开写:路由通扫的正则对 `in (...)` 只认得第一个字面量,写成一组会让后面几条逃过扫描。
+        if self.path.split("?", 1)[0] == "/api/task/delete/plan":
+            return self._task_delete()
+        if self.path.split("?", 1)[0] == "/api/task/delete/apply":
+            return self._task_delete()
+        if self.path.split("?", 1)[0] == "/api/task/repair/preview":
+            return self._task_repair()
+        if self.path.split("?", 1)[0] == "/api/task/repair":
+            return self._task_repair()
         if self.path.split("?", 1)[0] == "/api/repo/plan":
             return self._repo_plan()
         if self.path.split("?", 1)[0] == "/api/codex/delete":

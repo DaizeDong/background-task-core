@@ -102,12 +102,15 @@ function renderAutomations(){
   $('automation-count').textContent=DATA?`${rows.length}/${ROWS.length} 项`:'暂时读不到计划任务';
   $('automation-reset').hidden=!AUTO_QUERY && !AUTO_STATE && !verdict;
   const groups=new Map();rows.forEach(row=>{if(!groups.has(row.cat))groups.set(row.cat,[]);groups.get(row.cat).push(row);});
+  // 这张列表会被工作记录刷新、修复进度轮询顺带重画:焦点在某个按钮上时,重画之后要放回同一个按钮。
+  const focused=$('automation-list').contains?.(document.activeElement)?taskControlKey(document.activeElement):null;
   $('automation-list').innerHTML=!DATA?workEmpty('暂时读不到计划任务'):rows.length?[...groups].map(([name,items])=>{
     const group=DATA.groups.find(g=>g.cat===name), all=ROWS.filter(row=>row.cat===name);
     return `<section class="card automation-group"><div class="card-header automation-group-header"><div><h3 class="card-title">${esc(name)} <span class="n">${items.length===all.length?all.length:items.length+'/'+all.length} 项计划</span></h3>
       ${group?.desc?`<p>${esc(group.desc)}</p>`:''}</div><span class="automation-verdict-counts">${esc(taskVerdictSummary(all))}</span></div>
       <div class="automation-list-heading" aria-hidden="true"><span>任务与建议</span><span>运行计划</span><span>状态</span><span>操作</span></div>${items.map(row=>taskListRow(row)).join('')}</section>`;
   }).join(''):workEmpty('没有符合筛选条件的计划任务');
+  restoreTaskControlFocus($('automation-list'),focused);
 }
 function openWorkRecord(id,keepOrder=false){
   const item=(WORK?.items || []).find(row=>row.id===id);

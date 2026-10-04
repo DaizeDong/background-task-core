@@ -100,6 +100,147 @@ cancellation or task-name inference occurs. The reminder owner must deliver the
 read-only accessor and attest its linkage schema. Trusted Python composition can
 inject a reader or an explicit `load()['linked_work_items']` mapping.
 
+## Deleting a task
+
+Delete means gone for good: absent from the Scheduler, from the console's category map, and,
+through the private follow-up hook, from the health watch list, the backup and the migration
+plan. `task_delete.py` implements it behind two authenticated POST routes; `maint` `task.retire`
+and `/api/retire/plan` keep working unchanged for their existing callers.
+
+`POST /api/task/delete/plan {name, reason}` is read-only. The name passes the same
+`scheduler_windows.task_name` gate as the Controller (spaces allowed, paths, wildcards and control
+characters refused), must appear in a fresh `collect.ps1` enumeration (root path, vendor tasks
+excluded), and the task must not be running. A non-empty reason is required; it goes into the
+Controller's tombstone or the archive receipt. The task's actions (execute, arguments, working
+directory) and its exported XML digest are captured now, before anything is unregistered.
+
+- **Managed** (the Controller's compiled declarations name the task, compared case-insensitively
+  as dispatch does): the preview is the Controller's own `retire_plan` with the real reason, and
+  its `plan_revision` is kept. Apply is `controller.action(name, 'retire', reason)`; the step is
+  done only when the transaction is committed and a fresh root enumeration no longer lists the
+  task. Whatever the Controller returns, including an exception, a timeout or `ok: false`, the
+  root enumeration decides whether the task is gone: a transaction that committed but could not
+  clean its staging files (`status: committed`, `cleanup_error`) is a deletion with a failed
+  `authority.cleanup` step that names the transaction for `recover`, and any other Controller
+  failure after which the task is absent is a failed `authority.retire` step, but still a deletion,
+  so the category edit and the hook still run and the result is `partial`. The journal is read back
+  separately to collect the files the transaction wrote or removed; those files, plus the
+  transaction's own `current.json`, `journals/<tx>.json` and `receipts/<tx>.json` under the state
+  root (written as `../` paths relative to the private root), are what the hook receives in
+  `authority.files`. An unreadable journal is its own failed step. A declared task whose ownership
+  proof is missing is refused, never downgraded to the unmanaged path. Authority that is configured
+  but broken refuses. A console with none of the four authority settings also refuses
+  (`authority_not_configured`), as `retire.apply` does, unless
+  `TASK_CONSOLE_DELETE_WITHOUT_AUTHORITY=1` explicitly allows treating every task as unmanaged; the
+  preview then says so in its notes.
+- **Unmanaged**: requires `TASK_CONSOLE_DELETED_ARCHIVE`, an existing absolute directory outside
+  every git worktree (and so outside the public repo and the backup repo). Unset or unusable is a
+  blocking reason in the preview, so no token is issued. Apply writes `<safe name>-<UTC stamp>.xml`
+  (UTF-16, as the export declares) and a JSON receipt (name, reason, original actions, XML digest),
+  both create-no-replace and read back byte for byte, then unregisters at the root path. The name
+  travels as `TC_NAME` in the environment, never inside the command text, and the same PowerShell
+  call re-exports the task and refuses if its digest differs from the preview. Absence is then
+  verified by a separate root enumeration that throws rather than guesses. That enumeration also
+  runs when the unregister call fails or times out: a task that is gone anyway is a deletion
+  (a failed `scheduler.unregister` step, result `partial`), not "still there".
+
+The console's own category map (`TASK_CONSOLE_CATEGORIES`, the file the page reads) loses the
+name from every category's `tasks`, `taskDesc` and `taskInfo`, compared case-insensitively as the
+Controller and the hook compare it. Only a map that parsed and does not list the task counts as
+"nothing to edit"; a missing path or file is a `skipped` step and an unreadable file, invalid UTF-8
+JSON or a document without a `categories` array is a `blocked` step, each with a note in the preview
+and the result, so the result can never be `ok`. Before editing, the untouched
+document must re-serialise to the original bytes under some combination of BOM, `ensure_ascii`,
+indent, separators, line ending and trailing newline; if none reproduces it, the automatic edit is
+refused, because a reformat would bury the one real change. A map that lists the task and cannot be
+rewritten is a blocking reason, so no token is issued: once the Scheduler step has run the task can
+no longer be previewed, and the hook's apply refuses while the live map still lists it, so letting
+the delete through would strand every later cleanup with no console path back. The reason asks for
+the entry to be removed by hand and the delete to be previewed again. The write is atomic and read
+back. It runs only after the Scheduler step succeeded.
+
+The preview carries every step with its target and status, the hook's steps, `blocking` reasons,
+`notes` for things a person must handle, and `warnings` (the pipeline list in `pipelines.js` could
+not be read; the category map's verdict is not `remove`; linked todos exist; or linked todos were
+not checked at all, because the task is unmanaged or the Controller's linked reader was unavailable,
+which is never shown as zero). A task listed on the pipeline page (`PIPELINE_DEFS` in
+`pipelines.js`, read from the page itself) is a blocking reason: those tasks are the backup itself,
+and the page offers no delete button for them on any tab. When nothing blocks, it also returns a single-use token valid for 300 seconds. The
+token is bound to a fingerprint of the XML digest, the managed flag, the Controller plan revision,
+the category file's byte digest, the hook's plan digest and the archive binding.
+
+`POST /api/task/delete/apply {token, name}` pops the token (one use, even when refused), requires
+the same name, recomputes the whole preview, and refuses with `followup_blocked`, `blocked` or
+`plan_changed` before anything irreversible. Only then does the Scheduler step run. If a fresh
+enumeration still lists the task, nothing else runs and the status is `failed` (HTTP 500). If the
+enumeration cannot be read after the attempt, the status is `unknown` (HTTP 500): the task may be
+gone, so the result asks for a refresh and never says "not deleted". Once the task is confirmed
+absent the category edit and the hook's apply run; the status is `ok` only when every step and the hook report `ok`, otherwise
+`partial` (HTTP 200) with a `remaining` list. A missing hook binding is `partial`, never `ok`. One
+delete runs at a time; a second concurrent apply is refused with `busy`.
+
+`remaining` names what a person still has to do. For a hook that reported `failed` it lists only the
+hook steps that are `failed`, `blocked` or still `planned`, each with the hook's detail; a `skipped`
+step is one the hook judged not to apply and is never listed. A hook that blocks in apply mode
+(exit 2) has refused after the task was already deleted, so the step and the hook message say the
+task is gone and nothing was cleaned, never "nothing changed"; `remaining` lists the hook's
+`blocking` reasons. Only in that case the result also carries `followupRetry`:
+`{hook, request, command, howto}`, where `request` is the exact apply request the hook was given and
+`command` runs the hook on it from cmd or Git Bash (`"<python>" -B -I "<hook>" < "<request file>"`,
+naming `python.exe` even when the console runs under `pythonw.exe`). The delete dialog cannot preview
+a task that is gone, and the hook's apply preflight requires the task to be gone and re-checks
+everything, refusing with exit 2 and no change, so feeding it the same request again is the
+supported re-run once its reasons are dealt with. A hook that failed part-way (exit 1) or whose
+reply was unreadable gets no retry: it may have left changes that a blind re-run would trip over,
+so a person reviews first.
+
+The page (`static/task-operations.js`) asks for the reason before it calls `/plan`, and discards a
+preview whose reason was edited afterwards. Its confirm button is enabled only while the preview is
+applicable, carries a token that has not expired, lists no blocking reason, and the typed name
+equals the task name exactly. It sends the token once: any reply, including a refusal, sends the
+person back to a new preview. It waits up to 20 minutes for `/apply` instead of the page's usual
+360 seconds, because the Controller and the hook may legitimately take that long; if the wait
+still runs out, it says the result is unconfirmed. Afterwards it re-reads the task list whatever
+the status was.
+
+### Follow-up hook protocol
+
+`TASK_CONSOLE_DELETE_FOLLOWUP` holds the absolute path of a private Python script. The console runs
+`[sys.executable, '-B', '-I', script]` with `PYTHONDONTWRITEBYTECODE=1`, the script's directory as
+the working directory, one UTF-8 JSON document on stdin, and a timeout of 60 seconds in plan mode
+and 600 seconds in apply mode. `-I` ignores `PYTHONIOENCODING`, so the hook should read
+`sys.stdin.buffer` and write `sys.stdout.buffer` as UTF-8. Exit 0 means ok, 1 failed or partial,
+2 blocked by preflight with nothing changed.
+
+```json
+{"schema": 1, "mode": "plan|apply",
+ "task": {"name": "AcmeSync", "managed": true,
+          "actions": [{"execute": "C:\\Acme\\sync.exe", "arguments": "--daily", "workingDirectory": "C:\\Acme"}]},
+ "reason": "replaced by AcmeSync2",
+ "categories": {"path": "C:\\Acme\\categories.json", "edited": true},
+ "authority": {"transaction_id": "<id or null>", "files": ["paths relative to the private root"]}}
+```
+
+`authority` is `null` in plan mode. In plan mode `categories.edited` says whether the console will
+edit the file; in apply mode, whether it did. The console never issues a token while the map lists
+the task and cannot be edited, so a plan request with `edited: false` means the console found no
+entry to remove (or could not read the map, which is its own blocked step); `edited: false` in apply
+mode can still happen when the write itself failed. The reply on stdout (at most 1 MB):
+
+```json
+{"schema": 1, "ok": true,
+ "steps": [{"id": "health", "title": "移出健康监控清单", "target": "task-health.json",
+            "status": "planned|ok|failed|skipped|blocked", "detail": "…"}],
+ "blocking": [], "notes": []}
+```
+
+The console distinguishes five outcomes: `not_configured`, `ok`, `blocked`, `failed` and
+`unreadable`. Bad JSON, a wrong schema, an unknown step status, oversize output, a timeout, an exit
+code outside 0-2, or an exit code that contradicts the reply (0 with `ok: false`, 2 without
+`blocking`) are all `unreadable`, never success. A configured hook whose plan is `failed` or
+`unreadable` blocks the delete. The hook's plan output should be deterministic for an unchanged
+machine: it is part of the token's fingerprint.
+
 ## Export and restore
 
 `python -P -m task_console export` queries the compiled backup scope under

@@ -3,7 +3,7 @@ const ConsoleActions={
   operations:[], timer:null, disabled:new WeakSet(),
   get readOnly(){return document.querySelector('meta[name="console-read-only"]')?.content==='true';},
   reason:'只读预览：操作请使用正式控制台',
-  selector:'[data-work-action],[data-work-stop],[data-act],[data-retire],[data-mt],[data-delete],[data-rpact]:not([data-rpact="copy"]):not([data-rpact="web"]),[data-fix],[data-fixall],[data-bulk]:not([data-bulk="clear"]),[data-ctfork],[data-cvdelete],[data-cvrename],[data-cvmove],[data-cvdrag],#cv-submit,#lcsave,#cxdel,#delete-confirm',
+  selector:'[data-work-action],[data-work-stop],[data-act],[data-task-repair],[data-task-delete],[data-mt],[data-delete],[data-rpact]:not([data-rpact="copy"]):not([data-rpact="web"]),[data-fix],[data-fixall],[data-bulk]:not([data-bulk="clear"]),[data-ctfork],[data-cvdelete],[data-cvrename],[data-cvmove],[data-cvdrag],#cv-submit,#lcsave,#cxdel,#delete-confirm,#task-delete-preview,#task-delete-confirm,#repair-submit',
   allowWrite(){if(!this.readOnly) return true;toast(this.reason,'bad');return false;},
   begin(path,options){
     let body={};try{body=JSON.parse(options.body || '{}');}catch(error){}
@@ -74,18 +74,34 @@ function syncStickyOffsets(){
   root.style.setProperty('--sticky-stack',(bar+pinned($('operation-panel')))+'px');
 }
 function operationLabel(path,body){
+  // 删除任务的预览排在通用的 /plan 之前:操作记录里要看得出这是一次删除,而不只是「某个预览」。
+  if(path==='/api/task/delete/plan') return '准备删除预览'+(body.name?' · '+body.name:'');
   if(path.endsWith('/plan') || path==='/api/convo/delete-plan') return '准备操作预览';
   if(path==='/api/work/action' && body.action_id==='complete') return '标记完成';
   const labels={run:'运行一次',stop:'停止本次',enable:'启用定时',disable:'停用定时',
     'skill.archive':'归档技能','skill.restore':'恢复技能','plugin.enable':'启用插件','plugin.disable':'禁用插件',
     'memory.archive':'归档记忆','memory.restore':'恢复记忆','clean.tempgit':'清理临时目录',
-    'repo.fetch':'获取远程更新','repo.reveal':'打开目录','repo.status':'查看改动','repo.commitpush':'提交并推送','task.retire':'停用并移出清单'};
-  const endpoints={'/api/codex/delete':'删除所选转录','/api/maintenance/delete':'删除或卸载','/api/llmcall/chain':'保存调用顺序','/api/work/action':'提交工作','/api/work/stop':'停止工作','/api/convo/fork':'分叉会话','/api/convo/rename':'重命名会话','/api/convo/move':'迁移会话文件','/api/convo/delete':'永久删除会话'};
+    'repo.fetch':'获取远程更新','repo.reveal':'打开目录','repo.status':'查看改动','repo.commitpush':'提交并推送'};
+  const endpoints={'/api/codex/delete':'删除所选转录','/api/maintenance/delete':'删除或卸载','/api/llmcall/chain':'保存调用顺序','/api/work/action':'提交工作','/api/work/stop':'停止工作','/api/convo/fork':'分叉会话','/api/convo/rename':'重命名会话','/api/convo/move':'迁移会话文件','/api/convo/delete':'永久删除会话',
+    '/api/task/delete/apply':'删除任务','/api/task/repair/preview':'读取任务事实','/api/task/repair':'提交修复工单'};
   return (labels[body.action || body.verb] || endpoints[path] || '执行操作')+(body.name?' · '+body.name:'');
 }
 function operationOutcome(path,body,reply,error){
   const result=reply || error?.payload;
   if(error && !result) return {tone:'warn',message:'结果未确认，请先刷新核对。'+error.message};
+  // 删除的结果有三种,而「部分完成」的回复 ok 也是 false:放进下面的通用失败分支会被说成失败,
+  // 放进成功分支又会被说成删完了。两种都不对,所以按 status 单独说。计划程序那步失败是 HTTP 500,正文照样是结果。
+  if(path==='/api/task/delete/apply' && ['ok','partial','failed','unknown'].includes(result?.status)){
+    const tone={ok:'ok',partial:'warn',failed:'bad',unknown:'bad'}[result.status];
+    const fallback={ok:'任务已删除，各项清理都已完成',partial:'任务已从计划程序删除，但还有没完成的清理',failed:'没有删除',
+      unknown:'无法确认是否已删除，请刷新核对'}[result.status];
+    return {tone,message:(result.status==='partial'?'部分完成：':'')+(result.message || fallback)};
+  }
+  // 修复工单的回复永远只是「受理」:Agent 还没开始诊断,任务也没有被改动,所以成功也只给警示色。
+  if(path==='/api/task/repair' && result && !error){
+    if(result.ok) return {tone:'warn',message:result.existing && !result.receipt?'这个任务已有修复工单，没有重复建立':'已受理，修复结果会出现在工作记录和 Discord；任务尚未修复'};
+    if(result.uncertain) return {tone:'warn',message:(result.message || '未收到确认')+'；再次点击会核对原请求'};
+  }
   if(error || result?.ok===false || result?.error) return {tone:'bad',message:(result?.partial?`${result.message || '可能已删除部分内容，请刷新核对'}；`:'')+(result?.deleted!=null?`已删除 ${result.deleted} 项；`:'')+apiError(result,error?.status || 500)};
   if(path==='/api/act') return {tone:['run_requested','cleanup_uncertain','scheduler_idle'].includes(result.status)?'warn':'ok',message:taskOutcome(result,body.verb)};
   if(path.startsWith('/api/work/')){
@@ -94,7 +110,9 @@ function operationOutcome(path,body,reply,error){
     const messages={queued:'已加入队列，等待执行',task_requested:'已提交任务，执行结果尚未确认',stopped:'已请求停止，请核对最新工作状态'};
     return {tone:'warn',message:result.message || messages[result.status] || '请求已受理，执行结果尚未确认'};
   }
+  if(path==='/api/task/delete/plan' && result?.applicable===false) return {tone:'warn',message:'预览已就绪，但有不能删除的原因'};
   if(path.endsWith('/plan') || path==='/api/convo/delete-plan') return {tone:'ok',message:'预览已就绪，等待确认'};
+  if(path==='/api/task/repair/preview') return {tone:'ok',message:result?.existing?'已读取任务事实；这个任务已有修复工单':'已读取任务事实，尚未提交'};
   if(path==='/api/convo/fork') return {tone:'ok',message:'已新建会话 '+String(result?.newId || '').slice(0,8)+'，原会话未改动'};
   if(path==='/api/convo/delete') return {tone:result.deleted===true?'ok':'warn',message:result.deleted===true?'会话及关联文件已永久删除':'删除结果尚未确认'};
   if(path==='/api/convo/rename') return {tone:'ok',message:'已保存会话名称'};
@@ -109,18 +127,27 @@ function taskOutcome(reply,verb){
   if(reply.status==='applied' && ['enable','disable'].includes(verb)) return verb==='enable'?'已启用':'已停用';
   return messages[reply.status] || reply.message || '未收到操作结果说明';
 }
-function taskActionButtons(row,advanced=false){
+// 「同步与备份」流水线上的任务是备份本身的骨架:删掉它们,删除这件事的后续清理(包括把被删任务移出备份)
+// 也就跟着没了着落。所以它们在任何一个标签页都没有删除按钮,而不只是在流水线卡片上;后端同样拒绝
+// (task_delete.PIPELINE_BLOCK)。修复只开工单不改任务,哪里都可以给。
+const taskIsPipeline=name=>typeof PIPELINE_DEFS!=='undefined' &&
+  Object.values(PIPELINE_DEFS).some(def=>String(def.name).toLowerCase()===String(name).toLowerCase());
+function taskActionButtons(row,{deletable=!taskIsPipeline(row.name)}={}){
   const known=['Ready','Running','Disabled','Queued'].includes(row.state);
   const disabled=!known || busy || ConsoleActions.readOnly;
   const reason=ConsoleActions.readOnly?ConsoleActions.reason:busy?'正在执行操作':!known?'任务状态未确认':'';
   const hints={enable:'恢复按计划启动',disable:'不再按计划启动；正在运行的任务继续执行',run:'立即运行一次，保留原计划',stop:'请求停止当前运行，保留后续计划'};
   const symbols={enable:'i-on',disable:'i-pause',run:'i-play',stop:'i-stop'};
   const control=(verb,label,extraReason='')=>`<button class="mini task-control icon-only" data-act="${verb}" data-name="${esc(row.name)}" ${disabled || extraReason?'disabled':''} title="${esc(reason || extraReason || hints[verb])}"><svg class="ic" aria-hidden="true"><use href="#${symbols[verb]}"/></svg><span class="control-label">${label}</span></button>`;
+  // 修复不看任务状态:状态读不出来、任务在跑,恰恰是最需要诊断的时候。
+  const repairReason=ConsoleActions.readOnly?ConsoleActions.reason:'';
+  const removeReason=ConsoleActions.readOnly?ConsoleActions.reason:busy?'正在执行操作':row.state==='Running'?'任务正在运行，请先停止本次运行再删除':'';
   return '<span class="task-controls">'+
     control(row.state==='Disabled'?'enable':'disable',row.state==='Disabled'?'启用':'停用')+
     (row.state==='Running'?control('stop','停止本次'):control('run','运行一次',row.state==='Disabled'?'请先启用':row.state==='Queued'?'已在队列中':''))+
     `<button class="icon-only mini task-control" data-launch="${esc(row.name)}" title="查看完整命令、身份和运行条件"><svg class="ic" aria-hidden="true"><use href="#i-terminal"/></svg><span class="control-label">启动方式</span></button>`+
-    (advanced?`<button class="mini task-control retire-control icon-only" data-retire="${esc(row.name)}" ${disabled?'disabled':''} title="${esc(reason || '停用任务，并移出备份与健康检查清单；需要确认')}"><svg class="ic" aria-hidden="true"><use href="#i-retire"/></svg><span class="control-label">停用并移出清单</span></button>`:'')+'</span>';
+    `<button class="mini task-control icon-only" data-task-repair="${esc(row.name)}" ${repairReason?'disabled':''} title="${esc(repairReason || '修复：查看任务事实，开一张工单交给 Agent 诊断；不会改动任务本身')}"><svg class="ic" aria-hidden="true"><use href="#i-repair"/></svg><span class="control-label">修复</span></button>`+
+    (deletable?`<button class="mini task-control icon-only" data-task-delete="${esc(row.name)}" ${removeReason?'disabled':''} title="${esc(removeReason || '删除：先预览每一步要改哪里，输入完整任务名后才执行')}"><svg class="ic" aria-hidden="true"><use href="#i-trash"/></svg><span class="control-label">删除</span></button>`:'')+'</span>';
 }
 
 function taskStartCommand(row){

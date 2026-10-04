@@ -131,6 +131,7 @@ function pipelineRows(){
 
 function renderPipelines(){
   const box=$("pipeline-body");if(!box) return;
+  const focused=box.contains?.(document.activeElement)?taskControlKey(document.activeElement):null;
   const query=$('pipeline-task-search').value, verdict=$('pipeline-verdict').value;
   // 卡片标题(「每日备份与整理」)也要搜得到:人是照着卡片上的字搜的,不是照着任务名。
   const q=query.trim().toLowerCase();
@@ -151,7 +152,7 @@ function renderPipelines(){
       const steps=pipelineSteps(key,COMPONENTS);
       return `<div class="card pipeline-run" id="pipeline-${key}">
         <div class="card-header"><h2 class="card-title">${esc(def.title)}</h2></div>
-        ${taskListRow(displayRow,{controls:row?taskActionButtons(row):'',showDetails:!!row,
+        ${taskListRow(displayRow,{controls:row?taskActionButtons(row,{deletable:false}):'',showDetails:!!row,
           state:row?null:statusBadge(missing[0],missing[1])})}
         <div class="pipeline-result">运行记录 ${statusBadge(task?pipeState(status):'未找到对应记录',task?componentTone(status):'idle',undefined,'review-status')}</div>
         <div class="pipeline-metrics"><span>最近运行 <b>${esc(pipeTime(task && task.execution && task.execution.started_at))}</b></span>
@@ -170,6 +171,7 @@ function renderPipelines(){
     <div class="catalog-tools"><input id="pipeline-search" type="search" aria-label="搜索流水线问题" placeholder="搜索对象、类型或原因" value="${esc(PIPELINE_QUERY)}"><button class="icon-only" data-reset-filters="pipelines" title="清除筛选"><svg class="ic" aria-hidden="true"><use href="#i-filter-clear"/></svg><span class="control-label">清除筛选</span></button><button class="icon-only" data-goto="resources" title="查看技能和插件"><svg class="ic" aria-hidden="true"><use href="#i-puzzle"/></svg><span class="control-label">查看技能和插件</span></button></div></div>
     <div id="pipeline-issues" class="ops-scroll"></div></div>`;
   $("pipeline-search").addEventListener("input",event=>{PIPELINE_QUERY=event.target.value;renderPipelineIssues();});
+  restoreTaskControlFocus(box,focused);
   renderPipelineIssues();
   const links=$("overview-pipelines");
   if(links) links.innerHTML=Object.entries(PIPELINE_DEFS).map(([key,def])=>{

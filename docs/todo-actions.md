@@ -37,7 +37,9 @@ new work has been accepted; otherwise retain the new records and fix forward.
 
 Authenticated same-origin `POST /api/work/action` and `/api/work/stop` accept exactly
 `{item_id, action_id, revision, request_id}`. For stop, `action_id` is the current receipt ID.
-The browser never submits commands, task names or filesystem paths. GET requests do not enqueue
+The browser never submits commands, task names or filesystem paths. (The separate task repair
+route takes a task name, re-checks it against the live task list, and then uses this same action;
+see `work-platform.md`.) GET requests do not enqueue
 work, invoke a model or upgrade a database. `TASK_CONSOLE_READ_ONLY=1` disables action submission.
 
 The owner reserves and deduplicates requests transactionally. The console only dispatches the

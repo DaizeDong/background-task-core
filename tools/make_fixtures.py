@@ -481,3 +481,107 @@ def searchable_work_group_case():
 def blocked_agent_case():
     return {'id':'queued-work','role':'agent_work','title':'Acme queued work','state':'pending',
             'execution':{'state':'queued','queue_reason':'cleanup_unconfirmed','blocked_by':['old-work']}}
+
+
+def task_delete_plan_case(*, blocking=False):
+    """A synthetic delete preview for an unmanaged task whose name contains spaces."""
+    steps = [{"id": "archive.export", "title": "导出任务 XML 存档", "target": "D:\\AcmePrivate\\deleted-tasks",
+              "status": "planned", "detail": "导出完整的任务定义和回执，写入后读回核对。"},
+             {"id": "scheduler.unregister", "title": "从计划程序删除", "target": "计划程序根路径",
+              "status": "planned", "detail": "删除前重新比对任务定义。"},
+             {"id": "categories.edit", "title": "从分类配置中移除", "target": "C:\\Acme\\categories.json",
+              "status": "planned", "detail": "移除 2 处（tasks、taskDesc、taskInfo）。"},
+             {"id": "followup.apply", "title": "清理监控清单、备份与迁移计划", "target": "D:\\AcmePrivate\\followup.py",
+              "status": "planned", "detail": "后续钩子的预览已就绪"}]
+    reasons = ["没有设置删除存档目录（TASK_CONSOLE_DELETED_ARCHIVE），不受控制器管理的任务不能删除"] if blocking else []
+    return {"ok": True, "name": "Acme Backup Daily", "reason": "被 AcmeSync 取代", "managed": False,
+            "task": {"state": "Ready", "definitionSha256": "synthetic",
+                     "actions": [{"execute": "C:\\Acme\\sync.exe", "arguments": "--daily", "workingDirectory": "C:\\Acme"}]},
+            "steps": steps, "authority": None,
+            "followup": {"state": "ok", "message": "后续钩子的预览已就绪", "blocking": [], "notes": [], "exitCode": 0,
+                         "steps": [{"id": "health", "title": "移出健康监控清单", "target": "acme-health.json",
+                                    "status": "planned", "detail": "合成步骤"}]},
+            "categories": {"path": "C:\\Acme\\categories.json", "present": True, "editable": True, "verdict": "keep"},
+            "blocking": reasons, "notes": ["合成说明：Acme 文档仍提到这个任务"],
+            "warnings": [{"code": "verdict_not_remove", "verdict": "keep",
+                          "message": "分类配置里对这个任务的建议不是「可删」，删除前请确认。"}],
+            "applicable": not blocking, "token": None if blocking else "synthetic-delete-token",
+            "expiresIn": None if blocking else 300}
+
+
+def task_delete_result_case(status="partial"):
+    """Synthetic delete results: ok, partial (no follow-up hook), failed (Scheduler refused),
+    unknown (the readback after the delete command could not be read) and followup_blocked
+    (the task is gone but the hook's apply preflight refused, so the result carries a retry)."""
+    done = {"id": "scheduler.unregister", "title": "从计划程序删除", "target": "计划程序根路径",
+            "status": "ok", "detail": "已删除，读回确认计划程序里已没有它"}
+    if status == "followup_blocked":
+        hook = "D:\\AcmePrivate\\followup.py"
+        request = {"schema": 1, "mode": "apply",
+                   "task": {"name": "AcmeSync", "managed": False,
+                            "actions": [{"execute": "C:\\Acme\\sync.exe", "arguments": "--daily", "workingDirectory": "C:\\Acme"}]},
+                   "reason": "合成清理", "categories": {"path": "D:\\AcmePrivate\\categories.json", "edited": True},
+                   "authority": {"transaction_id": None, "files": []}}
+        command = f'"C:\\Acme\\Python\\python.exe" -B -I "{hook}" < "<请求文件>"'
+        followup = {"state": "blocked", "message": "任务已经删除，但后续钩子的预检没有放行，监控清单、备份和迁移计划一处都没有清理",
+                    "steps": [], "blocking": ["合成：现在在夜间备份窗口里"], "notes": [], "exitCode": 2}
+        remaining = ["后续清理没有运行：合成：现在在夜间备份窗口里", "单独重跑后续清理：合成说明 " + command]
+        return {"ok": False, "status": "partial", "name": "AcmeSync", "managed": False, "authority": None,
+                "steps": [done, {"id": "followup.apply", "title": "清理监控清单、备份与迁移计划", "target": hook,
+                                 "status": "blocked", "detail": followup["message"]}],
+                "followup": followup, "remaining": remaining, "notes": [],
+                "followupRetry": {"hook": hook, "request": request, "command": command, "howto": remaining[1]},
+                "message": "任务已从计划程序删除，但还有没完成的清理：" + "；".join(remaining)}
+    if status == "unknown":
+        return {"ok": False, "status": "unknown", "name": "AcmeSync", "managed": False, "authority": None,
+                "followup": None, "notes": [],
+                "steps": [dict(done, status="failed", detail="删除命令没有正常返回（TimeoutExpired），而且无法确认任务是否还在：合成")],
+                "remaining": ["刷新页面核对计划程序里还有没有这个任务"],
+                "message": "无法确认是否已删除：删除命令没有正常返回（TimeoutExpired），而且无法确认任务是否还在：合成"}
+    if status == "failed":
+        return {"ok": False, "status": "failed", "name": "AcmeSync", "managed": False, "authority": None,
+                "followup": None, "notes": [],
+                "steps": [dict(done, status="failed", detail="删除失败，任务仍在：合成拒绝"),
+                          {"id": "followup.apply", "title": "清理监控清单、备份与迁移计划", "target": "未配置",
+                           "status": "skipped", "detail": "任务没有删除，没有运行"}],
+                "remaining": ["从计划程序删除：删除失败，任务仍在：合成拒绝"], "message": "没有删除：合成拒绝"}
+    followup = ({"state": "ok", "message": "后续清理已完成", "steps": [], "blocking": [], "notes": [], "exitCode": 0}
+                if status == "ok" else
+                {"state": "not_configured", "message": "没有配置删除后续钩子", "steps": [], "blocking": [],
+                 "notes": [], "exitCode": None})
+    last = ({"id": "followup.apply", "title": "清理监控清单、备份与迁移计划", "target": "D:\\AcmePrivate\\followup.py",
+             "status": "ok", "detail": "后续清理已完成"} if status == "ok" else
+            {"id": "followup.apply", "title": "清理监控清单、备份与迁移计划", "target": "未配置",
+             "status": "skipped", "detail": "没有配置删除后续钩子：需要手动处理。"})
+    remaining = [] if status == "ok" else ["健康监控清单、备份和迁移计划没有清理（未配置删除后续钩子），需要手动处理"]
+    return {"ok": status == "ok", "status": status, "name": "AcmeSync", "managed": False, "authority": None,
+            "steps": [done, last], "followup": followup, "remaining": remaining, "notes": [],
+            "message": "任务已删除，各项清理都已完成。" if status == "ok" else
+                       "任务已从计划程序删除，但还有没完成的清理：" + remaining[0]}
+
+
+def task_repair_preview_case(existing=None):
+    """Synthetic facts for one task, as the repair preview returns them."""
+    return {"ok": True, "name": "Acme Report Sync", "existing": existing,
+            "work": {"available": True, "reason": None},
+            "limits": ["只诊断并提出修复方案。", "不得删除任何东西。"],
+            "facts": {"name": "Acme Report Sync", "category": "报表",
+                      "info": {"title": "Acme 报告同步", "advice": "合成建议：先看返回码", "verdict": "fix", "asOf": "2030-01-01"},
+                      "state": "Ready", "status": {"key": "bad", "label": "失败 0x1"},
+                      "lastRun": "2030-01-02 03:00", "lastResult": {"hex": "0x1", "raw": 1, "meaning": "失败 0x1"},
+                      "nextRun": "2030-01-03 03:00", "missedRuns": 0, "triggers": "Daily @03:00",
+                      "actions": [{"execute": "C:\\Acme\\report.exe", "arguments": "--sync", "workingDirectory": "C:\\Acme"}],
+                      "artifact": {"path": "C:\\Acme\\out\\report.json", "maxAgeHours": 26},
+                      "health": [{"label": "Acme 报告", "state": "down", "reasons": ["合成：产物 30 小时没更新"]}],
+                      "issues": [{"level": "warn", "text": "合成：漏火不补跑"}],
+                      "recentFailures": {"window": "最近 30 天", "failingCodes": [{"code": "0x1", "count": 5}],
+                                         "starts": 12, "successRate": 58.3},
+                      "polls": None, "observedAt": "2030-01-02 09:00:00"}}
+
+
+def task_repair_order_case(action_state="running", state="pending"):
+    """One synthetic repair order as /api/task/repairs maps it to a task name."""
+    action = None if action_state is None else {"id": "receipt-1", "state": action_state, "summary": "合成进度",
+                                                "work_item_id": "acme-work-1", "updated_at": "2030-01-02T00:00:00Z"}
+    return {"item_id": "acme-repair-1", "state": state, "note": "合成备注", "updated": "2030-01-02T00:00:00Z",
+            "title": "修复计划任务：Acme 报告同步（Acme Report Sync）", "action": action}

@@ -1053,8 +1053,8 @@ html {scroll-padding-top:var(--sticky-stack,54px)}
 .operation-panel {position:sticky;top:var(--bar-stick,54px);z-index:100;padding:12px 24px;background:var(--panel);border-bottom:1px solid var(--line);overflow-wrap:anywhere}
 .operation-panel summary {cursor:pointer;color:var(--dim);font-size:12px;margin-top:4px}
 #operation-history {max-height:120px;overflow:auto;margin:6px 0 0;padding-left:20px}
-#launch-dialog, #delete-dialog {width:min(820px,calc(100vw - 32px));max-height:85vh;overflow:auto;background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:10px;padding:24px}
-#launch-dialog::backdrop, #delete-dialog::backdrop {background:rgb(0 0 0 / 40%)}
+#launch-dialog, #delete-dialog, .task-op-dialog {width:min(820px,calc(100vw - 32px));max-height:85vh;overflow:auto;background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:10px;padding:24px}
+#launch-dialog::backdrop, #delete-dialog::backdrop, .task-op-dialog::backdrop {background:rgb(0 0 0 / 40%)}
 .launch-facts {display:grid;grid-template-columns:90px minmax(0,1fr);gap:8px 14px}
 .launch-facts dd {margin:0;overflow-wrap:anywhere;white-space:pre-wrap}
 .launch-action {border-top:1px solid var(--line);padding-top:14px;margin-top:14px}

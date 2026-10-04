@@ -29,7 +29,7 @@ Windows only. It reads the Windows Task Scheduler; there is nothing to read anyw
 | Self-check | every configured path | see which sources are `ok` / `stale` / `missing` / `unset` |
 | Artifact freshness | the health manifest plus each declared artifact | see five states, worst first |
 | Repositories | every git repo under one root | spot unpushed commits and dirty trees; run `fetch` |
-| Tasks | the Windows Task Scheduler | run, stop, enable, disable, retire |
+| Tasks | the Windows Task Scheduler | run, stop, enable, disable, retire; delete one after a bound preview; file a repair order that an agent diagnoses |
 | Skills | a skills directory | archive one out of the way, or restore it |
 | Memory pool | a memory directory | see index headroom and broken links; archive an entry |
 | Plugins | `claude plugin list` | enable or disable one |
@@ -273,6 +273,9 @@ the generator by the fixture boundary gate. Regenerate it from the repository ro
 | `TASK_CONSOLE_LLMCALL_LEDGER` | the append-only JSONL ledger the LLM-call primitive writes, one line per call | falls back to `~/.llmcall/ledger.jsonl`; a missing file makes the call view read NOT CHECKED, which is deliberately not the same as reading zero calls |
 | `TASK_CONSOLE_LLMCALL_CHAIN` | the file the call view writes a fallback-chain order into | falls back to `~/.llmcall/chain.txt`. This is the one path on this console that writes into another program's configuration, and it is shadowed by the `LLMCALL_CHAIN` environment variable: when that variable is set, the page says so in as many words instead of reporting a save that changes nothing |
 | `TASK_CONSOLE_LLMCALL_BODIES` | the directory holding recorded prompt and reply bodies, one file per day | unset means the console mirrors whatever discovery order the call primitive itself uses to find its private companion directory, and adds a `bodies/` subdirectory to it. That order is defined by the primitive, not here, so it is not restated here either: two copies of an order drift, and the copy someone reads is not necessarily the copy that runs. The resolution steps actually walked, and their verdicts, are printed in the page when a body cannot be found. Body recording is off by default, and the three ways to have no bodies (never turned on, companion not initialised, entry past its retention) are reported as three different sentences rather than one empty box |
+| `TASK_CONSOLE_DELETE_FOLLOWUP` | absolute path of the private Python follow-up hook that a task delete runs after the Scheduler step, to clean the health watch list, backup and migration plan (protocol in `docs/task-control.md`) | no default; unset still deletes from the Scheduler and the console's category map, but the preview and the result say, as their own state, that the watch list, backup and migration plan were not cleaned, and the result is `partial`, never `ok` |
+| `TASK_CONSOLE_DELETE_WITHOUT_AUTHORITY` | `1` lets a console process that has none of the four Controller settings delete tasks, treating every task as unmanaged | unset; such a process refuses every delete with `authority_not_configured`, because it cannot tell which tasks the Controller owns |
+| `TASK_CONSOLE_DELETED_ARCHIVE` | absolute private directory, outside every git worktree and outside the backup, where deleting a task the Controller does not own first writes its exported XML and a receipt | no default; unset blocks the delete of an unmanaged task in its preview; Controller-owned tasks keep their before-image in the Controller's vault and do not use it |
 | `TASK_CONSOLE_POWERSHELL` | the powershell.exe that task commands run through | falls back to the pinned `System32\WindowsPowerShell\v1.0\powershell.exe`, and only to a bare `powershell.exe` off PATH when that file is not there |
 
 The tool defaults only into its own namespace. Pointing it at whatever else a machine keeps its
@@ -287,10 +290,51 @@ dropped: the task nobody categorised is the one nobody is watching.
 
 ## What it will not do
 
-It cannot create a task. Creating one correctly means naming it so the backup drift gate can see
-it, choosing its settings deliberately, generating its launcher, and registering it in three
-places. A button that skipped those steps would manufacture exactly the untracked task that
-procedure exists to prevent.
+It cannot create a task, and it cannot reconfigure one (triggers, actions, principal, settings).
+Creating one correctly means naming it so the backup drift gate can see it, choosing its settings
+deliberately, generating its launcher, and registering it in three places. A button that skipped
+those steps would manufacture exactly the untracked task that procedure exists to prevent.
+
+It can **delete** one, but only through a bound preview. `POST /api/task/delete/plan` lists every
+step with its target (the Controller's retire transaction for a task it owns; for any other task,
+an XML export into the private `TASK_CONSOLE_DELETED_ARCHIVE` followed by an unregister at the root
+path), the edit to the category map, and what the private follow-up hook will clean (the health
+watch list, the backup and the migration plan). It hands back a single-use token that lives 300
+seconds and is bound to a fingerprint of everything the preview depended on; `/apply` re-checks
+that fingerprint, asks the hook again, and refuses before anything irreversible if either moved.
+The result is `ok` only when every step read back as done; a Scheduler delete whose later cleanup
+did not finish, or whose hook is not configured, is `partial` and says what remains. Whether the task
+is gone is always decided by re-reading the Scheduler, never by the Controller's or the unregister
+call's own reply, and a re-read that fails is `unknown`, not "not deleted". A category map that
+still lists the task but cannot be rewritten byte for byte blocks the preview, because after the
+Scheduler step there is no console path back to it. When the hook refuses only after the task is
+gone, the result says the task was deleted and nothing was cleaned, and hands back the exact
+request and command to re-run just the follow-up. A console process
+without the Controller's configuration refuses to delete unless
+`TASK_CONSOLE_DELETE_WITHOUT_AUTHORITY=1` is set. The full
+protocol is in `docs/task-control.md`.
+
+It can also file a **repair order** for one task, on an explicit click only. The order is an
+ordinary todo created through the reminder owner's `ensure` verb and dispatched through the
+existing agent action; the agent diagnoses and proposes a fix on copies and never touches the live
+task, its registration, launcher or backup. Nothing files a repair order because an observation
+failed.
+
+On the page, every task row on 任务开关 and every row of the 运行详情 table carries both a repair
+(修复) and a delete (删除) button, except the two 同步与备份 pipeline tasks, which carry repair
+only on every tab, because those two tasks are the backup itself; the backend refuses to issue a
+delete token for them too. Delete opens a dialog that asks for the reason, shows the preview step
+by step with each target, puts any blocking reason first and keeps the confirm button disabled
+while one exists, and enables it only once the exact task name is typed. The result names every
+step's status; `partial`, `failed` and `unknown` are never shown as done, and the task list is
+re-read either way. Repair opens a dialog with the facts and limits that will go into the order and an optional
+one-line note; a submission is reported as accepted, with the result to appear on the work page and
+in Discord, never as fixed. Each row then shows the order's progress (queued, running, awaiting
+verification, proposal ready, failed, closed, or unknown) as a dashed chip that opens the order;
+the page re-reads it every 15 seconds while an order is in flight and an automation tab is in view.
+An unreadable order feed is stated in the toolbar instead of drawing every row as having no order.
+The retire button (停用并移出清单) is gone from the page: delete replaced it. `maint` `task.retire`
+still works for callers of the API.
 
 It can **retire** one, which is the opposite operation and is safe to automate precisely because
 it is subtractive: disable, write the reason into the description, drop it from the backup
@@ -357,6 +401,8 @@ normal user session. The console says so instead of reporting a bare access-deni
 | `sysinfo.py` | disk, cache size, abandoned clone staging directories |
 | `llmstats.py` | the LLM-call ledger: windowing, per-rung reconstruction, consecutive runs, and the chain config file |
 | `retire.py` | the three-place deregistration, planned first and then written |
+| `task_delete.py` | deleting a task: bound preview, Controller or archive-then-unregister, category map edit, follow-up hook |
+| `task_repair.py` | repair orders: the task's known facts plus fixed limits, filed and dispatched through the reminder owner |
 | `console_store.py` / `console_ingest.py` / `history.py` / `timeline.py` | the run history layer |
 
 ## Third-party assets

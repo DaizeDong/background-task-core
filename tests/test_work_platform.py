@@ -84,8 +84,9 @@ def test_unknown_source_and_empty_feed_are_not_all_clear():
 
 
 def test_task_buttons_are_labeled_and_inapplicable_run_is_explained():
-    result=run("taskActionButtons({name:'Acme',state:'Disabled'},true)")
-    assert 'class="control-label">启用</span>' in result and 'class="control-label">停用并移出清单</span>' in result
+    result=run("taskActionButtons({name:'Acme',state:'Disabled'})")
+    assert 'class="control-label">启用</span>' in result and 'class="control-label">删除</span>' in result
+    assert 'class="control-label">修复</span>' in result and '停用并移出清单' not in result
     assert 'title="请先启用"' in result and 'disabled' in result
     assert 'class="mini ib' not in result
 
