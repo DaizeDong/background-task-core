@@ -144,7 +144,8 @@ def test_resources_has_one_search_and_text_anchors_in_use_order():
     assert resources.count('type="search"') == 1 and 'id="resources-search"' in resources
     assert order(resources, ['id="mtbox"', 'id="membox"', 'id="catalog-box"'])
     anchors = re.findall(r'<button type="button" data-goto="(#[\w-]+)">([^<]+)</button>', resources)
-    assert anchors == [("#mt-skills", "技能"), ("#mt-plugins", "插件"), ("#membox", "记忆"), ("#catalog-box", "目录")]
+    assert anchors == [("#mt-skills", "技能"), ("#mt-plugins", "插件"), ("#membox", "记忆"), ("#catalog-box", "目录"),
+                       ("#catalog-health", "检查结果")]
     # 目录自己不再画搜索框。
     assert "catalog-search" not in (STATIC / "panels/skills.js").read_text(encoding="utf-8")
 
