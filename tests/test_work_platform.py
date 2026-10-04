@@ -14,7 +14,7 @@ def test_queued_work_explains_cleanup_blocker_instead_of_ordinary_wait():
     assert run('workLabel(item)',setup)=='队列受阻'
     for compact in ('false','true'):
         html=run('workItemRow(item,'+compact+')',setup)
-        assert '进程清理尚未确认' in html and '查看阻塞任务' in html
+        assert '进程清理尚未确认' in html and '查看阻塞的任务' in html
         assert 'data-work-id="old-work"' in html
     detail_setup=setup+'WORK={available:true,items:[item],events:[],sources:[],coverage:{}};$("work-detail").open=true;'
     detail=run('openWorkRecord(item.id);$("work-detail-body").innerHTML',detail_setup)
@@ -77,10 +77,11 @@ def test_work_projection_never_turns_failure_or_signal_into_a_decision():
 def test_unknown_source_and_empty_feed_are_not_all_clear():
     assert run('workProjection({available:false})')['decisions'] is None
     assert run("workRows({available:false},{role:'all'})")==[]
-    result=run("WORK=feed;renderWorkPlatform();$('work-coverage').textContent",'const feed='+json.dumps(work_feed_case())+';')
-    assert result == '5/5'
-    unavailable=run("WORK={available:false,reason:'source unavailable'};renderWorkPlatform();$('work-coverage').textContent")
-    assert unavailable == 'source unavailable'
+    # 全部读到时覆盖说明不出现(不再写「5/5」);读不到时原因进列表那一块「读取失败」,不进灰色说明行。
+    result=run("WORK=feed;renderWorkPlatform();[$('work-coverage').textContent,$('work-coverage').hidden]",'const feed='+json.dumps(work_feed_case())+';')
+    assert result == ['', True]
+    unavailable=run("WORK={available:false,reason:'source unavailable'};renderWorkPlatform();[$('work-coverage').textContent,$('work-list').innerHTML]")
+    assert unavailable[0] == '' and '工作记录读取失败' in unavailable[1] and 'source unavailable' in unavailable[1]
 
 
 def test_task_buttons_are_labeled_and_inapplicable_run_is_explained():

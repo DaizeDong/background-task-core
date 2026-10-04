@@ -3,3 +3,69 @@
 
 /* 工作台里「Agent 未完成 / 出错」那一张卡的标题符号是红的。 */
 #overview .section-symbol.bad{color:var(--bad);background:var(--badb)}
+
+/* ── 工作台顶上的技术问题摘要 ── 一枚芯片一类,失败红、警告琥珀;还在读、读坏了、没在查各有一种样子,
+   不只靠颜色,也靠字和符号分开(读取中 ◷、读取失败 !、未检查是虚线框里的 —)。 */
+#overview .attention-strip{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px;padding:8px var(--section-inset);border:1px solid var(--line);border-radius:var(--card-radius);background:var(--panel)}
+#overview .attention-label{font-weight:600;color:var(--ink);margin-right:2px}
+#overview .attention-chip{display:inline-flex;align-items:center;gap:5px;min-height:26px;padding:2px 9px;border:1px solid var(--line);border-radius:4px;font-size:var(--fs-body);line-height:1.4;color:var(--dim);background:var(--panel2);text-decoration:none}
+#overview .attention-chip>span[aria-hidden]{font-weight:700}
+#overview a.attention-chip.bad{color:var(--bad);border-color:var(--bad);background:var(--badb);font-weight:600}
+#overview a.attention-chip.warn{color:var(--warn);border-color:var(--warn);background:var(--warnb);font-weight:600}
+#overview a.attention-chip:hover{text-decoration:underline}
+#overview .attention-chip.broken{color:var(--bad);background:transparent}
+#overview .attention-chip.unchecked{border-style:dashed;background:transparent}
+#overview .attention-all{margin-left:auto;font-size:var(--fs-meta);color:var(--cyan)}
+
+/* 「Agent 未完成 / 出错」整张卡带一道红边,和下面几张平常的卡一眼分开。 */
+#overview .interrupted-card{border-left:3px solid var(--bad)}
+
+/* 紧凑行整行可点,指针也这么说;标题仍是一个真按钮,键盘从它进。 */
+#overview .work-row[data-work-row]{cursor:pointer}
+/* 已逾期、24 小时内到期的截止时间用警告色。 */
+#overview .work-due.due-warn,#work .work-due.due-warn{color:var(--warn);font-weight:600}
+#overview .work-when time,#work .work-when time{font-variant-numeric:tabular-nums}
+/* 排队受阻那句话后面的「查看阻塞的任务」是一个文字链接,不是一只眼睛。 */
+.work-queue-note .link-button{font-size:inherit}
+/* 行上的「查看进度」「查看原待办」「原对话」是去看东西的,青色字,和真正改东西的动作分开。 */
+.work-action-controls .work-link:not(:disabled),.work-actions>.work-link:not(:disabled){color:var(--cyan)}
+/* 工作台的紧凑行原来给操作留 90px,只放得下图标;动作写成字以后按内容宽度,最多 13rem。 */
+@media(min-width:768px){
+  #overview .work-row:has(>.work-actions){grid-template-columns:minmax(0,1fr) minmax(0,max-content)}
+  #overview .work-row>.work-actions{max-width:13rem;justify-items:end}
+  #overview .work-row>.work-actions .work-action-controls{justify-content:flex-end}
+}
+
+/* 工作记录读不到时只有那一块「读取失败」:旁边的活动和来源两栏没有内容可放,收起来,列表占满整行。 */
+#work[data-feed="broken"] .work-context-panels,#work[data-feed="loading"] .work-context-panels{display:none}
+#work[data-feed="broken"] .work-layout,#work[data-feed="loading"] .work-layout{grid-template-columns:minmax(0,1fr)}
+
+/* 桌面上列表、最近活动、信息来源都跟着整页滚,不再各自是一个定高的滚动框:
+   以前滚轮滚的是哪一块,取决于指针正停在哪儿。 */
+@media(min-width:768px){
+  #work .work-layout>.work-section{max-height:none}
+  #work .work-layout .work-list,#work .work-layout .activity-list,#work .work-layout .source-volume{max-height:none;overflow:visible}
+}
+
+/* 「已应用上次的筛选」挨着清除筛选按钮,不被工具栏里 span 一律推到最右的那条规则带走。 */
+#work .work-toolbar>.work-filter-restored{margin-left:0;font-size:var(--fs-meta);color:var(--cyan)}
+
+/* 手机上工作记录的工具栏:搜索框单独一行,三个下拉三等分一行(以前挤成 43px 宽,只看得见一个字),
+   清除筛选、计数和收起按钮排在下面一行。 */
+@media(max-width:767px){
+  #work .work-toolbar{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+  #work .work-toolbar>input{grid-column:1 / -1;width:100%}
+  #work .work-toolbar>select{width:100%;min-width:0;max-width:none}
+  #work .work-toolbar>button,#work .work-toolbar>span{justify-self:start;margin-left:0}
+  #work .work-toolbar>#work-match{justify-self:center;align-self:center}
+  #work .work-toolbar>#work-context-toggle{justify-self:end}
+  #work .work-toolbar>.work-filter-restored{grid-column:1 / -1;order:1}
+}
+
+/* 任务开关每组标题右边的建议计数:小按钮,点了按这个建议筛,按下时描边变青;急修、要修的数是红的。
+   这几枚按钮由 workbench.js 的 renderAutomations 画,样式跟着它放在这里。 */
+#automations .automation-verdict-counts{display:inline-flex;flex-wrap:wrap;gap:4px 6px;justify-content:flex-end}
+#automations .verdict-count{min-height:24px;padding:1px 8px;border-radius:4px;font-size:var(--fs-meta);line-height:1.4;color:var(--dim);background:var(--panel)}
+#automations .verdict-count b{font-weight:600;color:var(--ink);font-variant-numeric:tabular-nums}
+#automations .verdict-count.urgent b{color:var(--bad)}
+#automations .verdict-count[aria-pressed="true"]{border-color:var(--cyan);color:var(--cyan);background:var(--cur)}

@@ -152,7 +152,8 @@ def test_a_disabled_task_never_shows_the_next_run_the_scheduler_still_reports():
 def test_uncategorized_rows_and_unknown_verdict_are_visible_in_all_filter():
     prefix = setup() + "row.cat='未分类';row.info={};"
     html = run("renderAutomations();$('automation-list').innerHTML", prefix)
-    assert "AcmeSync" in html and "未分类" in html and "未评估 1" in html
+    # 分组标题右边的建议计数是可点的小按钮,数字单独包在 <b> 里。
+    assert "AcmeSync" in html and "未分类" in html and 'data-automation-verdict="unassessed"' in html and "未评估 <b>1</b>" in html
     assert run("automationRows(ROWS,'','','unassessed').length", prefix) == 1
 
 
