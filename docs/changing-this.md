@@ -171,6 +171,21 @@
 它就不进「最近操作」、不锁全页。清除筛选按钮的亮灭由 `operations.js` 的 `syncResetFilters()` 统一算,
 新加一个筛选范围时在 `RESET_FILTER_COUNTS` 和 `RESET_FILTER_SEARCH` 里各加一行。
 
+### 四种状态、时间、数字、提示条:用 api.js 里的那一份
+
+读取中、未检查、零、读取失败必须是四种样子。拼 HTML 时用 `loadingBlock(what)`、`emptyBlock(text,{filtered:'<筛选范围>'})`、
+`errorBlock(what, error, retryAttr)` 和 `countCell(state, n, reason)`(state 取 loading / unchecked / broken / ok),
+筛选计数用 `matchCount(n, m, unit)`。`errorBlock` 只把人话放进正文,`work_reader_failed` 这种代号和「说明 (代号)」里的括号只进 title。
+时间用 `fmtTime(ts,{relative, now, soon})`,要悬停全称就用 `timeTag(ts)`;数字用 `fmtNum(n)`,字节用 `kb(n)`。
+`tests/test_display_helpers.py` 钉着这些输出。
+
+`toast(message, tone)` 的 tone 是 ok / info / warn / bad,不写就是 info。成功(读回来确认过的)写 'ok',
+只是受理、还没确认的写 'info' 或 'warn',出错写 'bad'(它会一直留着)。操作面板的收起和 ✕ 在 `ConsoleActions`
+(`collapseDelay`、`dismiss()`、`expand()`),测试见 `tests/test_operations_ui.py` 里用假定时器的那三条。
+
+字号只有 `--fs-title` / `--fs-lead` / `--fs-body` / `--fs-meta` 四档(20/14/13/12),`--fs-chip` 只是 `--fs-meta` 的别名,
+别再写死 px。新表头、新芯片加进 `workbench.css` 末尾那两条共用规则的选择器里,只在自己的规则里写颜色和描边。
+
 ### 死 CSS 和模板拼出来的类名
 
 有一道闸扫「写了规则但页面上没有东西会匹配」的 CSS。由模板拼接产生的类名

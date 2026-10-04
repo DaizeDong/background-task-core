@@ -345,7 +345,7 @@ startDeletionControls();
 startTaskOperations();
 $('launch-close').addEventListener('click',()=>$('launch-dialog').close());
 $('launch-copy').addEventListener('click',async()=>{
-  try{await navigator.clipboard.writeText($('launch-copy').dataset.command);toast('启动命令已复制');}
+  try{await navigator.clipboard.writeText($('launch-copy').dataset.command);toast('启动命令已复制','ok');}
   catch(error){toast('无法访问剪贴板，请在启动说明中手动复制命令','bad');}
 });
 startWorkPlatform();

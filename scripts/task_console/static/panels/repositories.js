@@ -7,7 +7,7 @@ async function repoAct(what){
     // 剪贴板在非安全上下文里不存在。失败时把路径显示出来让人自己选 ——
     // 一个静默失败的复制按钮会让人以为已经复制了,然后粘出上一次的东西。
     if(navigator.clipboard && window.isSecureContext){
-      navigator.clipboard.writeText(r.path).then(()=>toast("路径已复制"),
+      navigator.clipboard.writeText(r.path).then(()=>toast("路径已复制","ok"),
         ()=>{ if(out) out.textContent = r.path; toast("复制不了,路径显示在下面","bad"); });
     } else { if(out) out.textContent = r.path; toast("复制不了,路径显示在下面","bad"); }
     return;
@@ -24,7 +24,7 @@ async function repoAct(what){
       const res = await api("/api/maint/act",{method:"POST",
         body:JSON.stringify({action:"repo.reveal", name:r.name})});
       if(res.error){ toast(res.error,"bad"); return; }
-      toast("已在资源管理器打开");
+      toast("已在资源管理器打开","ok");
     }catch(e){ toast(e.message,"bad"); }
     return;
   }
@@ -545,7 +545,7 @@ async function repoPublishPlans(names){
       // 结果写在仓库详情的结果栏里(#rpout),一直留着;不再弹浏览器自带的提示框,那个关掉就没了。
       if(out) out.scrollIntoView?.({block:"nearest"});
     }else{
-      toast(done.length === 1 ? done[0] + " 已推送" : done.length + " 个仓库已推送");
+      toast(done.length === 1 ? done[0] + " 已推送" : done.length + " 个仓库已推送","ok");
     }
   }catch(e){
     const out=$("rpout"); if(out) out.textContent=e.message;

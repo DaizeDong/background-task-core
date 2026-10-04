@@ -182,7 +182,7 @@ function cvLocation(g){
       <button class="icon-only mini" data-cvcopy="${esc(g.storagePath || g.cwd)}" title="复制存放路径"><svg class="ic" aria-hidden="true"><use href="#i-copy"/></svg><span class="control-label">复制存放路径</span></button></div></details>`;
 }
 async function cvCopyPath(path){
-  try{await navigator.clipboard.writeText(path);toast('路径已复制');}
+  try{await navigator.clipboard.writeText(path);toast('路径已复制','ok');}
   catch(error){toast('无法复制，请手动选择：'+path,'bad');}
 }
 function cvClick(event){

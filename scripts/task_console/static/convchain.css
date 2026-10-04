@@ -121,7 +121,8 @@
 .ch-kv dt{color:var(--faint);font-weight:400}
 .ch-kv dd{margin:0;font-family:var(--mono);overflow-wrap:anywhere}
 .ch-flags{display:flex;gap:5px;flex-wrap:wrap;margin:4px 0}
-.ch-flags span{border:1px solid var(--line);border-radius:2px;padding:0 4px;color:var(--dim);font-size:var(--fs-chip)}
+/* 盒子尺寸(圆角、高度、内距、字号)用 workbench.css 里统一的芯片规则,这里只管颜色和描边。 */
+.ch-flags span{border:1px solid var(--line);color:var(--dim)}
 .ch-pre{white-space:pre-wrap;overflow-wrap:anywhere;font-family:var(--mono);font-size:var(--fs-meta);
   color:var(--ink);background:var(--panel2);border:1px solid var(--line2);padding:6px 8px;margin:2px 0 6px;
   max-height:60vh;overflow:auto}

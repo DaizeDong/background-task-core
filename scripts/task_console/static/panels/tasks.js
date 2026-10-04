@@ -683,7 +683,7 @@ function renderBulk(){
   b.innerHTML=`<span>已选 <b>${sel.size}</b> 个任务</span>
     <button class="mini" data-bulk="run" title="运行选中任务"><svg class="ic" aria-hidden="true"><use href="#i-play"/></svg>运行</button>
     <button class="mini" data-bulk="enable" title="启用选中任务"><svg class="ic" aria-hidden="true"><use href="#i-on"/></svg>启用</button>
-    <button class="mini danger" data-bulk="disable" title="停用选中任务"><svg class="ic" aria-hidden="true"><use href="#i-pause"/></svg>停用</button>
+    <button class="mini danger" data-bulk="disable" title="停用选中任务"><svg class="ic" aria-hidden="true"><use href="#i-toggle-off"/></svg>停用</button>
     <button class="mini" data-bulk="clear" title="取消选择"><svg class="ic" aria-hidden="true"><use href="#i-close"/></svg>取消选择</button>`;
 }
 

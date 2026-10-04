@@ -152,7 +152,7 @@ function startWorkPlatform(){
   });
   $('work-detail-copy').addEventListener('click',async()=>{
     const item=WORK_DETAIL_ITEM;if(!item) return;
-    try{await navigator.clipboard.writeText([item.title,item.summary || '',`记录 ID：${item.id}`,`记录状态：${workLabel(item)}`,item.execution?'这里尚无独立验证结果。':''].filter(Boolean).join('\n\n'));toast('已复制标题、摘要和记录信息');}
+    try{await navigator.clipboard.writeText([item.title,item.summary || '',`记录 ID：${item.id}`,`记录状态：${workLabel(item)}`,item.execution?'这里尚无独立验证结果。':''].filter(Boolean).join('\n\n'));toast('已复制标题、摘要和记录信息','ok');}
     catch(error){toast('复制失败，请选中详情文字手动复制','bad');}
   });
   document.addEventListener('click',event=>{

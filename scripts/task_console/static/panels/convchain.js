@@ -630,7 +630,7 @@ function chRevealSide(){
   }
 }
 async function chCopy(text){
-  try{ await navigator.clipboard.writeText(text); toast("已复制"); }
+  try{ await navigator.clipboard.writeText(text); toast("已复制","ok"); }
   catch(e){ toast("无法访问剪贴板,请手动复制:"+text, "bad"); }
 }
 

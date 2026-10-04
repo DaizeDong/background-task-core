@@ -106,5 +106,5 @@ function exportPage(){
   const url=URL.createObjectURL(blob), link=document.createElement('a');
   link.href=url;link.download=`console-${CURVIEW}-${new Date().toISOString().replace(/[:.]/g,'-')}.json`;
   link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
-  toast('已导出当前已加载数据');
+  toast('已导出当前已加载数据','ok');
 }

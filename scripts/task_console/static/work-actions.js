@@ -58,7 +58,7 @@ async function sendWorkAction(itemId,actionId,verb){
   const forget=()=>{WORK_ACTION_INTENTS.delete(key);try{sessionStorage.removeItem('tc.action.'+key);}catch(error){}};
   try{
     const reply=await api('/api/work/'+verb,{method:'POST',body:JSON.stringify(intent)});
-    if(reply.ok){forget();toast(verb==='stop'?'已请求停止':actionId==='complete' && reply.status==='done'?'待办已标记完成':reply.status==='queued'?'已加入队列':reply.status==='task_requested'?'已提交任务，结果待确认':'已找到这次处理记录');}
+    if(reply.ok){forget();toast(verb==='stop'?'已请求停止':actionId==='complete' && reply.status==='done'?'待办已标记完成':reply.status==='queued'?'已加入队列':reply.status==='task_requested'?'已提交任务，结果待确认':'已找到这次处理记录',actionId==='complete' && reply.status==='done'?'ok':'info');}
     else{if(reply.uncertain===false) forget();toast(reply.message || '未能提交，请刷新后重试','bad');}
     if(reply.wakeup===false && reply.status==='queued') toast('已排队，等待执行服务接手','bad');
   }catch(error){

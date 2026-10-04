@@ -32,8 +32,41 @@ function statusBadge(label,tone='idle',symbol,extraClass=''){
   return `<span class="status-chip ${tone} ${esc(extraClass)}"><span class="status-symbol" aria-hidden="true">${esc(symbol || symbols[tone])}</span><span>${esc(label)}</span></span>`;
 }
 
-function toast(m,k){const d=document.createElement("div");d.className=k||"";d.textContent=m;
-  $("toast").appendChild(d);setTimeout(()=>d.remove(),k==="bad"?9000:4200);}
+// 右下角的提示条。四种语气:ok 成功、info 说明、warn 要留意、bad 出错。
+// 成功 3 秒自己走;出错一直留着,直到人点掉:以前出错 9 秒就消失,而它恰恰是最需要读完的那条,
+// 长原因常常还没读完就没了。鼠标停在上面、或者焦点在里面时暂停计时,移开再重新计。
+// 点提示本身或它的 ✕ 都能关;正选着里面的文字时点一下不关,好让人把错误原因复制走。
+// 同时最多三条,新来的先挤掉最旧的非出错提示。它不进 Esc 那一套:Esc 只管对话框和菜单。
+const TOAST_LIMIT=3, TOAST_LIFE={ok:3000,info:5000,warn:8000,bad:0};
+function toast(message,tone){
+  const box=$("toast");
+  tone=Object.hasOwn(TOAST_LIFE,tone)?tone:"info";
+  const item=document.createElement("div");
+  // 测试用的假 DOM 没有事件和子节点,这时什么都不做,也不留下定时器。
+  if(!box?.appendChild || typeof item?.addEventListener!=="function") return null;
+  item.className="toast-item "+tone;
+  item.innerHTML=`<span class="toast-text"></span><button type="button" class="icon-only toast-x" title="关闭提示" aria-label="关闭提示"><svg class="ic" aria-hidden="true"><use href="#i-close"/></svg></button>`;
+  item.querySelector(".toast-text").textContent=String(message ?? "");
+  let timer=null;
+  const close=()=>{clearTimeout(timer);item.remove();};
+  const arm=()=>{clearTimeout(timer);if(TOAST_LIFE[tone]) timer=setTimeout(close,TOAST_LIFE[tone]);};
+  item.addEventListener("click",event=>{
+    if(!event.target.closest?.(".toast-x") && String(window.getSelection?.() || "")) return;
+    close();
+  });
+  item.addEventListener("mouseenter",()=>clearTimeout(timer));
+  item.addEventListener("mouseleave",()=>{if(!item.contains(document.activeElement)) arm();});
+  item.addEventListener("focusin",()=>clearTimeout(timer));
+  item.addEventListener("focusout",event=>{if(!item.contains(event.relatedTarget) && !item.matches(":hover")) arm();});
+  box.appendChild(item);
+  const items=[...box.children];
+  while(items.length>TOAST_LIMIT){
+    const drop=items.find(node=>!node.classList.contains("bad")) || items[0];
+    items.splice(items.indexOf(drop),1);drop.remove();
+  }
+  arm();
+  return item;
+}
 
 let API_SEQUENCE=0;
 const API_READS=new Map();
@@ -112,8 +145,97 @@ function api(p,o){
   return request;
 }
 
+// 字节数。以前到 M 就停了,八个多 G 的目录显示成「8482.0M」,要人自己除一千。
 const kb = n => n==null ? "-" : n<1024 ? n+"B" : n<1048576 ? (n/1024).toFixed(0)+"K"
-                                                          : (n/1048576).toFixed(1)+"M";
+  : n<1073741824 ? (n/1048576).toFixed(1)+"M" : (n/1073741824).toFixed(1)+"G";
+
+// ================= 时间与数字的统一写法 =============================================
+// 原来七个格式化各写各的:「2.3小时后」「27分后」「426.4h 前」「2026/10/4 02:39:00」,
+// 同一个时刻在两页上要人自己换算。现在相对时间只有一种说法,悬停总能看到完整的年月日时分秒。
+// 数字可以是毫秒、秒(小于 1e11 的数按秒算,后端的 time.time() 就是秒)、Date 或 ISO 字符串。
+function timeValue(ts){
+  if(ts==null || ts==="") return NaN;
+  if(ts instanceof Date) return ts.getTime();
+  if(typeof ts==="number") return Math.abs(ts)<1e11 ? ts*1000 : ts;
+  return /^\d+(\.\d+)?$/.test(String(ts)) ? timeValue(Number(ts)) : Date.parse(ts);
+}
+const pad2=n=>String(n).padStart(2,"0");
+// 悬停用的完整时刻:YYYY-MM-DD HH:mm:ss,本机时区。
+function fullTime(ts){
+  const t=timeValue(ts);
+  if(!Number.isFinite(t)) return "";
+  const d=new Date(t);
+  return `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())} ${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
+}
+// 相对时间:一分钟内「刚刚」(或调用方给的 soon,比如「即将运行」),一小时内「N 分钟前/后」,
+// 48 小时内「N 小时前/后」(整数,不再有 2.3 小时),再往前一个月内「N 天前」,
+// 其余写日期「MM-DD HH:mm」,不是今年再带上年份。relative:false 时直接写日期。
+function fmtTime(ts,{relative=true,now=Date.now(),soon=""}={}){
+  const t=timeValue(ts);
+  if(!Number.isFinite(t)) return "时间未知";
+  const d=new Date(t), diff=t-timeValue(now), ago=diff<=0, abs=Math.abs(diff);
+  const date=()=>(d.getFullYear()===new Date(timeValue(now)).getFullYear()?"":d.getFullYear()+"-")+
+    `${pad2(d.getMonth()+1)}-${pad2(d.getDate())} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+  if(!relative) return date();
+  if(abs<60000) return !ago && soon ? soon : "刚刚";
+  const minutes=Math.round(abs/60000);
+  if(minutes<60) return `${minutes} 分钟${ago?"前":"后"}`;
+  const hours=Math.round(abs/3600000);
+  if(hours<48) return `${hours} 小时${ago?"前":"后"}`;
+  const days=Math.floor(abs/86400000);
+  return ago && days<30 ? `${days} 天前` : date();
+}
+// 带悬停全称的时间标签,给要插进 HTML 的地方用。
+function timeTag(ts,options){
+  const full=fullTime(ts);
+  return full?`<time datetime="${esc(new Date(timeValue(ts)).toISOString())}" title="${esc(full)}">${esc(fmtTime(ts,options))}</time>`:`<span class="u">时间未知</span>`;
+}
+// 数字按中文习惯每三位一个逗号。没有值时是「—」,不是 0:没有读到不等于零。
+const NUM_FORMAT=new Intl.NumberFormat("zh-CN");
+const fmtNum=n=>n==null || n==="" || !Number.isFinite(Number(n)) ? "—" : NUM_FORMAT.format(Number(n));
+
+// ================= 读取中、未检查、零、读取失败:四种状态四种样子 ==================
+// 这页的规矩是这四种状态不许长得一样:还在读、根本没查、查了是零、读坏了。
+// 以前各页各写各的:有的空白一块,有的写「-」,读取中用了警告色,读取失败写进灰色小字里像个副标题,
+// 还把 work_reader_failed 这种机器代号直接摆给人看。下面几个函数每种只有一种措辞和一种样式,
+// 各页在自己的改动里换用。
+function loadingBlock(what=""){
+  return `<p class="state-block state-loading" role="status"><span class="state-spinner" aria-hidden="true"></span>正在读取${esc(what)}…</p>`;
+}
+// filtered 给筛选范围名(和清除筛选按钮的 data-reset-filters 同一个值):这是「筛掉了」,
+// 不是「真的没有」,所以带一个清除筛选的链接,措辞和底色也和真正的零分开。
+function emptyBlock(text,{filtered=""}={}){
+  if(!filtered) return `<p class="state-block state-empty">${esc(text)}</p>`;
+  return `<p class="state-block state-empty state-filtered">${esc(text)}<button type="button" class="link-button" data-reset-filters="${esc(filtered)}">清除筛选</button></p>`;
+}
+// 读取失败的原因分两层:给人看的话,和给排查用的原始代号。只有代号(work_reader_failed、
+// HTTP 500)或者「说明 (代号)」里括号那段只进悬停,不摆在正文里。
+function failureReason(error){
+  const raw=String(error?.message ?? error ?? "").trim();
+  const human=raw.replace(/\s*\([A-Za-z0-9_.:\- ]+\)$/,"");
+  const machine=!human || /^[A-Za-z0-9_.:\-]+$/.test(human) || /^HTTP \d+$/.test(human);
+  return {raw,text:machine?"":human};
+}
+// retryAttr 是调用方写死的属性串(比如 data-reload="work"),按钮由页面自己的监听接走。
+function errorBlock(what,error,retryAttr=""){
+  const {raw,text}=failureReason(error);
+  return `<div class="state-block state-error" role="alert"${raw?` title="${esc("原始错误："+raw)}"`:""}><span><b>${esc(what)}读取失败</b>${text?"："+esc(text):""}</span>${retryAttr?`<button type="button" ${retryAttr}>重试</button>`:""}</div>`;
+}
+// 计数格子的五种样子:读取中「…」、未检查是虚线框里的「—」、读坏了是红色「!」、
+// 零是淡色的「0」、其余是按三位分组的数字。state 用 loading / unchecked / broken / ok。
+function countCell(state,n,reason=""){
+  if(state==="loading") return `<span class="count-cell count-loading" title="正在读取" aria-label="正在读取">…</span>`;
+  if(state==="unchecked") return `<span class="count-cell count-unchecked" title="未检查" aria-label="未检查">—</span>`;
+  if(state==="broken"){
+    const why=failureReason(reason);
+    return `<span class="count-cell count-broken" title="${esc("读取失败："+(why.text || why.raw || "原因未知"))}" aria-label="读取失败">!</span>`;
+  }
+  if(n==null || !Number.isFinite(Number(n))) return `<span class="count-cell count-unchecked" title="未检查" aria-label="未检查">—</span>`;
+  if(Number(n)===0) return `<span class="count-cell count-zero">0</span>`;
+  return `<span class="count-cell">${fmtNum(n)}</span>`;
+}
+// 筛选后的计数只有一种说法:「显示 N / 共 M 项」。
+const matchCount=(n,m,unit="项")=>`显示 ${fmtNum(n)} / 共 ${fmtNum(m)} ${unit}`;
 
 function mtUnset(el,reason){ el.innerHTML=`<div class="mt-note">${esc(reason)}</div>`; }
 
@@ -153,7 +275,7 @@ function setDisabled(button,reason,describedBy){
 // hint 是可用时的完整说明(比如带上具体地址),省略时就用动作名。
 function ibtn(sym, label, extra, cls, reason, hint){
   const title=reason?disabledTitle(label,reason):(hint || label);
-  return `<button class="mini ib icon-only ${cls||""}" ${extra||""}${reason?" disabled":""} title="${esc(title)}"
+  return `<button class="mini icon-only ${cls||""}" ${extra||""}${reason?" disabled":""} title="${esc(title)}"
     aria-label="${esc(label)}"><svg class="ic" aria-hidden="true"><use href="#${sym}"/></svg></button>`;
 }
 
@@ -175,7 +297,7 @@ async function maintAct(action,name){
     // 现在只对认识的动作说具体做了什么,不认识的就说动作名本身。
     const DONE = {archive: "归档", restore: "还原", disable: "禁用", enable: "启用"};
     const what = DONE[label];
-    toast(r.message || (what ? `${name} 已${what}` : `${name}: ${action} 完成`));
+    toast(r.message || (what ? `${name} 已${what}` : `${name}: ${action} 完成`),'ok');
   }catch(e){ toast(`${name}: ${e.message}`,"bad"); }
   finally{
     // Re-read the affected source even after failure, which may have been partial.

@@ -191,3 +191,55 @@ def test_functional_sections_have_no_closed_disclosure_by_default():
     assert '<details class="ch-actions-panel" open><summary>导出与新建会话</summary><div class="ch-act" id="chact"></div></details>' in html
     assert not re.findall(r'<details(?![^>]*\bopen\b)[^>]*>', html)
     assert 'id="theme-select"' in html and 'id="page-export"' in html
+
+
+# 假定时器:收起要等 5 秒,测试不真的等。fire(ms) 只触发那一档延迟里还没被取消的回调。
+FAKE_TIMERS = """
+const timers=[];
+setTimeout=(fn,ms)=>{timers.push({fn,ms,dead:false});return timers.length;};
+clearTimeout=id=>{if(id && timers[id-1]) timers[id-1].dead=true;};
+const fire=ms=>timers.filter(t=>t.ms===ms && !t.dead).forEach(t=>{t.dead=true;t.fn();});
+const classes=new Set();
+$('operation-panel').classList={toggle:(name,on)=>{if(on) classes.add(name); else classes.delete(name);}};
+$('operation-details').open=true;
+"""
+
+
+def test_operation_panel_collapses_after_success_but_not_after_failure():
+    result = run("""(()=>{
+      const ok=ConsoleActions.begin('/api/convo/rename',{body:'{}'});
+      ConsoleActions.finish(ok,{ok:true});
+      const before=classes.has('collapsed');fire(5000);
+      const after={collapsed:classes.has('collapsed'),open:$('operation-details').open,summary:$('operation-summary').textContent,hidden:$('operation-panel').hidden};
+      const bad=ConsoleActions.begin('/api/convo/rename',{body:'{}'});
+      const reopened=classes.has('collapsed');
+      ConsoleActions.finish(bad,{ok:false,error:'synthetic failure'});fire(5000);
+      return {before,after,reopened,badCollapsed:classes.has('collapsed'),badOpen:$('operation-details').open};
+    })()""", FAKE_TIMERS)
+    assert result["before"] is False
+    assert result["after"] == {"collapsed": True, "open": False, "summary": "最近操作 1 · 已保存会话名称", "hidden": False}
+    assert result["reopened"] is False
+    assert result["badCollapsed"] is False and result["badOpen"] is True
+
+
+def test_operation_panel_stays_open_while_anything_is_pending():
+    result = run("""(()=>{
+      const slow=ConsoleActions.begin('/api/act',{body:JSON.stringify({verb:'run',name:'AcmeSync'})});
+      const quick=ConsoleActions.begin('/api/convo/rename',{body:'{}'});
+      ConsoleActions.finish(quick,{ok:true});fire(5000);
+      ConsoleActions.dismiss();
+      return {collapsed:classes.has('collapsed'),hidden:$('operation-panel').hidden,close:$('operation-close').disabled};
+    })()""", FAKE_TIMERS)
+    assert result == {"collapsed": False, "hidden": False, "close": True}
+
+
+def test_operation_panel_close_hides_until_the_next_operation():
+    result = run("""(()=>{
+      const first=ConsoleActions.begin('/api/convo/rename',{body:'{}'});
+      ConsoleActions.finish(first,{ok:true});
+      ConsoleActions.dismiss();const dismissed=$('operation-panel').hidden;
+      ConsoleActions.render();const stillHidden=$('operation-panel').hidden;
+      ConsoleActions.begin('/api/convo/rename',{body:'{}'});
+      return [dismissed,stillHidden,$('operation-panel').hidden];
+    })()""", FAKE_TIMERS)
+    assert result == [True, True, False]

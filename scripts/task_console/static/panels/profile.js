@@ -197,7 +197,7 @@ async function cxDelete(){
       cxState(`删除未全部完成，在 ${r.stoppedAt} 处停止：${r.error}。已删除 ${r.deleted} 个文件，合计 ${kb(r.freed)}。`,"bad");
       toast("删除未全部完成，详情见清理卡片","bad");
     } else {
-      toast(`已删除 ${r.deleted} 个文件，合计 ${kb(r.freed)}`);
+      toast(`已删除 ${r.deleted} 个文件，合计 ${kb(r.freed)}`,'ok');
     }
     await loadCxList();
     loadCodex(); loadSys();

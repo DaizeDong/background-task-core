@@ -1,6 +1,9 @@
 // Presentation hints never replace backend authorization or confirmation.
 const ConsoleActions={
   operations:[], timer:null, disabled:new WeakSet(),
+  // 操作面板的两种「让开」:collapsed 是全部结束 5 秒后自动收成一行,dismissed 是人点了 ✕。
+  // 两者都在下一次操作开始时作废。
+  collapsed:false, dismissed:false, collapseTimer:null, collapseDelay:5000, shownCollapsed:false,
   get readOnly(){return document.querySelector('meta[name="console-read-only"]')?.content==='true';},
   reason:'只读预览，请用正式控制台',
   // 只在本页改草稿的几样也在这里:调用顺序的上下移、放弃修改,清理列表的全选和清空。
@@ -12,26 +15,57 @@ const ConsoleActions={
   begin(path,options){
     let body={};try{body=JSON.parse(options.body || '{}');}catch(error){}
     const operation={path,body:{verb:body.verb,action:body.action,action_id:body.action_id},label:operationLabel(path,body),started:Date.now(),pending:true};
+    clearTimeout(this.collapseTimer);this.collapseTimer=null;this.collapsed=false;this.dismissed=false;
     this.operations.unshift(operation);this.render();return operation;
   },
   finish(operation,reply,error){
     Object.assign(operation,operationOutcome(operation.path,operation.body,reply,error),{pending:false,finished:Date.now()});
     this.operations=this.operations.filter((row,index)=>row.pending || index<8);this.render();
+    // 全部结束 5 秒后收成一行「最近操作 N · 最后结果」,点一下再展开。还有操作在跑、
+    // 或者最后一个结果是失败时不收:失败要一直摆在眼前,等人读完。
+    clearTimeout(this.collapseTimer);this.collapseTimer=null;
+    if(!this.operations.some(row=>row.pending) && this.lastFinished()?.tone!=='bad')
+      this.collapseTimer=setTimeout(()=>{this.collapseTimer=null;this.collapsed=true;this.render();},this.collapseDelay);
+  },
+  lastFinished(){
+    return this.operations.filter(row=>!row.pending).sort((a,b)=>(b.finished || 0)-(a.finished || 0))[0];
+  },
+  // ✕:藏到下一次操作开始。还有操作在跑时不能关,那一行正是灰着的按钮在等的东西。
+  dismiss(){
+    if(this.operations.some(row=>row.pending)) return;
+    clearTimeout(this.collapseTimer);this.collapseTimer=null;this.dismissed=true;this.render();
+  },
+  expand(){
+    if(!this.collapsed) return;
+    this.collapsed=false;this.render();
   },
   render(){
     clearTimeout(this.timer);this.timer=null;
     const rows=this.operations, panel=$('operation-panel');
     if(!panel) return;
-    panel.hidden=!rows.length;
+    panel.hidden=!rows.length || this.dismissed;
     const line=row=>`${row.label}：${row.pending?'处理中，已等待 '+Math.floor((Date.now()-row.started)/1000)+' 秒':row.message}`;
     const active=rows.filter(row=>row.pending), current=active[0] || rows[0];
     // Sticky only while something is still running. A finished record stays in the page flow at
     // the top; pinned, it covered whatever the owner was looking at (the conversation chain card
     // right after a fork, by about 140px at phone width) for the rest of the page session.
     panel.classList?.toggle('settled',!active.length);
+    const collapsed=this.collapsed && !active.length, last=this.lastFinished();
+    panel.classList?.toggle('collapsed',collapsed);
     $('operation-current').textContent=current?line(current):'';
     $('operation-current').className=current?.pending?'warn':current?.tone || '';
     $('operation-history').innerHTML=rows.map(row=>`<li><span class="${row.pending?'warn':row.tone}">${esc(line(row))}</span></li>`).join('');
+    // 收起时那一行就是 <details> 的 summary:数量加最后一个结果,点它就展开。
+    const summary=$('operation-summary'), details=$('operation-details');
+    if(summary){
+      summary.textContent=collapsed && last?`最近操作 ${rows.length} · ${last.message}`:'最近操作';
+      summary.className=collapsed && last?last.tone || '':'';
+    }
+    // 只在收起状态变了的那一下改 open:人自己合上历史列表时,每秒一次的重绘不能再把它打开。
+    if(details && this.shownCollapsed!==collapsed) details.open=!collapsed;
+    this.shownCollapsed=collapsed;
+    const close=$('operation-close');
+    if(close) setDisabled(close,active.length?'操作进行中，完成后才能关闭':'');
     this.sync();syncStickyOffsets();if(active.length) this.timer=setTimeout(()=>this.render(),1000);
   },
   sync(){
@@ -55,6 +89,10 @@ const ConsoleActions={
   },
   start(){
     syncStickyOffsets();startDialogs();
+    $('operation-close')?.addEventListener('click',()=>this.dismiss());
+    // 收起后人点开 summary:浏览器先把 details 打开,这里把面板退回展开态。
+    // render() 自己改 open 时也会触发 toggle,那时状态已经一致,expand() 什么都不做。
+    $('operation-details')?.addEventListener('toggle',()=>{if($('operation-details').open) this.expand();});
     if(typeof ResizeObserver==='function'){
       const observer=new ResizeObserver(()=>syncStickyOffsets());
       ['bar','operation-panel'].forEach(id=>{if($(id)) observer.observe($(id));});
@@ -146,7 +184,8 @@ function taskActionButtons(row,{deletable=!taskIsPipeline(row.name)}={}){
   const known=['Ready','Running','Disabled','Queued'].includes(row.state);
   const reason=ConsoleActions.readOnly?ConsoleActions.reason:busy?'正在执行操作':!known?'任务状态未确认':'';
   const hints={enable:'恢复按计划启动',disable:'不再按计划启动；正在运行的任务继续执行',run:'立即运行一次，保留原计划',stop:'请求停止当前运行，保留后续计划'};
-  const symbols={enable:'i-on',disable:'i-pause',run:'i-play',stop:'i-stop'};
+  // 停用是把定时关掉,不是暂停这一次运行:用开关的「关」,不用暂停键。
+  const symbols={enable:'i-on',disable:'i-toggle-off',run:'i-play',stop:'i-stop'};
   // 灰着的按钮也先说自己是哪个动作:一行里四个图标,只写原因的话悬停上去分不出是谁。
   const title=(label,why,hint)=>esc(why?disabledTitle(label,why):hint);
   const control=(verb,label,extraReason='')=>`<button class="mini task-control icon-only" data-act="${verb}" data-name="${esc(row.name)}" ${reason || extraReason?'disabled':''} title="${title(label,reason || extraReason,hints[verb])}"><svg class="ic" aria-hidden="true"><use href="#${symbols[verb]}"/></svg><span class="control-label">${label}</span></button>`;
@@ -232,7 +271,7 @@ function startDialogs(){
     if(dismiss){const target=$(dismiss.dataset.dismiss);if(target && !target.disabled) target.click();return;}
     const copy=event.target.closest?.('[data-copy-text]');
     if(copy){
-      navigator.clipboard.writeText(copy.dataset.copyText).then(()=>toast('已复制'),()=>toast('无法访问剪贴板，请手动选中复制','bad'));
+      navigator.clipboard.writeText(copy.dataset.copyText).then(()=>toast('已复制','ok'),()=>toast('无法访问剪贴板，请手动选中复制','bad'));
     }
   });
 }

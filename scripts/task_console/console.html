@@ -28,8 +28,8 @@
 <symbol id="i-copy" viewBox="0 0 24 24"><path d="M9 9h10a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H9a1 1 0 0 1-1-1V10a1 1 0 0 1 1-1z"/><path d="M16 6V4a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h2"/></symbol>
 <symbol id="i-play" viewBox="0 0 24 24"><path d="M7 4v16l13-8z"/></symbol>
 <symbol id="i-stop" viewBox="0 0 24 24"><path d="M6 6h12v12H6z"/></symbol>
-<symbol id="i-pause" viewBox="0 0 24 24"><path d="M8 5h3v14H8zM13 5h3v14h-3z"/></symbol>
-<symbol id="i-repair" viewBox="0 0 24 24"><path d="M4.5 13.5 13.5 4.5a3.5 3.5 0 0 1 5 0l1 1a3.5 3.5 0 0 1 0 5l-9 9a3.5 3.5 0 0 1-5 0l-1-1a3.5 3.5 0 0 1 0-5z"/><path d="M10.5 12h.01M12 10.5h.01M12 13.5h.01M13.5 12h.01"/></symbol>
+<symbol id="i-toggle-off" viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="10" rx="5"/><circle cx="7" cy="12" r="2.5"/></symbol>
+<symbol id="i-repair" viewBox="0 0 24 24"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M12 10.5v6M9 13.5h6"/></symbol>
 <symbol id="i-archive" viewBox="0 0 24 24"><path d="M3 4h18v4H3z"/><path d="M5 8v11a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8"/><path d="M10 12h4"/></symbol>
 <symbol id="i-restore" viewBox="0 0 24 24"><path d="m9 13-4-4 4-4"/><path d="M5 9h11a4 4 0 0 1 0 8h-1"/></symbol>
 <symbol id="i-off" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="m9 9 6 6"/></symbol>
@@ -41,6 +41,8 @@
 <symbol id="i-edit" viewBox="0 0 24 24"><path d="m16 3 5 5-12 12-6 1 1-6zM13 6l5 5"/></symbol>
 <symbol id="i-move" viewBox="0 0 24 24"><path d="M12 2v20M2 12h20m-14-6 4-4 4 4M8 18l4 4 4-4M6 8l-4 4 4 4m12-8 4 4-4 4"/></symbol>
 <symbol id="i-close" viewBox="0 0 24 24"><path d="m6 6 12 12M6 18 18 6"/></symbol>
+<symbol id="i-minus" viewBox="0 0 24 24"><path d="M5 12h14"/></symbol>
+<symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
 <symbol id="i-more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></symbol>
 <symbol id="i-left" viewBox="0 0 24 24"><path d="m14 5-7 7 7 7"/></symbol>
 <symbol id="i-right" viewBox="0 0 24 24"><path d="m10 5 7 7-7 7"/></symbol>
@@ -97,9 +99,11 @@
     <select id="theme-select" aria-label="外观"><option value="system">跟随系统</option><option value="light">浅色</option><option value="dark">深色</option></select>
   </div>
 </div></header>
+<!-- 最近操作:全部结束 5 秒后收成一行(失败的不收),✕ 藏到下一次操作开始。 -->
 <div id="operation-panel" class="operation-panel" hidden>
   <div id="operation-current" role="status" aria-live="polite"></div>
-  <details open><summary>最近操作</summary><ol id="operation-history"></ol></details>
+  <details open id="operation-details"><summary id="operation-summary">最近操作</summary><ol id="operation-history"></ol></details>
+  <button type="button" class="icon-only operation-x" id="operation-close" title="关闭最近操作，下次操作时再出现"><svg class="ic" aria-hidden="true"><use href="#i-close"/></svg><span class="control-label">关闭最近操作</span></button>
 </div>
 <!-- 对话框只有一种外壳:标题在左、✕ 在右上的头部,内容,右对齐的底部按钮(次要在前,主按钮在后)。
      closedby="any" 让点遮罩和 Esc 都能关;忙着或者框里有人打的字时,脚本把它改成 none / closerequest。
@@ -246,7 +250,7 @@
 
 </section>
   <section id="tasks" data-view="tasks" data-label="计划任务" hidden>
-<div class="task-summary"><span><span aria-hidden="true">▤</span>任务 <b id="s-total">-</b></span><span><span aria-hidden="true">×</span>失败 <b id="s-bad">-</b></span><span><span aria-hidden="true">!</span>有警告 <b id="s-iss">-</b></span><span><span aria-hidden="true">Ⅱ</span>停用 <b id="s-off">-</b></span></div>
+<div class="task-summary"><span><span aria-hidden="true">▤</span>任务 <b id="s-total">-</b></span><span><span aria-hidden="true">×</span>失败 <b id="s-bad">-</b></span><span><span aria-hidden="true">!</span>有警告 <b id="s-iss">-</b></span><span><svg class="ic" aria-hidden="true"><use href="#i-toggle-off"/></svg>停用 <b id="s-off">-</b></span></div>
 <div id="tools">
   <input type="search" id="q" placeholder="搜索标题、用途、建议或任务名" aria-label="搜索运行详情" autocomplete="off">
   <select id="cat" aria-label="按分类筛选"><option value="">全部分类</option></select>
@@ -268,8 +272,8 @@
 <div class="module-section"><div class="card" id="tlbox">
     <div class="card-header"><h3 class="card-title">今日时间轴
       <span class="n" id="tlnote"></span></h3><div class="card-actions"><span class="faint" id="tlrange"></span>
-        <button id="tlout" title="缩小">-</button>
-        <button id="tlin" title="放大">+</button>
+        <button class="icon-only" id="tlout" title="缩小"><svg class="ic" aria-hidden="true"><use href="#i-minus"/></svg><span class="control-label">缩小</span></button>
+        <button class="icon-only" id="tlin" title="放大"><svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg><span class="control-label">放大</span></button>
         <button class="icon-only" id="tlreset" title="回到整天"><svg class="ic" aria-hidden="true"><use href="#i-maximize"/></svg><span class="control-label">整天</span></button></div></div>
     <div class="pad">
       <div class="warn-line" id="tlwarn" hidden></div>
@@ -328,8 +332,8 @@
 <div class="card catalog-card"><div class="card-header"><h2 class="card-title">资源目录</h2><div class="card-actions" aria-label="资源管理快捷入口"><button class="icon-only" data-goto="#mt-skills" title="技能管理"><svg class="ic" aria-hidden="true"><use href="#i-tools"/></svg><span class="control-label">技能管理</span></button><button class="icon-only" data-goto="#mt-plugins" title="插件管理"><svg class="ic" aria-hidden="true"><use href="#i-puzzle"/></svg><span class="control-label">插件管理</span></button><button class="icon-only" data-goto="#membox" title="记忆管理"><svg class="ic" aria-hidden="true"><use href="#i-memory"/></svg><span class="control-label">记忆管理</span></button></div></div><div class="pad" id="mt-catalog">正在读取技能和插件</div></div>
   <div class="module-section"><div class="card" id="membox">
     <div class="card-header"><h3 class="card-title">Claude 记忆与索引<span class="n" id="memnote">读取中</span></h3>
-      <div class="card-actions"><button class="mini ib" id="memreload" title="重新读取记忆池"
-        aria-label="重新读取记忆池"><svg class="ic"><use href="#i-refresh"/></svg></button></div></div>
+      <div class="card-actions"><button class="icon-only" id="memreload" title="重新读取记忆池"
+        aria-label="重新读取记忆池"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg></button></div></div>
     <div class="pad" id="mt-memory"></div>
   </div></div>
 <div class="card" id="mtbox">

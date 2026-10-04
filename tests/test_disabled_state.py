@@ -30,7 +30,7 @@ def css_rules():
 def button_classes():
     """页面上真正用在 <button> 上的类名,从 console.html 和全部脚本里收集,不手写名单。"""
     source = PAGE.read_text(encoding="utf-8") + "".join(p.read_text(encoding="utf-8") for p in STATIC.rglob("*.js"))
-    classes = {"mini", "ib", "icon-only"}  # ibtn() 拼出来的那组
+    classes = {"mini", "icon-only"}  # ibtn() 拼出来的那组
     for tag in re.findall(r"<button\b([^>]*)>", source):
         for value in re.findall(r'class="([^"$]*)', tag):
             classes.update(value.split())

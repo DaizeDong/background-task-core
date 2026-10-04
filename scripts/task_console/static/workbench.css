@@ -4,10 +4,10 @@
 #view-tabs[hidden]{display:none}
 #view-tabs a{padding:7px 12px;color:var(--dim);text-decoration:none;white-space:nowrap;border-bottom:2px solid transparent}
 #view-tabs a[aria-current]{color:var(--cyan);border-color:var(--cyan);font-weight:600}
-.mode-badge{color:var(--warn);background:var(--warnb);padding:3px 7px;border:1px solid var(--line);border-radius:4px;font-size:12px}
-.workspace-meta{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;color:var(--dim);font-size:12px;margin:0}
+.mode-badge{color:var(--warn);background:var(--warnb);padding:3px 7px;border:1px solid var(--line);border-radius:4px;font-size:var(--fs-meta)}
+.workspace-meta{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;color:var(--dim);font-size:var(--fs-meta);margin:0}
 .decision-strip{display:flex;gap:var(--space-3);align-items:center;padding:8px var(--section-inset);border:1px solid var(--line);border-radius:var(--card-radius);background:var(--panel)}
-.decision-strip h2{font-size:14px;margin:0;white-space:nowrap}
+.decision-strip h2{font-size:var(--fs-lead);margin:0;white-space:nowrap}
 .decision-strip .work-empty{padding:0}
 .work-columns{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--section-gap);align-items:start}
 .work-main,.work-aside{min-width:0;display:grid;gap:var(--section-gap)}
@@ -16,7 +16,7 @@
 .section-heading h2{display:flex;align-items:center;gap:7px;font-size:var(--fs-lead);font-weight:600;line-height:1.5;margin:0}
 .section-heading h2 .section-symbol{margin-right:0}
 .section-heading h2>span:not(.section-symbol){font-size:var(--fs-meta);font-weight:500;color:var(--dim);padding:1px 6px;border-radius:4px;background:var(--panel2);font-variant-numeric:tabular-nums}
-.section-heading>span{font-size:12px;color:var(--dim)}
+.section-heading>span{font-size:var(--fs-meta);color:var(--dim)}
 .section-heading>.record-link{margin-left:auto}
 .record-link{border:0;background:none;padding:0;min-height:26px;text-align:left;color:var(--cyan);border-radius:2px;white-space:normal}
 .record-link:not(:disabled):hover{text-decoration:underline;background:none;color:var(--cyan)}
@@ -34,14 +34,13 @@
 .work-subject{min-width:0}.work-subject .record-link{font-weight:600;color:var(--ink);line-height:1.5;overflow-wrap:anywhere}
 .work-subject .record-link{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}
 #overview .work-subject p{-webkit-line-clamp:1}
-.work-subject p{margin:3px 0;color:var(--dim);font-size:12px;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}
-.work-subject small,.work-when small{display:block;color:var(--dim);font-size:12px;overflow-wrap:anywhere}
-.work-when{display:flex;gap:2px 10px;flex-wrap:wrap;font-size:12px;color:var(--dim);line-height:1.5}
+.work-subject p{margin:3px 0;color:var(--dim);font-size:var(--fs-meta);display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}
+.work-subject small,.work-when small{display:block;color:var(--dim);font-size:var(--fs-meta);overflow-wrap:anywhere}
+.work-when{display:flex;gap:2px 10px;flex-wrap:wrap;font-size:var(--fs-meta);color:var(--dim);line-height:1.5}
 .work-state{justify-self:start;max-width:100%;margin-top:1px}
-.source-strip{display:flex;gap:10px 24px;flex-wrap:wrap;color:var(--dim);font-size:12px;border-top:1px solid var(--line);padding-top:10px}
+.source-strip{display:flex;gap:10px 24px;flex-wrap:wrap;color:var(--dim);font-size:var(--fs-meta);border-top:1px solid var(--line);padding-top:10px}
 .source-strip a{margin-left:auto}
 .source-strip>span{display:inline-flex;align-items:center;gap:var(--space-2)}
-.source-strip .status-chip{padding:1px 5px;min-height:22px}
 .work-toolbar{display:flex;gap:var(--space-2);align-items:center;flex-wrap:wrap;padding:var(--space-2);border:1px solid var(--line);border-radius:var(--card-radius);background:var(--panel2)}
 .work-toolbar input{flex:1 1 18rem;width:0}.work-toolbar select{max-width:100%}.work-toolbar>span{color:var(--dim);margin-left:auto;overflow-wrap:anywhere}
 .work-list{overflow:auto;scrollbar-gutter:stable}
@@ -58,10 +57,10 @@
 .work-context-panels .activity-list li{grid-template-columns:1fr;gap:2px}
 .activity-list{list-style:none;padding:0;margin:0;max-height:460px;overflow:auto}
 .activity-list li{display:grid;grid-template-columns:148px minmax(0,1fr);gap:12px;padding:8px 12px;border-top:1px solid var(--line2)}
-.activity-list li:first-child{border-top:0}.activity-list time,.activity-list small{color:var(--dim);font-size:12px;display:block}
+.activity-list li:first-child{border-top:0}.activity-list time,.activity-list small{color:var(--dim);font-size:var(--fs-meta);display:block}
 .activity-list .record-link{color:var(--ink)}
 .source-volume{padding:6px 12px;max-height:460px;overflow:auto}.source-volume button{display:flex;gap:12px;justify-content:space-between;width:100%;background:none;border:0;border-radius:0;border-bottom:1px solid var(--line2);padding:7px 0;overflow-wrap:anywhere;text-align:left}
-.source-volume b{font-size:12px;color:var(--dim);font-weight:400}
+.source-volume b{font-size:var(--fs-meta);color:var(--dim);font-weight:400}
 /* 操作列放得下六个 32px 图标(运行控制三个、修复、删除、详情)加五道 4px 间隙,即 212px;
    状态列多出一枚修复进度芯片,最长的「修复方案已出」要 105px 左右。两列都是定宽,表头和每一行才对得齐。 */
 .automation-row,.automation-list-heading{display:grid;grid-template-columns:minmax(0,1fr) minmax(150px,220px) 112px 216px;gap:12px 16px;align-items:center;padding:14px var(--section-inset)}
@@ -69,26 +68,26 @@
 .automation-row:hover{background:var(--cur)}
 .automation-name{min-width:0}
 .task-heading{display:flex;align-items:flex-start;gap:6px 10px;min-width:0}
-.task-heading strong{flex:1;min-width:0;font-size:14px;font-weight:600;color:var(--ink);overflow-wrap:anywhere}
-.task-verdict{flex:none;font-size:12px}
+.task-heading strong{flex:1;min-width:0;font-size:var(--fs-lead);font-weight:600;color:var(--ink);overflow-wrap:anywhere}
+.task-verdict{flex:none;font-size:var(--fs-meta)}
 /* 建议是人写的判断,不是此刻的状态:虚线外框和状态徽章的实底分开,别让「保持停用」和「已停用」长成一样。 */
 .status-chip.task-verdict{border-style:dashed;border-color:currentColor;background:transparent}
 .status-chip.task-verdict-urgent{border-color:var(--bad);font-weight:700;box-shadow:inset 3px 0 var(--bad)}
 /* 快照过期时,工具栏上的快照时间换成警告色,和下面那条说明对上。
    带上 id:只写类名会输给 .work-toolbar > span 的灰色,实测颜色一点没变。 */
 #pipeline-sample.pipeline-stale{color:var(--warn)}
-.task-summary-text{margin:5px 0 0;font-size:13px;line-height:1.5;color:var(--dim);overflow-wrap:anywhere}
-.task-machine-name{display:block;font-family:var(--mono);font-size:11px;font-weight:400;color:var(--dim);margin-top:5px;overflow-wrap:anywhere}
+.task-summary-text{margin:5px 0 0;font-size:var(--fs-body);line-height:1.5;color:var(--dim);overflow-wrap:anywhere}
+.task-machine-name{display:block;font-family:var(--mono);font-size:var(--fs-meta);font-weight:400;color:var(--dim);margin-top:5px;overflow-wrap:anywhere}
 #automation-list{display:grid;gap:var(--section-gap);min-width:0}
 .automation-group-header{align-items:flex-start;justify-content:space-between;gap:8px 20px;flex-wrap:wrap}
 .automation-group-header>div{min-width:0;flex:1 1 240px}
-.automation-group-header p{margin:5px 0 0;color:var(--dim);font-size:13px;overflow-wrap:anywhere}
-.automation-verdict-counts{color:var(--dim);font-size:12px;line-height:1.7;overflow-wrap:anywhere}
-.automation-list-heading{padding-top:7px;padding-bottom:7px;background:var(--panel2);color:var(--dim);font-size:12px}
+.automation-group-header p{margin:5px 0 0;color:var(--dim);font-size:var(--fs-body);overflow-wrap:anywhere}
+.automation-verdict-counts{color:var(--dim);font-size:var(--fs-meta);line-height:1.7;overflow-wrap:anywhere}
+.automation-list-heading{padding-top:7px;padding-bottom:7px;background:var(--panel2);color:var(--dim);font-size:var(--fs-meta)}
 .automation-actions{display:flex;align-items:center;gap:var(--space-1);flex-wrap:wrap;min-width:0}
 .automation-state{min-width:0;display:flex;flex-wrap:wrap;align-items:center;gap:4px}
-.work-section-note{font-size:12px;color:var(--dim);padding:6px 12px;border-bottom:1px solid var(--line2)}
-.automation-schedule small{display:block;font-size:12px;color:var(--dim);overflow-wrap:anywhere;margin-top:5px}.automation-schedule{font-size:13px;line-height:1.5;overflow-wrap:anywhere;min-width:0}
+.work-section-note{font-size:var(--fs-meta);color:var(--dim);padding:6px 12px;border-bottom:1px solid var(--line2)}
+.automation-schedule small{display:block;font-size:var(--fs-meta);color:var(--dim);overflow-wrap:anywhere;margin-top:5px}.automation-schedule{font-size:var(--fs-body);line-height:1.5;overflow-wrap:anywhere;min-width:0}
 .task-controls{display:inline-flex;gap:var(--space-1);flex-wrap:wrap;align-items:center}.task-controls button{display:inline-flex;align-items:center;justify-content:center;gap:5px;min-height:var(--control-height);white-space:nowrap;font-size:var(--fs-meta)}
 /* 触屏下图标按钮是 40px,六个放不进 216px:允许换行,不让它们挤出卡片右边。 */
 .task-controls .ic{margin:0}.automation-row .task-controls{display:flex;flex-wrap:wrap;max-width:100%}
@@ -110,10 +109,10 @@ button.repair-chip .status-chip.task-repair::after{content:"›";margin-left:2px
 button.repair-chip:not(:disabled):hover .status-chip{background:var(--cur);text-decoration:underline}
 button.repair-chip:focus-visible{outline:2px solid var(--cyan);outline-offset:2px}
 td .repair-chip{margin-top:4px}
-.repair-read-state{font-size:12px;color:var(--dim);overflow-wrap:anywhere}
+.repair-read-state{font-size:var(--fs-meta);color:var(--dim);overflow-wrap:anywhere}
 .repair-read-state[data-tone="bad"]{color:var(--bad)}.repair-read-state[data-tone="warn"]{color:var(--warn)}
 /* 删除与修复两个对话框的内容。步骤列表要逐条看得清目标,拦下删除的原因要比别的都醒目。 */
-.task-op-dialog h3{font-size:14px;margin:16px 0 8px}
+.task-op-dialog h3{font-size:var(--fs-lead);margin:16px 0 8px}
 .task-op-dialog label{display:block;margin-top:12px}
 #repair-note,#task-delete-name{width:100%;margin-top:6px;box-sizing:border-box}
 /* 原因和「生成删除预览」排一行:原因框里按 Enter 就是按这个按钮。 */
@@ -128,14 +127,14 @@ td .repair-chip{margin-top:4px}
 .task-op-blocking ul{margin:4px 0 0;padding-left:18px}
 #task-delete-state,#repair-state{overflow-wrap:anywhere;margin-top:10px}
 .task-op-dialog code{overflow-wrap:anywhere;color:var(--ink);background:var(--panel2)}
-button.mini.ib{width:var(--control-height);min-height:var(--control-height);display:inline-flex;align-items:center;justify-content:center}.ic use{pointer-events:none}
-dialog#work-detail{width:min(760px,calc(100vw - 32px))}#work-detail h3{font-size:14px;margin:16px 0 8px}
+.ic use{pointer-events:none}
+dialog#work-detail{width:min(760px,calc(100vw - 32px))}#work-detail h3{font-size:var(--fs-lead);margin:16px 0 8px}
 #membox{scroll-margin-top:120px}
 .source-volume button[aria-pressed="true"]{color:var(--cyan);background:var(--cur)}
 .mt-r.bar,.mem-big .mt-r.bar{grid-template-columns:minmax(0,1fr) auto 48px 40px auto}
 .mt-r.bar .n{grid-column:1}.mt-r.bar .lk{grid-column:2}.mt-r.bar .ub{grid-column:3}.mt-r.bar .c{grid-column:4}.mt-r.bar button{grid-column:5;justify-self:end}
 @media(max-width:767px){.mt-r.bar,.mem-big .mt-r.bar{grid-template-columns:minmax(0,1fr) auto 30px 32px auto}}
-.record-fields{display:grid;grid-template-columns:80px minmax(0,1fr);gap:6px 14px;font-size:13px;margin:0}.record-fields dt{color:var(--dim);font-weight:400}.record-fields dd{margin:0;overflow-wrap:anywhere}.record-summary{white-space:pre-wrap;overflow-wrap:anywhere}.record-events{padding-left:18px;font-size:12px;color:var(--dim)}
+.record-fields{display:grid;grid-template-columns:80px minmax(0,1fr);gap:6px 14px;font-size:var(--fs-body);margin:0}.record-fields dt{color:var(--dim);font-weight:400}.record-fields dd{margin:0;overflow-wrap:anywhere}.record-summary{white-space:pre-wrap;overflow-wrap:anywhere}.record-events{padding-left:18px;font-size:var(--fs-meta);color:var(--dim)}
 @media(max-width:1100px){.work-columns{grid-template-columns:1fr}.automation-row{grid-template-columns:minmax(0,1fr) 216px}.automation-list-heading{display:none}.automation-name{grid-column:1 / -1}.automation-schedule{grid-column:1;grid-row:2 / span 2}.automation-state,.automation-actions{grid-column:2}}
 @media(max-width:767px){#side .nav-item:last-child{margin-top:0}.workspace-meta{gap:3px}.decision-strip{align-items:flex-start;flex-wrap:wrap}.work-row:has(>.work-actions),#overview .work-row:has(>.work-actions){grid-template-columns:minmax(0,1fr)}.work-context-panels{grid-template-columns:1fr}.work-row-heading{align-items:flex-start}.work-meta{gap:2px 8px}.work-toolbar input{width:100%}.work-toolbar select{max-width:100%;min-width:0;flex:1}.automation-row{grid-template-columns:minmax(0,1fr);gap:10px}.automation-name,.automation-schedule,.automation-state,.automation-actions{grid-column:1;grid-row:auto}.activity-list li{grid-template-columns:1fr;gap:2px}.source-strip{gap:7px 12px}.source-strip a{margin-left:0}}
 
@@ -158,24 +157,24 @@ dialog#work-detail{width:min(760px,calc(100vw - 32px))}#work-detail h3{font-size
 #tbl td.nm .task-heading strong,#tbl td.nm .task-summary-text{font-family:var(--ui)}
 #tbl tr.det>td>.det{padding:16px var(--section-inset)}
 .task-info{padding:0 0 16px;margin-bottom:16px;border-bottom:1px solid var(--line)}
-.det .task-info-fields,.det .task-technical-fields{display:grid;grid-template-columns:5.5rem minmax(0,1fr);gap:10px 18px;margin:0;font-size:13px;line-height:1.6}
+.det .task-info-fields,.det .task-technical-fields{display:grid;grid-template-columns:5.5rem minmax(0,1fr);gap:10px 18px;margin:0;font-size:var(--fs-body);line-height:1.6}
 .det .task-info-fields dt,.det .task-technical-fields dt{color:var(--dim);font-weight:500;white-space:nowrap}
 .task-info-fields dd{white-space:pre-wrap}
-.task-info-date{display:block;color:var(--dim);font-size:12px;margin-top:4px}
+.task-info-date{display:block;color:var(--dim);font-size:var(--fs-meta);margin-top:4px}
 .task-technical-fields+.iss{margin-top:14px}
-.task-columns{position:relative;color:var(--dim);font-size:13px}
+.task-columns{position:relative;color:var(--dim);font-size:var(--fs-body)}
 #task-column-options{min-width:150px;padding:10px;background:var(--panel);border:1px solid var(--line);border-radius:var(--card-radius)}
 #task-column-options label{display:flex;gap:8px;align-items:center;padding:5px;white-space:nowrap}
-.pipeline-result{padding:8px var(--section-inset);display:flex;gap:8px;align-items:center;color:var(--dim);font-size:12px;border-top:1px solid var(--line2)}
+.pipeline-result{padding:8px var(--section-inset);display:flex;gap:8px;align-items:center;color:var(--dim);font-size:var(--fs-meta);border-top:1px solid var(--line2)}
 .pipeline-metrics>span{min-width:0;overflow-wrap:anywhere}
 #pipelines .pipeline-table{min-width:620px}
 @media(max-width:767px){.det .task-info-fields,.det .task-technical-fields{grid-template-columns:4.5rem minmax(0,1fr);gap:10px 12px}#tools>select{min-width:0;max-width:100%}.pipeline-toolbar #pipeline-sample{flex-basis:100%}}
 
 /* Share tracks between headings and records; only the subject absorbs extra width. */
 .work-record.work-row,.work-list-heading{display:grid;grid-template-columns:7rem minmax(0,1fr) 11rem 15rem;gap:10px 16px;align-items:start;padding:10px var(--section-inset)}
-.work-list-heading{position:sticky;top:0;z-index:1;background:var(--panel2);border-bottom:1px solid var(--line);font-size:12px;color:var(--dim)}
-.work-record .work-subject .record-link{display:block;overflow:visible;font-size:14px;line-height:1.5}
-.work-record .work-subject p{font-size:13px;line-height:1.6;margin:4px 0;overflow-wrap:anywhere}
+.work-list-heading{position:sticky;top:0;z-index:1;background:var(--panel2);border-bottom:1px solid var(--line);font-size:var(--fs-meta);color:var(--dim)}
+.work-record .work-subject .record-link{display:block;overflow:visible;font-size:var(--fs-lead);line-height:1.5}
+.work-record .work-subject p{font-size:var(--fs-body);line-height:1.6;margin:4px 0;overflow-wrap:anywhere}
 .work-record .work-when{display:grid;gap:4px;padding-top:3px;font-variant-numeric:tabular-nums}
 .work-record .work-meta{margin-top:4px}
 .work-record>.work-actions{margin:0;grid-column:auto}
@@ -202,3 +201,43 @@ dialog#work-detail{width:min(760px,calc(100vw - 32px))}#work-detail h3{font-size
   .work-record>.work-when{display:flex;flex-wrap:wrap;gap:4px 12px}
   .work-record .work-actions button{min-height:40px}
 }
+
+/* ================= 共用的视觉零件 =====================================================
+   四种状态、数据表表头、芯片各只有一种样子。这一段放在最后加载的这份样式里,好压过各页早先各写各的版本。 */
+
+/* 读取中:灰字加一个转圈,从不用警告色(还在读不是出了问题)。 */
+.state-block{margin:0;padding:var(--space-3) var(--section-inset);font-size:var(--fs-body);color:var(--dim);overflow-wrap:anywhere}
+.state-loading{display:flex;align-items:center;gap:var(--space-2)}
+.state-spinner{width:12px;height:12px;flex:none;border:2px solid var(--line);border-top-color:var(--cyan);border-radius:50%;animation:state-spin .9s linear infinite}
+@keyframes state-spin{to{transform:rotate(360deg)}}
+/* 真的没有:一句平静的话。筛掉了:同一句话后面跟「清除筛选」,底色淡一档,一眼分得出「没有」和「藏起来了」。 */
+.state-filtered{display:flex;flex-wrap:wrap;align-items:center;gap:4px var(--space-2);background:var(--panel2)}
+.link-button{min-height:0;padding:0;border:0;background:none;color:var(--cyan);font:inherit;cursor:pointer}
+.link-button:not(:disabled):hover{background:none;color:var(--cyan);text-decoration:underline}
+/* 读取失败:红色左边条、红字标题、一个重试。原始代号只在悬停里。 */
+.state-error{display:flex;flex-wrap:wrap;align-items:center;gap:var(--space-2) var(--space-3);border-left:3px solid var(--bad);background:var(--badb);color:var(--ink)}
+.state-error b{color:var(--bad);font-weight:600}
+.state-error>span{flex:1 1 16em;min-width:0}
+/* 计数格子:读取中「…」、未检查是虚线框里的「—」、读坏了是红色「!」、零是淡色的 0。 */
+.count-cell{display:inline-block;min-width:1.2em;text-align:center;font-variant-numeric:tabular-nums}
+.count-loading{color:var(--dim)}
+.count-unchecked{padding:0 4px;border:1px dashed var(--dim);border-radius:3px;color:var(--dim);font-weight:400;line-height:1.2}
+.count-broken{color:var(--bad);font-weight:700;cursor:help}
+.count-zero{color:var(--dim);font-weight:400}
+
+/* 数据表表头一种样子:12px、字重 500、灰字、浅灰底、粘在滚动容器顶部,数字列右对齐。
+   以前同样做表头的六张表字重从 400 到 700、颜色有灰有黑、有底色没底色各不相同,
+   「按分类汇总」的表头加粗发黑,读起来像一行数据。 */
+#tbl thead th,#scores thead th,#heat thead th,.ops-table thead th,.l-rung th,.l-calls th{
+  position:sticky;top:0;z-index:5;font-size:var(--fs-meta);font-weight:500;color:var(--dim);background:var(--panel2)}
+#scores thead th.num,.l-calls th.r,.ops-table thead th.num{text-align:right}
+
+/* 芯片一种盒子:圆角 4px、高 22px、内距 2px 7px、12px 字。颜色、描边、虚线这些表示含义的部分
+   仍归各自的类;以前同一种「状态或标签」在不同页是 15 到 24px 高、圆角从 0 到 9px 的八种样子。 */
+.status-chip,.chip,.lc-src,.rp-chip,.tlbadge,.st,.ch-flags span,.check-chip{display:inline-flex;align-items:center;justify-content:center;
+  box-sizing:border-box;min-height:22px;padding:2px 7px;border-radius:4px;font-size:var(--fs-meta);line-height:16px;vertical-align:middle}
+/* 流水线的检查项是「检查名 | 结果」拼成的一枚:外框是芯片,结果徽章贴在右半边。 */
+.check-chip{gap:6px;padding:0 0 0 7px;border:1px solid var(--line);margin:6px 8px 0 0}
+.check-chip>.status-chip{min-height:20px;padding-block:1px;border-radius:0 3px 3px 0}
+/* 时间轴每行只有 15px 高,22px 的芯片放进去会被裁掉:形状(圆角、字号、左右内距)照统一的来,高度让给行。 */
+.tl .tlbadge{min-height:0;padding-block:0;line-height:13px}

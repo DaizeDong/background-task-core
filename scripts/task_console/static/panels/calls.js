@@ -130,7 +130,7 @@ async function lcSave(){
     toast(r.shadowed_by_env
       ? "顺序已保存，但环境变量 LLMCALL_CHAIN 优先，当前不会生效"
       : "顺序已保存:" + (r.effective || []).join(" → "),
-      r.shadowed_by_env ? "bad" : "");
+      r.shadowed_by_env ? "bad" : "ok");
     renderChain();
   }catch(e){ toast("保存失败:" + e.message, "bad"); }
   finally{ busy = false; renderChain(); }

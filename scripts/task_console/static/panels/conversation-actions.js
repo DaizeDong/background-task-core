@@ -103,7 +103,7 @@ async function cvDelete(){
     if(typeof CH_FRES!=='undefined' && CH_FRES?.newId===row.id){CH_FRES=null;chRenderAct();}
     if(typeof CV_MENU!=='undefined' && CV_MENU===row.id) CV_MENU=null;
     toast('会话及关联文件已永久删除','ok');
-    for(const warning of result.warnings || []) toast(warning);
+    for(const warning of result.warnings || []) toast(warning,'warn');
     await loadConvos();
   }catch(error){
     const code=error.payload?.code;
@@ -146,7 +146,7 @@ async function cvMutate(kind,row,value){
     if(kind==='move') CV_OPEN[result.projectDir]=true;
     if(visible) dialog.close();
     toast(kind==='rename'?'会话名称已保存':result.unchanged?'会话已在该目录':'会话文件和关联记录已迁移','ok');
-    for(const warning of result.warnings || []) toast(warning);
+    for(const warning of result.warnings || []) toast(warning,'warn');
     await loadConvos();
   }catch(error){
     const message=error.status?error.message:'结果尚未确认。重试会核对同一会话，不会创建副本。'+error.message;
