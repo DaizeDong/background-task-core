@@ -131,7 +131,7 @@ table.g th.num{text-align:right}
 .l-rung{width:100%}.l-rung th,.l-rung td,.l-calls th,.l-calls td{padding:8px 12px}
 .l-rung th,.l-calls th{background:var(--panel2)}.l-rung tbody tr:hover{background:var(--cur)}
 .l-page{flex-wrap:wrap;gap:var(--space-2)}
-.tiles{grid-template-columns:repeat(6,minmax(0,1fr));margin:0}.tile{padding:9px 10px}.tile .v{font-size:var(--fs-title)}
+.tiles{margin:0}.tile{padding:9px 10px}.tile .v{font-size:var(--fs-title)}
 .fr-list{max-height:320px;overflow:auto}
 .diagnostic-layout{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(340px,1fr);gap:var(--section-gap);align-items:start}
 .diagnostic-layout>#todo{margin:0;position:sticky;top:calc(var(--sticky-stack,54px) + 12px)}
@@ -168,7 +168,7 @@ table.g th.num{text-align:right}
   #storage:not([hidden]){grid-template-columns:1fr}
   #storage>.mt-grid{grid-template-columns:1fr 1fr}
 }
-@media(max-width:1100px){.tiles{grid-template-columns:repeat(3,minmax(0,1fr))}.page-actions{gap:5px}.mt-grid{grid-template-columns:1fr 1fr}}
+@media(max-width:1100px){.page-actions{gap:5px}.mt-grid{grid-template-columns:1fr 1fr}}
 @media(max-width:767px){
   #side{position:static;width:100%;max-width:none;min-height:0;display:block}#side .container-fluid{display:block;min-width:0}
   #side .navbar-brand{padding:9px 12px;margin:0;justify-content:start}
@@ -184,7 +184,7 @@ table.g th.num{text-align:right}
   #overview-pipelines{grid-template-columns:1fr}#overview-pipelines>button+button{border-left:0;border-top:1px solid var(--line2)}
   .catalog-tools input{min-width:160px}.catalog-tools select{max-width:100%}.lc-list{grid-template-columns:1fr}
   .rp-split{display:block}.rp-list{max-height:260px;width:100%}.rp-detail{width:100%;padding:10px}
-  .mt-grid{grid-template-columns:1fr}.tiles{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .mt-grid{grid-template-columns:1fr}
   #mt-memory{display:block}#mt-memory>.mem-grps{margin:12px 0}
   #storage>.mt-grid,.llm-summary .lc-list{grid-template-columns:1fr}
   #sckd .r{grid-template-columns:9px minmax(90px,1fr) auto}#sckd .r .p{grid-row:2;grid-column:2/-1}

@@ -261,6 +261,20 @@ def test_failed_never_run_and_unknown_squares_carry_a_symbol():
         assert re.search(r"\.fr-c\.s-" + state + r'::after\{content:"' + re.escape(symbol) + '"', css), state
 
 
+def test_summary_tiles_fill_their_rows_whatever_the_tile_count():
+    # 格子数由 renderTiles 定(现在是五格),列数不能写死:写死六列时桌面上空一列,手机两列时最后一格旁边空一格。
+    html = run("renderTiles();$('tiles').innerHTML", loaded(tasks_data([])))
+    assert len(re.findall(r'<button type="button" class="tile"', html)) == 5
+    css = (STATIC / "page-diagnostics.css").read_text(encoding="utf-8")
+    assert "#diagnostics .tiles{display:flex;flex-wrap:wrap}" in css
+    grow = re.search(r"#diagnostics \.tiles>\.tile\{flex:(\d+) 1 \d+px\}", css)
+    assert grow and int(grow.group(1)) >= 1
+    # 别的表里也不许再给格子定一个固定列数(它会在弹性盒失效时悄悄回来,也会误导下一个改的人)。
+    for sheet in STATIC.glob("*.css"):
+        text = sheet.read_text(encoding="utf-8")
+        assert not re.search(r"\.tiles\{[^}]*grid-template-columns:repeat\(\d+,", text), sheet.name
+
+
 def test_no_trapped_scroll_box_around_the_problem_list():
     css = (STATIC / "page-diagnostics.css").read_text(encoding="utf-8")
     assert re.search(r"#diagnostics \.diagnostic-layout #todod\{max-height:none;overflow:visible\}", css)
