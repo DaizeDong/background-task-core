@@ -168,7 +168,7 @@ table.g th.num{text-align:right}
   #storage:not([hidden]){grid-template-columns:1fr}
   #storage>.mt-grid{grid-template-columns:1fr 1fr}
 }
-@media(max-width:1100px){.tiles{grid-template-columns:repeat(3,minmax(0,1fr))}.page-actions{gap:5px}#page-help{display:none}.mt-grid{grid-template-columns:1fr 1fr}}
+@media(max-width:1100px){.tiles{grid-template-columns:repeat(3,minmax(0,1fr))}.page-actions{gap:5px}.mt-grid{grid-template-columns:1fr 1fr}}
 @media(max-width:767px){
   #side{position:static;width:100%;max-width:none;min-height:0;display:block}#side .container-fluid{display:block;min-width:0}
   #side .navbar-brand{padding:9px 12px;margin:0;justify-content:start}

@@ -153,7 +153,7 @@ def test_deep_link_is_parsed_and_back_to_the_list_closes_the_chain():
     closed = run("$('chbox').hidden=false;var location={hash:'#convos'};convoChainRoute(null,false);[CH_ID,$('chbox').hidden]",
                  setup(chain_case()))
     assert closed == [None, True]
-    # Shift+A 收回摊开也会走 showView("convos", false),那时地址还带着会话 id:链必须留着。
+    # 不是主动导航的 showView("convos", false),地址还带着会话 id:不是后退回列表,链必须留着。
     kept_open = run(f"$('chbox').hidden=false;var location={{hash:'#convos/{SID}'}};convoChainRoute(null,false);[CH_ID,$('chbox').hidden]",
                     setup(chain_case()))
     assert kept_open == [SID, False]
@@ -317,10 +317,15 @@ def test_rows_say_the_chain_can_be_opened():
 
 
 def test_escape_before_the_task_data_loaded_does_not_throw():
-    """events.js 的全局 Esc 以前无条件 render(),而 DATA 在第一次读回来之前是 null。"""
-    from test_panel_parity import module_source as src
-    ev = src("events.js")
-    assert 'if(k==="Escape"){ sel.clear(); if(DATA) render(); return; }' in ev
+    """页面级 Esc 以前无条件 render(),而 DATA 在第一次读回来之前是 null。"""
+    from test_operations_ui import run as page_run
+    result = page_run("""(()=>{
+      document.activeElement={tagName:'BODY'};document.querySelector=()=>null;document.querySelectorAll=()=>[];
+      DATA=null;CURVIEW='tasks';sel=new Set(['AcmeSync']);
+      const event={key:'Escape',preventDefault(){this.prevented=true;}};
+      return [handleEscape(event),sel.size,!!event.prevented,$('bulk').hidden];
+    })()""")
+    assert result == [True, 0, True, True]
 
 
 def test_clicking_another_turn_header_drops_the_old_fork_result():

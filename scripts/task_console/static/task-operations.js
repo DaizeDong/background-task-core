@@ -379,7 +379,7 @@ function startTaskOperations(){
   $('repair-dialog').addEventListener('cancel',event=>{if(TASK_REPAIR.busy) event.preventDefault();});
   let timer;
   const tick=async()=>{
-    const visible=viewGroup(CURVIEW)==='automations' || $('view').classList.contains('all');
+    const visible=viewGroup(CURVIEW)==='automations';
     if(!document.hidden && visible && repairsInFlight()) await loadRepairs();
     timer=setTimeout(tick,REPAIR_POLL_MS);
   };

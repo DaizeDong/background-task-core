@@ -200,11 +200,21 @@ def test_timeline_rows_are_labelled_with_task_titles():
     assert 'title="AcmeUnlisted">AcmeUnlisted</div>' in html
 
 
-def test_escape_leaves_a_search_box_without_clearing_it():
-    from test_panel_parity import module_source
-    # A type=search box clears itself on Esc in Chrome and Edge, and after the blur no input event
-    # fires: the box would be empty while the table stays filtered by the old words.
-    assert 'if(e.key==="Escape"){ e.preventDefault(); document.activeElement.blur(); }' in module_source("events.js")
+def test_escape_clears_the_task_search_and_the_table_follows():
+    # Chrome and Edge clear a type=search box on Esc and, after a blur, fire no input event: the box
+    # would be empty while the table stays filtered. The page clears it itself and fires input, so
+    # the existing listener re-filters; only the second Esc leaves the box.
+    result = run("""(()=>{
+      const box=$('q');box.tagName='INPUT';box.type='search';box.value='AcmeOther';box.blurred=0;box.blur=()=>box.blurred++;
+      box.dispatchEvent=e=>{if(e.type==='input') render();};
+      document.activeElement=box;document.querySelector=()=>null;
+      const key={key:'Escape',preventDefault(){this.prevented=true;}};
+      render();const filtered=VIEW.length;
+      handleEscape(key);const cleared=[box.value,VIEW.length,box.blurred,key.prevented];
+      handleEscape({...key});
+      return {filtered,cleared,blurred:box.blurred};
+    })()""", table_setup() + "var Event=class{constructor(type){this.type=type;}};")
+    assert result == {"filtered": 1, "cleared": ["", 2, 0, True], "blurred": 1}
 
 
 def test_exported_snapshots_record_every_filter_in_use():

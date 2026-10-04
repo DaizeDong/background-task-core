@@ -47,6 +47,10 @@ document.addEventListener("click", e=>{
     cxSelSummary(); return; }
   // 调用屏。和上面那几段同理,这些挂点必须留在**先注册的**这个监听里:
   // 明细表的行同时是可点开的,而下面那个监听里有若干 closest 会先把点击接走。
+  // 明细里的「收起」。明细行本身不带 data-name / data-i,不会被下面的行展开处理器接走,
+  // 但放在这里和其余调用屏挂点一起,读的人不用去两个监听里找。
+  if(e.target.closest("[data-detail-close]")){ collapseTaskDetail(); return; }
+  if(e.target.closest("[data-call-close]")){ closeCall(); return; }
   const mv = e.target.closest("[data-mv]");
   if(mv){ lcMove(Number(mv.dataset.i), mv.dataset.mv === "up" ? -1 : 1); return; }
   if(target.id === "lmprev"){ LMQ.offset = Math.max(0, LMQ.offset - LMQ.limit); loadCalls(); return; }
@@ -95,10 +99,7 @@ document.getElementById("side").addEventListener("keydown", e=>{
   else return;
   e.preventDefault();
   // 必须停止冒泡。上面那段注释说「方向键只移焦点不切视图」,理由是三个分区各自会真扫一遍;
-  // 但没有 stopPropagation 的话,同一次按键会被文档级处理器再吃一遍,
-  // 于是在仓库分区按一下方向键就切走了,注释想避免的连锁扫描照样发生;
-  // 在任务分区则是表格光标跟着悄悄往下走一行,而人没在看表,
-  // 之后按 d 作用在自己没选过的行上。
+  // 方向键在侧栏里已经有了意思,文档级的处理器不该再看到同一次按键。
   e.stopPropagation();
   // 旧项要收回 -1。只设新项的话,方向键走过几次之后侧栏在 Tab 序列里就占了好几格 ——
   // 而 roving tabindex 的全部意义就是「整条侧栏只占一格」。
@@ -121,8 +122,7 @@ document.addEventListener("keydown", e=>{
   //
   // 不给那四类补 tabindex,是因为代价是几百个 tab 停靠点(表格每行、会话每行、
   // 时间轴每行),侧栏当初正是为此改成 roving tabindex。
-  // 表格行另有出路:它有 tabindex="-1" 供 focusCur 程序化聚焦,而 Enter 由下面那个
-  // 全局 keydown 接(k==="Enter" -> toggleDetail),不需要这里再接一次。
+  // 任务表的行另有出路:每行的标题是一个真按钮(.row-toggle),Tab 停得上去,Enter 由浏览器自己接。
   // 所以这里只留真的能聚焦的那一类,并由 test_page_js.py 钉住这条对应关系。
   // [data-jump] 是调用屏里那些「连续降级段」,它们自带 tabindex="0"。
   // 加在这里而不是只给个 tabindex:一个能用 Tab 停上去、按回车却没反应的元素,
@@ -153,6 +153,9 @@ document.addEventListener("click",e=>{
   if(fc){ focusTask(fc.dataset.fr); return; }
   const sc=e.target.closest("[data-scat]");
   if(sc){ focusCategory(sc.dataset.scat); return; }
+  // 表头的全选框。和行上的勾选框一样要停止冒泡,而它不在 th[data-k] 里,不会被当成排序。
+  const sa=e.target.closest("input.selall");
+  if(sa){ e.stopPropagation(); toggleSelectAll(); return; }
   const sb=e.target.closest("input.selbox");
   if(sb){
     // stopPropagation 必须有:不然这一下会冒泡到行,把明细展开一起触发。
@@ -188,119 +191,22 @@ document.addEventListener("click",e=>{
   const th=e.target.closest("#tbl th[data-k]");
   if(th){ if(sortKey===th.dataset.k) asc=!asc; else {sortKey=th.dataset.k; asc=true;} render(); return; }
   const tr=e.target.closest("#tbl tbody tr[data-name]");
-  if(tr){ cur=+tr.dataset.i; const d=tr.nextElementSibling;
+  if(tr){
+    // 拖选一段文字(复制任务名或说明)松手时也会发一次 click。那一下不是要开合明细:
+    // 开合会整表重建,刚选中的文字跟着没了。
+    const picked=window.getSelection ? window.getSelection() : null;
+    if(picked && String(picked) && (tr.contains(picked.anchorNode) || tr.contains(picked.focusNode))) return;
+    cur=+tr.dataset.i; const d=tr.nextElementSibling;
     if(d&&d.classList.contains("det")){ closeDetail(); render(); }
     else { render(); const t2=document.querySelector(`#tbl tbody tr[data-i="${cur}"]`); if(t2) openDetail(t2); } }
 });
+// 键盘约定只有两条,逻辑都在 navigation.js(那里能被 node:vm 测到):
+// Enter 提交搜索框,Esc 退一层。这一页刻意没有单键快捷键。
 document.addEventListener("keydown",e=>{
-  if(!$("help").hidden){ if(e.key==="Escape"||e.key==="?"){ $("help").hidden=true; } return; }
-  if(/^(INPUT|SELECT|TEXTAREA)$/.test(document.activeElement.tagName)){
-    // Esc 只是离开输入框,筛选照旧生效。type="search" 的框在 Chrome/Edge 里按 Esc 默认还会清空内容,
-    // 而先 blur 之后浏览器不发 input 事件:框空了、表格却还按旧关键词筛着。所以先拦掉默认动作。
-    if(e.key==="Escape"){ e.preventDefault(); document.activeElement.blur(); }
-    return;
-  }
-  // 带修饰键的一律不接管。这一条不是洁癖:r/s/e/d 是运行/停止/启用/停用,
-  // 而 Ctrl+R 刷新、Ctrl+S 保存、Ctrl+D 收藏、Ctrl+A 全选是浏览器里最常用的四个组合。
-  // 不看修饰键的话,按 Ctrl+R 会先对光标行发一次「立即运行」再刷新,
-  // 而刷新把 toast 一起带走,屏幕上什么都不剩,只有任务真的跑了一次。
-  // Shift 例外:G / A / ? 本来就是 Shift 组合。
-  if(e.ctrlKey || e.metaKey || e.altKey) return;
-  // 焦点落在控件上时**部分**不接管。这道守卫要挡的是两件具体的事:
-  //   一是 Enter 被下面 preventDefault 吃掉之后,整页没有一个按钮或链接能用键盘激活;
-  //   二是人 Tab 到第 12 行的按钮上按 d,被停用的却是光标行(初值第 1 行),
-  //     而确认框里出现的是另一个名字,读起来像页面在确认「你选的那个」。
-  //
-  // ⚠ 第一版写成「焦点不在 body 上就整个 return」,选择器里还带着裸 `[tabindex]`,
-  // 而数据行**每一行都有 tabindex="-1"**(focusCur 要把焦点放上去,读屏那边才知道我在第几行)。
-  // 于是按一次 j 之后焦点落到 <tr> 上,整套键盘层当场全死:j/k/g/G/x/a/r/e/s/d、
-  // ?(帮助)、R(重读)、A(摊开)、Escape 一个都不响应,而光标高亮还在、卡头上还印着
-  // 「j/k 移动 · x 选中 · Enter 展开」。鼠标点一次侧栏分区(那是 <a>)也一样,
-  // 想恢复只能去点页面空白处把焦点甩回 body。**一次移动就把整层交互静默关掉,
-  // 而屏幕上没有任何一处显示它关了。**
-  //
-  // tabindex="-1" 的元素是**程序化聚焦**的、Tab 到不了的,它不是控件,不该进这道守卫。
-  // 剩下的按「它自己要吃掉哪些键」分两档,而不是一刀切。
-  const ae = document.activeElement;
-  if(ae && ae !== document.body){
-    // 这一档自己要吃掉所有按键(打字)。
-    if(ae.closest('input,textarea,select,[contenteditable=""],[contenteditable="true"]')) return;
-    const ACTIVATABLE = 'button,summary,label,a[href],[tabindex]:not([tabindex="-1"])';
-    // 这一档只吃激活键。侧栏链接聚焦时按 j 仍然该移动光标。
-    if((e.key === "Enter" || e.key === " ") && ae.closest(ACTIVATABLE)) return;
-    // 会真的动任务的四个键,焦点在任何控件上时都不接管 : 上面第二条讲的就是它。
-    if("resd".indexOf(e.key) >= 0 && ae.closest(ACTIVATABLE)) return;
-  }
-  const k=e.key;
-  if(document.querySelector('dialog[open]')) return;
-  if(k==="?"){ $("help").hidden=false; return; }
-  // 表格相关的键只在任务分区里有意义。不拦的话,人在仓库分区按 j,
-  // 光标在一张 display:none 的表里往下走一行,按 d 甚至会停用光标所在的那个任务 :
-  // 屏幕上完全没有反应,而动作真的发生了。这比不响应危险得多。
-  const TABLE_KEYS = "jkgGxaresd";
-  if(CURVIEW!=="tasks" && !$("view").classList.contains("all") &&
-      (TABLE_KEYS.includes(k) || ["Enter","ArrowDown","ArrowUp"].includes(k))) return;
-  // 判据从「当前分区是不是 tasks」换成「任务表这会儿在不在视口里」。
-  // 旧判据在摊开态(Shift+A)下整体失效,而摊开的用意正是「为了 Ctrl+F 全页搜」:
-  // 那时人往下滚着看会话或仓库,任务表在几屏之外,按到 r 或 s 就在完全看不见的地方
-  // 运行或停掉光标行那个任务,只留右下角一条四秒后消失的提示。
-  // 「在不在视口里」在两种模式下都成立,而且它问的正是守卫真正想问的那件事。
-  const tblVisible = (() => {
-    const t = $("tbl");
-    if(!t || !t.offsetParent) return false;
-    const r = t.getBoundingClientRect();
-    return r.bottom > 0 && r.top < window.innerHeight;
-  })();
-  if(!tblVisible
-     && (TABLE_KEYS.indexOf(k) >= 0 || k === "Enter"
-         || k === "ArrowDown" || k === "ArrowUp")){
-    if(k === "j" || k === "k" || k === "ArrowDown" || k === "ArrowUp"
-       || k === "Enter" || k === "g" || k === "G"){
-      // 移动类的键:与其无声吞掉,不如把人带到那张表上,这是他按 j 的本意。
-      // 摊开态下表本来就渲染着,只是滚出了视口,所以滚过去而不是收回摊开 :
-      // 收回摊开会把人刚才为了 Ctrl+F 摊开的那个状态一起拿走。
-      e.preventDefault();
-      if($("view").classList.contains("all")){
-        const t = $("tbl"); if(t) t.scrollIntoView({block:"center"});
-      } else showView("tasks", true);
-      return;
-    }
-    return;   // 动作类的键(r/s/e/d/x/a)直接不受理:静默执行一个破坏性动作是最坏的结果
-  }
-  if(k==="/"){
-    const searchId={overview:'work-search',work:'work-search',automations:'automation-search',resources:'catalog-search',repos:'rpq',convos:'cv-search',llm:'lmq',diagnostics:'review-search',pipelines:'pipeline-task-search'}[CURVIEW];
-    if(searchId){e.preventDefault();if(CURVIEW==='overview')showView('work',true);$(searchId).focus();return;}
-    // 过滤框在任务分区里。在别的分区按 / 时,preventDefault 顺手掐掉了浏览器的快速查找,
-    // 而承诺的过滤框既没出现也没获得焦点,零反馈 :
-    // 又一处「点这边、改那边,发生在看不见的地方」。先把人带过去,和 focusTask 一致。
-    e.preventDefault();
-    if(CURVIEW !== "tasks" && !$("view").classList.contains("all")) showView("tasks", true);
-    $("q").focus(); $("q").select(); return;
-  }
-  if(k==="R"){ refreshPage(); return; }
-  // Shift+A:摊开或收回全部分区,只为让 Ctrl+F 能搜到全部内容。
-  // 摊开时刻意不动 hash : hash 的含义是「我在看哪一类」,摊开是「我暂时全都要看」,
-  // 两件事。混进一个状态里,刷新会回到一个你没选过的形态。
-  if(k==="A"){
-    const v=$("view"); const all=v.classList.toggle("all");
-    if(all){if(!LLM && !LLM_LOADING) loadLLM();if(!CXL) loadCxList();}
-    if(!all) showView(CURVIEW, false);
-    return;
-  }
-  // DATA 在任务数据第一次读回来之前是 null:别的分区里按 Esc 不该抛 TypeError。
-  if(k==="Escape"){ sel.clear(); if(DATA) render(); return; }
-  if(k==="j"||k==="ArrowDown"){ e.preventDefault(); cur=Math.min(cur+1,VIEW.length-1); render(); focusCur(); return; }
-  if(k==="k"||k==="ArrowUp"){ e.preventDefault(); cur=Math.max(cur-1,0); render(); focusCur(); return; }
-  if(k==="g"){ cur=0; render(); focusCur(); return; }
-  if(k==="G"){ cur=Math.max(0,VIEW.length-1); render(); focusCur(); return; }
-  if(k==="x"){ const r=VIEW[cur]; if(r){ sel.has(r.name)?sel.delete(r.name):sel.add(r.name); render(); } return; }
-  if(k==="a"){ VIEW.forEach(r=>sel.add(r.name)); render(); return; }
-  if(k==="Enter"){ e.preventDefault(); toggleDetail(); return; }
-  if(k==="r"||k==="s"||k==="e"||k==="d"){
-    const map={r:"run",s:"stop",e:"enable",d:"disable"};
-    act(targets(), map[k]);
-  }
+  if(handleSearchEnter(e)) return;
+  handleEscape(e);
 });
+
 // 时间轴:滚轮缩放(以指针为中心)、按住拖动平移、双击回到整天
 (function(){
   const tl=$("tl");
@@ -379,13 +285,7 @@ $("lcreset").addEventListener("click", ()=>{ LCDRAFT = null; renderChain(); });
 $("lmprov").addEventListener("change", e=>{ LMQ.provider = e.target.value; LMQ.offset = 0; loadCalls(); });
 $("lmok").addEventListener("change", e=>{ LMQ.ok = e.target.value; LMQ.offset = 0; loadCalls(); });
 $("lmcaller").addEventListener("change", e=>{ LMQ.caller = e.target.value; LMQ.offset = 0; loadCalls(); });
-// 敲一个字就发一次请求,在一个十一万行的账本上是每次全表扫。等人停手再发。
-let LMQT = null;
-$("lmq").addEventListener("input", e=>{
-  clearTimeout(LMQT);
-  const v = e.target.value;
-  LMQT = setTimeout(()=>{ LMQ.q = v; LMQ.offset = 0; loadCalls(); }, 260);
-});
+$("lmq").addEventListener("input", e=>callSearchInput(e.target.value));
 // 拖拽排序。上下箭头按钮是同一件事的键盘可达版本,两条路都留着:
 // 只有拖拽的话,这个控件对键盘用户不存在。
 let LCFROM = null;
@@ -453,7 +353,6 @@ showView(location.hash.slice(1) || VIEWS[0], false);
 $("tlin").addEventListener("click",()=>tlZoom(0.7,0.5));
 $("tlout").addEventListener("click",()=>tlZoom(1.4,0.5));
 $("tlreset").addEventListener("click",tlReset);
-$("help").addEventListener("click",()=>$("help").hidden=true);
 $("refresh").addEventListener("click",load);
 function syncHygBtn(){
   const b=$("hygtog"); if(!b) return;

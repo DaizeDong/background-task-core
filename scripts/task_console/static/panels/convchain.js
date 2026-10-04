@@ -8,7 +8,7 @@
 // 所有挂点都在 startConvoChain() 里,由 events.js 用 typeof 守卫调用。
 let CH=null, CH_ID=null, CH_SUB=null, CH_LEAF=null, CH_PARENT=null;
 // 选中的是一个**元素**而不是一个 uuid:一轮的标题行和它的第一步是同一个节点,
-// 按 uuid 记的话 j/k 会在这两行之间原地打转。键的形状是 h:轮 / s:轮:步 / m:轮。
+// 按 uuid 记的话方向键会在这两行之间原地打转。键的形状是 h:轮 / s:轮:步 / m:轮。
 let CH_SEL=null, CH_FROM=null, CH_TO=null, CH_OPEN={}, CH_FKOPEN=null, CH_FRES=null;
 let CH_XT=false, CH_XK=false, CH_XBUSY=false, CH_FBUSY=false;
 let CH_POS={}, CH_ORDER=[], CH_TR=[], CH_FKS={}, CH_AGTURN={}, CH_SUBQ="";
@@ -61,7 +61,7 @@ function chParseArg(arg){
 }
 // navigation.showView 在会话屏上问这里:地址该写成什么。
 // arg 是 #convos/ 后面那一段。只有地址本身已经是裸 #convos(后退回列表)才关掉链:
-// showView("convos", false) 还有别的来路(Shift+A 收回摊开),那时地址仍带着会话 id,链不能跟着没了。
+// showView("convos", false) 只要地址仍带着会话 id,就不是后退回列表,链不能跟着没了。
 function convoChainRoute(arg, push){
   // 由 openConvoChain 自己切到会话屏时,链的状态正在建立,这一次不许当成「后退回列表」。
   if(CH_ROUTING) return CH_ID ? chHashFor(CH_ID, CH_SUB, CH_LEAF) : "convos";
@@ -487,8 +487,8 @@ function chRenderAct(){
     +`<code>${CH_FROM ? esc(chU8(CH_FROM)) : "开头"}</code> → <code>${esc(chU8(CH_ORDER[b]))}</code>`
     +`<span class="faint" title="${CH_TO ? '指定终点' : !CH_FROM && CH_SEL ? '到所选消息' : '到链尾'}">${bad ? "" : (b-a+1)+" 个节点"}</span>`
     +(bad ? `<span style="color:var(--bad)">起点在终点之后</span>` : "")+`</div>`
-    +`<div class="ch-row"><button class="icon-only mini" data-chact="from"${su ? "" : " disabled"} title="设为起点 ["><svg class="ic" aria-hidden="true"><use href="#i-range-start"/></svg><span class="control-label">设为起点 [</span></button>`
-    +`<button class="icon-only mini" data-chact="to"${su ? "" : " disabled"} title="设为终点 ]"><svg class="ic" aria-hidden="true"><use href="#i-range-end"/></svg><span class="control-label">设为终点 ]</span></button>`
+    +`<div class="ch-row"><button class="icon-only mini" data-chact="from"${su ? "" : " disabled"} title="设为起点"><svg class="ic" aria-hidden="true"><use href="#i-range-start"/></svg><span class="control-label">设为起点</span></button>`
+    +`<button class="icon-only mini" data-chact="to"${su ? "" : " disabled"} title="设为终点"><svg class="ic" aria-hidden="true"><use href="#i-range-end"/></svg><span class="control-label">设为终点</span></button>`
     +`<button class="icon-only mini" data-chact="clr"${CH_FROM || CH_TO ? "" : " disabled"} title="清除范围"><svg class="ic" aria-hidden="true"><use href="#i-filter-clear"/></svg><span class="control-label">清除范围</span></button></div>`
     +`<div class="ch-row"><label><input type="checkbox" id="chtools"${CH_XT ? " checked" : ""}> 含工具调用</label>`
     +`<label><input type="checkbox" id="chthink"${CH_XK ? " checked" : ""}> 含思考</label>`
@@ -627,28 +627,37 @@ function chOpenSub(agentId){
   CH_PARENT={title:CH && CH.title, leaf:CH_LEAF, u:chSelU()};
   openConvoChain(CH_ID, {sub:agentId});
 }
+// 子代理筛选框里按 Enter:打开筛出来的第一个,和在下拉框里选它是同一件事。
+function chSubFirst(q){
+  const S=(CH && CH.subagents) || [], n=String(q || "").trim().toLowerCase();
+  const hit=n ? S.find(s=>chSubLabel(s).toLowerCase().indexOf(n)>=0 || String(s.agentId).toLowerCase().indexOf(n)>=0) : S[0];
+  return hit ? hit.agentId : null;
+}
+// 页面级 Esc 退到这一屏时调这里(navigation.js 的 ESC_STEPS),一次只退一层:
+// 先收分支菜单,再从子代理回主会话,最后关掉对话链回到列表。焦点在哪里都一样。
+function convoChainEscape(){
+  if(!chOpen()) return false;
+  if(CH_FKOPEN){ CH_FKOPEN=null; chRenderList(); chFocusList(true); return true; }
+  if(CH_SUB){ chAct("back"); return true; }
+  chClose();
+  return true;
+}
 
-// 链上的按键。返回 true 表示吃掉了。
+// 链表上的按键。它是 role=listbox:方向键、Home/End 移动,Enter/空格展开,这是列表框本来的约定,
+// 不是快捷键。只在焦点就在链表上时才接,返回 true 表示吃掉了。
 function chKey(e){
   const k=e.key;
-  if(k==="Escape"){
-    if(CH_FKOPEN){ CH_FKOPEN=null; chRenderList(); }
-    else chClose();
-    return true;
-  }
   if(!CH || !CH.available) return false;
-  if(k==="j" || k==="ArrowDown"){ chMove(1); return true; }
-  if(k==="k" || k==="ArrowUp"){ chMove(-1); return true; }
+  if(k==="ArrowDown"){ chMove(1); return true; }
+  if(k==="ArrowUp"){ chMove(-1); return true; }
   if(k==="Home"){ chMove("home"); return true; }
   if(k==="End"){ chMove("end"); return true; }
-  if(k==="["){ chSetEnd("from"); return true; }
-  if(k==="]"){ chSetEnd("to"); return true; }
   if(k==="Enter" || k===" "){ chToggle(); return true; }
   return false;
 }
 
-// 卡片里的按钮会被整块重画,焦点随之掉回 <body>:之后 j/k 被全局那层吞掉,
-// Esc 走到任务表那一支。所以按钮处理完就把焦点还给链。onlyIfLost 用于异步回来的时候:
+// 卡片里的按钮会被整块重画,焦点随之掉回 <body>,方向键就不再落在链表上。
+// 所以按钮处理完就把焦点还给链。onlyIfLost 用于异步回来的时候:
 // 人可能已经去点了别处,那时不抢。
 function chFocusList(onlyIfLost){
   const L=$("chlist");
@@ -695,7 +704,7 @@ function chClick(e){
 }
 
 // 挂点全挂在卡片自己身上:卡片里的点击和按键先到这里,不和两个 document 级监听抢。
-// 按键 stopPropagation:全局那层把 j/k/Enter 当成任务表的键,Esc 会清空任务选择。
+// Esc 不在这里接:它走页面级的那一条(navigation.js 的 handleEscape),焦点在卡片外也能退出。
 function startConvoChain(){
   const box=$("chbox");
   if(!box) return;
@@ -716,14 +725,13 @@ function startConvoChain(){
   box.addEventListener("keydown", e=>{
     if(e.ctrlKey || e.metaKey || e.altKey) return;
     const t=e.target;
-    if(t.closest && t.closest("input,select,textarea")){
-      if(e.key==="Escape"){ t.blur(); e.stopPropagation(); }
+    if(t.id==="chsubq" && e.key==="Enter" && !e.isComposing && !e.repeat){
+      const id=chSubFirst(t.value);
+      if(id){ e.preventDefault(); chOpenSub(id); }
       return;
     }
-    // 焦点在卡片里的按钮上时,Enter / 空格归按钮自己。
-    if((e.key==="Enter" || e.key===" ") && t!==$("chlist")) return;
-    if(chKey(e)){ e.preventDefault(); e.stopPropagation(); return; }
-    // 任务表的那几个键在这里不该有任何效果,更不该把人弹去任务屏。
-    if("jkgGxaresd".indexOf(e.key)>=0) e.stopPropagation();
+    // 方向键和 Enter / 空格只在焦点就在链表上时归链表;落在卡片里的按钮、输入框上时归它们自己。
+    if(t!==$("chlist")) return;
+    if(chKey(e)){ e.preventDefault(); e.stopPropagation(); }
   });
 }

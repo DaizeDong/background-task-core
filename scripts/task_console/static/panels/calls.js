@@ -337,7 +337,8 @@ function renderCalls(){
       + '<td class="r">' + lnum(r.reply_chars) + "</td>"
       + '<td class="r">' + (r.ms == null ? '<span class="faint">—</span>' : lnum(r.ms)) + "</td>"
       + '<td class="r">' + r.attempts + "</td></tr>";
-    if(open) tr += '<tr><td class="det" colspan="10">' + detailHTML(r) + "</td></tr>";
+    // 明细可能比一屏还高:收起按钮钉在明细右上角,不用回头去找那一行。
+    if(open) tr += '<tr><td class="det" colspan="10"><div class="det-bar"><button type="button" class="mini det-close" data-call-close title="收起明细"><svg class="ic" aria-hidden="true"><use href="#i-up"/></svg>收起</button></div>' + detailHTML(r) + "</td></tr>";
     return tr;
   }).join("");
   $("lmtab").innerHTML =
@@ -430,6 +431,30 @@ function jumpToCalls(startOffset){
     $("lcalls").scrollIntoView({block: "start"});
     if(had) toast("已清掉明细的筛选条件,否则跳过去的位置对不上");
   });
+}
+
+// 收起按钮和 Esc 共用。收起之后把原来那一行滚回眼前:明细可能把它顶出了屏幕。
+function closeCall(){
+  const i = LMOPEN;
+  if(i == null) return false;
+  LMOPEN = null;
+  renderCalls();
+  const row = document.querySelector('#lmtab tr.lrow[data-i="' + i + '"]');
+  if(row && row.scrollIntoView) row.scrollIntoView({block: "nearest"});
+  return true;
+}
+
+// 敲一个字就发一次请求,在一个十一万行的账本上是每次全表扫。等人停手再发。
+// Enter 是「我打完了」:不再等防抖,立刻查。
+let LMQT = null;
+function callSearchInput(value){
+  clearTimeout(LMQT);
+  LMQT = setTimeout(()=>{ LMQT = null; LMQ.q = value; LMQ.offset = 0; loadCalls(); }, 260);
+}
+function commitCallSearch(){
+  clearTimeout(LMQT); LMQT = null;
+  LMQ.q = $("lmq").value; LMQ.offset = 0;
+  return loadCalls();
 }
 
 async function openCall(i){

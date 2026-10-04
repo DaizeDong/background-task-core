@@ -79,7 +79,7 @@ function startWorkActions(){
   });
   let timer;
   const refresh=async()=>{
-    const visible=['overview','work'].includes(CURVIEW) || $('view').classList.contains('all') || $('work-detail').open;
+    const visible=['overview','work'].includes(CURVIEW) || $('work-detail').open;
     if(!document.hidden && visible && (WORK?.items || []).some(item=>['preparing','queued','running','dispatching','reconcile','task_requested'].includes(item.actions?.current?.state))){
       await loadWork();if($('work-detail').open && WORK_DETAIL_ID) openWorkRecord(WORK_DETAIL_ID,true);
     }

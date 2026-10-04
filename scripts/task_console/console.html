@@ -47,7 +47,6 @@
 <symbol id="i-up" viewBox="0 0 24 24"><path d="m5 14 7-7 7 7"/></symbol>
 <symbol id="i-down" viewBox="0 0 24 24"><path d="m5 10 7 7 7-7"/></symbol>
 <symbol id="i-filter-clear" viewBox="0 0 24 24"><path d="M4 4h16l-6 7v5l-4 3v-8zM16 17l5 5m0-5-5 5"/></symbol>
-<symbol id="i-keyboard" viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M6 9h1m4 0h1m4 0h1M6 12h1m4 0h1m4 0h1M6 16h12"/></symbol>
 <symbol id="i-terminal" viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m6 8 4 4-4 4m7 0h5"/></symbol>
 <symbol id="i-save" viewBox="0 0 24 24"><path d="M4 3h13l4 4v14H3V3zM7 3v6h10V3M7 21v-8h10v8"/></symbol>
 <symbol id="i-maximize" viewBox="0 0 24 24"><path d="M3 9V3h6m6 0h6v6M3 15v6h6m6 0h6v-6"/></symbol>
@@ -96,7 +95,6 @@
     <span id="page-refresh-state" class="faint" role="status"></span>
     <button class="icon-only" id="page-refresh" title="刷新"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg><span class="control-label">刷新</span></button><button class="icon-only" id="page-export" title="下载当前已加载的数据（JSON）；调用记录仅含当前页"><svg class="ic" aria-hidden="true"><use href="#i-fetch"/></svg><span class="control-label">导出数据</span></button>
     <select id="theme-select" aria-label="外观"><option value="system">跟随系统</option><option value="light">浅色</option><option value="dark">深色</option></select>
-    <button class="icon-only" id="page-help" aria-label="查看键盘帮助" title="快捷键"><svg class="ic" aria-hidden="true"><use href="#i-keyboard"/></svg><span class="control-label">快捷键</span></button>
   </div>
 </div></header>
 <div id="operation-panel" class="operation-panel" hidden>
@@ -338,13 +336,13 @@
        放在 #cvgroups 外面,于是会话列表重扫重画时它不会被一起冲掉。 -->
   <div class="card" id="chbox" hidden>
     <div class="card-header"><h3 class="card-title">会话内容<span class="n" id="chnote"></span></h3>
-      <div class="card-actions"><button class="icon-only mini" id="chclose" title="返回会话列表(Esc)" aria-label="返回会话列表"><svg class="ic" aria-hidden="true"><use href="#i-left"/></svg><span class="control-label">返回列表</span></button></div></div>
+      <div class="card-actions"><button class="icon-only mini" id="chclose" title="返回会话列表" aria-label="返回会话列表"><svg class="ic" aria-hidden="true"><use href="#i-left"/></svg><span class="control-label">返回列表</span></button></div></div>
     <div class="pad">
       <div class="ch-crumb" id="chcrumb"></div>
       <div class="ch-head" id="chhead"></div>
       <div id="chwarn"></div>
       <div class="ch-split">
-        <div class="ch-list" id="chlist" tabindex="0" role="listbox" aria-label="对话链节点。j / k 移动,Enter 展开,[ ] 设起止,Esc 关闭"></div>
+        <div class="ch-list" id="chlist" tabindex="0" role="listbox" aria-label="对话链节点"></div>
         <div class="ch-side"><details class="ch-actions-menu"><summary>导出与新建会话</summary><div class="ch-act" id="chact"></div></details><div class="ch-det" id="chdet"></div></div>
       </div>
     </div>
@@ -412,7 +410,7 @@
       <div class="card-actions">
         <select id="lmprov" class="l-sel" title="按实际应答服务筛选"><option value="">全部服务</option></select>
         <select id="lmcaller" class="l-sel" title="按发起调用的脚本筛"><option value="">全部调用方</option></select>
-        <input type="text" id="lmq" class="l-q" placeholder="搜索错误信息" title="搜索调用失败的原因">
+        <input type="search" id="lmq" class="l-q" placeholder="搜索错误信息" title="搜索调用失败的原因" aria-label="搜索调用失败的原因">
         <select id="lmok" class="l-sel" title="按调用结果筛选">
           <option value="">全部结果</option><option value="1">只看成功</option><option value="0">只看失败</option>
         </select><button class="icon-only" data-reset-filters="llm" title="清除筛选"><svg class="ic" aria-hidden="true"><use href="#i-filter-clear"/></svg><span class="control-label">清除筛选</span></button>
@@ -434,19 +432,6 @@
 <div id="bulk" hidden role="status" aria-live="polite"></div>
 
 <div id="toast" role="status" aria-live="polite" aria-atomic="false"></div>
-<div id="help" hidden><div>
-  <b>键盘快捷键</b>
-  <table>
-    <tr><td class="hot">j / k</td><td>上下移动光标</td><td class="hot">g / G</td><td>首行 / 末行</td></tr>
-    <tr><td class="hot">Enter</td><td>展开或收起细节</td><td class="hot">x</td><td>选中或取消</td></tr>
-    <tr><td class="hot">a</td><td>全选当前可见</td><td class="hot">Esc</td><td>清空选择</td></tr>
-    <tr><td class="hot">r</td><td>立即运行</td><td class="hot">s</td><td>停止</td></tr>
-    <tr><td class="hot">e</td><td>启用</td><td class="hot">d</td><td>停用(需确认)</td></tr>
-    <tr><td class="hot">/</td><td>跳到过滤框</td><td class="hot">R</td><td>重新读取</td></tr>
-    <tr><td class="hot">Shift+A</td><td>显示全部页面，便于 Ctrl+F 搜索</td><td class="hot">← →</td><td>侧栏内移动</td></tr>
-  </table>
-  <p class="faint" style="margin:8px 0 0">任务操作快捷键仅在任务表中生效。有勾选时操作选中任务，否则操作当前行。按 Esc 或点击关闭。</p>
-</div></div>
 
 <script src="/static/app.js" defer onerror="document.getElementById('module-error').hidden=false"></script>
 </body>

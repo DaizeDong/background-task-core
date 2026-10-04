@@ -95,9 +95,12 @@ function taskVerdictSummary(rows){
   return [...Object.entries(TASK_VERDICTS),...Object.entries(TASK_VERDICT_EXTRA)]
     .filter(([key])=>counts[key]).map(([key,value])=>`${value.label} ${counts[key]}`).join(' · ');
 }
-function taskIdentityHtml(row){
+// toggle=true 只给运行详情那张表用:标题做成一个真按钮,展开和点整行是同一件事。
+// 键盘上没有了 j/k,这个按钮就是走到一行、打开它的那条路;另外两处列表的标题照旧是文字。
+function taskIdentityHtml(row,{toggle=false}={}){
   const text=taskText(row);
-  return `<div class="automation-name"><div class="task-heading"><strong>${esc(text.title)}</strong>${taskVerdictBadge(row)}</div>`+
+  const title=toggle?`<button type="button" class="row-toggle" data-row-toggle="${esc(row.name)}" aria-expanded="${OPEN_DETAIL===row.name}"><strong>${esc(text.title)}</strong></button>`:`<strong>${esc(text.title)}</strong>`;
+  return `<div class="automation-name"><div class="task-heading">${title}${taskVerdictBadge(row)}</div>`+
     (text.summary?`<p class="task-summary-text" title="${esc(text.summary)}">${esc(text.summary)}</p>`:'')+
     `<small class="task-machine-name">${esc(row.name)}</small></div>`;
 }
@@ -401,13 +404,12 @@ function renderScores(){
 }
 
 const C=[
- // 原来这里是一个 14px 宽、显示 * 的格子:它让人以为点它能选中,点下去展开的却是明细,
- // 而 x / a 这两个选择键没有任何鼠标等价物 : 只用鼠标的人永远看不到那条批量操作条,
- // 也就用不到「全部运行 / 全部启用 / 全部停用」。这是本页唯一一处两种输入方式能力不对等的功能。
+ // 原来这里是一个 14px 宽、显示 * 的格子:它让人以为点它能选中,点下去展开的却是明细。
+ // 现在每行一个勾选框,表头一个全选框(见 render 里的 selectAllHtml):选择不靠任何按键。
  ["selc","",r=>`<td style="width:20px"><input type="checkbox" class="selbox"
    data-selname="${esc(r.name)}"${sel.has(r.name)?" checked":""}
    aria-label="选中 ${esc(r.name)}"></td>`,()=>0],
- ["name","任务",r=>`<td class="nm">${taskIdentityHtml(r)}</td>`,r=>taskText(r).title],
+ ["name","任务",r=>`<td class="nm">${taskIdentityHtml(r,{toggle:true})}</td>`,r=>taskText(r).title],
  ["sl","状态",r=>`<td>${statusBadge(r.sl,({ok:'ok',bad:'bad',running:'active',pending:'pending',disabled:'muted',unknown:'idle'})[r.sk] || 'idle',undefined,'st')}${taskRepairChip(r.name)}</td>`,r=>r.sl],
  ["cat","大类",r=>`<td class="dim">${esc(r.cat)}</td>`,r=>r.cat],
  // 健康% 旁边要能看出它是拿什么算出来的。判词表认不出来的那些进 other 桶,
@@ -506,13 +508,14 @@ function detail(r){
   // 动作提到行上之后,展开态那份没删,于是同一个按钮在同一屏出现两次,
   // 而其中一份还比另一份少一个动作 : 两份不完全一样的重复,比完全一样的更糟,
   // 因为人会以为差别是有意义的。
-  return `<tr class="det"><td colspan="${shownCols().length}"><div class="det">${taskInfoHtml(r)}<dl class="task-technical-fields">${dl}</dl>${iss}</div></td></tr>`;
+  // 明细有十几行高,原来只能回头找到那一行再点一次才收得起来。收起按钮钉在明细右上角。
+  return `<tr class="det"><td colspan="${shownCols().length}"><div class="det"><div class="det-bar"><button type="button" class="mini det-close" data-detail-close title="收起明细"><svg class="ic" aria-hidden="true"><use href="#i-up"/></svg>收起</button></div>${taskInfoHtml(r)}<dl class="task-technical-fields">${dl}</dl>${iss}</div></td></tr>`;
 }
 
 // 行内控件按「是哪一种控件 + 属于哪个任务」记下,不记 DOM 节点:整块 innerHTML 重建之后节点全是新的。
 // 以前只认 data-act,焦点落在启动方式、修复、删除或修复进度上时,重建一次就掉回整行甚至 body,
 // 下一次 Tab 从头来过。三处列表(运行详情、任务开关、同步与备份)共用这一份。
-const TASK_ROW_CONTROLS=['data-act','data-launch','data-task-repair','data-task-delete','data-repair-order'];
+const TASK_ROW_CONTROLS=['data-row-toggle','data-act','data-launch','data-task-repair','data-task-delete','data-repair-order'];
 function taskControlKey(el){
   const attr=el && el.getAttribute ? TASK_ROW_CONTROLS.find(name=>el.hasAttribute(name)) : null;
   if(!attr) return null;
@@ -599,8 +602,8 @@ function render(){
     &&taskMatches(r,q));
   const verdict=$('task-verdict').value;
   updateTaskVerdictFilter('task-verdict',candidates,verdict);
-  // cur 是下标,展开的明细跟着任务名走。筛选或排序一变,同一个下标会指到另一个任务上:
-  // 人看着 B 的明细按 r/s,跑掉或停掉的却是 C。所以先记下光标所在的任务,重排之后按名字找回来。
+  // cur 是下标,高亮跟着任务名走。筛选或排序一变,同一个下标会指到另一个任务上,
+  // 高亮就跳到一个人没点过的行。所以先记下光标所在的任务,重排之后按名字找回来。
   const curName=VIEW[cur]&&VIEW[cur].name;
   VIEW=candidates.filter(r=>taskMatchesVerdict(r,verdict));
   const CC=shownCols();
@@ -621,6 +624,8 @@ function render(){
   const keep = aeRow ? {name: aeRow.dataset.name,
                         control: taskControlKey(ae),
                         box: ae.classList && ae.classList.contains("selbox")} : null;
+  const keepAll = !!(ae && ae.classList && ae.classList.contains("selall"));
+  const pick = selectAllState();
   // 排序是这张表最主要的整理手段,原来只有 click:纯键盘用户完全用不了,
   // 读屏用户既按不动也听不出当前按哪一列排(方向只存在于 ::after,没有 aria-sort 兜底)。
   // selc 那一列的排序键是常量,点它会重排一次却看不出任何变化 :
@@ -631,15 +636,17 @@ function render(){
       const cur = sortKey===c[0];
       const aria = !sortable ? "" : ` aria-sort="${cur ? (asc?"ascending":"descending") : "none"}"`;
       const tab = sortable ? ' tabindex="0" role="columnheader"' : "";
-      return `<th data-column="${c[0]}"${sortable?` data-k="${c[0]}"`:""}${tab}${aria} class="${cur?"s"+(asc?" a":""):""}">${c[1]}</th>`;
+      return `<th data-column="${c[0]}"${sortable?` data-k="${c[0]}"`:""}${tab}${aria} class="${cur?"s"+(asc?" a":""):""}">${c[0]==="selc"?selectAllHtml(pick):c[1]}</th>`;
     }).join("")}</tr></thead>`
-    // 光标行和选中行原来只有 CSS 类:读屏用户按 j/k 时焦点始终在 body,
-    // 屏幕上那条光标在无障碍树里不存在,他不知道自己停在哪一行。
-    // tabindex=-1 让 focusCur() 能真的把焦点放上去,aria-selected 让选中态可播报。
+    // tabindex=-1 让 focusCur() 能把焦点放到从别处跳来的那一行上,aria-selected 让选中态可播报。
     +`<tbody>${VIEW.map((r,i)=>`<tr data-i="${i}" data-name="${esc(r.name)}" tabindex="-1" aria-selected="${sel.has(r.name)}" class="${i===cur?"cur":""}${sel.has(r.name)?" sel":""}">${CC.map(c=>c[2](r)).join("")}</tr>`).join("")}</tbody>`;
+  // 半选态只能用属性设,写不进 HTML。
+  const allBox = $("tbl").querySelector ? $("tbl").querySelector("input.selall") : null;
+  if(allBox) allBox.indeterminate = pick.some && !pick.all;
   // render() 用 innerHTML 整表重建,焦点持有者被移出文档,activeElement 掉回 body,
-  // 下一次 Tab 从页面开头重来。x 选中和 j/k 也都调 render(),
+  // 下一次 Tab 从页面开头重来。勾选、全选和展开都调 render(),
   // 所以任何一次选择都会打断 Tab 序列,而同一操作用鼠标毫无代价。
+  if(keepAll && allBox){ try{ allBox.focus({preventScroll:true}); }catch(e){} }
   if(keep && keep.name){
     const row = document.querySelector(`#tbl tbody tr[data-name="${CSS.escape(keep.name)}"]`);
     if(row){
@@ -653,15 +660,31 @@ function render(){
   renderBulk();
 }
 
+// 表头全选框只管当前列表(VIEW)。被筛掉的已选任务不因为点了全选或全不选而变化。
+function selectAllState(){
+  const picked=VIEW.filter(r=>sel.has(r.name)).length;
+  return {all:VIEW.length>0 && picked===VIEW.length, some:picked>0};
+}
+function selectAllHtml(state){
+  return `<input type="checkbox" class="selall" aria-label="全选当前列表"${state.all?" checked":""}${VIEW.length?' title="全选当前列表"':' disabled title="当前列表没有任务"'}>`;
+}
+function toggleSelectAll(){
+  const {all}=selectAllState();
+  VIEW.forEach(r=>all?sel.delete(r.name):sel.add(r.name));
+  render();
+}
+
+// 批量操作条浮在页面底部,所以只在运行详情里出现:在别的分区它的按钮会作用在一批看不见的任务上。
+// 选择本身留着,回到运行详情还在。
 function renderBulk(){
   const b=$("bulk");
-  if(!sel.size){ b.hidden=true; return; }
+  if(!sel.size || CURVIEW!=="tasks"){ b.hidden=true; return; }
   b.hidden=false;
-  b.innerHTML=`<span>已选 <b>${sel.size}</b></span>
-    <button class="icon-only" data-bulk="run" title="运行选中任务"><svg class="ic" aria-hidden="true"><use href="#i-play"/></svg><span class="control-label">运行选中任务</span></button>
-    <button class="icon-only" data-bulk="enable" title="启用选中任务"><svg class="ic" aria-hidden="true"><use href="#i-on"/></svg><span class="control-label">启用选中任务</span></button>
-    <button class="icon-only danger" data-bulk="disable" title="停用选中任务"><svg class="ic" aria-hidden="true"><use href="#i-pause"/></svg><span class="control-label">停用选中任务</span></button>
-    <button class="icon-only" data-bulk="clear" title="取消选择"><svg class="ic" aria-hidden="true"><use href="#i-filter-clear"/></svg><span class="control-label">取消选择</span></button>`;
+  b.innerHTML=`<span>已选 <b>${sel.size}</b> 个任务</span>
+    <button class="mini" data-bulk="run" title="运行选中任务"><svg class="ic" aria-hidden="true"><use href="#i-play"/></svg>运行</button>
+    <button class="mini" data-bulk="enable" title="启用选中任务"><svg class="ic" aria-hidden="true"><use href="#i-on"/></svg>启用</button>
+    <button class="mini danger" data-bulk="disable" title="停用选中任务"><svg class="ic" aria-hidden="true"><use href="#i-pause"/></svg>停用</button>
+    <button class="mini" data-bulk="clear" title="取消选择"><svg class="ic" aria-hidden="true"><use href="#i-close"/></svg>取消选择</button>`;
 }
 
 async function act(names, verb){
@@ -713,19 +736,43 @@ function focusCategory(cat){
   if (DATA) render();
 }
 
-const targets = () => sel.size ? Array.from(sel) : (VIEW[cur] ? [VIEW[cur].name] : []);
-
 // 展开的是哪个任务,按名字记下来。render() 整表重建会把明细行一起抹掉,而切换分区后的重读、
 // 定时刷新都会调 render():以前点「查看详情」打开的明细几秒后就自己收起来了。
 let OPEN_DETAIL=null;
+// 标题按钮的 aria-expanded 跟着展开的那一行走。开合不重建整表,所以要单独同步。
+function syncRowToggles(){
+  document.querySelectorAll("#tbl .row-toggle").forEach(b=>b.setAttribute("aria-expanded",String(b.dataset.rowToggle===OPEN_DETAIL)));
+}
 function openDetail(tr){
   document.querySelectorAll("tr.det").forEach(x=>x.remove());
   const r=VIEW[+tr.dataset.i];
   if(r){ tr.insertAdjacentHTML("afterend", detail(r)); OPEN_DETAIL=r.name; }
+  syncRowToggles();
 }
 function closeDetail(){
   document.querySelectorAll("tr.det").forEach(x=>x.remove());
   OPEN_DETAIL=null;
+  syncRowToggles();
+}
+// 收起按钮和 Esc 共用:收起之后把那一行滚回眼前,焦点放回它的标题按钮,接着 Tab 不用从头来。
+function collapseTaskDetail(){
+  const name=OPEN_DETAIL;
+  closeDetail();
+  const row=name && [...document.querySelectorAll("#tbl tbody tr[data-name]")].find(tr=>tr.dataset.name===name);
+  if(!row) return name;
+  try{ row.scrollIntoView({block:"nearest"}); }catch(e){}
+  const toggle=row.querySelector ? row.querySelector(".row-toggle") : null;
+  try{ (toggle || row).focus({preventScroll:true}); }catch(e){}
+  return name;
+}
+// 搜索框里按 Enter:只剩一个任务时就地展开它,不动筛选。已经展开着就保持展开。
+function openOnlyTask(){
+  if(VIEW.length!==1) return false;
+  if(OPEN_DETAIL===VIEW[0].name) return true;
+  const tr=document.querySelector(`#tbl tbody tr[data-i="0"]`);
+  if(!tr || !tr.dataset) return false;
+  openDetail(tr);
+  return true;
 }
 function reopenDetail(){
   if(!OPEN_DETAIL) return;
@@ -733,17 +780,11 @@ function reopenDetail(){
   const r=tr && VIEW[+tr.dataset.i];
   if(r) tr.insertAdjacentHTML("afterend", detail(r));
 }
-function toggleDetail(){
-  const tr=document.querySelector(`#tbl tbody tr[data-i="${cur}"]`);
-  if(!tr) return;
-  const d=tr.nextElementSibling;
-  if(d&&d.classList.contains("det")) closeDetail(); else openDetail(tr);
-}
 function focusCur(){
   const tr=document.querySelector(`#tbl tbody tr[data-i="${cur}"]`);
   if(!tr) return;
   tr.scrollIntoView({block:"nearest"});
-  // 真的把焦点放上去,不只是滚过去。否则读屏那边始终停在 body,
+  // 真的把焦点放上去,不只是滚过去(从别处的「查看详情」跳来时用)。否则读屏那边始终停在 body,
   // 「我在第几行」这件事只存在于一条视觉上的高亮里。
   try{ tr.focus({preventScroll:true}); }catch(e){ tr.focus(); }
 }

@@ -40,5 +40,11 @@ function updateViewHeading(key){
 function reviewClick(event){
   const repo=event.target.closest("[data-review-repo]");
   if(repo){showView("repos",true);RP_SEL=repo.dataset.reviewRepo;renderRepoList();}
-  if(event.target.closest("#page-help")) $("help").hidden=false;
+}
+// 问题搜索里按 Enter:只剩一个对象时等于点它的「查看详情」,去同一个地方。
+function openOnlyReview(){
+  const rows=[...document.querySelectorAll("#todod .review-row")];
+  if(rows.length!==1) return;
+  const open=rows[0].querySelector(".review-actions button");
+  if(open) open.click();
 }

@@ -256,6 +256,17 @@ table.g tr[data-scat]:hover{background:var(--cur)}
 #tbl tr.det>td>.det{position:sticky;left:0;width:var(--padw,100%);max-width:100%;
   box-sizing:border-box;padding:6px 10px 8px}
 #tbl tr.det:hover{background:transparent}
+/* 明细右上角的「收起」。贴在滚动容器顶部、表头下面(表头 top:0 粘着,约 30px 高),
+   明细比一屏长时滚到中段也按得到。条本身不接点击,只有按钮接,免得盖住下面的字段。 */
+.det-bar{position:sticky;top:34px;z-index:4;display:flex;justify-content:flex-end;pointer-events:none;margin-bottom:4px}
+.det-bar .det-close{pointer-events:auto;background:var(--panel)}
+.l-calls td.det .det-bar{top:0}
+/* 窄屏上调用表比视口宽,靠右的按钮会落在横向滚动区外面。改成靠左并钉在可视区左沿。 */
+@media(max-width:767px){.l-calls td.det .det-bar{left:0;width:max-content;justify-content:flex-start}}
+/* 任务名是一个按钮(键盘能走到、能展开),但长得要和原来的标题一样,不像一个按钮框。 */
+#tbl .row-toggle{flex:1;min-width:0;min-height:0;padding:0;border:0;background:none;color:inherit;text-align:left;cursor:pointer}
+#tbl .row-toggle:not(:disabled):hover{background:none}
+@media(hover:hover){#tbl .row-toggle:not(:disabled):hover{text-decoration:underline}}
 .st{display:inline-block;min-width:50px;text-align:center;padding:0 4px;font-size:var(--fs-chip)}
 .st.ok{color:var(--ok);background:var(--okb)}
 .st.bad{color:var(--bad);background:var(--badb)}
@@ -279,15 +290,15 @@ tr.det>td{background:var(--panel2);white-space:normal;padding:6px 10px 8px;borde
 #bulk{position:fixed;left:50%;transform:translateX(-50%);bottom:14px;z-index:40;
   background:var(--panel);border:1px solid var(--cyan);padding:5px 10px;
   display:flex;gap:7px;align-items:center;box-shadow:0 6px 22px #0006}
+/* 定位在 left:50%,不给宽度的话它最多只有半屏宽,窄屏上「已选 2 个任务」会被挤成一字一行。
+   按内容定宽、不超过视口,放不下就让按钮换行。 */
+#bulk{width:max-content;max-width:calc(100vw - 32px);flex-wrap:wrap}
+#bulk>span{white-space:nowrap}
 #toast{position:fixed;right:10px;bottom:10px;z-index:50;display:flex;flex-direction:column;gap:5px;max-width:470px}
 #toast div{background:var(--panel);border:1px solid var(--line);border-left:3px solid var(--cyan);
   padding:5px 9px;font-size:var(--fs-meta);box-shadow:0 4px 16px #0005}
 #toast div.bad{border-left-color:var(--bad);color:var(--bad)}
 #toast div.ok{border-left-color:var(--ok)}
-#help{position:fixed;inset:0;z-index:60;background:#0009;display:flex;align-items:center;justify-content:center}
-#help>div{background:var(--panel);border:1px solid var(--line);padding:14px 18px;font-size:var(--fs-body)}
-#help table{border-collapse:collapse}
-#help td{padding:1px 12px 1px 0}
 [hidden]{display:none!important}
 
 /* ---- 新鲜度灯板 ------------------------------------------------------------------
@@ -873,16 +884,6 @@ section[data-view][hidden]{display:none}
   overflow:hidden;text-overflow:ellipsis;min-width:0}
 #todo .none{color:var(--ok);font-size:var(--fs-meta);padding:3px 0}
 
-/* ---- 一页模式 -------------------------------------------------------------------
-   分区把页面从五屏压到一屏,代价是任意时刻有五分之四的内容处在 display:none 里,
-   浏览器的 Ctrl+F 搜不到。徽章解决的是「哪一类有事」,解决不了「我记得在哪儿见过
-   一个词」,而这个台子的全部价值是打开就在眼前,Ctrl+F 正是「在眼前」最物理的定义。
-   Shift+A 全摊开,再按收回。顺带也是打印和整页截图模式。 */
-#view.all section[data-view]{display:flex!important}
-#view.all section[data-view]::before{content:attr(data-label);font-size:var(--fs-meta);color:var(--dim);
-  letter-spacing:.04em;padding:2px 0;border-bottom:1px solid var(--line);margin-top:4px}
-#view.all section[data-view]:first-of-type::before{margin-top:0}
-
 /* 等宽显式加回数据。这几处是「要对齐着扫」的东西:数字、路径、任务名、时间戳。
    剩下用比例字体的是大类、说明、触发这三列和状态芯片,它们本来就是散文。 */
 .num{font-family:var(--mono)}
@@ -892,7 +893,6 @@ section[data-view][hidden]{display:none}
 table.g td.nm,table.g td[data-col="lastRun"],table.g td[data-col="nextRun"],
 table.g td[data-col="timeout"]{font-family:var(--mono)}
 #sckd .r .p,.mt-r .c,.tile .v,#bar b,.tlkey{font-family:var(--mono)}
-#help td.hot{font-family:var(--mono)}
 
 /* 三处原来都是 gap:1px 铺在 --line 底色上画分隔线。单看每一处都合理,
    三处叠起来整页就是一张连续的网格纸,而那正是「像老页面」最主要的来源。
