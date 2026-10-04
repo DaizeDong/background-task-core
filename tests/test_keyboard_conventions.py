@@ -86,8 +86,49 @@ def test_escape_only_blurs_written_text_and_ignores_input_method_composition():
     assert result == ["手写的原因", 1, "ce", False, False]
 
 
+# 「显示列」那种下拉:Bootstrap 只在按键落在菜单或它的按钮上时才收起。焦点掉回 body(点了分组标题或空白处)时,
+# 这里收起它;落在里面时留给 Bootstrap。两种情况都不退页面上的层、不清搜索框。
+DROPDOWN = """
+const classes=names=>{const set=new Set(names);return {remove:c=>set.delete(c),contains:c=>set.has(c)};};
+const toggle={attrs:{},focused:0,classList:classes(['dropdown-toggle','show']),setAttribute(k,v){this.attrs[k]=v;},focus(){this.focused++;}};
+const inside={tagName:'DIV'};
+const box={contains:el=>el===inside || el===toggle,querySelector:s=>s==='[data-bs-toggle="dropdown"]'?toggle:null};
+const menu={classList:classes(['dropdown-menu','show']),closest:s=>s==='.dropdown'?box:null};
+document.querySelector=s=>s==='.dropdown-menu.show' && menu.classList.contains('show')?menu:null;
+"""
+
+
+def test_escape_closes_a_column_menu_that_focus_fell_out_of():
+    result = run("""(()=>{
+      CURVIEW='tasks';render();OPEN_DETAIL='AcmeSync';sel=new Set(['AcmeSync']);
+      const own=key('Escape',{target:inside});const ownHandled=handleEscape(own);
+      const ownState=[ownHandled,own.prevented,menu.classList.contains('show')];
+      const search=field('INPUT','search','Acme');document.activeElement=search;
+      const stray=key('Escape',{target:search});const handled=handleEscape(stray);
+      const after=[handled,stray.prevented,menu.classList.contains('show'),toggle.classList.contains('show'),
+        toggle.attrs['aria-expanded'],toggle.focused,search.value,OPEN_DETAIL,sel.size];
+      document.activeElement=body;handleEscape(key('Escape',{target:body}));
+      return {ownState,after,next:OPEN_DETAIL};
+    })()""", tasks_setup(DROPDOWN))
+    assert result["ownState"] == [False, False, True]
+    assert result["after"] == [True, True, False, False, "false", 1, "Acme", "AcmeSync", 1]
+    # 菜单关上之后,下一次 Esc 才退页面上的那一层。
+    assert result["next"] is None
+
+
+def test_escape_hides_the_column_menu_through_its_dropdown_instance_when_there_is_one():
+    result = run("""(()=>{
+      CURVIEW='tasks';let hidden=0;
+      globalThis.tabler={Dropdown:{getInstance:el=>el===toggle?{hide(){hidden++;}}:null}};
+      const event=key('Escape',{target:body});const handled=handleEscape(event);
+      return [handled,event.prevented,hidden,menu.classList.contains('show'),toggle.focused];
+    })()""", tasks_setup(DROPDOWN))
+    # 有 Bootstrap 实例时由它收起(它会同时改好自己的状态),这里不另去摘类名。
+    assert result == [True, True, 1, True, 1]
+
+
 def test_escape_leaves_open_dialogs_and_menus_to_themselves():
-    for selector in ("dialog[open]", ".dropdown-menu.show", ":popover-open"):
+    for selector in ("dialog[open]", ":popover-open"):
         result = run("""(()=>{
           CURVIEW='tasks';OPEN_DETAIL='AcmeSync';sel=new Set(['AcmeSync']);
           const box=field('INPUT','search','Acme');document.activeElement=box;

@@ -286,7 +286,36 @@ function closeMenuFor(el){
   const opener=menu.id && typeof CSS!=='undefined'?document.querySelector?.(`[popovertarget="${CSS.escape(menu.id)}"]`):null;
   opener?.focus?.({preventScroll:true});
 }
+// 点菜单外面只关菜单,不替人按下底下那个控件。
+// 弹出层的「点外面关闭」不像模态框那样有一层遮罩吃掉这一下,它照样落到底下的控件上。任务行的「⋯」旁边
+// 就是「运行」「停止」,人想点外面关菜单,最近的外面正是它们:一点就真的运行或停止了任务,而这两个动作不问确认。
+// 所以有菜单开着时,按在菜单和任何「⋯」之外的那一下只用来关菜单:按下时记住,接着那次 click 在捕获阶段拦掉。
+// 点另一个「⋯」不拦,它只是换开另一个菜单。只拦真人点出来的 click(isTrusted),代码里调的 .click() 照常。
+let MENU_DISMISS_CLICK=false;
+function openPopMenu(){
+  // 不认识 :popover-open 的浏览器会在这里抛错,那时它也不可能有打开的菜单。
+  try{ return document.querySelector('.pop-menu:popover-open'); }catch(error){ return null; }
+}
+function menuDismissPointerDown(event){
+  const target=event.target;
+  MENU_DISMISS_CLICK=!!openPopMenu() && !(target && target.closest && target.closest('.pop-menu,[popovertarget]'));
+}
+function menuDismissClick(event){
+  if(!MENU_DISMISS_CLICK) return false;
+  MENU_DISMISS_CLICK=false;
+  if(event.isTrusted===false) return false;
+  event.preventDefault();event.stopImmediatePropagation();
+  return true;
+}
+function startMenuDismissGuard(target=window){
+  target.addEventListener('pointerdown',menuDismissPointerDown,true);
+  target.addEventListener('click',menuDismissClick,true);
+  // 键盘按出来的 click 前面没有 pointerdown。按下拖走、被滚动取消的那一下后面没有 click,记号要在这里作废,
+  // 不然它会吞掉之后用键盘按下的第一个按钮。
+  target.addEventListener('keydown',()=>{MENU_DISMISS_CLICK=false;},true);
+}
 function startDialogs(){
+  startMenuDismissGuard();
   document.addEventListener('click',event=>{
     // ✕ 就是那个对话框自己的取消按钮,走同一段处理(忙着时拦下、清掉预览),不另写一份。
     const dismiss=event.target.closest?.('[data-dismiss]');

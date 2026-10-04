@@ -223,11 +223,12 @@ def test_status_chips_filter_the_table_and_a_second_click_shows_everything():
     assert result["all"] == 4
     assert result["bad"] == ["AcmeOther"]
     assert result["again"] == ["", 4]
-    assert result["warn"] == ["AcmeOther", "AcmeWarn"]
+    # 「有警告」和行上的芯片同一个判定:失败的任务只算在「失败」里,不在这里再数一次。
+    assert result["warn"] == ["AcmeWarn"]
     # 选「只看停用」时「隐藏停用」被取消,否则表是空的。
     assert result["off"] == [["AcmeOff"], False]
     # 按钮上的数就是点下去剩下的行数。
-    assert result["counts"] == [1, 2, 1]
+    assert result["counts"] == [1, 1, 1]
     assert result["filters"]["status"] == "off" and "onlyProblems" not in result["filters"]
     assert result["reset"] == ""
 

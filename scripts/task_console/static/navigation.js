@@ -224,16 +224,42 @@ function isTextEntry(el){
   if(tag==='TEXTAREA') return true;
   return tag==='INPUT' && TEXT_ENTRY_TYPES.includes(String(el.type || 'text').toLowerCase());
 }
-// 对话框、弹出层和下拉菜单自己会处理 Esc。它们开着时这里一律不动,否则一次按键会同时关掉两层。
+// 对话框和弹出层不管焦点在哪都自己处理 Esc。它们开着时这里一律不动,否则一次按键会同时关掉两层。
 function overlayOpen(){
-  if(document.querySelector('dialog[open]') || document.querySelector('.dropdown-menu.show')) return true;
+  if(document.querySelector('dialog[open]')) return true;
   // 不认识 :popover-open 的浏览器会在这里抛错,那时它也不可能有打开的弹出层。
   try{ return !!document.querySelector(':popover-open'); }catch(error){ return false; }
+}
+// 下拉菜单(运行详情的「显示列」)不一样:Bootstrap 只在按键落在菜单或它的按钮上时才收起它。
+// 人点了菜单里的分组标题或空白处,焦点掉回 body,Esc 两边都不接,菜单只能用鼠标点外面关。
+// 所以按键落在下拉外面时由这里收起它,焦点交回打开它的按钮(和焦点在菜单里按 Esc 时 Bootstrap 的做法一致);
+// 落在里面时照旧留给 Bootstrap,它已经先收起并拦下了这一下。
+function closeStrayDropdown(event){
+  const menu=document.querySelector('.dropdown-menu.show');
+  if(!menu) return false;
+  const box=menu.closest?.('.dropdown') || menu.parentElement || null;
+  const target=event.target || document.activeElement;
+  if(box && target && typeof box.contains==='function' && box.contains(target)) return 'inside';
+  const toggle=box?.querySelector?.('[data-bs-toggle="dropdown"]') || null;
+  const Dropdown=globalThis.tabler?.Dropdown || globalThis.bootstrap?.Dropdown;
+  const instance=toggle && Dropdown?.getInstance?.(toggle);
+  if(instance) instance.hide();
+  else{
+    menu.classList?.remove('show');
+    toggle?.classList?.remove('show');
+    toggle?.setAttribute?.('aria-expanded','false');
+  }
+  try{ toggle?.focus?.({preventScroll:true}); }catch(error){}
+  return true;
 }
 function handleEscape(event){
   if(event.key!=='Escape' || event.isComposing || event.defaultPrevented) return false;
   if(event.ctrlKey || event.metaKey || event.altKey) return false;
   if(overlayOpen()) return false;
+  // 开着的下拉是最上面那一层:先关它,这一下不再退页面上的层,也不清搜索框。
+  const dropdown=closeStrayDropdown(event);
+  if(dropdown==='inside') return false;
+  if(dropdown){ event.preventDefault(); return true; }
   const el=document.activeElement;
   if(isTextEntry(el)){
     // 搜索框里有字:先清空,再按一次才离开。清空后自己发一次 input 事件,

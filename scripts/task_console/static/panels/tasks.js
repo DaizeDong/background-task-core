@@ -72,12 +72,15 @@ function sortTasksBySeverity(){
 const shownCols = () => C.filter(c=>['selc','name'].includes(c[0]) || TASK_COLUMNS.has(c[0]));
 // 运行状态筛选,由表格上方那四个计数按钮切换:'' 全部,bad 上次运行失败,warn 有警告,off 已停用。
 // 以前只有一个「只看异常与警告」勾选框,把失败和警告混在一起,而那四个计数看着像按钮却点不动。
+// 「有警告」和行上那枚健康芯片用同一个判定(taskHealth):上次运行正常、但带着问题的任务。
+// 以前数的是「有任何问题」,失败、停用、常驻的任务也算进去,按钮写 15,筛出来只有 3 行挂着「有警告」,
+// 失败的任务在「失败」和「有警告」里各数一次。
 let TASK_STATUS='';
 const TASK_STATUS_LABEL={'':'全部任务',bad:'只看失败',warn:'只看有警告',off:'只看停用'};
 const TASK_STATUS_EMPTY={bad:'没有上次运行失败的任务',warn:'没有带警告的任务',off:'没有停用的任务'};
 function taskMatchesStatus(row,status=TASK_STATUS){
   if(status==='bad') return row.sk==='bad';
-  if(status==='warn') return !!sev(row);
+  if(status==='warn') return taskHealth(row).tone==='warn';
   if(status==='off') return row.state==='Disabled';
   return true;
 }
@@ -247,7 +250,8 @@ function taskNextRun(row,relative=false){
   if(!Object.hasOwn(row,'nextRun')) return relative?'未读取':'未读取下次运行时间';
   if(!row.nextRun) return relative?'无下次时间':'没有下次运行时间';
   if(Number.isNaN(new Date(row.nextRun).getTime())) return '时间无法识别';
-  return relative?relTime(row.nextRun):workTime(row.nextRun);
+  // 完整说法是悬停里那个绝对时刻。workTime 默认写相对时间,用它的话悬停只是把「51 分钟后」再说一遍。
+  return relative?relTime(row.nextRun):fullTime(String(row.nextRun).replace(' ','T'));
 }
 // 下次运行写成相对时间(「2 小时后」),和运行详情的「下次」列一个说法;完整时刻在悬停里。
 // 停用、读取失败、没有时间这几种照旧用整句,它们之间必须分得开。
@@ -321,7 +325,6 @@ function renderTaskColumns(){
 let tlFrom=0, tlTo=1440;
 const TL_MIN_SPAN=5;    // 最小窗口 5 分钟。实测深度缩放时一帧 1.1ms,成本由 25 行固定的
                         // 行名和轨道 div 主导而不是标记数,所以收窄下限不额外花钱。
-const sev = r => r.issues.some(i=>i[0]==="bad")?"bad":r.issues.some(i=>i[0]==="warn")?"warn":"";
 const mins = t => { const p=String(t).split(":"); return (+p[0])*60+(+p[1]); };
 
 // Format the owner's trigger fields; do not calculate or infer future runs here.
@@ -689,6 +692,14 @@ function restoreTaskControlFocus(scope,key){
 // 「⋯」菜单开着时列表被重画(修复进度轮询、刷新),菜单元素被整个换掉,会一声不响地关上。
 // TASK_MENU_OPEN 跟着 toggle 事件记下开着的是哪一个,重画之后再把它打开。
 let TASK_MENU_OPEN=null;
+// 人自己关上菜单(点外面、Esc、再点一次「⋯」)时,beforetoggle 是同步发的,在这里立刻忘掉它。
+// 只等 toggle 不够:toggle 是排队发的,同一下点击引起的重画先到,旧菜单已经被换掉,toggle 那边认不出它,
+// 重画就把人刚关上的菜单又打开了。列表重画时菜单被整个移走不发 beforetoggle,那种关闭照旧由重画后打开回来。
+function forgetClosedTaskMenu(event){
+  const menu=event.target;
+  if(event.newState!=='closed' || !menu || !menu.classList || !menu.classList.contains('task-menu')) return;
+  if(TASK_MENU_OPEN===menu.id) TASK_MENU_OPEN=null;
+}
 function reopenTaskMenu(scope){
   if(!TASK_MENU_OPEN || !scope || typeof document.getElementById!=='function') return;
   const menu=document.getElementById(TASK_MENU_OPEN);
@@ -702,13 +713,15 @@ function render(){
   // 零态改色而不是隐藏。「0 个失败」和「这一项没采到」必须保持可分辨 ——
   // 藏起来之后它们都表现为「顶栏上没有这一段」。
   // 计数取自同一份行和同一个判定,点下去筛出来的行数就等于按钮上的数。
-  // 「有警告」数的是带警告的任务个数;后端那个 issues 是警告条数(一个任务可以有好几条),只放进提示里。
+  // 「有警告」数的是带警告的任务个数;条数(一个任务可以有好几条)只放进提示里,而且只数这几个任务的。
+  // 后端那个 issues 是全部任务的问题条数,失败的也算在内,写在这里会是「3 个任务带警告，共 20 条」。
   const counts=taskStatusCounts(ROWS);
+  const warnIssues=ROWS.filter(r=>taskMatchesStatus(r,'warn')).reduce((n,r)=>n+(r.issues || []).length,0);
   $("s-total").title="";$("s-bad").title="";$("s-off").title="";
   $("s-total").textContent=S.total;
   $("s-bad").textContent=counts.bad; $("s-bad").className=counts.bad?"bad":"zero";
   $("s-iss").textContent=counts.warn; $("s-iss").className=counts.warn?"warn":"zero";
-  $("s-iss").title=`${counts.warn} 个任务带警告，共 ${S.issues} 条`;
+  $("s-iss").title=`${counts.warn} 个任务带警告，共 ${warnIssues} 条`;
   $("s-off").textContent=counts.off; $("s-off").className=counts.off?"":"zero";
   syncTaskStatus(counts);
   renderDataLine();
@@ -1029,6 +1042,7 @@ function startTasksPage(){
     if(event.newState==='open') TASK_MENU_OPEN=menu.id;
     else if(TASK_MENU_OPEN===menu.id && document.getElementById(menu.id)===menu) TASK_MENU_OPEN=null;
   },true);
+  document.addEventListener('beforetoggle',forgetClosedTaskMenu,true);
   // 运行详情的一整行点了会开合明细(events.js 的 document 监听)。「⋯」和菜单的空白处不能把这一下传上去,
   // 否则开菜单的同时明细也跟着开合。菜单里的动作项不在这里拦:events.js 自己会接走它们并停止传播。
   $('tbl').addEventListener('click',event=>{

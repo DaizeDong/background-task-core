@@ -5,6 +5,7 @@
 """
 import json
 import re
+from pathlib import Path
 
 from test_automation_ui import setup, table_setup
 from test_operations_ui import run
@@ -202,3 +203,92 @@ def test_pipeline_cards_lead_with_one_verdict_and_issues_group_by_reason():
     # 每一项都还在,也没有折叠起来。
     assert issues.count("<tr>") == 1 + len(findings) and "<details" not in body
     assert count == "显示 5 / 共 5 项"
+
+
+# ---------------------------------------------------------------- 状态按钮
+def test_the_warn_button_counts_exactly_the_rows_whose_chip_says_warn():
+    prefix = HEALTH_SETUP + """
+const warnTwo={...warnRow,name:'AcmeWarnTwo',info:{title:'Echo'},issues:[['warn','合成警告一'],['bad','合成问题二']]};
+const badWarn={...badRow,name:'AcmeBadWarn',issues:[['bad','合成失败原因']]};
+const runWarn={...okRow,name:'AcmeRun',sk:'running',sl:'常驻中',state:'Running',issues:[['warn','合成警告']]};
+const offWarn={...offRow,name:'AcmeOffWarn',issues:[['warn','合成警告']]};
+"""
+    result = run("""ROWS=[okRow,warnRow,warnTwo,badWarn,runWarn,offWarn];render();
+const count=$('s-iss').textContent, title=$('s-iss').title;setTaskStatus('warn');
+({count,title,rows:VIEW.map(r=>r.name).sort(),chips:[...new Set(VIEW.map(r=>taskHealth(r).label))]})""", prefix)
+    # 按钮上的数、筛出来的行、行上的芯片三处说同一件事;失败、常驻、停用的任务各有自己的芯片,不算进来。
+    assert result["rows"] == ["AcmeWarn", "AcmeWarnTwo"] and result["chips"] == ["有警告"]
+    assert result["count"] == 2
+    # 条数只数这两个任务的,不是后端那个全部任务的总数。
+    assert result["title"] == "2 个任务带警告，共 3 条"
+
+
+# ---------------------------------------------------------------- 下次运行
+def test_the_next_run_cell_keeps_the_absolute_time_in_its_title():
+    cell = run("C.find(c=>c[0]==='nextRun')[2]({...row,state:'Ready',nextRun:'2030-01-02 22:40'})", setup())
+    title = re.search(r'title="([^"]*)"', cell).group(1)
+    assert title == "2030-01-02 22:40:00"
+    assert title not in visible(cell)
+    # 几种说不出时刻的情况照旧写整句。
+    assert run("taskNextRun({state:'Disabled',nextRun:'2030-01-02 22:40'})") == "已停用，不会运行"
+
+
+# ---------------------------------------------------------------- 菜单的点外面关闭
+GUARD = """
+const listeners={};const target={addEventListener:(type,fn,capture)=>{listeners[type]=[fn,capture];}};
+let menuOpen=true;
+document.querySelector=s=>s==='.pop-menu:popover-open' && menuOpen?{}:null;
+const outside={closest:()=>null}, opener={closest:s=>s.includes('[popovertarget]')?{}:null}, inMenu={closest:s=>s.includes('.pop-menu')?{}:null};
+const click=(trusted=true)=>({isTrusted:trusted,prevented:false,stopped:false,preventDefault(){this.prevented=true;},stopImmediatePropagation(){this.stopped=true;}});
+const press=(down,c=click())=>{listeners.pointerdown[0]({target:down});menuOpen=false;listeners.click[0](c);return [c.prevented,c.stopped];};
+"""
+
+
+def test_the_click_that_closes_a_menu_presses_nothing_underneath():
+    result = run("""(()=>{
+      startMenuDismissGuard(target);
+      const captured=Object.fromEntries(Object.entries(listeners).map(([k,v])=>[k,v[1]]));
+      const runButton=press(outside);
+      const closedAlready=press(outside);
+      menuOpen=true;const otherOpener=press(opener);
+      menuOpen=true;const item=press(inMenu);
+      menuOpen=true;const scripted=press(outside,click(false));
+      menuOpen=true;listeners.pointerdown[0]({target:outside});listeners.keydown[0]({key:'Enter'});
+      const keyed=click();listeners.click[0](keyed);
+      return {captured,runButton,closedAlready,otherOpener,item,scripted,keyed:[keyed.prevented,keyed.stopped]};
+    })()""", GUARD)
+    # 捕获阶段,早于任何页面监听。
+    assert result["captured"] == {"pointerdown": True, "click": True, "keydown": True}
+    # 菜单开着时按在外面(比如同一行的「运行」):这一下只关菜单。
+    assert result["runButton"] == [True, True]
+    # 菜单已经关了,下一下照常。点另一个「⋯」、点菜单里的项、代码调的 click、键盘按的 click 都照常。
+    for key in ("closedAlready", "otherOpener", "item", "scripted", "keyed"):
+        assert result[key] == [False, False], key
+    # 对话框和菜单共用的那一套启动时就把它挂到 window 上,所有页面的菜单都一样。
+    wired = run("""(()=>{const seen=[];window.addEventListener=(type,fn,capture)=>seen.push([type,capture]);
+      document.addEventListener=()=>{};startDialogs();return seen;})()""")
+    assert ["pointerdown", True] in wired and ["click", True] in wired
+
+
+def test_a_menu_closed_by_the_owner_is_not_reopened_by_the_next_render():
+    result = run("""(()=>{
+      const menu=id=>({id,classList:{contains:c=>c==='task-menu'}});
+      TASK_MENU_OPEN='tkm-tbl-AcmeSync';
+      forgetClosedTaskMenu({newState:'open',target:menu('tkm-tbl-AcmeSync')});const opened=TASK_MENU_OPEN;
+      forgetClosedTaskMenu({newState:'closed',target:menu('tkm-tbl-AcmeOther')});const other=TASK_MENU_OPEN;
+      forgetClosedTaskMenu({newState:'closed',target:{id:'tkm-tbl-AcmeSync',classList:{contains:()=>false}}});const foreign=TASK_MENU_OPEN;
+      forgetClosedTaskMenu({newState:'closed',target:menu('tkm-tbl-AcmeSync')});
+      return [opened,other,foreign,TASK_MENU_OPEN];
+    })()""")
+    assert result == ["tkm-tbl-AcmeSync", "tkm-tbl-AcmeSync", "tkm-tbl-AcmeSync", None]
+
+
+# ---------------------------------------------------------------- 手机上的工具条
+def test_phone_toolbar_selects_start_from_their_own_width():
+    css = (Path(__file__).resolve().parents[1] / "scripts" / "task_console" / "static" / "workbench.css").read_text(encoding="utf-8")
+    phone = [line for line in css.splitlines() if line.startswith("@media(max-width:767px){")]
+    rules = [m.group(1) for line in phone for m in re.finditer(r"(?<![\w#.-])\.work-toolbar select\{([^}]*)\}", line)]
+    assert len(rules) == 1
+    # flex:1 的起步宽度是 0:同一行的按钮和计数一多,下拉就被压得比自己的字还窄。从字宽起步,放不下就换行。
+    flex = re.search(r"(?:^|;)flex:([^;]+)", rules[0]).group(1).split()
+    assert len(flex) == 3 and flex[2] == "auto", rules[0]
