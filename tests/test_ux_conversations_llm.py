@@ -249,3 +249,24 @@ def test_convo_sort_filter_and_open_groups_persist_but_search_does_not():
     html = run("CV_BASE_OPEN={'/synthetic/AcmeSync':true};CV_QUERY='zzz';renderConvos();CV_QUERY='';renderConvos();"
                "$('cvgroups').innerHTML", STUB + "CONVOS=" + json.dumps(convos_case()) + ";")
     assert 'class="cv-g open"' in html
+
+
+def test_copy_path_in_the_row_menu_closes_the_menu_but_the_location_copy_does_not_touch_menus():
+    """行菜单里的「复制文件路径」和同一菜单的其他项一样,选中就收起菜单;项目位置里的复制按钮不在菜单里。"""
+    got = run("""(async()=>{let copied=[],hidden=0,toasts=[];
+      navigator={clipboard:{writeText:async p=>{copied.push(p);}}};toast=(m,t)=>toasts.push(t);
+      const menu={id:'cvm-synthetic',matches:s=>s===':popover-open',hidePopover(){hidden++;}};
+      const inMenu={dataset:{cvcopy:'/synthetic/a.jsonl'}};
+      inMenu.closest=s=>s==='[data-cvcopy]'?inMenu:s==='[popover]'?menu:null;
+      const loose={dataset:{cvcopy:'/synthetic/AcmeSync'}};loose.closest=s=>s==='[data-cvcopy]'?loose:null;
+      let stopped=0;const ev=target=>({target,stopPropagation(){stopped++;}});
+      cvClick(ev(inMenu));await null;const afterMenu=hidden;
+      cvClick(ev(loose));await null;
+      return {afterMenu,hidden,copied,stopped,toasts};})()""")
+    assert got["afterMenu"] == 1 and got["hidden"] == 1
+    assert got["copied"] == ["/synthetic/a.jsonl", "/synthetic/AcmeSync"]
+    assert got["stopped"] == 2 and got["toasts"] == ["ok", "ok"]
+    # 上面的假菜单对应真实标记:复制文件路径那一项确实画在行菜单的 popover 里。
+    html = run("cvRows(CONVOS.groups[0])", STUB + "CONVOS=" + json.dumps(convos_case()) + ";")
+    menu = html.split(" popover data-cvmenu-for=", 1)[1].split("</div>", 1)[0]
+    assert "data-cvcopy=" in menu and "复制文件路径" in menu

@@ -211,7 +211,9 @@ async function cvCopyPath(path){
 }
 function cvClick(event){
   const copy=event.target.closest('[data-cvcopy]');
-  if(copy){event.stopPropagation();cvCopyPath(copy.dataset.cvcopy);return;}
+  // 行菜单里的「复制文件路径」跟同一菜单的重命名、移动、删除一样,选中就收起菜单,不然它一直浮在下面几行上。
+  // 项目位置里那个复制按钮不在菜单里,closeMenuFor 找不到 [popover] 就什么也不做。
+  if(copy){event.stopPropagation();closeMenuFor(copy);cvCopyPath(copy.dataset.cvcopy);return;}
   const open=event.target.closest('[data-cvopen]');
   if(open){openConvoChain(open.dataset.cvopen);return;}
   // 菜单按钮和菜单里的点击各有归属(浏览器开合菜单,动作另有监听),不能落到下面去开合项目。
