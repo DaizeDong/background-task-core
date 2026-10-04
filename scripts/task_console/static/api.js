@@ -164,6 +164,8 @@ function setIconControl(button,icon,label){
 
 async function maintAct(action,name){
   const label=action.split(".")[1];
+  // 唯一会删东西的维护动作先确认;不管从哪里调到这里,没点「清理」就不发请求。
+  if(action==="clean.tempgit" && !(await confirmTempgitCleanup())) return;
   try{
     const r=await api("/api/maint/act",{method:"POST",body:JSON.stringify({action,name})});
     if(r.error || r.ok===false) throw new Error(apiError(r,500));

@@ -186,9 +186,8 @@ renderCxList=()=>{};
 
 def test_functional_sections_have_no_closed_disclosure_by_default():
     html = (Path(__file__).resolve().parents[1] / "scripts/task_console/console.html").read_text(encoding="utf-8")
-    # Optional export/fork controls may fold; primary content stays visible.
+    # 导出与新建会话是工作区不是菜单:默认展开,仍可收起。其余功能区一个默认收起的 details 都没有。
     assert 'cv-scan-details' not in html
-    assert '<details class="ch-actions-menu"><summary>导出与新建会话</summary><div class="ch-act" id="chact"></div></details>' in html
-    html = re.sub(r'<details class="ch-actions-menu">.*?</details>', '', html, flags=re.S)
+    assert '<details class="ch-actions-panel" open><summary>导出与新建会话</summary><div class="ch-act" id="chact"></div></details>' in html
     assert not re.findall(r'<details(?![^>]*\bopen\b)[^>]*>', html)
     assert 'id="theme-select"' in html and 'id="page-export"' in html

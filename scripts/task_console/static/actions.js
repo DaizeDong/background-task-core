@@ -54,7 +54,7 @@ const ConsoleActions={
     if(this.readOnly) document.querySelectorAll?.('#lclist li[draggable="true"]').forEach(item=>item.setAttribute('draggable','false'));
   },
   start(){
-    syncStickyOffsets();
+    syncStickyOffsets();startDialogs();
     if(typeof ResizeObserver==='function'){
       const observer=new ResizeObserver(()=>syncStickyOffsets());
       ['bar','operation-panel'].forEach(id=>{if($(id)) observer.observe($(id));});
@@ -186,38 +186,149 @@ function openTaskLaunch(name){
   $('launch-copy').dataset.command=taskStartCommand(row);$('launch-dialog').showModal();
 }
 
+
+// ================= 对话框与菜单的通用约定 ===========================================
+// 点遮罩和 Esc 交给浏览器原生的 closedby,不自己判断「点在了对话框外面」:自己判断的写法,
+// 在输入框里拖选文字、松手落在遮罩上时也会把对话框关掉,点到对话框自己的内边距也会。
+// 三档:请求在路上时谁都关不掉(none,原有的 cancel 守卫照样在);框里有人打的字时只认 Esc 和取消
+// (closerequest),误点一下遮罩不会把字丢掉;其余时候点哪儿都能关(any)。
+function dialogDismissMode(busy,dirty){return busy?'none':dirty?'closerequest':'any';}
+function syncDialogDismiss(dialog,busy,dirty){
+  if(!dialog) return '';
+  const mode=dialogDismissMode(!!busy,!!dirty);
+  if(typeof dialog.setAttribute==='function') dialog.setAttribute('closedby',mode);
+  else dialog.closedBy=mode;
+  // ✕ 和取消是同一个动作:忙着的时候取消按不动,✕ 也一起灰着,而不是点了没反应。
+  const close=dialog.querySelector?.('.dialog-x[data-dismiss]');
+  if(close) setDisabled(close,busy?'正在执行，完成后才能关闭':'');
+  return mode;
+}
+// 手打的名称和要删的名称差在哪。还没打完就说还差几个字,打错了就说不一致;
+// 只写「名称不对」的话,人分不清是没打完还是打错了字。
+function nameMismatchReason(typed,expected){
+  typed=String(typed ?? '');expected=String(expected ?? '');
+  if(typed===expected) return '';
+  if(!typed) return '先输入完整名称';
+  if(expected.startsWith(typed)) return `名称还差 ${[...expected].length-[...typed].length} 个字符`;
+  return '名称不一致';
+}
+// 要照着打的名称画成等宽的一块,可以整块选中,旁边一个复制按钮。
+function confirmNameHtml(name){
+  return `<code class="confirm-name">${esc(name)}</code><button type="button" class="icon-only mini" data-copy-text="${esc(name)}" title="复制名称"><svg class="ic" aria-hidden="true"><use href="#i-copy"/></svg><span class="control-label">复制名称</span></button>`;
+}
+// 菜单里的一项被选中后先收起菜单、把焦点交回打开它的按钮。接着弹出的对话框关掉时,
+// 焦点回到它打开前的位置;那时菜单项已经藏起来了,焦点会掉回页面开头。
+function closeMenuFor(el){
+  const menu=el?.closest?.('[popover]');
+  if(!menu) return;
+  try{ if(menu.matches(':popover-open')) menu.hidePopover(); }catch(error){}
+  const opener=menu.id && typeof CSS!=='undefined'?document.querySelector?.(`[popovertarget="${CSS.escape(menu.id)}"]`):null;
+  opener?.focus?.({preventScroll:true});
+}
+function startDialogs(){
+  document.addEventListener('click',event=>{
+    // ✕ 就是那个对话框自己的取消按钮,走同一段处理(忙着时拦下、清掉预览),不另写一份。
+    const dismiss=event.target.closest?.('[data-dismiss]');
+    if(dismiss){const target=$(dismiss.dataset.dismiss);if(target && !target.disabled) target.click();return;}
+    const copy=event.target.closest?.('[data-copy-text]');
+    if(copy){
+      navigator.clipboard.writeText(copy.dataset.copyText).then(()=>toast('已复制'),()=>toast('无法访问剪贴板，请手动选中复制','bad'));
+    }
+  });
+}
+
+// ================= 页面内的确认框 ===================================================
+// 替代浏览器自带的 confirm():那种框样式和别处不一样、点外面关不掉、长名单挤成一段纯文字、
+// 还会把整页卡住。这里返回 Promise<boolean>:确认是 true,取消、Esc、点遮罩都是 false。
+let CONFIRM_SETTLE=null;
+function confirmSettle(value){
+  const settle=CONFIRM_SETTLE;CONFIRM_SETTLE=null;
+  const dialog=$('confirm-dialog');
+  if(dialog?.open) dialog.close();
+  if(settle) settle(!!value);
+}
+function wireConfirmDialog(){
+  const dialog=$('confirm-dialog');
+  if(!dialog || dialog.dataset.wired) return;
+  dialog.dataset.wired='1';
+  $('confirm-form').addEventListener('submit',event=>{event.preventDefault();confirmSettle(true);});
+  $('confirm-cancel').addEventListener('click',()=>confirmSettle(false));
+  // Esc 和点遮罩由浏览器直接关掉对话框,关掉就是「不」。close 事件是异步来的:
+  // 那时对话框若已经为下一个问题重新打开,这一下属于上一个问题,不能拿来回答新的。
+  dialog.addEventListener('close',()=>{if(!dialog.open) confirmSettle(false);});
+}
+function askConfirm({title,body='',items=[],more='',confirmLabel='确认',danger=false}={}){
+  wireConfirmDialog();
+  // 同一时间只问一件事:上一个还没答的问题算「不」。
+  confirmSettle(false);
+  $('confirm-title').textContent=title || '确认操作';
+  $('confirm-body').textContent=body;
+  const list=$('confirm-items');
+  list.innerHTML=items.map(item=>item && typeof item==='object'
+    ?`<li>${esc(item.text)}${item.note?` <small class="confirm-note">${esc(item.note)}</small>`:''}</li>`:`<li>${esc(item)}</li>`).join('');
+  list.hidden=!items.length;
+  $('confirm-more').textContent=more;$('confirm-more').hidden=!more;
+  const ok=$('confirm-ok');
+  ok.textContent=confirmLabel;ok.className=danger?'danger':'primary';
+  return new Promise(resolve=>{
+    CONFIRM_SETTLE=resolve;
+    $('confirm-dialog').showModal();
+    // 危险的确认停在「取消」上:手滑多按一下 Enter 不能把东西删掉。
+    (danger?$('confirm-cancel'):ok).focus?.();
+  });
+}
+
+// ================= 技能与插件的删除 =================================================
 let DELETE_PLAN=null, DELETE_BUSY=false;
 async function previewDeletion(data){
   if(!ConsoleActions.allowWrite() || DELETE_BUSY) return;
   DELETE_BUSY=true;DELETE_PLAN=null;
   $('delete-title').textContent=data.name+' · '+(data.delete==='plugin'?'卸载预览':'删除预览');
   $('delete-body').textContent='正在核对目标和删除范围…';$('delete-state').textContent='';
-  $('delete-name').value='';$('delete-confirm').disabled=true;$('delete-dialog').showModal();
+  $('delete-name').value='';$('delete-expected').hidden=true;$('delete-expected').innerHTML='';
+  syncDeleteConfirm();$('delete-dialog').showModal();
   try{
     const plan=await api('/api/maintenance/plan',{method:'POST',body:JSON.stringify({kind:data.delete,name:data.name,location:data.location})});
     if(!$('delete-dialog').open) return;
     DELETE_PLAN=plan;
     $('delete-body').innerHTML=`<p>${esc(plan.message)}</p><dl class="launch-facts"><dt>名称</dt><dd>${esc(plan.name)}</dd><dt>位置</dt><dd>${esc(plan.location)}</dd><dt>路径</dt><dd><code>${esc(plan.path || '由插件管理器管理')}</code></dd>${plan.files!=null?`<dt>范围</dt><dd>${plan.files} 个文件，${plan.links} 个联接，${kb(plan.bytes)}（不含联接目标）</dd>`:''}${plan.target?`<dt>保留的目标</dt><dd><code>${esc(plan.target)}</code></dd>`:''}</dl><p>预览 5 分钟内有效。内容发生变化后必须重新预览。</p>`;
     $('delete-confirm').textContent=plan.kind==='plugin'?'确认卸载':'确认删除';
+    $('delete-expected').innerHTML=confirmNameHtml(plan.name);$('delete-expected').hidden=false;
   }catch(error){$('delete-state').textContent=error.message;}
-  finally{DELETE_BUSY=false;syncDeleteConfirm();}
+  finally{
+    DELETE_BUSY=false;syncDeleteConfirm();
+    // 预览到了就把光标放进名称框,省得再去点一下;人已经点到别处(比如复制按钮)就不抢。
+    const active=document.activeElement;
+    if(DELETE_PLAN && $('delete-dialog').open && (!active || active===$('delete-cancel') || active===$('delete-dialog'))) $('delete-name').focus?.();
+  }
+}
+function deleteConfirmReason(){
+  if(DELETE_BUSY) return DELETE_PLAN?'正在执行':'正在读取删除范围';
+  if(!DELETE_PLAN) return '没有可用的删除预览，请关闭后重新打开';
+  return nameMismatchReason($('delete-name').value,DELETE_PLAN.name);
 }
 function syncDeleteConfirm(){
-  $('delete-confirm').disabled=DELETE_BUSY || !DELETE_PLAN || $('delete-name').value!==DELETE_PLAN.name || ConsoleActions.readOnly;
+  const reason=deleteConfirmReason();
+  ConsoleActions.gate($('delete-confirm'),reason);
+  $('delete-hint').textContent=DELETE_PLAN && !reason?'名称一致，可以确认':reason;
+  syncDialogDismiss($('delete-dialog'),DELETE_BUSY,$('delete-name').value!=='');
+}
+// 确认按钮是表单的提交按钮:点它和在名称框里按 Enter 都走这里。按钮灰着时浏览器不会隐式提交,
+// 这里再按同样的条件核一遍,因为提交也可能从别的路径来。
+async function confirmDeletion(){
+  if(DELETE_BUSY || !DELETE_PLAN || $('delete-name').value!==DELETE_PLAN.name || !ConsoleActions.allowWrite()) return;
+  const plan=DELETE_PLAN;DELETE_BUSY=true;syncDeleteConfirm();$('delete-state').textContent='正在执行，请勿重复提交…';
+  try{
+    const result=await api('/api/maintenance/delete',{method:'POST',body:JSON.stringify({token:plan.token})});
+    $('delete-state').textContent=result.message || result.error || '未收到结果说明';
+    toast($('delete-state').textContent,result.ok?'ok':'bad');
+    if(result.ok) $('delete-dialog').close();
+  }catch(error){$('delete-state').textContent=error.message;}
+  finally{DELETE_PLAN=null;DELETE_BUSY=false;syncDeleteConfirm();await loadMaint();}
 }
 function startDeletionControls(){
   $('delete-name').addEventListener('input',syncDeleteConfirm);
   $('delete-cancel').addEventListener('click',()=>{if(!DELETE_BUSY){DELETE_PLAN=null;$('delete-dialog').close();}});
   $('delete-dialog').addEventListener('cancel',event=>{if(DELETE_BUSY) event.preventDefault();else DELETE_PLAN=null;});
-  $('delete-confirm').addEventListener('click',async()=>{
-    if(DELETE_BUSY || !DELETE_PLAN || $('delete-name').value!==DELETE_PLAN.name || !ConsoleActions.allowWrite()) return;
-    const plan=DELETE_PLAN;DELETE_BUSY=true;syncDeleteConfirm();$('delete-state').textContent='正在执行，请勿重复提交…';
-    try{
-      const result=await api('/api/maintenance/delete',{method:'POST',body:JSON.stringify({token:plan.token})});
-      $('delete-state').textContent=result.message || result.error || '未收到结果说明';
-      toast($('delete-state').textContent,result.ok?'ok':'bad');
-      if(result.ok) $('delete-dialog').close();
-    }catch(error){$('delete-state').textContent=error.message;}
-    finally{DELETE_PLAN=null;DELETE_BUSY=false;syncDeleteConfirm();await loadMaint();}
-  });
+  $('delete-form').addEventListener('submit',event=>{event.preventDefault();confirmDeletion();});
 }

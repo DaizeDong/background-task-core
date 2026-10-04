@@ -14,7 +14,7 @@ let CH_XT=false, CH_XK=false, CH_XBUSY=false, CH_FBUSY=false;
 let CH_POS={}, CH_ORDER=[], CH_TR=[], CH_FKS={}, CH_AGTURN={}, CH_SUBQ="";
 const CH_NODE=new Map();
 let CH_SEQ=0, CH_NSEQ=0, CH_NT=null, CH_ROUTING=false;
-let CH_LIST_SCROLL=0, CH_LIST_FOCUS=null;
+let CH_LIST_SCROLL=0, CH_LIST_FOCUS=null, CH_MOREOPEN=false;
 const CH_UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const CH_AGENT=/^[A-Za-z0-9_-]{1,80}$/;
 // 字形、类名、可读名。类名逐字写在这里(不拼接),死 CSS 闸才找得到它们。
@@ -163,7 +163,7 @@ function chAfterLoad(focusU, keepSel, keepHead, keepOpen){
 function chClose(keepHash){
   CH_SEQ++; clearTimeout(CH_NT);
   CH=null; CH_ID=null; CH_SUB=null; CH_LEAF=null; CH_PARENT=null; CH_SEL=null;
-  CH_FROM=null; CH_TO=null; CH_OPEN={}; CH_FKOPEN=null; CH_FRES=null; CH_NODE.clear();
+  CH_FROM=null; CH_TO=null; CH_OPEN={}; CH_FKOPEN=null; CH_MOREOPEN=false; CH_FRES=null; CH_NODE.clear();
   $("chbox").hidden=true;
   $("cvbox").hidden=false;
   requestAnimationFrame(()=>{
@@ -249,12 +249,17 @@ function chRenderHead(){
     wn.innerHTML=""; return;
   }
   const nT=(CH.turns || []).filter(t=>t.type==="turn").length;
+  const manage=!CH_SUB && typeof cvOpenManager==='function', off=ConsoleActions.readOnly?' disabled':'';
+  const item=(icon,label,attrs,cls='')=>`<button type="button" class="menu-item${cls?' '+cls:''}" ${attrs}><svg class="ic" aria-hidden="true"><use href="#${icon}"/></svg><span>${label}</span></button>`;
+  // 「更多操作与详情」是一个真菜单(popover):点别处、按 Esc 收起,浮在链上面不挤开它。
+  // 删除会话收在菜单最底下、和别的项隔开,标题栏上不再常驻一个垃圾桶。
   hd.innerHTML=`<span class="ttl">${esc(CH.title || CH.id)}</span>`
     +`<span><b>${nT}</b> 轮</span>`
-    +(!CH_SUB && typeof cvOpenManager==='function'?`<button class="icon-only mini cv-danger" data-cvdelete="${esc(CH.id)}"${ConsoleActions.readOnly?' disabled':''} title="删除会话"><svg class="ic" aria-hidden="true"><use href="#i-trash"/></svg><span class="control-label">删除会话</span></button>`:'')
     +(CH.leafIsDefault ? "" : `<span class="alt">正在看一条非默认分支</span><button class="icon-only mini" data-chact="latest" title="回到最新分支"><svg class="ic" aria-hidden="true"><use href="#i-branch"/></svg><span class="control-label">回到最新分支</span></button>`)
-    +`<details class="ch-file-details"><summary>更多操作与详情</summary><div class="ch-file-meta">`
-    +(!CH_SUB && typeof cvOpenManager==='function'?`<span class="ch-row"><button class="icon-only mini" data-cvrename="${esc(CH.id)}"${ConsoleActions.readOnly?' disabled':''} title="重命名"><svg class="ic" aria-hidden="true"><use href="#i-edit"/></svg><span class="control-label">重命名</span></button><button class="icon-only mini" data-cvmove="${esc(CH.id)}"${ConsoleActions.readOnly?' disabled':''} title="移动会话"><svg class="ic" aria-hidden="true"><use href="#i-move"/></svg><span class="control-label">移动会话</span></button></span>`:'')
+    +`<button type="button" class="mini ch-more" popovertarget="ch-more" title="更多操作与详情"><svg class="ic" aria-hidden="true"><use href="#i-more"/></svg>更多操作与详情</button>`
+    +`<div class="pop-menu ch-more-menu" id="ch-more" popover aria-label="更多操作与详情">`
+    +(manage?item('i-edit','重命名',`data-cvrename="${esc(CH.id)}"${off} title="重命名"`)+item('i-move','移动会话',`data-cvmove="${esc(CH.id)}"${off} title="移动会话"`)+'<div class="menu-sep" role="separator"></div>':'')
+    +`<div class="menu-facts">`
     +`<span>${chN(CH.lines)} 行 · ${chN(CH.chainEntries)} 个链条目 · ${kb(CH.bytes)}</span>`
     +`<span>显示链 <b>${chN(CH.pathLen)}</b> 个节点</span>`
     +`<span${CH.badLines ? ' class="bad"' : ""}>坏行 ${chN(CH.badLines)}</span>`
@@ -263,9 +268,20 @@ function chRenderHead(){
     +`<span>压缩 ${chN(CH.compactions)} · 分叉 ${chN(CH.forks)}</span>`
     +`<span title="${CH.cached ? "这次走的是缓存的索引,数字是当初建索引的耗时" : "这次重新建了索引"}">索引 ${chN(CH.indexMs)} ms${CH.cached ? "(缓存)" : ""}</span>`
     +`<span class="cwd" title="${esc(CH.file || "")}">保存于 ${esc(CH.locationInferred?CH.projectDir:CH.storageCwd || CH.cwd || CH.projectDir || '工作目录未记录')}</span>`
-    +`</div></details>`;
+    +`</div>`
+    +(manage?'<div class="menu-sep" role="separator"></div>'+item('i-trash','删除会话',`data-cvdelete="${esc(CH.id)}"${off} title="永久删除这场会话"`,'menu-danger'):'')
+    +`</div>`;
+  // 读取警告留在菜单外面,永远看得见:坏数据不能藏在一个要点开才看到的地方。
   wn.innerHTML=(CH.badLines || CH.danglingParents ? `<div class="warn-line">读取警告：坏行 ${chN(CH.badLines)} · 悬空父节点 ${chN(CH.danglingParents)}</div>` : "")
     +(CH.warnings || []).map(w=>`<div class="warn-line">${esc(w)}</div>`).join("");
+  if(CH_MOREOPEN) chReshow("ch-more");
+}
+// 重画会把开着的菜单换掉,浏览器悄悄关上它(不发 toggle 事件);人没关过的菜单要原样再打开。
+function chReshow(id){
+  const menu=$(id);
+  if(!menu || typeof menu.showPopover!=="function") return;
+  const opener=typeof CSS!=="undefined" ? $("chbox").querySelector(`[popovertarget="${CSS.escape(id)}"]`) : null;
+  try{ if(!menu.matches(":popover-open")) menu.showPopover(opener ? {source:opener} : undefined); }catch(e){}
 }
 
 function chSubLabel(s){
@@ -278,10 +294,13 @@ function chSubOptions(q){
   const head=n ? `筛出 ${hit.length} / ${S.length} 个,选一个打开` : `共 ${S.length} 个,选一个打开`;
   return `<option value="">${esc(head)}</option>`+hit.map(s=>`<option value="${esc(s.agentId)}">${esc(chSubLabel(s))}</option>`).join("");
 }
+// 分支菜单也是 popover:点别处、按 Esc 收起,开第二个时第一个自己关上。CH_FKOPEN 跟着 toggle 事件走,
+// 只为了列表重画之后把它再打开。
+const chFkId=u=>"chfk-"+encodeURIComponent(String(u));
 function chFkHtml(u){
   const f=CH_FKS[u];
-  if(!f || CH_FKOPEN!==u) return "";
-  return `<div class="ch-fk" role="menu"><div class="hd">${f.alternatives.length} 条分支</div>`
+  if(!f) return "";
+  return `<div class="ch-fk pop-menu" id="${esc(chFkId(u))}" popover data-chfk-for="${esc(u)}" role="menu"><div class="hd">${f.alternatives.length} 条分支</div>`
     +f.alternatives.map(a=>`<button role="menuitem" data-chleaf="${esc(a.leaf)}" data-chat="${esc(f.u)}"${a.active ? " disabled" : ""}>`
       +`<span class="${a.active ? "act" : "alt"}">${a.active ? "当前" : "切换"}</span>`
       +`<span class="pv" title="${esc(a.preview || "")}">${esc(a.preview || "(这条分支里没有用户消息)")}</span>`
@@ -293,7 +312,7 @@ function chFkHtml(u){
     +`</div>`;
 }
 function chFkBtn(u, n){
-  return `<button class="mini" data-chfk="${esc(u)}" aria-expanded="${CH_FKOPEN===u}" title="这个节点下面分出了 ${n} 条分支">⑂ ${n} 个分支</button>`;
+  return `<button type="button" class="mini" data-chfk="${esc(u)}" popovertarget="${esc(chFkId(u))}" title="这个节点下面分出了 ${n} 条分支">⑂ ${n} 个分支</button>`;
 }
 
 function chTurnHtml(t, ti){
@@ -362,6 +381,7 @@ function chRenderList(){
   L.innerHTML=parts.join("") || `<div class="ch-empty">这条链上没有节点</div>`;
   L.scrollTop=st;
   chMarks();
+  if(CH_FKOPEN) chReshow(chFkId(CH_FKOPEN));
 }
 
 function chRenderTurn(ti){
@@ -574,10 +594,11 @@ function chForkRequest(body){
 async function chFork(){
   const at=chSelEnd();
   if(!at || CH_SUB || !CH || CH_FBUSY) return;
-  if(!confirm(`从选中位置新建会话？\n\n`
-    +`新会话会保存在当前项目，保留到所选消息为止的上下文。`
-    +`如果历史已压缩，会从最近一次压缩后的内容开始。\n\n`
-    +`原会话会保留。创建后可复制启动命令，在终端里接着聊。`)) return;
+  const ok=await askConfirm({title:"从选中位置新建会话",
+    body:"新会话会保存在当前项目，保留到所选消息为止的上下文。如果历史已压缩，会从最近一次压缩后的内容开始。原会话会保留。创建后可复制启动命令，在终端里接着聊。",
+    confirmLabel:"新建会话"});
+  // 确认框开着的这段时间里,人可能换了选中的消息或关掉了链:那时这次确认说的已不是眼前这一处。
+  if(!ok || at!==chSelEnd() || CH_SUB || !CH || CH_FBUSY) return;
   const body={id:CH_ID, at};
   if(CH_LEAF) body.leaf=CH_LEAF;
   const request=chForkRequest(body);body.requestId=request.request;
@@ -678,9 +699,9 @@ function chClick(e){
   const cp=t.closest("[data-chcopy]");
   if(cp){ chCopy(cp.dataset.chcopy); return; }
   const lf=t.closest("[data-chleaf]");
-  if(lf){ if(!lf.disabled){ CH_FKOPEN=null; openConvoChain(CH_ID, {sub:CH_SUB, leaf:lf.dataset.chleaf, focus:lf.dataset.chat}); chFocusList(); } return; }
-  const fk=t.closest("[data-chfk]");
-  if(fk){ CH_FKOPEN=CH_FKOPEN===fk.dataset.chfk ? null : fk.dataset.chfk; chRenderList(); chFocusList(); return; }
+  if(lf){ if(!lf.disabled){ CH_FKOPEN=null; try{ lf.closest("[popover]")?.hidePopover(); }catch(err){} openConvoChain(CH_ID, {sub:CH_SUB, leaf:lf.dataset.chleaf, focus:lf.dataset.chat}); chFocusList(); } return; }
+  // ⑂ 按钮由浏览器开合菜单(popovertarget),这里不动焦点:人要用 Tab 走进菜单里选分支。
+  if(t.closest("[data-chfk]") || t.closest("[popover]")) return;
   const sb=t.closest("[data-chsub]");
   if(sb){ chOpenSub(sb.dataset.chsub); return; }
   const n=t.closest("[data-chk]");
@@ -711,6 +732,13 @@ function startConvoChain(){
   box.addEventListener("click", e=>{
     try{ chClick(e); }catch(err){ $("chnote").textContent="操作失败:"+err.message; }
   });
+  // 菜单的 toggle 不冒泡,在捕获阶段接。开第二个菜单时第一个的「关」可能晚到,只清自己那一个。
+  box.addEventListener("toggle", e=>{
+    const t=e.target, open=e.newState==="open";
+    if(t.id==="ch-more") CH_MOREOPEN=open;
+    const u=t.dataset && t.dataset.chfkFor;
+    if(u!=null){ if(open) CH_FKOPEN=u; else if(CH_FKOPEN===u) CH_FKOPEN=null; }
+  }, true);
   box.addEventListener("input", e=>{
     if(e.target.id!=="chsubq") return;
     CH_SUBQ=e.target.value;

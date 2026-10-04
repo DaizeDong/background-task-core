@@ -1035,11 +1035,12 @@ table.g td[data-col="timeout"]{font-family:var(--mono)}
 #lcalls .card-actions select,#lcalls .card-actions input{max-width:100%}
 
 /* Review frozen repository plans before any publication. */
-.rp-review{width:min(1000px,90vw);max-height:90vh;background:var(--panel);color:var(--ink);border:1px solid var(--line);padding:20px}
-.rp-review::backdrop{background:#0009}
-.rp-review pre{max-height:60vh;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;text-align:left}
-.rp-review input{display:block;width:100%;box-sizing:border-box;margin:8px 0}
-.rp-review button{margin-right:12px}
+dialog.rp-review{width:min(1000px,calc(100vw - 32px))}
+.rp-review pre{max-height:55vh;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;text-align:left;margin:0 0 12px}
+.rp-review label{display:block}
+.rp-review label input[type=text]{display:block;width:100%;box-sizing:border-box;margin:6px 0 0;min-height:30px}
+.rp-review [role="alert"]{margin:6px 0 0;color:var(--bad)}
+.rp-review [role="alert"]:empty{display:none}
 
 /* Operation feedback remains visible independently of the selected workspace. */
 /* Pinned only while an operation is pending (.settled is set by ConsoleActions.render when none
@@ -1049,13 +1050,62 @@ html {scroll-padding-top:var(--sticky-stack,54px)}
 .operation-panel {position:sticky;top:var(--bar-stick,54px);z-index:100;padding:12px 24px;background:var(--panel);border-bottom:1px solid var(--line);overflow-wrap:anywhere}
 .operation-panel summary {cursor:pointer;color:var(--dim);font-size:12px;margin-top:4px}
 #operation-history {max-height:120px;overflow:auto;margin:6px 0 0;padding-left:20px}
-#launch-dialog, #delete-dialog, .task-op-dialog {width:min(820px,calc(100vw - 32px));max-height:85vh;overflow:auto;background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:10px;padding:24px}
-#launch-dialog::backdrop, #delete-dialog::backdrop, .task-op-dialog::backdrop {background:rgb(0 0 0 / 40%)}
+/* 对话框只有一种外壳。原来有四套:圆角 10/8/6/0、内边距 24/0/16/20、遮罩深浅 40%/45%/48%/60% 各不相同,
+   ✕ 有的在标题后面、有的根本没有。现在统一:标题在左、✕ 在右上,头部和底部按钮贴住上下沿不随内容滚走,
+   内容内边距 16px;底部按钮靠右,次要在前、主按钮在后。主按钮实心青色,危险按钮实心红色,
+   灰掉时两者都退回统一的不可用样式(那条规则在本文件末尾,带 !important)。 */
+dialog.console-dialog{box-sizing:border-box;width:min(820px,calc(100vw - 32px));max-height:min(85vh,calc(100dvh - 32px));
+  margin:auto;padding:0;overflow:auto;overscroll-behavior:contain;background:var(--panel);color:var(--ink);
+  border:1px solid var(--line);border-radius:8px;box-shadow:0 10px 40px rgb(0 0 0 / 25%)}
+dialog.console-dialog::backdrop{background:rgb(0 0 0 / 45%)}
+.console-dialog form{margin:0}
+.dialog-head{position:sticky;top:0;z-index:2;display:flex;align-items:center;flex-wrap:wrap;gap:6px;
+  padding:8px 10px 8px 16px;background:var(--panel);border-bottom:1px solid var(--line)}
+.dialog-head h2{flex:1 1 12em;min-width:0;margin:0;font-size:15px;font-weight:600;line-height:1.4;overflow-wrap:anywhere}
+.dialog-head>span{font-size:12px;color:var(--dim)}
+.dialog-body{padding:16px}
+.dialog-body>:first-child{margin-top:0}
+.dialog-foot{position:sticky;bottom:0;z-index:2;display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-end;gap:8px;
+  padding:10px 16px;background:var(--panel);border-top:1px solid var(--line)}
+.dialog-foot button{min-height:32px;padding:4px 14px}
+button.primary:not(:disabled),.dialog-foot button.danger:not(:disabled){color:var(--panel);font-weight:600}
+button.primary:not(:disabled){background:var(--cyan);border-color:var(--cyan)}
+.dialog-foot button.danger:not(:disabled){background:var(--bad);border-color:var(--bad)}
+button.primary:not(:disabled):hover,.dialog-foot button.danger:not(:disabled):hover{color:var(--panel);filter:brightness(1.1)}
+button.primary:not(:disabled):focus-visible,.dialog-foot button.danger:not(:disabled):focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+/* 输入框下面那一行提示:主按钮灰着时说为什么,对上了就说可以了。 */
+.field-hint{margin:4px 0 0;min-height:1.4em;font-size:var(--fs-meta);color:var(--dim);overflow-wrap:anywhere}
+/* 要照着打的名称:等宽、一点就整块选中,旁边带复制按钮。 */
+.confirm-name-line{display:flex;align-items:center;gap:6px;margin:6px 0 0}
+.confirm-name-line[hidden]{display:none}
+.confirm-name{font-family:var(--mono);padding:2px 6px;border:1px solid var(--line);border-radius:4px;background:var(--panel2);
+  color:var(--ink);user-select:all;overflow-wrap:anywhere}
+.confirm-dialog{width:min(520px,calc(100vw - 32px))}
+#confirm-body{margin:0 0 8px;white-space:pre-wrap;overflow-wrap:anywhere}
+#confirm-items{margin:0;padding-left:20px;max-height:40vh;overflow:auto;overflow-wrap:anywhere}
+#confirm-items .confirm-note{color:var(--dim);font-family:var(--mono)}
+#confirm-more{margin:6px 0 0}
+
+/* 弹出菜单(popover)。浮在页面最上层,贴在打开它的按钮下方右对齐;下面放不下就翻到上方。
+   点别处、按 Esc 由浏览器收起,同一时间只开一个。 */
+.pop-menu{margin:2px 0 2px 8px;position-area:bottom span-left;position-try-fallbacks:flip-block;min-width:200px;
+  max-width:min(420px,calc(100vw - 16px));max-height:min(70vh,520px);overflow:auto;padding:4px;
+  background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:6px;box-shadow:0 6px 24px rgb(0 0 0 / 22%);
+  font-size:var(--fs-body)}
+.pop-menu .menu-item{display:flex;align-items:center;gap:8px;width:100%;min-height:32px;padding:4px 10px;border:0;border-radius:4px;
+  background:transparent;color:var(--ink);text-align:left;white-space:normal}
+.pop-menu .menu-item>.ic{width:16px;height:16px;flex:none}
+.pop-menu .menu-item:not(:disabled):hover,.pop-menu .menu-item:not(:disabled):focus-visible{background:var(--cur);color:var(--ink)}
+.pop-menu .menu-item:focus-visible{outline:2px solid var(--cyan);outline-offset:-2px}
+.pop-menu .menu-danger:not(:disabled),.pop-menu .menu-danger:not(:disabled):hover{color:var(--bad)}
+.pop-menu .menu-sep{height:1px;margin:4px 6px;background:var(--line)}
+.pop-menu .menu-facts{display:flex;flex-direction:column;gap:3px;padding:4px 10px;color:var(--dim);font-size:var(--fs-meta);overflow-wrap:anywhere}
+@media(pointer:coarse){.pop-menu .menu-item{min-height:40px}}
 .launch-facts {display:grid;grid-template-columns:90px minmax(0,1fr);gap:8px 14px}
 .launch-facts dd {margin:0;overflow-wrap:anywhere;white-space:pre-wrap}
 .launch-action {border-top:1px solid var(--line);padding-top:14px;margin-top:14px}
 #launch-body pre {white-space:pre-wrap;overflow-wrap:anywhere;background:var(--panel2);color:var(--ink);padding:12px}
-#delete-name {width:100%;margin-top:8px}
+#delete-name {width:100%;margin-top:6px;box-sizing:border-box}
 #delete-state {color:var(--warn);overflow-wrap:anywhere}
 .mt-r {flex-wrap:wrap}
 @media(max-width:600px){.launch-facts{grid-template-columns:1fr;gap:4px}.launch-facts dd{margin-bottom:10px}.operation-panel{padding:10px 14px}}

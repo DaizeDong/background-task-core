@@ -56,19 +56,22 @@ function taskDeleteWarning(warning){
     text+=`（当前建议：${TASK_VERDICTS[warning.verdict].label}）`;
   return `<p class="review-notice">${esc(text)}</p>`;
 }
+// 拦下删除的原因和提醒(比如「当前建议不是可删」)放在任务名正下方,不放在预览末尾:
+// 预览常常比一屏还长,放在末尾时人得滚到底才知道确认按钮为什么按不动、为什么不该按。
+function taskDeleteAlertsHtml(plan){
+  const blocking=plan?.blocking || [];
+  return (blocking.length?`<div class="task-op-blocking" role="alert"><strong>现在不能删除：</strong>${taskDeleteList(blocking)}</div>`:'')+
+    (plan?.warnings || []).map(taskDeleteWarning).join('');
+}
 function taskDeletePlanHtml(plan){
   const actions=plan.task?.actions || [];
-  const blocking=plan.blocking || [];
   return `<dl class="launch-facts"><dt>归属</dt><dd>${plan.managed?'任务控制器管理：通过控制器退役并删除':'不受任务控制器管理：先导出 XML 存档，再从计划程序删除'}</dd>
     <dt>当前状态</dt><dd>${esc(taskStateLabel(plan.task?.state))}</dd><dt>原因</dt><dd>${esc(plan.reason)}</dd></dl>`+
-    // 拦下删除的原因放最前面而且醒目:确认按钮为什么按不动,答案必须在人第一眼看的地方。
-    (blocking.length?`<div class="task-op-blocking" role="alert"><strong>现在不能删除：</strong>${taskDeleteList(blocking)}</div>`:'')+
     `<h3>将执行的步骤</h3><ol class="task-op-steps">${(plan.steps || []).map(step=>taskDeleteStepHtml(step,'plan')).join('')}</ol>`+
     (plan.authority?.changes?.length?`<h3>控制器将改写</h3><ul>${plan.authority.changes.map(change=>`<li><code>${esc(change.path)}</code> · ${esc(change.operation)}</li>`).join('')}</ul>`:'')+
     taskFollowupHtml(plan.followup,'plan')+
     `<h3>任务运行的程序（删除前已记录）</h3>`+(actions.length?`<ul>${actions.map(action=>`<li><code>${esc([action.execute,action.arguments].filter(Boolean).join(' ') || '未提供')}</code>${action.workingDirectory?` <small>工作目录 <code>${esc(action.workingDirectory)}</code></small>`:''}</li>`).join('')}</ul>`:'<p>没有读到动作</p>')+
     (plan.notes?.length?`<h3>需要手动处理</h3>${taskDeleteList(plan.notes)}`:'')+
-    (plan.warnings || []).map(taskDeleteWarning).join('')+
     (plan.token?`<p>预览 ${Math.round((plan.expiresIn || 300)/60)} 分钟内有效，只能用一次；任务、分类配置或后续清理有变化时需要重新预览。</p>`:'');
 }
 function taskDeleteResultHtml(result){
@@ -89,20 +92,45 @@ function taskFollowupRetryHtml(retry){
   return `<h3>单独重跑后续清理</h3>${retry.howto?`<p>${esc(retry.howto)}</p>`:''}<pre><code>${esc(retry.command)}</code></pre>`+
     `<details><summary>后续清理请求（原样存成 UTF-8 文件）</summary><pre><code>${esc(JSON.stringify(retry.request ?? null,null,2))}</code></pre></details>`;
 }
-function taskDeleteReady(){
+// 预览本身能不能拿来删:有令牌、没有拦下的原因、还没过期。名称框只在这时才可以打字。
+function taskDeletePlanUsable(){
   const plan=TASK_DELETE.plan;
-  return !TASK_DELETE.busy && !ConsoleActions.readOnly && !!plan && plan.applicable===true && !!plan.token &&
-    !(plan.blocking || []).length && Date.now()<TASK_DELETE.expires && $('task-delete-name').value===plan.name;
+  return !TASK_DELETE.busy && !!plan && plan.applicable===true && !!plan.token &&
+    !(plan.blocking || []).length && Date.now()<TASK_DELETE.expires;
+}
+function taskDeleteReady(){
+  return taskDeletePlanUsable() && !ConsoleActions.readOnly && $('task-delete-name').value===TASK_DELETE.plan.name;
+}
+// 确认按钮为什么按不动,一次只说最先要做的那一件。
+function taskDeleteConfirmReason(){
+  const plan=TASK_DELETE.plan;
+  if(TASK_DELETE.busy) return TASK_DELETE.phase==='apply'?'正在执行':'正在生成删除预览';
+  if(!plan) return '先生成删除预览';
+  if((plan.blocking || []).length || plan.applicable!==true || !plan.token) return '预览列出了不能删除的原因';
+  if(Date.now()>=TASK_DELETE.expires) return '预览已过期，请重新生成';
+  return nameMismatchReason($('task-delete-name').value,plan.name);
 }
 function syncTaskDeleteConfirm(){
-  $('task-delete-confirm').disabled=!taskDeleteReady();
-  $('task-delete-preview').disabled=TASK_DELETE.busy || ConsoleActions.readOnly;
+  const reason=taskDeleteConfirmReason(), usable=taskDeletePlanUsable();
+  ConsoleActions.gate($('task-delete-confirm'),reason);
+  const why=TASK_DELETE.busy?(TASK_DELETE.phase==='apply'?'正在执行':'正在生成删除预览'):!$('task-delete-reason').value.trim()?'先写删除原因':'';
+  ConsoleActions.gate($('task-delete-preview'),why);
+  $('task-delete-reason-hint').textContent=!TASK_DELETE.busy && why?why+'，写好后按 Enter 或点「生成删除预览」':'';
+  // 没有可用的预览时名称框灰着:先打名字再预览,打的字会在预览回来前就「对上」一份还不存在的计划。
+  const name=$('task-delete-name');
+  if(name.disabled!==!usable) name.disabled=!usable;
+  $('task-delete-hint').textContent=usable && !reason?'名称一致，可以确认删除':reason;
+  const expected=$('task-delete-expected');
+  expected.hidden=!usable;
+  if(usable && expected.dataset.name!==TASK_DELETE.plan.name){expected.innerHTML=confirmNameHtml(TASK_DELETE.plan.name);expected.dataset.name=TASK_DELETE.plan.name;}
+  syncDialogDismiss($('task-delete-dialog'),TASK_DELETE.busy,!!($('task-delete-reason').value || name.value));
 }
 function openTaskDelete(name){
   if(!ConsoleActions.allowWrite() || TASK_DELETE.busy) return;
   const row=ROWS.find(task=>task.name===name);
-  TASK_DELETE={name,plan:null,busy:false,expires:0};
+  TASK_DELETE={name,plan:null,busy:false,expires:0,phase:''};
   $('task-delete-subject').innerHTML=`<dl class="launch-facts"><dt>任务</dt><dd>${esc(row?taskText(row).title:name)}</dd><dt>任务名</dt><dd><code>${esc(name)}</code></dd></dl>`;
+  $('task-delete-alerts').innerHTML='';
   $('task-delete-body').innerHTML='<p>写明原因后生成预览。预览会列出每一步要改哪里；确认之前什么都不会改。</p>';
   $('task-delete-reason').value='';$('task-delete-name').value='';$('task-delete-state').textContent='';
   $('task-delete-cancel').textContent='取消';
@@ -112,7 +140,7 @@ async function previewTaskDelete(){
   const name=TASK_DELETE.name, reason=$('task-delete-reason').value.trim();
   if(!name || TASK_DELETE.busy || !ConsoleActions.allowWrite()) return;
   if(!reason){$('task-delete-state').textContent='请先写明删除原因，它会写进墓碑或存档回执。';return;}
-  TASK_DELETE.busy=true;TASK_DELETE.plan=null;syncTaskDeleteConfirm();
+  TASK_DELETE.busy=true;TASK_DELETE.phase='preview';TASK_DELETE.plan=null;$('task-delete-alerts').innerHTML='';syncTaskDeleteConfirm();
   $('task-delete-state').textContent='正在核对任务、分类配置和后续清理…';
   try{
     const plan=await api('/api/task/delete/plan',{method:'POST',body:JSON.stringify({name,reason})});
@@ -120,15 +148,20 @@ async function previewTaskDelete(){
     // 等预览的这几秒里原因被改过:回来的这份预览写的是旧原因,不能拿来确认。
     if($('task-delete-reason').value.trim()!==reason){$('task-delete-state').textContent='原因已修改，请重新生成预览。';return;}
     TASK_DELETE.plan=plan;TASK_DELETE.expires=Date.now()+(plan.expiresIn || 0)*1000;
+    $('task-delete-alerts').innerHTML=taskDeleteAlertsHtml(plan);
     $('task-delete-body').innerHTML=taskDeletePlanHtml(plan);
     $('task-delete-state').textContent=(plan.blocking || []).length?'预览列出了不能删除的原因，确认按钮保持禁用。':'输入完整任务名后才能确认删除。';
   }catch(error){$('task-delete-state').textContent=error.message;}
-  finally{TASK_DELETE.busy=false;syncTaskDeleteConfirm();}
+  finally{
+    TASK_DELETE.busy=false;TASK_DELETE.phase='';syncTaskDeleteConfirm();
+    // 预览可用时光标直接进名称框;原因框里那一下 Enter 换来的下一步就是打名字。
+    if(taskDeletePlanUsable() && $('task-delete-dialog').open) $('task-delete-name').focus?.();
+  }
 }
 async function applyTaskDelete(){
   if(!taskDeleteReady() || !ConsoleActions.allowWrite()) return;
   const plan=TASK_DELETE.plan;
-  TASK_DELETE.busy=true;TASK_DELETE.plan=null;syncTaskDeleteConfirm();
+  TASK_DELETE.busy=true;TASK_DELETE.phase='apply';TASK_DELETE.plan=null;syncTaskDeleteConfirm();
   $('task-delete-state').textContent='正在删除，请勿关闭页面或重复提交；控制器和后续清理可能要几分钟…';
   const controller=new AbortController(), timer=setTimeout(()=>controller.abort(),TASK_DELETE_WAIT_MS);
   try{
@@ -142,12 +175,13 @@ async function applyTaskDelete(){
       toast(`${plan.name}：${error.message}`,'bad');
     }
   }finally{
-    clearTimeout(timer);TASK_DELETE.busy=false;syncTaskDeleteConfirm();
+    clearTimeout(timer);TASK_DELETE.busy=false;TASK_DELETE.phase='';syncTaskDeleteConfirm();
     // 无论成败都重读:部分完成和失败同样可能已经改了东西,而那一行要按计划程序的真实状态消失或留下。
     await load();
   }
 }
 function showTaskDeleteResult(result){
+  $('task-delete-alerts').innerHTML='';
   $('task-delete-body').innerHTML=taskDeleteResultHtml(result);
   const [label,tone]=TASK_DELETE_OUTCOMES[result.status] || ['结果无法识别，请刷新核对','bad'];
   $('task-delete-state').textContent=label;$('task-delete-cancel').textContent='关闭';
@@ -216,9 +250,23 @@ function taskRepairBlocker(preview){
   if(preview.work?.available===false) return 'work';
   return '';
 }
+// 提交按钮为什么按不动。读事实和提交都算忙,但说法不同:前者是还没东西可交,后者是正在交。
+function taskRepairSubmitReason(){
+  if(TASK_REPAIR.busy) return TASK_REPAIR.preview?'正在提交':'正在读取事实';
+  if(TASK_REPAIR.done) return '工单已提交给 Agent';
+  if(!TASK_REPAIR.preview) return '没有读到任务事实';
+  const blocker=taskRepairBlocker(TASK_REPAIR.preview);
+  if(blocker==='existing') return '这个任务已有修复工单';
+  if(blocker==='work') return '工作服务不可用';
+  return '';
+}
 function syncTaskRepairSubmit(){
-  $('repair-submit').disabled=TASK_REPAIR.busy || TASK_REPAIR.done || ConsoleActions.readOnly ||
-    !TASK_REPAIR.preview || !!taskRepairBlocker(TASK_REPAIR.preview);
+  const reason=taskRepairSubmitReason(), note=$('repair-note');
+  ConsoleActions.gate($('repair-submit'),reason);
+  // 备注锁成上次那份时要说出来:框看着能点,打字却没反应,像是页面卡住了。
+  $('repair-note-hint').textContent=[note.readOnly?'备注沿用上次请求，不能修改':'',
+    reason && TASK_REPAIR.name?'暂不能提交：'+reason:''].filter(Boolean).join('；');
+  syncDialogDismiss($('repair-dialog'),TASK_REPAIR.busy,!TASK_REPAIR.done && !note.readOnly && !!String(note.value || '').trim());
 }
 function taskRepairOrderLink(itemId,name,label='查看工单'){
   return itemId?`<button class="record-link" data-repair-order="${esc(itemId)}" data-name="${esc(name)}">${esc(label)}</button>`:'';
@@ -364,17 +412,20 @@ function loadRepairs(){
 }
 // 原因写进了预览;改了原因,旧预览就不再是这次要执行的东西。
 function taskDeleteReasonChanged(){
-  if(TASK_DELETE.plan){TASK_DELETE.plan=null;$('task-delete-body').innerHTML='<p>原因已修改，请重新生成预览。</p>';}
+  if(TASK_DELETE.plan){TASK_DELETE.plan=null;$('task-delete-alerts').innerHTML='';$('task-delete-body').innerHTML='<p>原因已修改，请重新生成预览。</p>';}
   syncTaskDeleteConfirm();
 }
 function startTaskOperations(){
   $('task-delete-reason').addEventListener('input',taskDeleteReasonChanged);
   $('task-delete-name').addEventListener('input',syncTaskDeleteConfirm);
-  $('task-delete-preview').addEventListener('click',previewTaskDelete);
-  $('task-delete-confirm').addEventListener('click',applyTaskDelete);
+  // 两个表单:原因框属于预览那张(Enter 生成预览),名称框属于确认那张(Enter 确认删除)。
+  // 两个提交按钮灰着时浏览器不做隐式提交;这里的函数开头也各自再核一遍条件。
+  $('task-delete-preview-form').addEventListener('submit',event=>{event.preventDefault();previewTaskDelete();});
+  $('task-delete-form').addEventListener('submit',event=>{event.preventDefault();applyTaskDelete();});
   $('task-delete-cancel').addEventListener('click',()=>{if(!TASK_DELETE.busy){TASK_DELETE.plan=null;$('task-delete-dialog').close();}});
   $('task-delete-dialog').addEventListener('cancel',event=>{if(TASK_DELETE.busy) event.preventDefault();else TASK_DELETE.plan=null;});
-  $('repair-submit').addEventListener('click',submitTaskRepair);
+  $('repair-form').addEventListener('submit',event=>{event.preventDefault();submitTaskRepair();});
+  $('repair-note').addEventListener('input',syncTaskRepairSubmit);
   $('repair-cancel').addEventListener('click',()=>{if(!TASK_REPAIR.busy) $('repair-dialog').close();});
   $('repair-dialog').addEventListener('cancel',event=>{if(TASK_REPAIR.busy) event.preventDefault();});
   let timer;

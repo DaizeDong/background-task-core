@@ -63,12 +63,18 @@ def test_disclosure_clicks_do_not_open_conversations():
     assert result == {"before": 0, "opened": 1}
 
 
-def test_open_details_survive_row_repainting():
+def test_open_menu_survives_row_repainting():
+    """行菜单是 popover:重画换掉元素时浏览器悄悄关上它,cvReopenMenu 把人没关过的那个再打开。"""
     result = run("""(()=>{
-      const g=CONVOS.groups[0];CV_DETAILS.add(g.shown[0].id);
-      return cvRows(g);
+      const g=CONVOS.groups[0], id=g.shown[0].id || g.shown[0].file, shown=[];
+      const html=cvRows(g);
+      const menu=$(cvMenuId(id));menu.matches=()=>false;menu.showPopover=()=>shown.push(id);
+      $(cvMenuId('synthetic-other')).showPopover=()=>shown.push('other');
+      cvReopenMenu();CV_MENU=id;cvReopenMenu();
+      return {html,shown};
     })()""", setup())
-    assert ' open><summary title="更多操作" aria-label="更多操作">' in result
+    assert result["shown"] == [result["html"].split('data-cvmenu-for="')[1].split('"')[0]]
+    assert 'popover data-cvmenu-for=' in result["html"] and "<details" not in result["html"]
 
 
 def deletion_setup():

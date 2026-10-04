@@ -197,7 +197,10 @@ so a person reviews first.
 The page (`static/task-operations.js`) asks for the reason before it calls `/plan`, and discards a
 preview whose reason was edited afterwards. Its confirm button is enabled only while the preview is
 applicable, carries a token that has not expired, lists no blocking reason, and the typed name
-equals the task name exactly. It sends the token once: any reply, including a refusal, sends the
+equals the task name exactly; the name field itself stays disabled until such a preview exists. The
+reason and the name sit in two forms, so Enter in the reason requests the preview and Enter in the
+name confirms, and neither does anything while its button is disabled. The button's tooltip and the
+line under the field say what is missing. It sends the token once: any reply, including a refusal, sends the
 person back to a new preview. It waits up to 20 minutes for `/apply` instead of the page's usual
 360 seconds, because the Controller and the hook may legitimately take that long; if the wait
 still runs out, it says the result is unconfirmed. Afterwards it re-reads the task list whatever

@@ -101,30 +101,55 @@
   <div id="operation-current" role="status" aria-live="polite"></div>
   <details open><summary>最近操作</summary><ol id="operation-history"></ol></details>
 </div>
-<dialog id="launch-dialog" aria-labelledby="launch-title">
-  <div class="record-toolbar"><h2 id="launch-title"></h2><button class="icon-only" id="launch-copy" title="复制启动命令"><svg class="ic" aria-hidden="true"><use href="#i-copy"/></svg><span class="control-label">复制启动命令</span></button><button class="icon-only" id="launch-close" autofocus title="关闭"><svg class="ic" aria-hidden="true"><use href="#i-close"/></svg><span class="control-label">关闭</span></button></div>
-  <div id="launch-body"></div>
+<!-- 对话框只有一种外壳:标题在左、✕ 在右上的头部,内容,右对齐的底部按钮(次要在前,主按钮在后)。
+     closedby="any" 让点遮罩和 Esc 都能关;忙着或者框里有人打的字时,脚本把它改成 none / closerequest。
+     有输入框的对话框都包在 <form method="dialog"> 里:Enter 走浏览器的隐式提交,只按得动没灰掉的主按钮。 -->
+<dialog id="launch-dialog" class="console-dialog" closedby="any" aria-labelledby="launch-title">
+  <div class="dialog-head"><h2 id="launch-title"></h2><button type="button" class="icon-only" id="launch-copy" title="复制启动命令"><svg class="ic" aria-hidden="true"><use href="#i-copy"/></svg><span class="control-label">复制启动命令</span></button><button type="button" class="icon-only dialog-x" id="launch-close" autofocus title="关闭"><svg class="ic" aria-hidden="true"><use href="#i-close"/></svg><span class="control-label">关闭</span></button></div>
+  <div class="dialog-body" id="launch-body"></div>
 </dialog>
-<dialog id="delete-dialog" aria-labelledby="delete-title">
-  <h2 id="delete-title">确认删除范围</h2><div id="delete-body"></div>
-  <label for="delete-name">输入完整名称确认</label><input id="delete-name" autocomplete="off" spellcheck="false">
-  <p id="delete-state" role="status"></p>
-  <div class="record-toolbar"><button id="delete-cancel" autofocus>取消</button><button id="delete-confirm" class="danger" disabled>确认删除</button></div>
+<dialog id="delete-dialog" class="console-dialog" closedby="any" aria-labelledby="delete-title">
+  <form id="delete-form" method="dialog">
+  <div class="dialog-head"><h2 id="delete-title">确认删除范围</h2><button type="button" class="icon-only dialog-x" data-dismiss="delete-cancel" title="关闭"><svg class="ic" aria-hidden="true"><use href="#i-close"/></svg><span class="control-label">关闭</span></button></div>
+  <div class="dialog-body"><div id="delete-body"></div>
+  <label for="delete-name">输入完整名称确认</label><p class="confirm-name-line" id="delete-expected" hidden></p><input id="delete-name" type="text" autocomplete="off" spellcheck="false" aria-describedby="delete-hint">
+  <p id="delete-hint" class="field-hint"></p>
+  <p id="delete-state" role="status"></p></div>
+  <div class="dialog-foot"><button type="button" id="delete-cancel" autofocus>取消</button><button type="submit" id="delete-confirm" class="danger" disabled>确认删除</button></div>
+  </form>
 </dialog>
-<dialog id="task-delete-dialog" class="task-op-dialog" aria-labelledby="task-delete-title">
-  <h2 id="task-delete-title">删除计划任务</h2><div id="task-delete-subject"></div>
-  <label for="task-delete-reason">删除原因（必填，会写进控制器墓碑或存档回执）</label><textarea id="task-delete-reason" rows="2" maxlength="500" spellcheck="false"></textarea>
-  <div class="task-op-row"><button id="task-delete-preview" type="button">生成删除预览</button></div>
+<dialog id="task-delete-dialog" class="task-op-dialog console-dialog" closedby="any" aria-labelledby="task-delete-title">
+  <form id="task-delete-form" method="dialog">
+  <div class="dialog-head"><h2 id="task-delete-title">删除计划任务</h2><button type="button" class="icon-only dialog-x" data-dismiss="task-delete-cancel" title="关闭"><svg class="ic" aria-hidden="true"><use href="#i-close"/></svg><span class="control-label">关闭</span></button></div>
+  <div class="dialog-body"><div id="task-delete-subject"></div><div id="task-delete-alerts"></div>
+  <label for="task-delete-reason">删除原因（必填，会写进控制器墓碑或存档回执）</label>
+  <div class="task-op-row"><input id="task-delete-reason" type="text" form="task-delete-preview-form" maxlength="500" autocomplete="off" spellcheck="false" autofocus aria-describedby="task-delete-reason-hint"><button id="task-delete-preview" type="submit" form="task-delete-preview-form">生成删除预览</button></div>
+  <p id="task-delete-reason-hint" class="field-hint"></p>
   <div id="task-delete-body"></div>
-  <label for="task-delete-name">输入完整任务名确认</label><input id="task-delete-name" type="text" autocomplete="off" spellcheck="false">
-  <p id="task-delete-state" role="status"></p>
-  <div class="record-toolbar"><button id="task-delete-cancel" autofocus>取消</button><button id="task-delete-confirm" class="danger" disabled>确认删除</button></div>
+  <label for="task-delete-name">输入完整任务名确认</label><p class="confirm-name-line" id="task-delete-expected" hidden></p><input id="task-delete-name" type="text" autocomplete="off" spellcheck="false" disabled aria-describedby="task-delete-hint">
+  <p id="task-delete-hint" class="field-hint"></p>
+  <p id="task-delete-state" role="status"></p></div>
+  <div class="dialog-foot"><button type="button" id="task-delete-cancel">取消</button><button type="submit" id="task-delete-confirm" class="danger" disabled>确认删除</button></div>
+  </form>
+  <form id="task-delete-preview-form" method="dialog" hidden></form>
 </dialog>
-<dialog id="repair-dialog" class="task-op-dialog" aria-labelledby="repair-title">
-  <h2 id="repair-title">修复工单</h2><div id="repair-body"></div>
-  <label for="repair-note">给 Agent 的备注（可选，只保留一行，最多 500 字）</label><input id="repair-note" type="text" maxlength="500" autocomplete="off">
-  <p id="repair-state" role="status"></p>
-  <div class="record-toolbar"><button id="repair-cancel" autofocus>关闭</button><button id="repair-submit" disabled>提交修复工单</button></div>
+<dialog id="repair-dialog" class="task-op-dialog console-dialog" closedby="any" aria-labelledby="repair-title">
+  <form id="repair-form" method="dialog">
+  <div class="dialog-head"><h2 id="repair-title">修复工单</h2><button type="button" class="icon-only dialog-x" data-dismiss="repair-cancel" title="关闭"><svg class="ic" aria-hidden="true"><use href="#i-close"/></svg><span class="control-label">关闭</span></button></div>
+  <div class="dialog-body"><div id="repair-body"></div>
+  <label for="repair-note">给 Agent 的备注（可选，只保留一行，最多 500 字）</label><input id="repair-note" type="text" maxlength="500" autocomplete="off" aria-describedby="repair-note-hint">
+  <p id="repair-note-hint" class="field-hint"></p>
+  <p id="repair-state" role="status"></p></div>
+  <div class="dialog-foot"><button type="button" id="repair-cancel" autofocus>关闭</button><button type="submit" id="repair-submit" class="primary" disabled>提交修复工单</button></div>
+  </form>
+</dialog>
+<!-- 页面内的确认框,替代浏览器自带的 confirm():样式和别的对话框一致,点遮罩、Esc、取消都等于「不」。 -->
+<dialog id="confirm-dialog" class="console-dialog confirm-dialog" closedby="any" aria-labelledby="confirm-title" aria-describedby="confirm-body">
+  <form id="confirm-form" method="dialog">
+  <div class="dialog-head"><h2 id="confirm-title"></h2><button type="button" class="icon-only dialog-x" data-dismiss="confirm-cancel" title="关闭"><svg class="ic" aria-hidden="true"><use href="#i-close"/></svg><span class="control-label">关闭</span></button></div>
+  <div class="dialog-body"><p id="confirm-body"></p><ul id="confirm-items" hidden></ul><p id="confirm-more" class="faint" hidden></p></div>
+  <div class="dialog-foot"><button type="button" id="confirm-cancel">取消</button><button type="submit" id="confirm-ok" class="primary">确认</button></div>
+  </form>
 </dialog>
 
 <div class="page-body">
@@ -178,6 +203,7 @@
           <option value="new">最新在前</option></select>
         <button class="icon-only mini" id="cxload" title="刷新"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg><span class="control-label">刷新</span></button>
       </div></div>
+    <p id="cxstate" class="cx-state" role="status" hidden></p>
     <div class="pad" id="cxbody"><div class="mt-note">正在读取会话存储</div></div>
   </div></div>
 </section>
@@ -343,18 +369,19 @@
       <div id="chwarn"></div>
       <div class="ch-split">
         <div class="ch-list" id="chlist" tabindex="0" role="listbox" aria-label="对话链节点"></div>
-        <div class="ch-side"><details class="ch-actions-menu"><summary>导出与新建会话</summary><div class="ch-act" id="chact"></div></details><div class="ch-det" id="chdet"></div></div>
+        <div class="ch-side"><details class="ch-actions-panel" open><summary>导出与新建会话</summary><div class="ch-act" id="chact"></div></details><div class="ch-det" id="chdet"></div></div>
       </div>
     </div>
   </div>
   </section>
 
 
-  <dialog id="cv-dialog" class="cv-dialog" aria-labelledby="cv-dialog-title">
-    <form id="cv-form">
-      <h2 id="cv-dialog-title"></h2>
+  <dialog id="cv-dialog" class="cv-dialog console-dialog" closedby="any" aria-labelledby="cv-dialog-title">
+    <form id="cv-form" method="dialog">
+      <div class="dialog-head"><h2 id="cv-dialog-title"></h2><button type="button" class="icon-only dialog-x" data-dismiss="cv-cancel" title="关闭"><svg class="ic" aria-hidden="true"><use href="#i-close"/></svg><span class="control-label">关闭</span></button></div>
+      <div class="dialog-body">
       <p class="cv-location" id="cv-current"></p>
-      <label class="cv-field" id="cv-title-field">会话名称<input id="cv-new-title" maxlength="200" autocomplete="off"></label>
+      <label class="cv-field" id="cv-title-field">会话名称<input id="cv-new-title" type="text" maxlength="200" autocomplete="off" aria-describedby="cv-edit-note"></label>
       <div class="cv-field" id="cv-target-field" hidden>
         <label for="cv-target">目标项目<select id="cv-target"></select></label>
         <p class="cv-location" id="cv-target-path"></p>
@@ -366,7 +393,8 @@
         <button id="cv-repreview" type="button" hidden>重新查看删除范围</button>
       </div>
       <p id="cv-edit-note" class="cv-notice" role="status" aria-live="polite"></p>
-      <div class="cv-dialog-actions"><button id="cv-cancel" type="button">取消</button><button id="cv-submit" type="submit">保存</button></div>
+      </div>
+      <div class="dialog-foot"><button id="cv-cancel" type="button">取消</button><button id="cv-submit" type="submit" class="primary">保存</button></div>
     </form>
   </dialog>
   <section id="llm" data-view="llm" data-label="模型调用" hidden>
@@ -428,7 +456,7 @@
 </div>
 </div>
 
-<dialog id="work-detail" aria-labelledby="work-detail-title"><div class="record-toolbar"><button class="icon-only" id="work-detail-prev" title="上一条"><svg class="ic" aria-hidden="true"><use href="#i-left"/></svg><span class="control-label">上一条</span></button><span id="work-detail-position" role="status"></span><button class="icon-only" id="work-detail-next" title="下一条"><svg class="ic" aria-hidden="true"><use href="#i-right"/></svg><span class="control-label">下一条</span></button><button class="icon-only" id="work-detail-copy" title="复制记录"><svg class="ic" aria-hidden="true"><use href="#i-copy"/></svg><span class="control-label">复制记录</span></button><button class="icon-only" id="work-detail-close" aria-label="关闭工作详情" autofocus title="关闭"><svg class="ic" aria-hidden="true"><use href="#i-close"/></svg><span class="control-label">关闭</span></button></div><div class="section-heading"><h2 id="work-detail-title"></h2></div><div id="work-detail-body"></div></dialog>
+<dialog id="work-detail" class="console-dialog" closedby="any" aria-labelledby="work-detail-title"><div class="dialog-head"><h2 id="work-detail-title"></h2><button type="button" class="icon-only" id="work-detail-prev" title="上一条"><svg class="ic" aria-hidden="true"><use href="#i-left"/></svg><span class="control-label">上一条</span></button><span id="work-detail-position" role="status"></span><button type="button" class="icon-only" id="work-detail-next" title="下一条"><svg class="ic" aria-hidden="true"><use href="#i-right"/></svg><span class="control-label">下一条</span></button><button type="button" class="icon-only" id="work-detail-copy" title="复制记录"><svg class="ic" aria-hidden="true"><use href="#i-copy"/></svg><span class="control-label">复制记录</span></button><button type="button" class="icon-only dialog-x" id="work-detail-close" aria-label="关闭工作详情" autofocus title="关闭"><svg class="ic" aria-hidden="true"><use href="#i-close"/></svg><span class="control-label">关闭</span></button></div><div id="work-detail-body" class="dialog-body"></div></dialog>
 <div id="bulk" hidden role="status" aria-live="polite"></div>
 
 <div id="toast" role="status" aria-live="polite" aria-atomic="false"></div>

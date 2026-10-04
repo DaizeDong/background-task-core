@@ -690,7 +690,14 @@ function renderBulk(){
 async function act(names, verb){
   if(busy||!names.length) return;
   if(!ConsoleActions.allowWrite()) return;
-  if(verb==="disable"&&!confirm(`停用 ${names.length} 个任务？\n\n${names.join("\n")}\n\n它们将不再按计划启动，直到重新启用。正在运行的任务不会因此停止。`)) return;
+  // 停用和删除一样用页面内的确认框:列出任务的中文标题,机器名用小字跟在后面,人认得出是哪几个。
+  if(verb==="disable"){
+    const items=names.map(n=>{const row=ROWS.find(r=>r.name===n);const title=row?taskText(row).title:n;return {text:title,note:title===n?"":n};});
+    const ok=await askConfirm({title:`停用 ${names.length} 个任务`,
+      body:"它们将不再按计划启动，直到重新启用。正在运行的任务不会因此停止。",
+      items,confirmLabel:"停用",danger:true});
+    if(!ok || busy) return;
+  }
   busy=true;
   renderAutomations();
   if(typeof renderPipelines==='function') renderPipelines();

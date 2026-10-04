@@ -122,11 +122,13 @@ function openWorkRecord(id,keepOrder=false){
   WORK_DETAIL_ID=id;
   WORK_DETAIL_ITEM=item;
   const events=(WORK.events || []).filter(event=>event.item_id===id);
+  // 详情的主字段只放人读得懂的:记录 ID 和来源的原始代码放到最后的「技术信息」里,排查时还找得到。
   $('work-detail-title').textContent=item.title;
-  $('work-detail-body').innerHTML=`<dl class="record-fields"><dt>类别</dt><dd>${esc(ROLE_LABELS[item.role])}</dd><dt>来源</dt><dd>${esc(workSourceLabel(item.source))}${workSourceLabel(item.source)!==item.source?' · '+esc(item.source):''}</dd><dt>记录状态</dt><dd>${esc(workLabel(item))}</dd><dt>更新时间</dt><dd>${esc(workTime(item.updated_at))}</dd>${item.due_at?`<dt>截止时间</dt><dd>${esc(workTime(item.due_at))}</dd>`:''}${item.project?`<dt>项目</dt><dd>${esc(item.project)}</dd>`:''}<dt>记录 ID</dt><dd>${esc(item.id)}</dd></dl>
+  $('work-detail-body').innerHTML=`<dl class="record-fields"><dt>类别</dt><dd>${esc(ROLE_LABELS[item.role])}</dd><dt>来源</dt><dd>${esc(workSourceLabel(item.source))}</dd><dt>记录状态</dt><dd>${esc(workLabel(item))}</dd><dt>更新时间</dt><dd>${esc(workTime(item.updated_at))}</dd>${item.due_at?`<dt>截止时间</dt><dd>${esc(workTime(item.due_at))}</dd>`:''}${item.project?`<dt>项目</dt><dd>${esc(item.project)}</dd>`:''}</dl>
     ${item.group_parent_id?`<p>已归入 <button class="icon-only record-link" data-work-id="${esc(item.group_parent_id)}" title="查看当前事项"><svg class="ic" aria-hidden="true"><use href="#i-eye"/></svg><span class="control-label">查看当前事项</span></button></p>`:''}${workActionButtons(item)}<h3>${workResult(item)?'完成摘要':'摘要'}</h3><p class="record-summary">${esc(item.summary || '没有摘要')}</p>${item.latest_mail_summary?`<p>最新邮件：${esc(item.latest_mail_summary)}</p>`:''}
     ${workQueueNote(item)}${workSourceContext(item.id)}
-    <h3>最近活动</h3><ul class="record-events">${events.map(event=>`<li>${esc(workTime(event.ts))} · ${esc(workEventLabel(event))}${event.actor?' · '+esc(event.actor):''}</li>`).join('') || '<li>本次读取的活动中没有这条记录</li>'}</ul>`;
+    <h3>最近活动</h3><ul class="record-events">${events.map(event=>`<li>${esc(workTime(event.ts))} · ${esc(workEventLabel(event))}${event.actor?' · '+esc(event.actor):''}</li>`).join('') || '<li>本次读取的活动中没有这条记录</li>'}</ul>
+    <h3>技术信息</h3><dl class="record-fields"><dt>记录 ID</dt><dd><code>${esc(item.id)}</code></dd><dt>来源代码</dt><dd><code>${esc(item.source || '未记录')}</code></dd></dl>`;
   const index=WORK_DETAIL_IDS.indexOf(id);
   $('work-detail-prev').disabled=index<=0;$('work-detail-next').disabled=index<0 || index>=WORK_DETAIL_IDS.length-1;
   $('work-detail-position').textContent=`${index+1} / ${WORK_DETAIL_IDS.length}`;

@@ -252,9 +252,10 @@ def test_the_fork_button_names_the_node_it_forks_at():
 def test_chain_read_failures_stay_visible_outside_file_details():
     header, warning = run("chRenderHead();[$('chhead').innerHTML,$('chwarn').innerHTML]",
                           setup(chain_case(badLines=2, danglingParents=1)))
-    assert '<details class="ch-file-details">' in header
+    # 文件详情收进「更多操作与详情」菜单(popover),读取警告留在菜单外面,一直看得见。
+    assert 'popovertarget="ch-more"' in header and 'id="ch-more" popover' in header
     assert '坏行 2' in warning and '悬空父节点 1' in warning
-    assert '<details' not in warning
+    assert '<details' not in warning and 'popover' not in warning
 
 
 def test_branch_alternatives_show_where_each_one_starts_and_ends():
@@ -284,9 +285,10 @@ def test_buttons_inside_the_card_hand_focus_back_to_the_chain():
     chain["turns"][0]["forks"] = [{"u": u, "lineIndex": 2, "alternatives": []}]
     extra = ("let focused=0;$('chlist').focus=()=>{focused++};$('chbox').hidden=false;"
              "const btn=(attr,val)=>({closest:sel=>sel==='['+attr+']'?{dataset:{[attr.slice(5).replace(/-(.)/g,(m,c)=>c.toUpperCase())]:val},disabled:false}:null});")
+    # ⑂ 由浏览器开合菜单(popovertarget),chClick 不改状态、不抢焦点:人要用 Tab 走进菜单。
     got = run(f"CH_SEL='s:0:1';chClick({{target:btn('data-chfk','{u}')}});"
-              "chClick({target:btn('data-chact','from')});[focused,CH_FKOPEN,CH_FROM]", setup(chain, extra))
-    assert got == [2, u, u]
+              "const after=[focused,CH_FKOPEN];chClick({target:btn('data-chact','from')});[...after,focused,CH_FROM]", setup(chain, extra))
+    assert got == [0, None, 1, u]
 
 
 def test_subagent_picker_filters_and_names_the_spawning_turn():
@@ -312,7 +314,9 @@ def test_rows_say_the_chain_can_be_opened():
                           "newest": 1, "truncated": False, "shown": rows}]}
     base = STUB + "CONVOS=" + json.dumps(convos) + ";CV_OPEN['/synthetic/p']=true;"
     html = run("renderConvos();$('cvgroups').innerHTML", base)
-    assert 'title="查看会话"' in html and 'class="control-label">查看会话</span>' in html
+    # 标题本身就是打开会话的按钮;不再另画一个重复的「查看会话」眼睛,也没有常驻的删除按钮。
+    assert f'data-cvopen="{SID}" title="查看会话：Synthetic A"' in html
+    assert 'class="control-label">查看会话</span>' not in html
     assert "对话链 ›" not in run("renderConvos();$('cvgroups').innerHTML", base + "openConvoChain=undefined;")
 
 

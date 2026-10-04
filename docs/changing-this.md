@@ -140,6 +140,24 @@
 不在表里的分区什么都不做,这样 Esc 不会去改一屏看不见的东西。逻辑放在 `navigation.js` 而不是 `events.js`,
 是为了让 node:vm 台架能测到它(`tests/test_keyboard_conventions.py`)。
 
+### 对话框、确认框和菜单
+
+对话框一律用 `console-dialog` 外壳(`.dialog-head` 里标题加 ✕,`.dialog-body`,`.dialog-foot` 里次要按钮在前、主按钮在后),
+标记上写 `closedby="any"`。点遮罩只交给浏览器的 `closedby`,不要写 `event.target===dialog` 的点击处理:
+那种写法在输入框里拖选文字、松手落在遮罩上时也会关掉对话框。忙着和有人打了字的时候调 `actions.js` 的
+`syncDialogDismiss(dialog, busy, dirty)`,它把 closedby 改成 none / closerequest,并让 ✕ 跟着取消一起灰掉。
+有输入框的对话框包进 `<form method="dialog">`,主按钮 `type="submit"`,其余按钮一律写 `type="button"`:
+表单里没写 type 的按钮默认是提交,排在前面的「取消」就成了 Enter 按到的那一个。提交处理先 `preventDefault()`,
+再调原来的函数,函数开头照样核一遍条件。✕ 写 `data-dismiss="<取消按钮 id>"`,点它就是点那个取消。
+
+要问一句「确定吗」用 `askConfirm({title, body, items, more, confirmLabel, danger})`,它返回 Promise<boolean>,
+取消、Esc、点遮罩都是 false;危险的确认把焦点放在取消上。不要再用浏览器自带的 `confirm()` / `alert()`,
+`tests/test_overlays.py` 会扫。结果要留给人核对的,写进页面上的状态行。
+
+行内的「更多」菜单用 popover:按钮写 `popovertarget`,菜单写 `popover` 和 `.pop-menu`,位置由 CSS 的
+`position-area` 贴在按钮下方。菜单的开合用 toggle 事件(捕获阶段)记下来,列表重画之后再 `showPopover()`;
+菜单里的项被选中后先 `closeMenuFor(el)`,接下来弹出的对话框关掉时焦点才回得到「…」上。
+
 ### 不可用的按钮:一条样式,一个函数
 
 按钮灰掉的样式只有 `styles.css` 末尾那一条 `button:disabled`,带 `!important`:变体规则(主按钮、危险按钮、

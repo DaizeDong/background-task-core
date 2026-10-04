@@ -26,10 +26,12 @@ function element(tag){
     addEventListener(k,fn){this.handlers[k]=fn;},remove(){},
     set innerHTML(v){writes++; throw Error('untrusted HTML write');},
     showModal(){
-      dialogs.push(this.children.find(c=>c.tag==='pre').textContent);
+      // 对话框是 头部 / 内容 / 底部 三层,按钮和审阅内容都在里面几层,按树找。
+      const find=(node,test)=>test(node)?node:node.children.map(c=>find(c,test)).find(Boolean);
+      dialogs.push(find(this,c=>c.tag==='pre').textContent);
       trace.push({kind:'review'});
       const text=f.cancel?'取消':'确认发布';
-      this.children.find(c=>c.textContent===text).handlers.click();
+      find(this,c=>c.textContent===text).handlers.click();
     }};
   return e;
 }

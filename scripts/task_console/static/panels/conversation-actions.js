@@ -10,7 +10,26 @@ function cvSession(id){
   if(typeof CH!=='undefined' && CH?.id===id) return CH;
   return null;
 }
-function cvOpenManager(kind,id){
+// 提交按钮为什么按不动。改名时名字没变也不让交:交上去只是一次什么都没改的写入。
+function cvSubmitReason(){
+  if(!CV_EDIT) return '';
+  if(CV_EDIT_BUSY) return '正在处理';
+  if(CV_EDIT.kind==='rename'){
+    const title=String($('cv-new-title').value || '').trim();
+    if(!title) return '先写会话名称';
+    if(title===String(CV_EDIT.row.title || '').trim()) return '名称没有变化';
+    return '';
+  }
+  if(CV_EDIT.kind==='move') return CV_EDIT.targets?'':'还没有其他项目目录可供迁移';
+  return CV_EDIT.deletion?'':'请重新查看删除范围';
+}
+function cvSyncSubmit(){
+  ConsoleActions.gate($('cv-submit'),cvSubmitReason());
+  // 改名框里打了新名字时,误点一下遮罩不该把它丢掉;Esc 和取消照样能关。
+  const typed=CV_EDIT?.kind==='rename' && String($('cv-new-title').value || '').trim()!==String(CV_EDIT.row.title || '').trim();
+  syncDialogDismiss($('cv-dialog'),CV_EDIT_BUSY,typed);
+}
+function cvOpenManager(kind,id,target){
   if(!ConsoleActions.allowWrite() || CV_EDIT_BUSY) return;
   const row=typeof id==='object'?id:cvSession(id);
   if(!row){toast('这场会话的位置已改变，请刷新列表后重试','bad');return;}
@@ -18,20 +37,22 @@ function cvOpenManager(kind,id){
   if(kind==='delete'){cvOpenDelete(row);return;}
   const rename=kind==='rename', locations=CONVOS?.locations || CONVOS?.groups || [];
   $('cv-delete-field').hidden=true;$('cv-repreview').hidden=true;
-  $('cv-submit').classList.remove('cv-danger');
+  $('cv-submit').classList.remove('danger');$('cv-submit').classList.add('primary');
   $('cv-dialog-title').textContent=rename?'重命名会话':'移动会话文件';
   $('cv-current').textContent=row.file || row.id;
   $('cv-title-field').hidden=!rename;$('cv-target-field').hidden=rename;
   $('cv-new-title').value=row.title || '';$('cv-new-title').required=rename;
   const options=locations.filter(g=>cvKey(g)!==row.projectDir);
+  CV_EDIT.targets=options.length;
   $('cv-target').innerHTML=options.map(g=>`<option value="${esc(cvKey(g))}">${esc(g.cwd || g.id)}</option>`).join('');
+  // 拖到某个项目上松手时,目标就是那个项目:对话框里预先选好,确认一下就走。
+  if(target && options.some(g=>cvKey(g)===target)) $('cv-target').value=target;
   $('cv-target').required=!rename;
   $('cv-submit').textContent=rename?'保存名称':'移动到此项目';
-  $('cv-submit').disabled=!rename && !options.length;
   $('cv-edit-note').textContent=!rename && !options.length?'还没有其他项目目录可供迁移':'';
   $('cv-edit-note').className='cv-notice';
-  cvTargetLocation();$('cv-dialog').showModal();
-  const input=rename?$('cv-new-title'):$('cv-target');input.focus();if(rename) input.select();
+  cvSyncSubmit();cvTargetLocation();$('cv-dialog').showModal();
+  const input=rename?$('cv-new-title'):$('cv-target');input.focus?.();if(rename) input.select?.();
 }
 const cvDeleteKey=row=>row.projectDir+'/'+row.id;
 function cvDeleteSummary(plan){
@@ -44,33 +65,33 @@ async function cvOpenDelete(row,refresh=false){
   $('cv-title-field').hidden=true;$('cv-target-field').hidden=true;
   $('cv-new-title').required=false;$('cv-target').required=false;
   $('cv-delete-field').hidden=false;$('cv-repreview').hidden=true;
-  $('cv-submit').classList.add('cv-danger');$('cv-submit').textContent='永久删除';
+  $('cv-submit').classList.remove('primary');$('cv-submit').classList.add('danger');$('cv-submit').textContent='永久删除';
   $('cv-edit-note').className='cv-notice';$('cv-edit-note').textContent='';
   if(!dialog.open) dialog.showModal();
   const key=cvDeleteKey(row), previous=CV_DELETIONS.get(key);
   if(previous && !refresh){
     CV_EDIT.deletion=previous;cvDeleteSummary(previous.plan);
     $('cv-edit-note').textContent='上次删除结果尚未确认。再次提交会核对同一请求。';
-    $('cv-submit').textContent='重试原删除请求';$('cv-submit').disabled=false;
+    $('cv-submit').textContent='重试原删除请求';cvSyncSubmit();
     return;
   }
-  CV_EDIT_BUSY=true;$('cv-submit').disabled=true;$('cv-cancel').disabled=true;
+  CV_EDIT_BUSY=true;cvSyncSubmit();$('cv-cancel').disabled=true;
   $('cv-delete-scope').textContent='正在检查文件和关联记录…';
   try{
     const plan=await api('/api/convo/delete-plan',{method:'POST',body:JSON.stringify({id:row.id,expectedProject:row.projectDir})});
     CV_EDIT.deletion={plan,requestId:crypto.randomUUID()};
-    cvDeleteSummary(plan);$('cv-submit').disabled=false;
+    cvDeleteSummary(plan);
   }catch(error){
     CV_EDIT.deletion=null;$('cv-delete-scope').textContent='尚未取得删除范围，未执行删除。';
     $('cv-edit-note').className='cv-notice error';$('cv-edit-note').textContent=error.message;
     $('cv-repreview').hidden=false;
-  }finally{CV_EDIT_BUSY=false;$('cv-cancel').disabled=false;}
+  }finally{CV_EDIT_BUSY=false;$('cv-cancel').disabled=false;cvSyncSubmit();}
 }
 async function cvDelete(){
   if(CV_EDIT_BUSY || !CV_EDIT?.deletion || !ConsoleActions.allowWrite()) return;
   const {row,deletion}=CV_EDIT, key=cvDeleteKey(row);
   CV_DELETIONS.set(key,deletion);
-  CV_EDIT_BUSY=true;$('cv-submit').disabled=true;$('cv-cancel').disabled=true;
+  CV_EDIT_BUSY=true;cvSyncSubmit();$('cv-cancel').disabled=true;
   $('cv-edit-note').className='cv-notice';$('cv-edit-note').textContent='正在删除会话文件及关联记录…';
   try{
     const result=await api('/api/convo/delete',{method:'POST',body:JSON.stringify({
@@ -80,7 +101,7 @@ async function cvDelete(){
     CV_DELETIONS.delete(key);$('cv-dialog').close();
     if(typeof CH_ID!=='undefined' && CH_ID===row.id) chClose();
     if(typeof CH_FRES!=='undefined' && CH_FRES?.newId===row.id){CH_FRES=null;chRenderAct();}
-    CV_DETAILS.delete(row.id);
+    if(typeof CV_MENU!=='undefined' && CV_MENU===row.id) CV_MENU=null;
     toast('会话及关联文件已永久删除','ok');
     for(const warning of result.warnings || []) toast(warning);
     await loadConvos();
@@ -93,7 +114,7 @@ async function cvDelete(){
       $('cv-repreview').hidden=false;$('cv-submit').textContent='请重新查看删除范围';
     }else $('cv-submit').textContent='重试原删除请求';
   }finally{
-    CV_EDIT_BUSY=false;$('cv-submit').disabled=!CV_EDIT?.deletion;$('cv-cancel').disabled=false;
+    CV_EDIT_BUSY=false;$('cv-cancel').disabled=false;cvSyncSubmit();
   }
 }
 function cvTargetLocation(){
@@ -116,7 +137,7 @@ async function cvMutate(kind,row,value){
   const dialog=$('cv-dialog'), visible=dialog.open;
   const body={id:row.id,expectedProject:row.projectDir};
   if(kind==='rename') body.title=value;else body.targetProject=value;
-  $('cv-submit').disabled=true;$('cv-cancel').disabled=true;
+  cvSyncSubmit();$('cv-cancel').disabled=true;
   if(visible){$('cv-edit-note').className='cv-notice';$('cv-edit-note').textContent=kind==='rename'?'正在保存名称…':'正在迁移文件和关联记录…';}
   else $('cvnote').textContent='正在迁移…';
   try{
@@ -132,16 +153,26 @@ async function cvMutate(kind,row,value){
     if(visible){$('cv-edit-note').className='cv-notice error';$('cv-edit-note').textContent=message;}
     else{$('cvnote').textContent='迁移未完成';toast(message,'bad');await loadConvos();}
   }finally{
-    CV_EDIT_BUSY=false;$('cv-submit').disabled=false;$('cv-cancel').disabled=false;
+    CV_EDIT_BUSY=false;$('cv-cancel').disabled=false;cvSyncSubmit();
   }
 }
 function cvClearDrag(){
   CV_DRAG=null;document.querySelectorAll('.cv-dropover').forEach(el=>el.classList.remove('cv-dropover'));
   $('cv-drop-targets').hidden=true;$('cv-drop-targets').innerHTML='';
 }
+// 拖到另一个项目上松手:不再当场迁移,而是打开同一个移动对话框并预先选好目标。
+// 拖放很容易松错地方,迁移又会把文件挪走;多一次确认(Enter 或「移动到此项目」)比挪错了再挪回来便宜。
+function cvDrop(event){
+  const target=event.target.closest('[data-cvproject]'), row=CV_DRAG;
+  if(!row || !target) return;
+  event.preventDefault();cvClearDrag();
+  if(target.dataset.cvproject!==row.projectDir) cvOpenManager('move',row,target.dataset.cvproject);
+}
 function startConversationActions(){
   document.addEventListener('click',event=>{
     const remove=event.target.closest('[data-cvdelete]'), rename=event.target.closest('[data-cvrename]'), move=event.target.closest('[data-cvmove],[data-cvdrag]');
+    const chosen=[remove,rename,move].find(el=>el && !el.disabled);
+    if(chosen) closeMenuFor(chosen);
     if(remove && !remove.disabled) cvOpenManager('delete',remove.dataset.cvdelete);
     else if(rename && !rename.disabled) cvOpenManager('rename',rename.dataset.cvrename);
     else if(move && !move.disabled) cvOpenManager('move',move.dataset.cvmove || move.dataset.cvdrag);
@@ -149,9 +180,17 @@ function startConversationActions(){
     if(open && typeof openConvoChain==='function') openConvoChain(open.dataset.cvopenNew);
   });
   $('cv-form').addEventListener('submit',event=>{
-    event.preventDefault();if(!CV_EDIT) return;
+    event.preventDefault();if(!CV_EDIT || $('cv-submit').disabled) return;
     if(CV_EDIT.kind==='delete') cvDelete();
     else cvMutate(CV_EDIT.kind,CV_EDIT.row,CV_EDIT.kind==='rename'?$('cv-new-title').value:$('cv-target').value);
+  });
+  $('cv-new-title').addEventListener('input',cvSyncSubmit);
+  // 下拉框不参与表单的隐式提交,在它上面按 Enter 本来什么都不发生。移动对话框里它是唯一的输入,
+  // 所以这里补上:提交按钮能按时,Enter 就等于按它。永久删除没有输入框,仍然必须点按钮。
+  $('cv-target').addEventListener('keydown',event=>{
+    if(event.key!=='Enter' || event.isComposing || event.repeat || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return;
+    event.preventDefault();
+    if(CV_EDIT?.kind==='move' && !$('cv-submit').disabled) $('cv-form').requestSubmit();
   });
   $('cv-repreview').addEventListener('click',()=>{if(!CV_EDIT_BUSY && CV_EDIT?.kind==='delete') cvOpenDelete(CV_EDIT.row,true);});
   $('cv-cancel').addEventListener('click',()=>{if(!CV_EDIT_BUSY) $('cv-dialog').close();});
@@ -169,6 +208,9 @@ function startConversationActions(){
     $('cv-drop-targets').hidden=false;
     event.dataTransfer.effectAllowed='move';
     event.dataTransfer.setData('application/x-task-console-conversation',CV_DRAG.id);
+    // 拖动从菜单里的「移动」开始,菜单浮在最上层会盖住落点:拖起来之后再收起它。
+    const menu=handle.closest('[popover]');
+    if(menu) setTimeout(()=>{try{menu.hidePopover();}catch(error){}},0);
   });
   groups.addEventListener('dragover',event=>{
     const target=event.target.closest('[data-cvproject]');
@@ -181,11 +223,6 @@ function startConversationActions(){
     const group=event.target.closest('[data-cvproject]');
     if(group && !group.contains(event.relatedTarget)) group.classList.remove('cv-dropover');
   });
-  groups.addEventListener('drop',event=>{
-    const target=event.target.closest('[data-cvproject]'), row=CV_DRAG;
-    if(!row || !target) return;
-    event.preventDefault();cvClearDrag();
-    if(target.dataset.cvproject!==row.projectDir) cvMutate('move',row,target.dataset.cvproject);
-  });
+  groups.addEventListener('drop',cvDrop);
   groups.addEventListener('dragend',cvClearDrag);
 }

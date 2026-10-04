@@ -46,28 +46,48 @@ function cvCount(){
   const matched=CONVOS.summary.matched ?? CONVOS.summary.files;
   $('cv-match').textContent=`已加载 ${loaded} / ${matched}`;
 }
+// 每行一个「…」菜单,用浏览器原生的 popover:点别处、按 Esc 都会收起,同一时间只开一个,
+// 浮在列表上面而不是把下面的行往下推。CV_MENU 记的是开着菜单的那一行;列表重画时
+// 元素被换掉,菜单会悄悄关上(不发 toggle 事件),cvReopenMenu() 再把它打开。
+let CV_MENU=null;
+const cvMenuId=id=>'cvm-'+encodeURIComponent(String(id || ''));
+function cvMenuItem(icon,label,attrs,cls=''){
+  return `<button type="button" class="menu-item${cls?' '+cls:''}" ${attrs}><svg class="ic" aria-hidden="true"><use href="#${icon}"/></svg><span>${label}</span></button>`;
+}
 function cvRows(g){
   return g.shown.map(r=>{
     const valid=CV_SESSION_ID.test(String(r.id||''));
     const chain=valid && typeof openConvoChain==='function';
     const manage=valid && typeof cvOpenManager==='function';
     const disabled=typeof ConsoleActions!=='undefined' && ConsoleActions.readOnly;
+    const off=disabled?' disabled':'';
+    const key=r.id || r.file, menu=cvMenuId(key);
+    // 标题本身就是「打开」;删除收进菜单最底下、和别的项隔开:一行一个常驻的垃圾桶,永久删除就只差一次手滑。
     return `<div class="cv-r${r.humanSeen>=2?' human':''}" data-cvfile="${esc(r.file)}"${chain?` data-cvid="${esc(r.id)}"`:''}>
       <div class="cv-main">${chain?`<button class="t" data-cvopen="${esc(r.id)}" title="查看会话：${esc(r.title)}">${esc(r.title)}</button>`:`<span class="t">${esc(r.title)}</span>`}
         ${r.preview&&r.preview!==r.title?`<span class="pv">${esc(r.preview)}</span>`:''}</div>
       <span class="cv-updated">${cvAge(r.ageHours)}</span>
-      <span class="cv-row-actions">${chain?`<button class="icon-only mini cv-open" data-cvopen="${esc(r.id)}" title="查看会话"><svg class="ic" aria-hidden="true"><use href="#i-eye"/></svg><span class="control-label">查看会话</span></button>`:''}
-        ${manage?`<button class="icon-only mini cv-danger" data-cvdelete="${esc(r.id)}"${disabled?' disabled':''} title="删除"><svg class="ic" aria-hidden="true"><use href="#i-trash"/></svg><span class="control-label">删除</span></button>`:''}</span>
-      <details class="cv-details" data-cvdetail="${esc(r.id)}"${CV_DETAILS.has(r.id)?' open':''}><summary title="更多操作" aria-label="更多操作"><svg class="ic" aria-hidden="true"><use href="#i-more"/></svg></summary><div class="cv-detail-body">
-        ${manage?`<span class="cv-row-actions"><button class="icon-only mini" data-cvrename="${esc(r.id)}"${disabled?' disabled':''} title="重命名"><svg class="ic" aria-hidden="true"><use href="#i-edit"/></svg><span class="control-label">重命名</span></button>
-        <button class="icon-only mini cv-handle" data-cvmove="${esc(r.id)}" data-cvdrag="${esc(r.id)}" draggable="${!disabled}"${disabled?' disabled':''} title="点击选择目标项目，也可拖到其他项目上"><svg class="ic" aria-hidden="true"><use href="#i-move"/></svg><span class="control-label">移动</span></button></span>`:''}
-        <span>标题来源：${esc(CV_SRC[r.titleFrom]||r.titleFrom||'未记录')}</span><span>文件大小：${kb(r.bytes)}</span>
+      <button type="button" class="icon-only mini cv-more" popovertarget="${esc(menu)}" data-cvmenu="${esc(key)}" title="更多操作"><svg class="ic" aria-hidden="true"><use href="#i-more"/></svg><span class="control-label">更多操作</span></button>
+      <div class="pop-menu cv-menu" id="${esc(menu)}" popover data-cvmenu-for="${esc(key)}" aria-label="会话操作">
+        ${manage?cvMenuItem('i-edit','重命名',`data-cvrename="${esc(r.id)}"${off} title="重命名"`)
+          +cvMenuItem('i-move','移动',`data-cvmove="${esc(r.id)}" data-cvdrag="${esc(r.id)}" draggable="${!disabled}"${off} title="点击选择目标项目，也可拖到其他项目上"`,'cv-handle'):''}
+        ${cvMenuItem('i-copy','复制文件路径',`data-cvcopy="${esc(r.file)}" title="复制文件路径"`)}
+        <div class="menu-sep" role="separator"></div>
+        <div class="menu-facts"><span>标题来源：${esc(CV_SRC[r.titleFrom]||r.titleFrom||'未记录')}</span><span>文件大小：${kb(r.bytes)}</span>
         <span>已识别的用户提问：${r.humanSeen ?? '未记录'}${r.partial?'（只读取了部分内容）':''}</span>
         <span class="cv-location">会话编号：${esc(r.id)}</span><span class="cv-location">文件位置：${esc(r.file)}</span>
-        ${!valid?'<span class="warn">会话编号无法识别，可通过文件位置检查原始记录。</span>':''}
-        <button class="icon-only mini" data-cvcopy="${esc(r.file)}" title="复制文件路径"><svg class="ic" aria-hidden="true"><use href="#i-copy"/></svg><span class="control-label">复制文件路径</span></button></div></details>
+        ${!valid?'<span class="warn">会话编号无法识别，可通过文件位置检查原始记录。</span>':''}</div>
+        ${manage?'<div class="menu-sep" role="separator"></div>'+cvMenuItem('i-trash','删除',`data-cvdelete="${esc(r.id)}"${off} title="永久删除这场会话"`,'menu-danger'):''}
+      </div>
     </div>`;
   }).join('');
+}
+function cvReopenMenu(){
+  if(!CV_MENU) return;
+  const menu=document.getElementById(cvMenuId(CV_MENU));
+  if(!menu || typeof menu.showPopover!=='function') return;
+  const opener=typeof CSS!=='undefined'?$('cvgroups').querySelector?.(`[popovertarget="${CSS.escape(menu.id)}"]`):null;
+  try{ if(!menu.matches(':popover-open')) menu.showPopover(opener?{source:opener}:undefined); }catch(error){}
 }
 function cvPage(g){
   const id=cvKey(g), state=CV_PAGES.get(id), more=g.hasMore ?? g.truncated;
@@ -82,7 +102,7 @@ function cvPaintGroup(g){
   if(!el) return;
   const top=window.scrollY;
   el.querySelector('.cv-list').innerHTML=el.classList.contains('open')?cvLocation(g)+cvRows(g)+cvPage(g):'';
-  window.scrollTo({top,behavior:'instant'});cvCount();cvObserve();
+  window.scrollTo({top,behavior:'instant'});cvCount();cvObserve();cvReopenMenu();
 }
 async function cvLoadMore(id){
   const g=CONVOS?.groups.find(x=>cvKey(x)===id);
@@ -152,7 +172,7 @@ function renderConvos(){
     <div class="cv-list">${ephOpen?eph.map(groupHtml).join(''):''}</div></div>`:'';
   const top=window.scrollY;
   $('cvgroups').innerHTML=rest.map(groupHtml).join('')+ephHtml || '<p class="review-empty">没有匹配的会话</p>';
-  window.scrollTo({top,behavior:'instant'});cvCount();cvObserve();
+  window.scrollTo({top,behavior:'instant'});cvCount();cvObserve();cvReopenMenu();
 }
 function cvLocation(g){
   return `${g.locationWarning?`<p class="cv-notice error" role="alert">项目位置需要核对：${esc(g.locationWarning)}</p>`:''}
@@ -170,7 +190,8 @@ function cvClick(event){
   if(copy){event.stopPropagation();cvCopyPath(copy.dataset.cvcopy);return;}
   const open=event.target.closest('[data-cvopen]');
   if(open){openConvoChain(open.dataset.cvopen);return;}
-  if(event.target.closest('details')) return;
+  // 菜单按钮和菜单里的点击各有归属(浏览器开合菜单,动作另有监听),不能落到下面去开合项目。
+  if(event.target.closest('details,[data-cvmenu],[popover]')) return;
   const more=event.target.closest('[data-cvmore]');
   if(more){cvLoadMore(more.dataset.cvmore);return;}
   const header=event.target.closest('.cv-gh');
@@ -186,6 +207,12 @@ function startConvos(){
   $('cvbox').addEventListener('toggle',event=>{
     const key=event.target.dataset.cvdetail;
     if(key) event.target.open?CV_DETAILS.add(key):CV_DETAILS.delete(key);
+    // 菜单的 toggle 不冒泡,所以这里在捕获阶段接。开了第二个菜单时第一个的「关」可能晚到,只清自己那一行。
+    const menu=event.target.dataset.cvmenuFor;
+    if(menu!=null){
+      if(event.newState==='open') CV_MENU=menu;
+      else if(CV_MENU===menu) CV_MENU=null;
+    }
   },true);
   $('cv-search').addEventListener('input',cvSearchChanged);
   $('cvhead').addEventListener('change',event=>{

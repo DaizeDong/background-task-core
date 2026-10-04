@@ -19,11 +19,9 @@
 .ch-head .cwd{font-family:var(--mono);color:var(--faint);overflow-wrap:anywhere;min-width:0}
 .ch-head .alt{color:var(--amber)}
 .ch-head .bad{color:var(--bad)}
-.ch-file-details{flex:1 1 100%;min-width:0}
-.ch-file-details>summary{cursor:pointer;color:var(--dim)}
-.ch-file-meta{display:flex;flex-wrap:wrap;gap:4px 12px;line-height:1.6;padding-top:6px}
-.ch-file-meta>span{min-width:0;overflow-wrap:anywhere}
-.ch-file-meta .cwd{flex-basis:100%}
+.ch-head .ch-more{display:inline-flex;align-items:center;gap:4px;margin-left:auto}
+.ch-head .ch-more>.ic{width:15px;height:15px}
+.ch-more-menu .menu-facts{line-height:1.6}
 .ch-split{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);gap:1px;
   background:var(--line2);border:1px solid var(--line2);height:max(320px, calc(100vh - 260px));overflow:hidden}
 /* ⚠ contain:strict 和行上的 content-visibility 是量出来的:一条上万节点的链展开一轮几百步后,
@@ -35,7 +33,8 @@
 .ch-side{background:var(--panel);overflow:auto;min-width:0;min-height:0;padding:0 10px 10px;contain:strict}
 .ch-short .ch-split{height:auto;min-height:140px}
 .ch-short .ch-list,.ch-short .ch-side{contain:layout paint;max-height:60vh}
-.ch-actions-menu>summary{padding:8px 0;cursor:pointer;color:var(--cyan);font-size:var(--fs-meta)}
+/* 「导出与新建会话」是工作区不是菜单:默认展开,标题按小节标题画,只留开合的三角。 */
+.ch-actions-panel>summary{padding:8px 0;cursor:pointer;color:var(--ink);font-weight:600;font-size:var(--fs-body)}
 .ch-t,.ch-s,.ch-cmp,.ch-sum{content-visibility:auto;contain-intrinsic-size:auto 26px}
 @media (max-width:760px){
   .ch-split{grid-template-columns:minmax(0,1fr);height:auto;overflow:visible}
@@ -96,7 +95,7 @@
 .ch-a{border-top:2px solid var(--amber)}
 .ch-b{border-bottom:2px solid var(--amber)}
 /* 分叉菜单。当前那条分支不可点但照样列出来:看得见自己在哪一条上,才知道别的是什么。 */
-.ch-fk{margin:2px 8px 6px 28px;border:1px solid var(--line);background:var(--panel2);font-size:var(--fs-meta)}
+.ch-fk.pop-menu{width:min(560px,calc(100vw - 16px));max-width:none;padding:0;background:var(--panel2);font-size:var(--fs-meta)}
 .ch-fk .hd{padding:4px 8px;color:var(--dim)}
 .ch-fk button{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:8px;width:100%;
   min-height:28px;text-align:left;border:0;border-top:1px solid var(--line2);border-radius:0;
@@ -128,5 +127,3 @@
   max-height:60vh;overflow:auto}
 .ch-pre.bad{border-color:var(--bad)}
 .ch-det details>summary{cursor:pointer;color:var(--dim);margin:6px 0 2px}
-/* 会话列表里能打开对话链的那一行,明写一个入口:只靠行的 title 提示,没人知道这里能点开。 */
-.cv-open{color:var(--cyan);white-space:nowrap}

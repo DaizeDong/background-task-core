@@ -170,6 +170,12 @@ function cxSelSummary(){
   cxSelButtons();
 }
 
+// 删除结果写在清理卡片里的一行状态上,不弹浏览器自带的提示框:那种框关掉就没了,
+// 而「停在哪一份、已经删了几份」正是删完之后还要对着列表核对的东西。
+function cxState(text,tone){
+  const el=$("cxstate"); if(!el) return;
+  el.textContent=text||"";el.hidden=!text;el.className="cx-state"+(tone?" "+tone:"");
+}
 async function cxDelete(){
   if(CX_DELETING || !ConsoleActions.allowWrite()) return;
   const rels=[...CXSEL];
@@ -178,22 +184,23 @@ async function cxDelete(){
   const bytes=rels.reduce((a,r)=>a+((byRel[r]||{}).bytes||0),0);
   // 删除不可逆,所以确认里要写清「多少份、多少字节」,并把前几条路径列出来 ——
   // 一个只说「确定删除?」的弹窗,等于让人在不知道删什么的情况下下决定。
-  if(!confirm(`永久删除 ${rels.length} 份会话文件，约 ${kb(bytes)}。\n\n`
-      +rels.slice(0,8).map(r=>"  "+r).join("\n")
-      +(rels.length>8?`\n  …还有 ${rels.length-8} 份`:"")
-      +`\n\n删除后无法恢复。继续？`)) return;
-  CX_DELETING=true;
+  const ok=await askConfirm({title:`永久删除 ${rels.length} 份会话文件`,
+    body:`约 ${kb(bytes)}。删除后无法恢复。`,items:rels.slice(0,8),
+    more:rels.length>8?`…还有 ${rels.length-8} 份`:"",confirmLabel:"永久删除",danger:true});
+  if(!ok || CX_DELETING) return;
+  CX_DELETING=true;cxState("");
   try{
     const r=await api("/api/codex/delete",{method:"POST",body:JSON.stringify({rels})});
-    if(r.error && !Number.isInteger(r.deleted)){ toast('未能确认删除结果：'+r.error,"bad");await loadCxList();return; }
+    if(r.error && !Number.isInteger(r.deleted)){ cxState('未能确认删除结果：'+r.error,"bad");toast('未能确认删除结果：'+r.error,"bad");await loadCxList();return; }
     if(!r.ok){
       // 中途失败要说清停在哪里、已经删了几份 —— 不假装什么都没发生。
-      alert(`删除未全部完成，在 ${r.stoppedAt} 处停止。\n\n${r.error}\n\n已删除 ${r.deleted} 个文件，合计 ${kb(r.freed)}。`);
+      cxState(`删除未全部完成，在 ${r.stoppedAt} 处停止：${r.error}。已删除 ${r.deleted} 个文件，合计 ${kb(r.freed)}。`,"bad");
+      toast("删除未全部完成，详情见清理卡片","bad");
     } else {
       toast(`已删除 ${r.deleted} 个文件，合计 ${kb(r.freed)}`);
     }
     await loadCxList();
     loadCodex(); loadSys();
-  }catch(e){ toast(e.message,"bad");await loadCxList(); }
+  }catch(e){ cxState(e.message,"bad");toast(e.message,"bad");await loadCxList(); }
   finally{CX_DELETING=false;}
 }

@@ -25,9 +25,8 @@ function renderSys(){
   h+=pc.available
     ? `<div class="mt-r"><span class="n">插件缓存</span><span class="c">${sz(pc)}</span>
        ${pc.deletableCount?`<button class="mini danger" data-mt="clean.tempgit" data-name="-"
-          title="删除 ${pc.deletableCount} 个废弃克隆暂存目录"
-          aria-label="删除 ${pc.deletableCount} 个废弃克隆暂存目录"><svg class="ic"><use
-          href="#i-trash"/></svg>${pc.deletableCount}</button>`:""}</div>`
+          title="删除 ${pc.deletableCount} 个废弃克隆暂存目录，先确认再执行"><svg class="ic" aria-hidden="true"><use
+          href="#i-trash"/></svg>清理 ${pc.deletableCount} 个临时目录</button>`:""}</div>`
     : `<div class="mt-r"><span class="n">插件缓存</span><span class="c">${
         esc(pc.reason||"未检查")}</span></div>`;
   // partial 要说出来:一个数了一半却报确定数字的体积比不报还糟。
@@ -45,6 +44,20 @@ function renderSys(){
         esc((pc.leftoverErrors||[]).join(" · ")||"扫描失败")}</span></div>`;
   h+=`</div>`;
   el.innerHTML=h;
+}
+
+// 清理插件缓存里的废弃克隆暂存目录是这一页唯一一个一点就删的动作,所以先问一句。
+// 删哪些由后端按名称形状和年龄自己选,这里只把它报上来的数目和最老的几个名字摆出来。
+// 这些目录各自多大没有统计:框里写的是整个插件缓存的体积,并明说是「合计」,不冒充要删的那部分。
+async function confirmTempgitCleanup(){
+  const pc=(SYS && SYS.pluginCache) || {};
+  const doomed=(pc.leftovers || []).filter(item=>item.deletable);
+  const age=h=>h==null?"时间未记录":h<24?Math.round(h)+" 小时前":Math.round(h/24)+" 天前";
+  const size=pc.size && pc.size.bytes!=null?kb(pc.size.bytes)+(pc.size.partial?"+":""):"未统计";
+  return askConfirm({title:`清理 ${pc.deletableCount ?? doomed.length} 个临时目录`,
+    body:`由后端按名称形状和年龄选定，删除后无法恢复。插件缓存合计 ${size}（这些目录各自的大小没有统计）。`,
+    items:doomed.slice(0,8).map(item=>({text:item.name,note:"修改于 "+age(item.ageHours)})),
+    more:doomed.length>8?`…还有 ${doomed.length-8} 个`:"",confirmLabel:"清理",danger:true});
 }
 
 // 记忆池那一栏。两条硬上限是护栏不是建议:超了尾部条目会在下一次会话里静默消失,

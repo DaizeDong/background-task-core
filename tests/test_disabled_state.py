@@ -39,7 +39,7 @@ def button_classes():
 
 def test_hover_colours_never_apply_to_a_disabled_button():
     classes = button_classes()
-    assert {"repair-chip", "record-link", "cv-open", "fix"} <= classes
+    assert {"repair-chip", "record-link", "primary", "fix"} <= classes
     offenders = []
     for sheet, selectors, body in css_rules():
         if not re.search(r"(^|;)\s*(color|border[\w-]*|background[\w-]*)\s*:", body):

@@ -144,12 +144,13 @@ def test_delete_confirm_needs_a_reason_a_clean_preview_and_the_exact_name():
       $('task-delete-reason').value='被 AcmeSync 取代';
       replies['/api/task/delete/plan']=blocked;await previewTaskDelete();
       $('task-delete-name').value='Acme Backup Daily';syncTaskDeleteConfirm();
-      out.blocked=$('task-delete-confirm').disabled;out.blockedHtml=$('task-delete-body').innerHTML;
+      out.blocked=$('task-delete-confirm').disabled;out.blockedHtml=$('task-delete-alerts').innerHTML;
+      out.blockedTitle=$('task-delete-confirm').title;out.blockedNameLocked=$('task-delete-name').disabled;
       // 回复自相矛盾(带着拦下的原因却又给了令牌)时,也按拦下处理:原因在,就不能确认。
       replies['/api/task/delete/plan']={...blocked,applicable:true,token:'synthetic-delete-token',expiresIn:300};
       await previewTaskDelete();out.blockedWithToken=$('task-delete-confirm').disabled;
       replies['/api/task/delete/plan']=plan;await previewTaskDelete();
-      out.planHtml=$('task-delete-body').innerHTML;
+      out.planHtml=$('task-delete-alerts').innerHTML+$('task-delete-body').innerHTML;
       out.names=['Acme Backup','acme backup daily','Acme Backup Daily ','Acme Backup Daily'].map(name=>{
         $('task-delete-name').value=name;syncTaskDeleteConfirm();return $('task-delete-confirm').disabled;});
       TASK_DELETE.expires=Date.now()-1;syncTaskDeleteConfirm();out.expired=$('task-delete-confirm').disabled;
@@ -161,6 +162,8 @@ def test_delete_confirm_needs_a_reason_a_clean_preview_and_the_exact_name():
     # 有拦下删除的原因时,即使名字一字不差,确认也按不动,而原因就摆在最醒目的地方。
     assert result["blocked"] is True and result["blockedWithToken"] is True
     assert 'class="task-op-blocking" role="alert"' in result["blockedHtml"] and "TASK_CONSOLE_DELETED_ARCHIVE" in result["blockedHtml"]
+    # 拦下的原因在任务名正下方的提醒区,确认按钮的提示也说出来;名称框在没有可用预览时打不了字。
+    assert "预览列出了不能删除的原因" in result["blockedTitle"] and result["blockedNameLocked"] is True
     assert result["names"] == [True, True, True, False]
     assert result["expired"] is True and result["reasonChanged"] is True
     assert {"path": "/api/task/delete/plan", "body": {"name": "Acme Backup Daily", "reason": "被 AcmeSync 取代"}} in result["calls"]
@@ -411,7 +414,7 @@ def test_dialogs_are_real_modals_and_every_icon_has_a_symbol():
     html = PAGE.read_text(encoding="utf-8")
     for dialog in ("task-delete-dialog", "repair-dialog"):
         assert f'<dialog id="{dialog}"' in html
-    assert re.search(r'<button id="task-delete-confirm" class="danger" disabled>', html)
+    assert re.search(r'<button type="submit" id="task-delete-confirm" class="danger" disabled>', html)
     assert '<label for="task-delete-name">' in html and '<label for="task-delete-reason">' in html
     assert html.count("data-repair-read") == 3
     symbols = set(re.findall(r'<symbol id="(i-[a-z-]+)"', html))

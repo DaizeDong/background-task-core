@@ -88,11 +88,13 @@ def test_run_and_stop_feedback_do_not_claim_payload_success():
 def test_partial_delete_reports_what_changed_and_refreshes_the_list():
     case=usability_case()
     setup=('CXL='+json.dumps(case['cleanup'])+';const reply='+json.dumps(case['partial_delete'])+';'+"""
-      CXSEL=new Set(['acme.jsonl']);globalThis.confirm=()=>true;let report='',refreshes=0;
-      globalThis.alert=text=>report=text;api=async()=>reply;toast=()=>{};
+      CXSEL=new Set(['acme.jsonl']);askConfirm=async()=>true;let refreshes=0;
+      api=async()=>reply;toast=()=>{};
       loadCxList=async()=>refreshes++;loadCodex=loadSys=()=>{};
     """)
-    result=run("cxDelete().then(()=>({report,refreshes}))",setup)
+    # 部分失败的说明写在清理卡片的状态行里(#cxstate),不再用浏览器自带的 alert()。
+    result=run("cxDelete().then(()=>({report:$('cxstate').textContent,hidden:$('cxstate').hidden,refreshes}))",setup)
+    assert result['hidden'] is False
     assert '已删除 1 个文件' in result['report']
     assert 'sample.jsonl' in result['report'] and 'synthetic error' in result['report']
     assert result['refreshes']==1

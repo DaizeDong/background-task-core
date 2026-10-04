@@ -423,37 +423,70 @@ function repoPlanText(name, p){
 }
 
 // The complete frozen review remains scrollable while the user decides.
+// 外壳和别的对话框一样:标题和 ✕ 在顶上,取消和确认发布在底部右侧。点遮罩、Esc、✕、取消都等于不发布;
+// 改过提交信息之后误点遮罩不算(只认 Esc 和取消),发布请求在路上时谁都关不掉。
+// 打开时焦点停在「取消」上,不停在提交信息框里:框里已经有一句能用的信息,按住或多按一下 Enter
+// 就会在人还没看审阅内容时发布。只有人自己点进提交信息框、并且是一次不连发的 Enter,才算确认。
 function repoReview(items){
   return new Promise(resolve=>{
-    const dialog=document.createElement("dialog");
-    dialog.className="rp-review";
-    const title=document.createElement("h2");
-    title.textContent="审阅并发布 " + items.length + " 个仓库";
-    const detail=document.createElement("pre");
-    detail.textContent=items.map(({name, plan})=>repoPlanText(name, plan)).join("\n\n────────\n\n");
-    const label=document.createElement("label");
-    label.textContent="提交信息";
-    const input=document.createElement("input");
-    input.value=items.every(x=>x.plan.retry) ? "重试推送" : "例行数据同步";
-    input.maxLength=200;
+    const make=(tag, props)=>Object.assign(document.createElement(tag), props || {});
+    const dialog=make("dialog", {className:"rp-review console-dialog"});
+    dialog.setAttribute?.("closedby", "any");
+    dialog.setAttribute?.("aria-label", "审阅并发布");
+    const form=make("form", {method:"dialog"});
+    const head=make("div", {className:"dialog-head"});
+    const title=make("h2", {textContent:"审阅并发布 " + items.length + " 个仓库"});
+    const close=make("button", {type:"button", className:"icon-only dialog-x", title:"关闭"});
+    close.setAttribute("aria-label", "关闭");
+    // 和别的对话框同一个 ✕ 图标;这里全程不写 innerHTML(审阅内容是外来数据),所以按节点拼。
+    if(typeof document.createElementNS==="function"){
+      const svg=document.createElementNS("http://www.w3.org/2000/svg", "svg"), use=document.createElementNS("http://www.w3.org/2000/svg", "use");
+      svg.setAttribute("class", "ic");svg.setAttribute("aria-hidden", "true");use.setAttribute("href", "#i-close");
+      svg.appendChild(use);close.appendChild(svg);
+    }else close.textContent="✕";
+    const body=make("div", {className:"dialog-body"});
+    const detail=make("pre", {textContent:items.map(({name, plan})=>repoPlanText(name, plan)).join("\n\n────────\n\n")});
+    const label=make("label", {textContent:"提交信息"});
+    const initial=items.every(x=>x.plan.retry) ? "重试推送" : "例行数据同步";
+    const input=make("input", {type:"text", value:initial, maxLength:200});
     label.appendChild(input);
-    const cancel=document.createElement("button"); cancel.textContent="取消";
-    const accept=document.createElement("button"); accept.textContent="确认发布";
-    const error=document.createElement("p"); error.setAttribute("role", "alert");
-    let settled=false;
+    const error=make("p");error.setAttribute("role", "alert");
+    const foot=make("div", {className:"dialog-foot"});
+    const cancel=make("button", {type:"button", textContent:"取消", autofocus:true});
+    const accept=make("button", {type:"submit", className:"primary", textContent:"确认发布"});
+    let settled=false, armed=false;
     const finish=value=>{ if(settled) return; settled=true; dialog.remove(); resolve(value); };
-    cancel.addEventListener("click", ()=>finish(null));
-    dialog.addEventListener("cancel", event=>{ event.preventDefault(); finish(null); });
-    accept.addEventListener("click", ()=>{
+    const dirty=()=>input.value!==initial;
+    const syncDismiss=()=>dialog.setAttribute?.("closedby", dirty() ? "closerequest" : "any");
+    const publish=()=>{
       const message=input.value.trim();
       if(!message || /[\r\n`$]/.test(message)){
         error.textContent="请输入一行提交信息，不能包含反引号或 $。"; return;
       }
       finish(message);
+    };
+    cancel.addEventListener("click", ()=>finish(null));
+    close.addEventListener("click", ()=>finish(null));
+    dialog.addEventListener("cancel", event=>{ event.preventDefault(); finish(null); });
+    // 点遮罩由浏览器直接关掉对话框,不经过 cancel 的拦截;关了就是不发布。
+    dialog.addEventListener("close", ()=>finish(null));
+    input.addEventListener("focus", ()=>{ armed=true; });
+    input.addEventListener("input", syncDismiss);
+    input.addEventListener("keydown", event=>{
+      if(event.key!=="Enter") return;
+      // 输入法组字、按住连发、还没被人点进来过:这一下 Enter 都不算确认。
+      if(event.isComposing || event.repeat || !armed) event.preventDefault();
     });
-    [title, detail, label, error, cancel, accept].forEach(node=>dialog.appendChild(node));
+    form.addEventListener("submit", event=>{ event.preventDefault(); publish(); });
+    accept.addEventListener("click", event=>{ event?.preventDefault?.(); publish(); });
+    head.appendChild(title);head.appendChild(close);
+    [detail, label, error].forEach(node=>body.appendChild(node));
+    foot.appendChild(cancel);foot.appendChild(accept);
+    [head, body, foot].forEach(node=>form.appendChild(node));
+    dialog.appendChild(form);
     document.body.appendChild(dialog);
     dialog.showModal();
+    cancel.focus?.();
   });
 }
 
@@ -509,7 +542,8 @@ async function repoPublishPlans(names){
         + "\n尚未执行: " + Math.max(0, items.length-done.length-1);
       const out=$("rpout"); if(out) out.textContent=summary;
       toast("发布未全部完成，详情已保留", "bad");
-      if(items.length > 1) alert(summary);
+      // 结果写在仓库详情的结果栏里(#rpout),一直留着;不再弹浏览器自带的提示框,那个关掉就没了。
+      if(out) out.scrollIntoView?.({block:"nearest"});
     }else{
       toast(done.length === 1 ? done[0] + " 已推送" : done.length + " 个仓库已推送");
     }
