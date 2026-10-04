@@ -48,16 +48,20 @@ function apiError(payload,status){
 }
 function api(p,o){
   const options=o || {}, method=(options.method || 'GET').toUpperCase(), read=method==='GET';
+  // inspect:true 标的是「借 POST 发出的读」,比如看一眼 git status:它不改任何东西,
+  // 所以不记进「最近操作」、不锁全页的写按钮、也不让读缓存失效。
+  // 只读预览照样拒绝它:那边的服务一律不收 POST,提前说清楚比等一个 405 好。
+  const inspect=!read && options.inspect===true;
   if(!read && typeof ConsoleActions!=='undefined' && ConsoleActions.readOnly) return Promise.reject(new Error(ConsoleActions.reason));
   const epoch=API_READ_EPOCH, identity=JSON.stringify([p,{...options,method}]);
   const key=JSON.stringify([read?epoch:null,identity]);
   if(!options.signal && API_PENDING.has(key)) return API_PENDING.get(key);
-  if(!read) API_READ_EPOCH++;
+  if(!read && !inspect) API_READ_EPOCH++;
   const sequence=++API_SEQUENCE;
   const record=state=>{if(read && (API_READS.get(p)?.sequence || 0)<=sequence)
     API_READS.set(p,{path:p,sequence,observedAt:new Date().toISOString(),...state});};
   record({pending:true});
-  const operation=!read && typeof ConsoleActions!=='undefined' ? ConsoleActions.begin?.(p,options) : null;
+  const operation=!read && !inspect && typeof ConsoleActions!=='undefined' ? ConsoleActions.begin?.(p,options) : null;
   const controller=!options.signal && typeof AbortController!=='undefined' ? new AbortController() : null;
   const timer=controller ? setTimeout(()=>controller.abort(),read?90000:360000) : null;
   if(read) API_ACTIVE_READS.set(identity,(API_ACTIVE_READS.get(identity)||0)+1);
@@ -94,7 +98,7 @@ function api(p,o){
       throw error;
     }finally{
       if(timer!==null) clearTimeout(timer);
-      if(!read) API_READ_EPOCH++;
+      if(!read && !inspect) API_READ_EPOCH++;
       if(API_PENDING.get(key)===request) API_PENDING.delete(key);
       if(read){
         const remaining=API_ACTIVE_READS.get(identity)-1;
@@ -113,8 +117,43 @@ const kb = n => n==null ? "-" : n<1024 ? n+"B" : n<1048576 ? (n/1024).toFixed(0)
 
 function mtUnset(el,reason){ el.innerHTML=`<div class="mt-note">${esc(reason)}</div>`; }
 
-function ibtn(sym, label, extra, cls){
-  return `<button class="mini ib icon-only ${cls||""}" ${extra||""} title="${esc(label)}"
+// 按钮不可用时,提示里先说它是哪个动作,再说为什么不能点。只写原因的话,一排图标按钮
+// 悬停上去句句相同,分不出哪个是暂停、哪个是删除;只写动作名又等于没解释为什么灰着。
+const disabledTitle=(label,reason)=>label?`${label}（不可用：${reason}）`:`不可用：${reason}`;
+// 动作自己的名字:aria-label 优先,其次是图标按钮里藏着的文字,再次是原来的 title。
+// 已经拼过原因的 title 要先剥掉后缀,不然第二次禁用会叠成「X（不可用：…）（不可用：…）」。
+function controlName(button){
+  if(button.dataset?.label) return button.dataset.label;
+  const own=button.getAttribute?.('aria-label') || button.querySelector?.('.control-label')?.textContent ||
+    button.title || button.textContent || '';
+  return String(own).trim().replace(/（不可用：[^）]*）$/,'');
+}
+// reason 为空就恢复可用;title 只在仍是我们写的那句时才还原,渲染方中途改过的 title 不去覆盖。
+function setDisabled(button,reason,describedBy){
+  if(!button) return;
+  const dataset=button.dataset || (button.dataset={});
+  if(!dataset.label) dataset.label=controlName(button);
+  if(reason){
+    if(dataset.lockedTitle!==button.title) dataset.plainTitle=button.title || '';
+    const title=disabledTitle(dataset.label,reason);
+    // 只在状态真的变了时才写 disabled:同值也会触发属性变更通知,而 ConsoleActions 正是靠
+    // 监听 disabled 来重新同步的,无条件写一次就是一个停不下来的循环。
+    if(!button.disabled) button.disabled=true;
+    button.title=title;dataset.lockedTitle=title;
+    if(describedBy) button.setAttribute?.('aria-describedby',describedBy);
+    return;
+  }
+  if(button.disabled) button.disabled=false;
+  if(dataset.lockedTitle && button.title===dataset.lockedTitle) button.title=dataset.plainTitle || dataset.label;
+  delete dataset.lockedTitle;
+  if(describedBy) button.removeAttribute?.('aria-describedby');
+}
+
+// reason 给了就渲染成不可用:aria-label 仍是动作名,原因只进 title。
+// hint 是可用时的完整说明(比如带上具体地址),省略时就用动作名。
+function ibtn(sym, label, extra, cls, reason, hint){
+  const title=reason?disabledTitle(label,reason):(hint || label);
+  return `<button class="mini ib icon-only ${cls||""}" ${extra||""}${reason?" disabled":""} title="${esc(title)}"
     aria-label="${esc(label)}"><svg class="ic" aria-hidden="true"><use href="#${sym}"/></svg></button>`;
 }
 

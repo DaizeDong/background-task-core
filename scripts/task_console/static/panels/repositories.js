@@ -31,7 +31,8 @@ async function repoAct(what){
   if(what==="status"){
     if(out) out.textContent = "读取中…";
     try{
-      const res = await api("/api/maint/act",{method:"POST",
+      // 看改动只是读:标成 inspect,不进「最近操作」,也不把全页的写按钮锁住。
+      const res = await api("/api/maint/act",{method:"POST",inspect:true,
         body:JSON.stringify({action:"repo.status", name:r.name})});
       if(res.error){ if(out) out.textContent = res.error; toast(res.error,"bad"); return; }
       const files = res.files||[];
@@ -354,19 +355,20 @@ function renderRepoDetail(){
   // 就等于把「字太多」换成了「什么都没有」。
   h += `<div class="rp-acts">
     ${ibtn("i-folder","打开目录",'data-rpact="reveal"')}`;
+  // 不能点的时候 aria-label 仍是动作名,原因只进提示:读屏和悬停都先听到「这是哪个按钮」。
   h += r.webUrl
-    ? ibtn("i-web","在浏览器里打开 "+r.webUrl,'data-rpact="web"')
-    : ibtn("i-web","无法识别此仓库的网页地址","disabled");
-  h += ibtn("i-diff","查看本地改动文件（git status）",'data-rpact="status"')
+    ? ibtn("i-web","在浏览器打开",'data-rpact="web"',"","","在浏览器里打开 "+r.webUrl)
+    : ibtn("i-web","在浏览器打开","","","无法识别此仓库的网页地址");
+  h += ibtn("i-diff","查看本地改动",'data-rpact="status"',"","","查看本地改动文件（git status）")
     + ibtn("i-fetch","获取远程更新（git fetch），不会合并到本地分支",`data-mt="repo.fetch" data-name="${esc(r.name)}"`);
   // 提交并推送。只在真有东西要做的时候出现 —— 一个永远亮着、点下去说「没什么要做」的
   // 按钮,会让人停止相信这一排按钮的状态。
   const needs = RP_RETRIES.has(r.name) || (r.dirty||0) > 0 || (r.unpushedKnown && (r.ahead||0) > 0);
   h += needs
-    ? ibtn("i-push", (RP_RETRIES.has(r.name) ? "重试已有提交的推送。" : `提交并推送:先出一份计划给你看,确认之后才动。`)
-        + (r.dirty?` 有 ${r.dirty} 个改动`:"") + ((r.ahead||0)?` · ${r.ahead} 个提交没推`:""),
-        'data-rpact="commitpush"', "go")
-    : ibtn("i-push","没有未提交的改动,也没有未推送的提交","disabled");
+    ? ibtn("i-push","提交并推送",'data-rpact="commitpush"',"go","",
+        (RP_RETRIES.has(r.name) ? "重试已有提交的推送。" : `提交并推送:先出一份计划给你看,确认之后才动。`)
+        + (r.dirty?` 有 ${r.dirty} 个改动`:"") + ((r.ahead||0)?` · ${r.ahead} 个提交没推`:""))
+    : ibtn("i-push","提交并推送","","","没有未提交的改动，也没有未推送的提交");
   h += `</div><div class="rp-out" id="rpout"></div>`;
   box.innerHTML = h;
   const report=RP_REPORTS.get(r.name);

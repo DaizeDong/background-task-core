@@ -79,7 +79,7 @@ function renderWorkPlatform(){
   const options='<option value="">全部来源</option>'+sources.map(source=>`<option value="${esc(source)}">${esc(workSourceLabel(source))}</option>`).join('')+(missingSource?`<option value="${esc(WORK_SOURCE)}">${esc(workSourceLabel(WORK_SOURCE))}（本次未读到）</option>`:'');
   if($('work-source').innerHTML!==options) $('work-source').innerHTML=options;
   $('work-source').value=WORK_SOURCE;
-  $('work-reset').hidden=WORK_ROLE==='work' && WORK_STATE==='unfinished' && !WORK_SOURCE && !WORK_QUERY;
+  if(typeof syncResetFilters==='function') syncResetFilters();
   const counts=new Map();(WORK?.sources || []).forEach(row=>counts.set(row.source,(counts.get(row.source)||0)+row.count));
   $('source-volume').innerHTML=[...counts].sort((a,b)=>b[1]-a[1]).map(([source,count])=>`<button data-work-source="${esc(source)}" title="只看此来源，清除其他筛选" aria-pressed="${source===WORK_SOURCE}">${esc(workSourceLabel(source))} <b>${count}</b></button>`).join('') || workEmpty(present?'没有来源记录':absent);
   const events=WORK?.events || [];
@@ -100,7 +100,7 @@ function renderAutomations(){
   updateTaskVerdictFilter('automation-verdict',candidates,verdict);
   const rows=candidates.filter(row=>taskMatchesVerdict(row,verdict));
   $('automation-count').textContent=DATA?`${rows.length}/${ROWS.length} 项`:'暂时读不到计划任务';
-  $('automation-reset').hidden=!AUTO_QUERY && !AUTO_STATE && !verdict;
+  if(typeof syncResetFilters==='function') syncResetFilters();
   const groups=new Map();rows.forEach(row=>{if(!groups.has(row.cat))groups.set(row.cat,[]);groups.get(row.cat).push(row);});
   // 这张列表会被工作记录刷新、修复进度轮询顺带重画:焦点在某个按钮上时,重画之后要放回同一个按钮。
   const focused=$('automation-list').contains?.(document.activeElement)?taskControlKey(document.activeElement):null;
@@ -145,8 +145,6 @@ function startWorkPlatform(){
   $('automation-state').addEventListener('change',e=>{AUTO_STATE=e.target.value;renderAutomations();});
   $('automation-verdict').addEventListener('change',renderAutomations);
   $('work-detail-close').addEventListener('click',()=>$('work-detail').close());
-  $('work-reset').addEventListener('click',()=>{setWorkFilters();$('work-search').focus();});
-  $('automation-reset').addEventListener('click',()=>{AUTO_QUERY='';AUTO_STATE='';$('automation-search').value='';$('automation-state').value='';$('automation-verdict').value='';renderAutomations();$('automation-search').focus();});
   for(const [id,delta] of [['work-detail-prev',-1],['work-detail-next',1]]) $(id).addEventListener('click',()=>{
     const next=WORK_DETAIL_IDS[WORK_DETAIL_IDS.indexOf(WORK_DETAIL_ID)+delta];if(next) openWorkRecord(next,true);
   });

@@ -19,7 +19,7 @@
 .section-heading>span{font-size:12px;color:var(--dim)}
 .section-heading>.record-link{margin-left:auto}
 .record-link{border:0;background:none;padding:0;min-height:26px;text-align:left;color:var(--cyan);border-radius:2px;white-space:normal}
-.record-link:hover{text-decoration:underline;background:none;color:var(--cyan)}
+.record-link:not(:disabled):hover{text-decoration:underline;background:none;color:var(--cyan)}
 .work-empty{padding:var(--space-3) var(--section-inset);margin:0;color:var(--dim);font-size:var(--fs-body)}
 .work-row{display:grid;grid-template-columns:minmax(0,1fr);gap:8px 12px;padding:8px var(--section-inset);border-top:1px solid var(--line2);align-items:center}
 .work-row:has(>.work-actions){grid-template-columns:minmax(0,1fr) 180px}
@@ -102,7 +102,12 @@
    建议是透明底,修复进度是有底色的虚线,两枚挨在一起时分得开。 */
 .repair-chip{display:inline-flex;border:0;background:none;padding:0;min-height:0;border-radius:4px;max-width:100%}
 .repair-chip .status-chip.task-repair{border-style:dashed;border-color:currentColor;white-space:normal;text-align:left}
-button.repair-chip:hover .status-chip{text-decoration:underline}
+/* 能点开工单的那一枚是按钮,不能和不能点的虚线徽章长得一样:实线框、手形指针、悬停加底,
+   末尾一个「›」表示点了会进去。虚线只留给不能点的建议和未检查。 */
+button.repair-chip{cursor:pointer}
+button.repair-chip .status-chip.task-repair{border-style:solid}
+button.repair-chip .status-chip.task-repair::after{content:"›";margin-left:2px;font-weight:700}
+button.repair-chip:not(:disabled):hover .status-chip{background:var(--cur);text-decoration:underline}
 button.repair-chip:focus-visible{outline:2px solid var(--cyan);outline-offset:2px}
 td .repair-chip{margin-top:4px}
 .repair-read-state{font-size:12px;color:var(--dim);overflow-wrap:anywhere}
@@ -122,7 +127,6 @@ td .repair-chip{margin-top:4px}
 .task-op-blocking ul{margin:4px 0 0;padding-left:18px}
 #task-delete-state,#repair-state{overflow-wrap:anywhere;margin-top:10px}
 .task-op-dialog code{overflow-wrap:anywhere;color:var(--ink);background:var(--panel2)}
-td.ops .mini{opacity:1}button:disabled{opacity:1;color:var(--dim);background:var(--panel2);border-color:var(--line);cursor:not-allowed}
 button.mini.ib{width:var(--control-height);min-height:var(--control-height);display:inline-flex;align-items:center;justify-content:center}.ic use{pointer-events:none}
 #work-detail{width:min(760px,calc(100vw - 32px));max-height:85vh;padding:0;border:1px solid var(--line);border-radius:8px;background:var(--panel);color:var(--ink);overflow:auto}
 #work-detail::backdrop{background:rgba(0,0,0,.45)}#work-detail-body{padding:14px}#work-detail h3{font-size:14px;margin:16px 0 8px}

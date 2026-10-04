@@ -123,6 +123,8 @@ function renderCatalog(){
   $("catalog-state").addEventListener("change",event=>{CATALOG_STATE=event.target.value;renderCatalogResults();});
   $("health-state").addEventListener("change",event=>{HEALTH_STATE=event.target.value;renderCatalogHealth();});
   renderCatalogResults();renderCatalogHealth();
+  // 工具栏整块重画,清除筛选按钮是新造的,要当场按现有筛选定亮灭。
+  if(typeof syncResetFilters==='function') syncResetFilters();
 }
 function renderCatalogHealth(){
   const components=catalogComponents(), el=$("health-results");if(!el) return;

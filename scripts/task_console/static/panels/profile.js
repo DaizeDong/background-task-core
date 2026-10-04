@@ -147,9 +147,18 @@ function renderCxList(){
       <button class="icon-only mini" id="cxall" title="全选已列出的文件"><svg class="ic" aria-hidden="true"><use href="#i-select-all"/></svg><span class="control-label">全选已列出的文件</span></button>
       <button class="icon-only mini" id="cxnone" title="清空选择"><svg class="ic" aria-hidden="true"><use href="#i-filter-clear"/></svg><span class="control-label">清空选择</span></button>
       <span class="sel">选中 <b>${CXSEL.size}</b> 份 · ${kb(selBytes)}</span>
-      <button class="icon-only mini danger" id="cxdel"${CXSEL.size?"":" disabled"}
-        title="${CXSEL.size?"永久删除选中的文件，需要确认":"请先选择文件"}"><svg class="ic" aria-hidden="true"><use href="#i-trash"/></svg><span class="control-label">删除选中文件</span></button>
+      <button class="icon-only mini danger" id="cxdel" title="永久删除选中的文件，需要确认"><svg class="ic" aria-hidden="true"><use href="#i-trash"/></svg><span class="control-label">删除选中文件</span></button>
     </div><div class="cx-list">${rows}</div>`;
+  cxSelButtons();
+}
+
+// 三个按钮各自什么时候能点:没选中就没得清空、没得删,已经全选了就没得再全选。
+function cxSelButtons(){
+  const items=(CXL&&CXL.items)||[];
+  const all=items.length>0 && items.every(i=>CXSEL.has(i.rel));
+  ConsoleActions.gate(document.getElementById("cxall"),!items.length?"列表里没有文件":all?"已列出的文件都已选中":"");
+  ConsoleActions.gate(document.getElementById("cxnone"),CXSEL.size?"":"没有选中的文件");
+  ConsoleActions.gate(document.getElementById("cxdel"),CXSEL.size?"":"请先选择文件");
 }
 
 // 只更新那一行统计,不碰列表本身。
@@ -158,9 +167,7 @@ function cxSelSummary(){
   const byRel={}; ((CXL&&CXL.items)||[]).forEach(i=>byRel[i.rel]=i);
   let b=0; CXSEL.forEach(r=>{ b += (byRel[r]||{}).bytes||0; });
   el.innerHTML=`选中 <b>${CXSEL.size}</b> 份 · ${kb(b)}`;
-  const d=document.getElementById("cxdel");
-  if(d){ d.disabled=!CXSEL.size;
-         d.title=CXSEL.size?"永久删除选中的文件，需要确认":"请先选择文件"; }
+  cxSelButtons();
 }
 
 async function cxDelete(){

@@ -168,7 +168,7 @@ function renderPipelines(){
           </td></tr>`).join("")}</tbody></table></div></div>`;
     }).join("")+
     `<div class="card"><div class="card-header"><h2 class="card-title">同步中发现的问题 <span id="pipeline-issue-count" class="n"></span></h2>
-    <div class="catalog-tools"><input id="pipeline-search" type="search" aria-label="搜索流水线问题" placeholder="搜索对象、类型或原因" value="${esc(PIPELINE_QUERY)}"><button class="icon-only" data-reset-filters="pipelines" title="清除筛选"><svg class="ic" aria-hidden="true"><use href="#i-filter-clear"/></svg><span class="control-label">清除筛选</span></button><button class="icon-only" data-goto="resources" title="查看技能和插件"><svg class="ic" aria-hidden="true"><use href="#i-puzzle"/></svg><span class="control-label">查看技能和插件</span></button></div></div>
+    <div class="catalog-tools"><input id="pipeline-search" type="search" aria-label="搜索流水线问题" placeholder="搜索对象、类型或原因" value="${esc(PIPELINE_QUERY)}"><button class="icon-only" data-goto="resources" title="查看技能和插件"><svg class="ic" aria-hidden="true"><use href="#i-puzzle"/></svg><span class="control-label">查看技能和插件</span></button></div></div>
     <div id="pipeline-issues" class="ops-scroll"></div></div>`;
   $("pipeline-search").addEventListener("input",event=>{PIPELINE_QUERY=event.target.value;renderPipelineIssues();});
   restoreTaskControlFocus(box,focused);

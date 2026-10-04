@@ -147,7 +147,7 @@
     <input id="work-search" type="search" placeholder="搜索工作、摘要、项目" aria-label="搜索工作记录">
     <select id="work-role" aria-label="记录类别"><option value="work">工作与待办</option><option value="agent_work">Agent 工作</option><option value="tracked_item">待办事项</option><option value="signal">通知与线索</option><option value="all">全部记录</option></select>
     <select id="work-state" aria-label="工作状态"><option value="unfinished">未结束</option><option value="">全部状态</option><option value="active">执行中 / 排队</option><option value="tracked_active">未完成待办</option><option value="pending">待办</option><option value="doing">进行中</option><option value="done">已完成</option><option value="blocked">遇到阻碍</option><option value="stalled">已停滞</option><option value="failed">执行失败</option><option value="cancelled">已取消</option><option value="stopped">已停止</option><option value="snoozed">已延后</option><option value="reconcile">结果待核实</option><option value="review_unavailable">无法复核</option><option value="notified">已提醒</option></select>
-    <select id="work-source" aria-label="记录来源"><option value="">全部来源</option></select><button class="icon-only" id="work-reset" hidden title="清除筛选"><svg class="ic" aria-hidden="true"><use href="#i-filter-clear"/></svg><span class="control-label">清除筛选</span></button><span id="work-match" role="status"></span><button class="icon-only" id="work-context-toggle" aria-controls="work-context-panels" aria-expanded="true" title="收起活动与来源"><svg class="ic" aria-hidden="true"><use href="#i-sidebar"/></svg><span class="control-label">收起活动与来源</span></button>
+    <select id="work-source" aria-label="记录来源"><option value="">全部来源</option></select><button class="icon-only" id="work-reset" data-reset-filters="work" title="清除筛选"><svg class="ic" aria-hidden="true"><use href="#i-filter-clear"/></svg><span class="control-label">清除筛选</span></button><span id="work-match" role="status"></span><button class="icon-only" id="work-context-toggle" aria-controls="work-context-panels" aria-expanded="true" title="收起活动与来源"><svg class="ic" aria-hidden="true"><use href="#i-sidebar"/></svg><span class="control-label">收起活动与来源</span></button>
   </div>
   <div class="work-layout">
   <div class="work-section"><p id="work-coverage" class="work-section-note"></p><div id="work-list" class="work-list"></div></div>
@@ -162,7 +162,7 @@
     <input id="automation-search" type="search" placeholder="搜索标题、用途、建议或任务名" aria-label="搜索自动化">
     <select id="automation-verdict" aria-label="按建议筛选"><option value="">全部建议</option></select>
     <select id="automation-state" aria-label="自动化状态"><option value="">全部状态</option><option value="enabled">已启用</option><option value="disabled">已停用</option><option value="running">正在运行</option></select>
-    <button class="icon-only" id="automation-reset" hidden title="清除筛选"><svg class="ic" aria-hidden="true"><use href="#i-filter-clear"/></svg><span class="control-label">清除筛选</span></button><span id="automation-count" role="status"></span><span class="repair-read-state" data-repair-read></span>
+    <button class="icon-only" id="automation-reset" data-reset-filters="automations" title="清除筛选"><svg class="ic" aria-hidden="true"><use href="#i-filter-clear"/></svg><span class="control-label">清除筛选</span></button><span id="automation-count" role="status"></span><span class="repair-read-state" data-repair-read></span>
   </div>
   <div id="automation-list"></div>
 </section>
@@ -379,8 +379,8 @@
       <div id="lcdrift"></div>
       <ol class="lc-list" id="lclist"></ol>
       <div class="lc-foot">
-        <button class="icon-only mini" id="lcsave" disabled title="保存顺序"><svg class="ic" aria-hidden="true"><use href="#i-save"/></svg><span class="control-label">保存顺序</span></button>
-        <button class="icon-only mini" id="lcreset" disabled title="放弃修改"><svg class="ic" aria-hidden="true"><use href="#i-restore"/></svg><span class="control-label">放弃修改</span></button>
+        <button class="mini" id="lcsave" data-label="保存顺序" disabled title="保存顺序"><svg class="ic" aria-hidden="true"><use href="#i-save"/></svg>保存顺序</button>
+        <button class="mini" id="lcreset" data-label="放弃修改" disabled title="放弃修改"><svg class="ic" aria-hidden="true"><use href="#i-restore"/></svg>放弃修改</button>
         <span class="faint" id="lcpath"></span>
       </div>
     </div>

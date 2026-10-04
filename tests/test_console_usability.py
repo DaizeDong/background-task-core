@@ -22,14 +22,19 @@ def test_home_shortcut_counts_match_the_target_filters():
 
 
 def test_source_shortcut_clears_hidden_filters_and_reset_restores_default():
+    # 清除筛选按钮常驻:没有筛选时灰着,有筛选时亮着并说出清几项,而不是忽隐忽现。
+    setup=setup_feed()+"""$('work-reset').dataset.resetFilters='work';
+      document.querySelectorAll=selector=>selector==='[data-reset-filters]'?[$('work-reset')]:[];"""
     result=run("""(() => {
       setWorkFilters({role:'agent_work',state:'done',query:'not-found'});
       setWorkFilters({role:'all',source:'synthetic'});
-      const sourceCount=selectedWorkRows().length;
+      const sourceCount=selectedWorkRows().length, active=[!!$('work-reset').disabled,$('work-reset').title];
       setWorkFilters();
-      return {sourceCount,query:WORK_QUERY,state:WORK_STATE,source:WORK_SOURCE,role:WORK_ROLE,hidden:$('work-reset').hidden};
-    })()""",setup_feed())
-    assert result=={'sourceCount':9,'query':'','state':'unfinished','source':'','role':'work','hidden':True}
+      return {sourceCount,active,query:WORK_QUERY,state:WORK_STATE,source:WORK_SOURCE,role:WORK_ROLE,
+        hidden:!!$('work-reset').hidden,disabled:$('work-reset').disabled,title:$('work-reset').title};
+    })()""",setup)
+    assert result=={'sourceCount':9,'active':[False,'清除筛选（2 项）'],'query':'','state':'unfinished','source':'','role':'work',
+                    'hidden':False,'disabled':True,'title':'清除筛选（不可用：当前没有生效的筛选）'}
 
 
 def test_missing_source_remains_visible_and_unloaded_activity_has_no_dead_button():

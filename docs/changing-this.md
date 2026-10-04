@@ -140,6 +140,19 @@
 不在表里的分区什么都不做,这样 Esc 不会去改一屏看不见的东西。逻辑放在 `navigation.js` 而不是 `events.js`,
 是为了让 node:vm 台架能测到它(`tests/test_keyboard_conventions.py`)。
 
+### 不可用的按钮:一条样式,一个函数
+
+按钮灰掉的样式只有 `styles.css` 末尾那一条 `button:disabled`,带 `!important`:变体规则(主按钮、危险按钮、
+行内操作列、对话框提交)个个比它具体,以前就是它们把灰掉的按钮染回能点的样子。新写带颜色的变体或悬停规则时,
+加上 `:not(:disabled)`;`tests/test_disabled_state.py` 会扫所有作用在按钮上的 `:hover` 规则。
+
+灰掉一个按钮走 `api.js` 的 `setDisabled(button, reason)`(页面自己的原因走 `ConsoleActions.gate`,只读预览会压过它),
+拼 HTML 时用 `disabledTitle(label, reason)` 或 `ibtn(sym, label, extra, cls, reason, hint)`。
+提示一律是「动作名（不可用：原因）」,动作名只取一次(aria-label、`.control-label`、原 title 依次),重复同步不会叠后缀;
+带字的按钮在标记里写 `data-label`,因为它的 title 会随状态变。只读不写的 POST(比如看 git status)给 `api()` 传 `inspect:true`,
+它就不进「最近操作」、不锁全页。清除筛选按钮的亮灭由 `operations.js` 的 `syncResetFilters()` 统一算,
+新加一个筛选范围时在 `RESET_FILTER_COUNTS` 和 `RESET_FILTER_SEARCH` 里各加一行。
+
 ### 死 CSS 和模板拼出来的类名
 
 有一道闸扫「写了规则但页面上没有东西会匹配」的 CSS。由模板拼接产生的类名

@@ -11,6 +11,41 @@ function resetFilters(scope){
   if(scope==='llm'){clearTimeout(LMQT);clear(['lmq','lmprov','lmcaller','lmok']);Object.assign(LMQ,{q:'',provider:'',caller:'',ok:'',offset:0});LMOPEN=null;loadCalls();}
   if(scope==='diagnostics'){clear(['review-search']);$('review-filter').value='all';REVIEW_QUERY='';REVIEW_FILTER='all';renderTodo();}
   if(scope==='pipelines'){PIPELINE_QUERY='';clear(['pipeline-task-search','pipeline-verdict']);renderPipelines();}
+  if(scope==='work') setWorkFilters();
+  if(scope==='automations'){AUTO_QUERY='';AUTO_STATE='';clear(['automation-search','automation-state','automation-verdict']);renderAutomations();}
+  syncResetFilters();
+}
+// 每个范围里此刻生效的筛选有几项。能读控件就读控件:搜索框有防抖,状态变量要过一会儿
+// 才跟上,而按钮该在敲下第一个字时就亮。没有控件的筛选(仓库状态条、只看人类消息)读状态变量。
+const RESET_FILTER_COUNTS={
+  tasks:value=>[value('q'),value('cat'),value('task-verdict'),!!$('only')?.checked,!!$('hideoff')?.checked],
+  repos:value=>[value('rpq'),value('rpacc'),value('rpkind'),value('rpvis'),value('rpissue'),RP_STATE],
+  catalog:()=>[CATALOG_QUERY,CATALOG_KIND,CATALOG_CLIENT,CATALOG_STATE,HEALTH_STATE],
+  runtime:value=>[value('runtime-search'),value('runtime-state')],
+  convos:value=>[value('cv-search'),CV_HUMAN_ONLY],
+  llm:value=>[value('lmq'),value('lmprov'),value('lmcaller'),value('lmok')],
+  diagnostics:value=>[value('review-search'),value('review-filter')!=='all' && value('review-filter')],
+  pipelines:value=>[PIPELINE_QUERY,value('pipeline-task-search'),value('pipeline-verdict')],
+  // 工作记录的默认状态随类别变:「全部记录」默认看全部状态,其余默认只看未结束的。
+  work:()=>[WORK_ROLE!=='work',WORK_STATE!==(WORK_ROLE==='all'?'':'unfinished'),WORK_SOURCE,WORK_QUERY],
+  automations:value=>[AUTO_QUERY,AUTO_STATE,value('automation-verdict')]
+};
+// 清除之后按钮随即变灰、焦点跟着丢掉,所以把焦点交给这个范围的搜索框,接着就能输入新的条件。
+const RESET_FILTER_SEARCH={tasks:'q',repos:'rpq',catalog:'catalog-search',runtime:'runtime-search',convos:'cv-search',llm:'lmq',
+  diagnostics:'review-search',pipelines:'pipeline-task-search',work:'work-search',automations:'automation-search'};
+function activeFilterCount(scope){
+  const value=id=>String($(id)?.value || '').trim();
+  return (RESET_FILTER_COUNTS[scope]?.(value) || []).filter(Boolean).length;
+}
+// 清除筛选按钮常驻:没有筛选时灰着并说明原因,有筛选时说清会清掉几项。
+// 原来有的页藏、有的页一直亮着,同一个按钮两种约定,而一直亮着的那种点了什么也不发生。
+function syncResetFilters(){
+  document.querySelectorAll?.('[data-reset-filters]').forEach(button=>{
+    const count=activeFilterCount(button.dataset.resetFilters);
+    button.dataset.label='清除筛选';
+    setDisabled(button,count?'':'当前没有生效的筛选');
+    if(count) button.title=`清除筛选（${count} 项）`;
+  });
 }
 const PAGE_READS={
   overview:[loadWork,load,loadComponents],

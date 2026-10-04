@@ -14,7 +14,10 @@ document.addEventListener("click", e=>{
   const taskDelete=e.target.closest('[data-task-delete]');
   if(taskDelete){e.preventDefault();e.stopImmediatePropagation();if(!taskDelete.disabled) openTaskDelete(taskDelete.dataset.taskDelete);return;}
   const reset=e.target.closest('[data-reset-filters]');
-  if(reset){resetFilters(reset.dataset.resetFilters);return;}
+  if(reset){
+    const scope=reset.dataset.resetFilters;resetFilters(scope);
+    $(RESET_FILTER_SEARCH[scope])?.focus?.({preventScroll:true});return;
+  }
   // ⚠ 这一段必须留在**这个**监听里,而且在最前面。
   // 页面上有两个 document 级的 click 监听,先注册的先跑,而 stopPropagation
   // 拦不住同一个元素上的另一个监听(那要 stopImmediatePropagation)。
@@ -398,3 +401,7 @@ $("review-filter").addEventListener("change",event=>{REVIEW_FILTER=event.target.
 
 document.addEventListener("click",pipelineClick);
 document.addEventListener("click",reviewClick);
+// 清除筛选按钮的亮灭跟着筛选走。挂在 document 上、而且最后注册:各个筛选控件自己的监听先把
+// 状态写好,这里再数;点击也算,因为仓库状态条、来源按钮和跳转链接都是点一下就换了筛选。
+["input","change","click"].forEach(type=>document.addEventListener(type,()=>syncResetFilters()));
+syncResetFilters();

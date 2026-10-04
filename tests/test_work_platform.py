@@ -87,7 +87,8 @@ def test_task_buttons_are_labeled_and_inapplicable_run_is_explained():
     result=run("taskActionButtons({name:'Acme',state:'Disabled'})")
     assert 'class="control-label">启用</span>' in result and 'class="control-label">删除</span>' in result
     assert 'class="control-label">修复</span>' in result and '停用并移出清单' not in result
-    assert 'title="请先启用"' in result and 'disabled' in result
+    # 灰着的按钮先说自己是哪个动作,再说为什么不能点。
+    assert 'title="运行一次（不可用：请先启用）"' in result and 'disabled' in result
     assert 'class="mini ib' not in result
 
 

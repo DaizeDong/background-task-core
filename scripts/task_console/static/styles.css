@@ -117,9 +117,10 @@ input[type=text]{width:200px}
 input[type=text]:focus,select:focus{outline:1px solid var(--cyan);outline-offset:-1px;border-color:var(--cyan)}
 button{font:inherit;background:var(--panel);color:var(--dim);border:1px solid var(--line);
   padding:2px 8px;border-radius:2px;min-height:22px;cursor:pointer}
-button:hover{color:var(--ink);border-color:var(--cyan)}
-button.danger:hover{color:var(--bad);border-color:var(--bad)}
-button:disabled{opacity:.4;cursor:default}
+/* 悬停变色只给能点的按钮。灰着的按钮在指针下亮起来,就是在邀请人点一个点不动的东西。
+   不可用的样式本身在 workbench.css 末尾,统一一条。 */
+button:not(:disabled):hover{color:var(--ink);border-color:var(--cyan)}
+button.danger:not(:disabled):hover{color:var(--bad);border-color:var(--bad)}
 label.tg{display:inline-flex;align-items:center;gap:4px;color:var(--dim);cursor:pointer;user-select:none}
 label.tg input{accent-color:var(--cyan);margin:0}
 
@@ -343,10 +344,10 @@ tr.det>td{background:var(--panel2);white-space:normal;padding:6px 10px 8px;borde
 /* 行内动作。危险动作用红字而不是红底:一整列红底会把整张表变成警报墙,
    而每一行都在报警等于没有一行在报警。 */
 td.ops{white-space:nowrap;width:1%}
+/* 底色、指针和悬停都交给通用的按钮规则:这里原来自带一套,比 button:disabled 更具体,
+   结果灰着的按钮照样是手形指针、悬停变青,和能点的那几个在这一列里一模一样。 */
 td.ops .mini{font:inherit;font-size:var(--fs-meta);line-height:1;padding:2px 5px;margin-right:2px;
-  border:1px solid var(--line);background:var(--panel2);color:var(--dim);cursor:pointer;border-radius:2px}
-td.ops .mini:hover{border-color:var(--cyan);color:var(--cyan)}
-td.ops .mini.danger:hover{border-color:var(--bad);color:var(--bad)}
+  border:1px solid var(--line);color:var(--dim);border-radius:2px}
 
 /* ---- 维护面板 ----------------------------------------------------------------------
    三栏:skill 预算、记忆池用量、插件开关。每一栏都能动手,不是只读的。
@@ -744,22 +745,17 @@ button.mini .ic{margin-right:3px}
 button.mini.ib .ic{margin-right:0}
 /* 这一排里唯一会改东西、而且会把东西送出这台机器的那个。给它一点分量,
    但**不是红色** —— 红留给「出事了」。它是一个要做的事,不是一个警报。 */
-button.mini.ib.go{border-color:var(--cyan);color:var(--cyan)}
-button.mini.ib.go:hover{background:var(--cyan);color:#fff}
+button.mini.ib.go:not(:disabled){border-color:var(--cyan);color:var(--cyan)}
+button.mini.ib.go:not(:disabled):hover{background:var(--cyan);color:#fff}
 /* 归档 / 禁用 / 停用都是可逆的,常态不该是全页最红的东西 —— 22 个红按钮排成一竖排
    比它们旁边的数据还抢眼。危险感留到 hover:那时人已经瞄准了。
    ⚠ 只降常态的视觉权重,不动 danger 这个类本身:确认流程和 title 一个字没改。 */
-.mt-r .mini.danger,.ops .mini.danger{color:var(--dim);border-color:var(--line);
+.mt-r .mini.danger:not(:disabled),.ops .mini.danger:not(:disabled){color:var(--dim);border-color:var(--line);
   background:transparent}
-.mt-r .mini.danger:hover,.mt-r .mini.danger:focus-visible,
-.ops .mini.danger:hover,.ops .mini.danger:focus-visible{color:var(--bad);border-color:var(--bad)}
-/* 168 个按钮(42 行 × 4)常驻是全表最大的视觉噪音,而实际点它们的次数接近 0。
-   不用 display:none —— 那会让列宽跳动而且键盘够不着。淡下去,鼠标扫过或 j/k
-   光标落上就实体化。 */
-td.ops .mini{opacity:.25;transition:opacity .08s}
-table.g tbody tr:hover td.ops .mini,
-table.g tbody tr.cur td.ops .mini,
-td.ops .mini:focus-visible{opacity:1}
+.mt-r .mini.danger:not(:disabled):hover,.mt-r .mini.danger:focus-visible,
+.ops .mini.danger:not(:disabled):hover,.ops .mini.danger:focus-visible{color:var(--bad);border-color:var(--bad)}
+/* 这里原来把整列操作按钮淡到 .25,鼠标扫过才实体化。那样能点和不能点的按钮平时一样淡,
+   悬停时又一样实,半透明从此只该有一个意思:不可用。 */
 /* 徽章是「合并」这件事的安全带:分区把东西收了起来,徽章负责让要人管的东西不用点进去
    也看得见。所以折叠时它不能跟着藏,而是贴到图标角上 : 折叠恰恰是最需要它的时候。 */
 #side.navbar-folded .nav-link{position:relative}
@@ -824,7 +820,7 @@ section[data-view][hidden]{display:none}
   background:var(--line);border:1px solid var(--line)}
 .tile{background:var(--panel);padding:8px 10px 9px;display:flex;flex-direction:column;gap:2px;height:auto;
   cursor:pointer;border:0;text-align:left;font-family:inherit;min-width:0}
-.tile:hover{background:var(--cur)}
+.tile:not(:disabled):hover{background:var(--cur)}
 .tile .k{font-size:var(--fs-chip);color:var(--faint);letter-spacing:.03em;white-space:nowrap}
 .tile .v{font-size:19px;font-weight:600;font-variant-numeric:tabular-nums;line-height:1.15}
 .tile .s{font-size:var(--fs-meta);color:var(--dim);overflow:hidden;text-overflow:ellipsis;
@@ -874,7 +870,7 @@ section[data-view][hidden]{display:none}
 #todo .fix{font-size:var(--fs-chip);line-height:16px;padding:0 7px;margin-left:8px;
   border:1px solid var(--cyan);color:var(--cyan);background:transparent;
   border-radius:3px;cursor:pointer;white-space:nowrap}
-#todo .fix:hover{background:var(--cyan);color:#fff}
+#todo .fix:not(:disabled):hover{background:var(--cyan);color:#fff}
 #todo .fix.all{margin-left:6px;font-weight:600}
 #todo .dot{width:6px;height:6px;border-radius:1px;align-self:center}
 #todo .src{font-size:var(--fs-chip);color:var(--faint);white-space:nowrap}
@@ -1069,3 +1065,12 @@ button.icon-only{position:relative;display:inline-flex;align-items:center;justif
 button.icon-only>.ic{width:17px;height:17px;margin:0;pointer-events:none}
 button.icon-only:focus-visible{outline:2px solid var(--cyan);outline-offset:2px}
 @media(pointer:coarse){button.icon-only{width:40px;min-width:40px;min-height:40px}}
+/* 不可用的样式只有这一条。用 !important 是有意的:按钮的变体规则(青色的主按钮、红色的危险按钮、
+   行内操作列、对话框里的提交按钮)个个比 button:disabled 更具体,以前就是它们把灰掉的按钮
+   染回能点的样子,一排里能点和不能点的只差 3% 的底色。半透明、透明底、默认描边、灰字、禁止指针,
+   而且悬停和聚焦时不变。不用虚线框:虚线已经表示「建议」和「未检查」。 */
+button:disabled,button:disabled:hover,button:disabled:focus{opacity:.45!important;background:transparent!important;
+  border-color:var(--line)!important;color:var(--dim)!important;cursor:not-allowed!important}
+/* 表单控件同理:锁住的备注框要看得出锁住了,不然打字没反应,像是页面卡住。 */
+input:disabled,select:disabled,textarea:disabled{opacity:.55!important;cursor:not-allowed!important;background:var(--panel2)!important}
+input[readonly],textarea[readonly]{background:var(--panel2)!important;color:var(--dim)!important;cursor:default}

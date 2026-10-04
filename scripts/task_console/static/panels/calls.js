@@ -67,7 +67,10 @@ function renderChain(){
   const label = {env: "来自环境变量", file: "来自配置文件",
                  observed: "最近一次真实调用" + (c.observed_i != null ? "(第 " + lnum(c.observed_i) + " 行)" : ""),
                  builtin: "控制台内置的一份拷贝"}[src] || src;
-  $("lcnote").innerHTML = '<span class="lc-src '+esc(src)+'">'+esc(label)+'</span>';
+  const dirty = LCDRAFT && JSON.stringify(LCDRAFT) !== JSON.stringify(c.effective || []);
+  // 排过的顺序只在点了保存才生效,切走再回来草稿还在:标题旁挂一枚「未保存」,别让人以为已经改好了。
+  $("lcnote").innerHTML = '<span class="lc-src '+esc(src)+'">'+esc(label)+'</span>'
+    + (dirty ? statusBadge('未保存','warn','!','lc-dirty') : '');
   // 配置写着一个顺序,而最近一次真实调用走的是另一个 —— 这句话只有在 observed
   // 恒填时才说得出来,而它正是「我改了顺序但没生效」最直接的证据。
   const drift = (src === "env" || src === "file") && c.observed
@@ -88,17 +91,20 @@ function renderChain(){
        ? '<div class="lc-warn">当前顺序由环境变量 <b>LLMCALL_CHAIN</b> 指定。这里保存的顺序需移除该变量后才会生效。</div>'
        : "");
 
+  // 只读预览里排序存不下来,所以连拖拽也不给:拖完一份永远保存不了的草稿只会误导人。
+  const drag = !ConsoleActions.readOnly;
+  const mv = (dir,i,label,edge) => '<button data-mv="'+dir+'" data-i="'+i+'" title="'
+    + esc(edge ? disabledTitle(label, edge) : label) + '"' + (edge ? " disabled" : "") + '>' + (dir === "up" ? "↑" : "↓") + '</button>';
   $("lclist").innerHTML = eff.map((p,i)=>
-    '<li draggable="true" data-i="'+i+'"><span class="ord">'+(i+1)+'</span>'
+    '<li draggable="'+drag+'" data-i="'+i+'"><span class="ord">'+(i+1)+'</span>'
     + '<span class="nm">'+esc(p)+'</span>'
-    + '<span class="mv"><button data-mv="up" data-i="'+i+'" title="上移"'+(i===0?" disabled":"")+'>↑</button>'
-    + '<button data-mv="dn" data-i="'+i+'" title="下移"'+(i===eff.length-1?" disabled":"")+'>↓</button></span></li>'
+    + '<span class="mv">' + mv("up", i, "上移", i===0 ? "已在最前" : "")
+    + mv("dn", i, "下移", i===eff.length-1 ? "已在最后" : "") + '</span></li>'
   ).join("");
-  const dirty = LCDRAFT && JSON.stringify(LCDRAFT) !== JSON.stringify(c.effective || []);
-  $("lcsave").disabled = !dirty || busy;
-  $("lcsave").title=busy?'正在保存':dirty?'保存当前排列顺序':'先用上下箭头调整顺序';
-  $("lcreset").disabled = !LCDRAFT;
-  $("lcreset").title=LCDRAFT?'放弃未保存的排列修改':'当前没有未保存的修改';
+  ConsoleActions.gate($("lcsave"), busy ? '正在保存' : dirty ? '' : '顺序没有改动，先用上下箭头调整');
+  if(dirty && !busy && !ConsoleActions.readOnly) $("lcsave").title = '保存当前排列顺序';
+  ConsoleActions.gate($("lcreset"), LCDRAFT ? '' : '当前没有未保存的修改');
+  if(LCDRAFT && !ConsoleActions.readOnly) $("lcreset").title = '放弃未保存的排列修改';
   $("lcpath").textContent = c.file_path || "";
 }
 
@@ -357,8 +363,8 @@ function renderCalls(){
   const from = LMTOTAL ? LMQ.offset + 1 : 0;
   const to = Math.min(LMQ.offset + LMQ.limit, LMTOTAL);
   $("lmpage").innerHTML =
-    ibtn('i-left','上一页','id="lmprev"'+(LMQ.offset <= 0?' disabled':''))
-    + ibtn('i-right','下一页','id="lmnext"'+(to >= LMTOTAL?' disabled':''))
+    ibtn('i-left','上一页','id="lmprev"','',LMQ.offset <= 0?'已是第一页':'')
+    + ibtn('i-right','下一页','id="lmnext"','',to >= LMTOTAL?'已是最后一页':'')
     + "<span>" + lnum(from) + "–" + lnum(to) + " / 共 " + lnum(LMTOTAL) + " 条</span>";
 }
 

@@ -2,8 +2,12 @@
 const ConsoleActions={
   operations:[], timer:null, disabled:new WeakSet(),
   get readOnly(){return document.querySelector('meta[name="console-read-only"]')?.content==='true';},
-  reason:'只读预览：操作请使用正式控制台',
-  selector:'[data-work-action],[data-work-stop],[data-act],[data-task-repair],[data-task-delete],[data-mt],[data-delete],[data-rpact]:not([data-rpact="copy"]):not([data-rpact="web"]),[data-fix],[data-fixall],[data-bulk]:not([data-bulk="clear"]),[data-ctfork],[data-cvdelete],[data-cvrename],[data-cvmove],[data-cvdrag],#cv-submit,#lcsave,#cxdel,#delete-confirm,#task-delete-preview,#task-delete-confirm,#repair-submit',
+  reason:'只读预览，请用正式控制台',
+  // 只在本页改草稿的几样也在这里:调用顺序的上下移、放弃修改,清理列表的全选和清空。
+  // 它们自己不发请求,可在只读预览里点了只会攒出一份永远存不下来的草稿。
+  selector:'[data-work-action],[data-work-stop],[data-act],[data-task-repair],[data-task-delete],[data-mt],[data-delete],[data-rpact]:not([data-rpact="copy"]):not([data-rpact="web"]),[data-fix],[data-fixall],[data-bulk]:not([data-bulk="clear"]),[data-ctfork],[data-cvdelete],[data-cvrename],[data-cvmove],[data-cvdrag],[data-mv],#cv-submit,#lcsave,#lcreset,#cxall,#cxnone,#cxdel,#delete-confirm,#task-delete-preview,#task-delete-confirm,#repair-submit',
+  // 页面自己的禁用原因走这里:只读预览的原因压过它,因为那时按钮无论如何都点不了。
+  gate(button,reason){setDisabled(button,this.readOnly?this.reason:reason,this.readOnly?'console-mode':undefined);},
   allowWrite(){if(!this.readOnly) return true;toast(this.reason,'bad');return false;},
   begin(path,options){
     let body={};try{body=JSON.parse(options.body || '{}');}catch(error){}
@@ -31,17 +35,23 @@ const ConsoleActions={
     this.sync();syncStickyOffsets();if(active.length) this.timer=setTimeout(()=>this.render(),1000);
   },
   sync(){
-    const pending=this.operations.some(row=>row.pending);
+    const active=this.operations.find(row=>row.pending);
     document.querySelectorAll?.(this.selector).forEach(button=>{
+      // 原来这里把 title 整句换成只读原因,一排图标悬停上去句句相同,认不出哪个是哪个。
+      // 现在一律是「动作名（不可用：原因）」,动作名只取一次,重复同步不会叠后缀。
       if(this.readOnly){
-        if(!button.disabled) button.disabled=true;
-        button.title=this.reason;button.setAttribute('aria-describedby','console-mode');
-      }else if(pending){
-        if(!button.disabled){this.disabled.add(button);button.disabled=true;}
+        setDisabled(button,this.reason,'console-mode');
+      }else if(active){
+        // 全页写锁本身不变(写操作有意串行),只是把「在等谁」说出来;原本就灰着的按钮保留自己的原因。
+        if(!button.disabled || this.disabled.has(button)){
+          this.disabled.add(button);setDisabled(button,`等待「${active.label}」完成`,'operation-current');
+        }
       }else if(this.disabled.has(button)){
-        this.disabled.delete(button);button.disabled=false;
+        this.disabled.delete(button);setDisabled(button,'','operation-current');
       }
     });
+    // 拖拽排序是同一份草稿的另一条路,只读时也要一起关掉。
+    if(this.readOnly) document.querySelectorAll?.('#lclist li[draggable="true"]').forEach(item=>item.setAttribute('draggable','false'));
   },
   start(){
     syncStickyOffsets();
@@ -134,11 +144,12 @@ const taskIsPipeline=name=>typeof PIPELINE_DEFS!=='undefined' &&
   Object.values(PIPELINE_DEFS).some(def=>String(def.name).toLowerCase()===String(name).toLowerCase());
 function taskActionButtons(row,{deletable=!taskIsPipeline(row.name)}={}){
   const known=['Ready','Running','Disabled','Queued'].includes(row.state);
-  const disabled=!known || busy || ConsoleActions.readOnly;
   const reason=ConsoleActions.readOnly?ConsoleActions.reason:busy?'正在执行操作':!known?'任务状态未确认':'';
   const hints={enable:'恢复按计划启动',disable:'不再按计划启动；正在运行的任务继续执行',run:'立即运行一次，保留原计划',stop:'请求停止当前运行，保留后续计划'};
   const symbols={enable:'i-on',disable:'i-pause',run:'i-play',stop:'i-stop'};
-  const control=(verb,label,extraReason='')=>`<button class="mini task-control icon-only" data-act="${verb}" data-name="${esc(row.name)}" ${disabled || extraReason?'disabled':''} title="${esc(reason || extraReason || hints[verb])}"><svg class="ic" aria-hidden="true"><use href="#${symbols[verb]}"/></svg><span class="control-label">${label}</span></button>`;
+  // 灰着的按钮也先说自己是哪个动作:一行里四个图标,只写原因的话悬停上去分不出是谁。
+  const title=(label,why,hint)=>esc(why?disabledTitle(label,why):hint);
+  const control=(verb,label,extraReason='')=>`<button class="mini task-control icon-only" data-act="${verb}" data-name="${esc(row.name)}" ${reason || extraReason?'disabled':''} title="${title(label,reason || extraReason,hints[verb])}"><svg class="ic" aria-hidden="true"><use href="#${symbols[verb]}"/></svg><span class="control-label">${label}</span></button>`;
   // 修复不看任务状态:状态读不出来、任务在跑,恰恰是最需要诊断的时候。
   const repairReason=ConsoleActions.readOnly?ConsoleActions.reason:'';
   const removeReason=ConsoleActions.readOnly?ConsoleActions.reason:busy?'正在执行操作':row.state==='Running'?'任务正在运行，请先停止本次运行再删除':'';
@@ -146,8 +157,8 @@ function taskActionButtons(row,{deletable=!taskIsPipeline(row.name)}={}){
     control(row.state==='Disabled'?'enable':'disable',row.state==='Disabled'?'启用':'停用')+
     (row.state==='Running'?control('stop','停止本次'):control('run','运行一次',row.state==='Disabled'?'请先启用':row.state==='Queued'?'已在队列中':''))+
     `<button class="icon-only mini task-control" data-launch="${esc(row.name)}" title="查看完整命令、身份和运行条件"><svg class="ic" aria-hidden="true"><use href="#i-terminal"/></svg><span class="control-label">启动方式</span></button>`+
-    `<button class="mini task-control icon-only" data-task-repair="${esc(row.name)}" ${repairReason?'disabled':''} title="${esc(repairReason || '修复：查看任务事实，开一张工单交给 Agent 诊断；不会改动任务本身')}"><svg class="ic" aria-hidden="true"><use href="#i-repair"/></svg><span class="control-label">修复</span></button>`+
-    (deletable?`<button class="mini task-control icon-only" data-task-delete="${esc(row.name)}" ${removeReason?'disabled':''} title="${esc(removeReason || '删除：先预览每一步要改哪里，输入完整任务名后才执行')}"><svg class="ic" aria-hidden="true"><use href="#i-trash"/></svg><span class="control-label">删除</span></button>`:'')+'</span>';
+    `<button class="mini task-control icon-only" data-task-repair="${esc(row.name)}" ${repairReason?'disabled':''} title="${title('修复',repairReason,'修复：查看任务事实，开一张工单交给 Agent 诊断；不会改动任务本身')}"><svg class="ic" aria-hidden="true"><use href="#i-repair"/></svg><span class="control-label">修复</span></button>`+
+    (deletable?`<button class="mini task-control icon-only" data-task-delete="${esc(row.name)}" ${removeReason?'disabled':''} title="${title('删除',removeReason,'删除：先预览每一步要改哪里，输入完整任务名后才执行')}"><svg class="ic" aria-hidden="true"><use href="#i-trash"/></svg><span class="control-label">删除</span></button>`:'')+'</span>';
 }
 
 function taskStartCommand(row){
