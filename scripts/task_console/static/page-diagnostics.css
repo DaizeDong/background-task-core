@@ -1,2 +1,48 @@
 /* 诊断(技术问题与数据来源)这一区的样式。每个页面区一份表,只写本区自己的规则;要覆盖共用规则时,选择器限定在本区的 section 里。
    这样几个页面可以各改各的,不必都挤进 styles.css,一页的改动也不会漏到别的页上。 */
+
+/* 清单不再自己滚。原来 #todod 有 420px / 640px 的高度上限,外面的卡片还粘在顶上:
+   滚轮停在清单上时滚的是清单不是页面,手机上整页的滑动会被它困住,清单底部截在半行上也看不出下面还有。
+   现在清单多长卡片就多长,和整页一起滚。 */
+#diagnostics .diagnostic-layout>#todo{position:static}
+#diagnostics .diagnostic-layout #todod{max-height:none;overflow:visible}
+#diagnostics .review-caption b{font-weight:600;color:var(--ink)}
+
+/* 整行都是点击目标,去处和行尾的「查看详情」一样;行里的按钮各走各的。 */
+#diagnostics #todo .review-row{cursor:pointer}
+#diagnostics #todo .review-row:hover{background:var(--cur)}
+/* 标题是中文名,机器名退到下面一行等宽小字,搜得到、认得出,但不抢标题。 */
+#diagnostics .review-id{display:block;margin:0 0 3px;padding:0;background:none;font-family:var(--mono);font-size:var(--fs-meta);color:var(--dim);overflow-wrap:anywhere}
+#diagnostics .review-when{margin:3px 0 0;font-size:var(--fs-meta);color:var(--dim)}
+#diagnostics #todo .review-actions{flex-wrap:nowrap}
+/* 一键处理是带字的按钮,和旁边只有图标的「查看详情」一样高。 */
+#diagnostics #todo .review-actions .fix{margin:0;padding:5px 10px;line-height:1.4;font-size:var(--fs-meta)}
+
+/* 新鲜度灯板:失败、未跑过、查不成三种格子带一个符号,不只靠颜色分(色弱、黑白截图、深色模式下几种颜色挨得很近)。 */
+#diagnostics .fr-c{display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;line-height:1}
+#diagnostics .fr-c.s-down::after{content:"×";color:var(--panel)}
+#diagnostics .fr-c.s-never::after{content:"!";color:var(--ink)}
+#diagnostics .fr-c.s-unknown::after{content:"?";color:var(--dim)}
+/* 图例的小方块放大到装得下符号;要人管的那几类是按钮,点了筛左边的清单。 */
+#diagnostics .fr-key .fr-c{width:13px;height:13px}
+#diagnostics .fr-key button{display:inline-flex;align-items:center;gap:4px;font-size:inherit}
+#diagnostics .fr-off .link-button{font-size:inherit}
+
+/* 数据来源自检展开时整列铺开,不再是一个 180px 的小滚动框。默认收起,见 review.js。 */
+#diagnostics #sckd{max-height:none;overflow:visible}
+
+/* 「数据」那一块:两列小表,左边名字右边值,和卡片边缘留出内边距。 */
+#diagnostics .data-facts{display:grid;grid-template-columns:max-content minmax(0,1fr);column-gap:var(--space-4);row-gap:4px;margin:0;padding:var(--space-2) var(--section-inset) var(--space-3);font-size:var(--fs-meta);border-top:1px solid var(--line2)}
+#diagnostics .data-facts dt{color:var(--dim);font-weight:400}
+#diagnostics .data-facts dd{margin:0;color:var(--ink);overflow-wrap:anywhere;font-variant-numeric:tabular-nums}
+
+@media(max-width:767px){
+  /* 手机上行尾的按钮仍在第三列、和标题同一行,不再掉到文字下面另起一行把每行撑高一倍。 */
+  #diagnostics #todo .review-row{grid-template-columns:66px minmax(0,1fr) auto;padding:4px 10px}
+  #diagnostics #todo .review-actions{grid-column:3;grid-row:1;justify-content:flex-end}
+}
+
+/* 历史检查结果(热力图)的行名。这张图画在运行详情那一屏,但它的渲染函数 renderHeat 归诊断这一包,
+   所以行名按钮的样式跟着放在这里:看起来仍是一行灰字,点了打开那个任务。 */
+.hm th.tn .link-button{display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:left;color:inherit;font-size:inherit}
+.hm th.tn .link-button:not(:disabled):hover{color:var(--cyan)}

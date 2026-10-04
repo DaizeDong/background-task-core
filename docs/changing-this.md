@@ -363,8 +363,9 @@
 4. ★ 侧栏徽章:`setBadge()`,外加 `BADGE_SOURCES` / `BADGE_LOADERS` 两张表(见上面「外框」那一节)。
    不加的话这一屏「有事」时没人知道,而页面看起来很正常。
 5. ★ 总清单 `attentionRows()`(在 `panels/overview.js`)里的对应项,如果这一屏会产出「要人管的事」。
-   诊断屏的 `renderTodo()` 和工作台摘要用的 `attentionSummary()` 都读这一份;新的一类还要在
+   诊断屏的 `renderTodo()`、诊断屏的格子和工作台摘要用的 `attentionSummary()` 都读这一份;新的一类还要在
    `ATTENTION_SOURCES` 里登记它读哪条 `/api/` 路径,否则摘要分不出它是「读取中」还是「零条」。
+   「读取中 / 读取失败 / 没在查」由 `readState()` 一处判定,三处都调它,别在调用方再各判一次。
 6. ★ 新读的环境变量要同时进 `scripts/task_console/README.md` 的表**和**
    `selfcheck.py` 的 `SOURCES` 或 `OVERRIDES`, 那两处各有一条双向对账测试,
    漏了会红(这是好事:它是这个仓里少数几处「漏了会喊」的地方)。

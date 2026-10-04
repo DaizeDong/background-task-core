@@ -54,7 +54,8 @@ const RP_ORDER=["unpushed","error","dirty","detached","clean"];
 async function loadRepos(){
   $("rpnote").textContent="扫描中";
   try{ REPOS=await api("/api/repos"); $("rpnote").textContent=""; }
-  catch(e){ $("rpnote").textContent="失败:"+e.message; return; }
+  // 读失败也要让诊断那一屏重画:那里的仓库格子和清单说明要从「读取中」变成「读取失败」。
+  catch(e){ $("rpnote").textContent="失败:"+e.message; updateBadges(); return; }
   renderRepos();
   updateBadges();
 }

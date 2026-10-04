@@ -35,7 +35,10 @@ function updateBadges(){
   setBadge("storage", st, !stBad, `存储清理：${st} 项接近上限（磁盘、记忆索引）`);
 }
 
-function tile(view, key, val, sub, cls, pct, pctWhat){
+// 一格瓷砖。filter 是点它时「技术问题」清单切到的范围:点格子只在这一屏里筛清单,不再跳去别的页。
+// 以前有的格子跳走(任务去运行详情)、有的格子在本屏滚动(输出文件去灯板),同一排格子两种行为,
+// 点之前猜不出会去哪。html 给的是已经拼好的大字(读取中、未检查、读取失败用共用的 countCell)。
+function tile({filter, key, val, html, sub, cls, pct, pctWhat, tip}){
   let bar = "";
   if(pct != null && isFinite(pct)){
     // 超过 100 时钳到 100,但加 over 类长出一截斜纹尾巴 ——
@@ -44,11 +47,23 @@ function tile(view, key, val, sub, cls, pct, pctWhat){
     bar = `<span class="tb${over?" over":""}" title="${esc(pctWhat||"")}"
       ><i class="${cls||""}" style="width:${Math.min(100,Math.max(0,pct)).toFixed(1)}%"></i></span>`;
   }
-  const tip = (sub||"") + (pctWhat ? " · " + pctWhat : "");
-  return `<button class="tile" data-goto="${view}" title="${esc(tip)}">
+  const title = (tip || sub || "") + (pctWhat ? " · " + pctWhat : "") + " · 点击只看这一类问题";
+  return `<button type="button" class="tile" data-review-filter="${esc(filter)}" title="${esc(title)}">
     <span class="k">${esc(key)}</span>
-    <span class="v ${cls||""}">${esc(String(val))}</span>
+    <span class="v ${cls||""}">${html != null ? html : esc(String(val))}</span>
     ${bar}<span class="s">${esc(sub||"")}</span></button>`;
+}
+
+// 还没有数的那三种格子。读取中、未检查、读取失败各有各的字形(countCell),副标题一个词说清是哪种,
+// 原因进悬停。以前三种都写「- 未检查」:读取慢的时候和真的没配一模一样,读失败了也还是这一句。
+function waitingTile(filter, key, read){
+  if(read.state === "failed"){
+    const why = failureReason(read.reason);
+    return tile({filter, key, html:countCell("broken", null, read.reason), sub:"读取失败",
+                 tip:"读取失败：" + (why.text || why.raw || "原因未知")});
+  }
+  if(read.state === "pending") return tile({filter, key, html:countCell("loading"), sub:"读取中", cls:"idle"});
+  return tile({filter, key, html:countCell("unchecked"), sub:"未检查", cls:"idle", tip:read.unchecked || "未检查"});
 }
 
 // 要人管的事:把四个分区里判为「要人管」的行合到一处。
@@ -86,19 +101,8 @@ function INGEST_SEV(state){
        : 0;
 }
 
-// 「这一条能不能一键处理」。分成两档不是为了好看:
-// 一张清单里如果「你去看看」和「点一下就完了」混在一起,人只能逐条重新判断该干嘛,
-// 而那正是这张清单本来要替他省掉的事。
-// ⚠ 只有真的有通路的才给按钮。给一条其实没办法的行配一个按钮,
-// 比不给更糟 —— 它承诺了一个不存在的出口。
-const FIX_LAB = {commitpush:"提交并推送", run:"跑一次"};
-
-function fixBtn(fix, arg){
-  if(!fix) return "";
-  return `<button class="fix" data-fix="${fix}" data-arg="${esc(arg)}"
-    title="${esc(FIX_LAB[fix])}: ${esc(arg)}">${FIX_LAB[fix]}</button>`;
-}
-
+// 「这一条能不能一键处理」由下面各行的 fix 字段说(run / commitpush / 没有);按钮由清单那边的
+// fixBtn(review.js)画,这里只判有没有通路。
 // 要人管的那些行。诊断屏的清单(renderTodo)和工作台顶上的摘要(attentionSummary)读的是这同一份,
 // 一处判定、两处显示,两边的数字对得上。key 说明一行来自哪一类,摘要按它分组。
 function attentionRows(){
@@ -159,10 +163,23 @@ function attentionRows(){
   return rows;
 }
 
+// 清单是三种样子之一:任务还在读(pending)、任务读不到(failed)、读到了(loaded)。
+// 以前只问「DATA 有没有」,而第一次读取没回来之前 DATA 也是空的:正常的慢读取被画成了
+// 「清单不完整 / 任务读取失败」,同时上面的说明写着「正在读取检查结论」,两句话互相打架。
+// 仓库、磁盘、记忆索引这几路晚到或者读不到时,清单照样画,但要说出缺了哪几路,
+// 否则一张还缺两路的清单看起来就是完整的,数字过一会儿又自己变了。
+const REVIEW_SOURCE_NAMES = {repos:"仓库", disk:"磁盘", memory:"记忆索引"};
 function renderTodo(){
   const box = $("todod"); if(!box) return;
-  const dataBroken = !DATA || !Array.isArray(DATA.groups);
-  return renderReviewQueue(attentionRows(), dataBroken);
+  const tasks = readState(ATTENTION_SOURCES.tasks);
+  if(tasks.state !== "ok") return renderReviewQueue([], tasks);
+  const pending = [], failed = [];
+  for(const [key, name] of Object.entries(REVIEW_SOURCE_NAMES)){
+    const read = readState(ATTENTION_SOURCES[key]);
+    if(read.state === "pending") pending.push(name);
+    if(read.state === "failed") failed.push(name);
+  }
+  return renderReviewQueue(attentionRows(), {state:"loaded", pending, failed});
 }
 
 // 工作台顶上那条摘要要的数:每一类要人管的事有几条,以及这个数此刻能不能信。
@@ -186,15 +203,25 @@ const ATTENTION_SOURCES={
     unchecked:()=>!MEM.available?(MEM.reason || "记忆池没在查")
       :(MEM.linePct == null && MEM.bytePct == null)?"索引大小没读到":null}
 };
+// 一路来源此刻是哪种状态。瓷砖、清单和工作台摘要都从这里读,三处的「读取中 / 读不到 / 没在查」是同一个判断。
+// ⚠ 「没在查」要先于「读取失败」判:后端对没配的来源回 available:false,api() 会把它的 reason
+// 记成这次读取的 error。只看 error 的话,一个根本没配仓库根目录的机器会被画成「仓库读取失败」,
+// 而那里没有任何东西坏了,只是没在查。
+function readState(source){
+  const read = API_READS.get(source.path), loaded = source.loaded();
+  const unchecked = loaded && source.unchecked ? source.unchecked() : null;
+  if(read && !read.pending && read.error && !unchecked) return {state:"failed", reason:read.error};
+  if(!loaded) return {state:"pending"};
+  return unchecked ? {state:"ok", unchecked} : {state:"ok"};
+}
 function attentionSummary(){
   const rows = attentionRows(), out = {};
   for(const [key, source] of Object.entries(ATTENTION_SOURCES)){
-    const read = API_READS.get(source.path);
-    if(read && !read.pending && read.error){ out[key] = {state:"failed", count:0, reason:read.error}; continue; }
-    if(!source.loaded()){ out[key] = {state:"pending", count:0}; continue; }
+    const read = readState(source);
+    if(read.state === "failed"){ out[key] = {state:"failed", count:0, reason:read.reason}; continue; }
+    if(read.state === "pending"){ out[key] = {state:"pending", count:0}; continue; }
     out[key] = {state:"ok", count:rows.filter(row=>row.key===key).length};
-    const unchecked = source.unchecked ? source.unchecked() : null;
-    if(unchecked) out[key].unchecked = unchecked;
+    if(read.unchecked) out[key].unchecked = read.unchecked;
   }
   // 磁盘和记忆索引的数是「有没有逼近上限」,摘要里要的是那个百分比本身。
   if(out.disk.state==="ok" && !out.disk.unchecked) out.disk.usedPct = SYS.disk.usedPct;
@@ -205,87 +232,81 @@ function attentionSummary(){
 const REPO_WHY = {dirty:"有未提交改动", unpushed:"有未推送提交",
                   detached:"游离 HEAD", error:"读不出来"};
 
+// 瓷砖先说问题:大字是要人管的条数,总数退到副标题里当背景。以前大字是总数(「任务 43」还涂成红色),
+// 真正的问题「失败 13」缩在灰色小字里,扫一眼看到的是一个说明不了任何事的数。
+// 排列按严重程度:判坏的在前,读不到的其次,再是快到上限的,然后是正常的,最后是还在读和没在查的。
+// 「对话」那一格去掉了:它是会话文件的个数,不是一项检查,放在诊断这一排里只会被当成一项指标去读。
+const TILE_RANK = {bad:0, failed:1, warn:2, ok:3, pending:4, unchecked:5};
 function renderTiles(){
   const el = $("tiles"); if(!el) return;
   const out = [];
+  const add = (rank, html) => out.push({rank:rank in TILE_RANK ? rank : "ok", html, at:out.length});
+  const waiting = (filter, key, read) =>
+    add(read.state === "failed" ? "failed" : read.state === "pending" ? "pending" : "unchecked", waitingTile(filter, key, read));
 
-  if(typeof DATA !== "undefined" && DATA && DATA.summary){
+  const tasks = readState(ATTENTION_SOURCES.tasks);
+  if(tasks.state === "ok" && DATA.summary){
     const S = DATA.summary;
-    out.push(tile("tasks","任务",S.total,`失败 ${S.bad} · 停用 ${S.disabled}`,S.bad?"bad":"ok",
-      S.total?100*S.bad/S.total:null, S.total?`条里填的是失败占比 ${S.bad}/${S.total}`:null));
-  } else out.push(tile("tasks","任务","-","未检查","idle"));
+    add(S.bad ? "bad" : "ok", tile({filter:"tasks", key:"任务", val:S.bad, cls:S.bad?"bad":"ok",
+      sub:`失败 / ${S.total} 个任务`, tip:`${S.bad} 个任务上次运行失败，共 ${S.total} 个，停用 ${S.disabled}`,
+      pct:S.total?100*S.bad/S.total:null, pctWhat:S.total?`条里填的是失败占比 ${S.bad}/${S.total}`:null}));
+  } else waiting("tasks", "任务", tasks.state === "ok" ? {state:"unchecked", unchecked:"这份数据没带任务汇总"} : tasks);
 
   // reason 要先判。没有健康清单时后端仍然返回一个 summary(total/bad 全是 0),
   // 所以「有没有 summary」这个条件永远成立,这一格拿到 bad=0 走绿色,
   // 印出「0 / 覆盖 0% · 共 0」 : 读起来是「零个产物过期」,实际上一个任务都没被检查。
-  // 数值和副标题必须一起换掉:只把大字换成 "-" 而留着「共 0」,那个零照样像一个结论。
-  if(typeof DATA !== "undefined" && DATA && DATA.freshness && DATA.freshness.reason){
-    out.push(tile("#frbox","输出文件检查","-", DATA.freshness.reason, "idle"));
-  } else if(typeof DATA !== "undefined" && DATA && DATA.freshness && DATA.freshness.summary){
+  // 这件事由 ATTENTION_SOURCES.outputs 的 unchecked 判,这里只按它画。
+  const outputs = readState(ATTENTION_SOURCES.outputs);
+  if(outputs.state === "ok" && !outputs.unchecked && DATA.freshness.summary){
     const F = DATA.freshness.summary;
-    // 这一格原来 data-goto="overview",而它自己就渲染在 overview 里:
-    // 点了 showView 什么都不会变,唯一效果是滚回页顶。改成滚到灯板那一块。
-    // 用 attention 不用 bad:attention 含 unknown(查不成),而查不成正是这块板子
-    // 最该喊出来的那一类。bad 留给别处表示「判成坏的」。
+    // 用 attention 不用 bad:attention 含 unknown(查不成),而查不成正是这一格最该喊出来的那一类。
     const fa = (F.attention != null) ? F.attention : F.bad;
-    out.push(tile("#frbox","输出文件异常",fa,
-      `覆盖 ${Math.round((F.coverage||0)*100)}% · 共 ${F.total}`, fa?"bad":"ok",
-      F.total?100*fa/F.total:null, F.total?`异常或无法检查 ${fa}/${F.total}`:null));
-  } else out.push(tile("#frbox","输出文件检查","-","未检查","idle"));
+    add(fa ? "bad" : "ok", tile({filter:"tasks", key:"输出文件", val:fa, cls:fa?"bad":"ok",
+      sub:`异常 / ${F.total} 项`, tip:`${fa} 项输出文件过期或查不成，共 ${F.total} 项，覆盖 ${Math.round((F.coverage||0)*100)}%`,
+      pct:F.total?100*fa/F.total:null, pctWhat:F.total?`异常或无法检查 ${fa}/${F.total}`:null}));
+  } else waiting("tasks", "输出文件", outputs);
 
-  if(REPOS && REPOS.available && REPOS.summary){
+  const repos = readState(ATTENTION_SOURCES.repos);
+  if(repos.state === "ok" && !repos.unchecked && REPOS.summary){
     const R = REPOS.summary;
-    // unknownUpstream 在「这个根目录下没有 git 仓」那条分支上不存在,
-    // 而这里原来无条件拼进去 —— 副标题印出「无上游 undefined」。
-    // 后端已经补齐了那条分支,这里再兜一层:一个 undefined 印在屏幕上,
+    // unknownUpstream 在「这个根目录下没有 git 仓」那条分支上不存在。一个 undefined 印在屏幕上,
     // 比一个说不出来的空更糟,因为它看起来像一个值。
     const up = (R.unknownUpstream == null) ? "?" : R.unknownUpstream;
-    out.push(tile("repos","仓库待检查",R.attention,
-      `共 ${R.total} · 无上游 ${up}`, R.attention?"bad":"ok",
-      R.total?100*R.attention/R.total:null,
-      R.total?`存在改动或读取问题 ${R.attention}/${R.total}`:null));
-  } else out.push(tile("repos","仓库","-","未检查","idle"));
+    add(R.attention ? "bad" : "ok", tile({filter:"repos", key:"仓库", val:R.attention, cls:R.attention?"bad":"ok",
+      sub:`待处理 / ${R.total} 个仓库`, tip:`${R.attention} 个仓库有改动、没推送或读不出来，共 ${R.total} 个，无上游 ${up}`,
+      pct:R.total?100*R.attention/R.total:null, pctWhat:R.total?`存在改动或读取问题 ${R.attention}/${R.total}`:null}));
+  } else waiting("repos", "仓库", repos);
 
-  if(SYS && SYS.disk && SYS.disk.usedPct != null){
-    const d = SYS.disk;
-    out.push(tile("storage","磁盘已用",d.usedPct+"%",
-      `剩 ${(d.free/1073741824).toFixed(0)}G`, toneOf(d.verdict),
-      d.usedPct, "磁盘已用空间占比"));
-  } else out.push(tile("storage","磁盘","-","未检查","idle"));
+  const disk = readState(ATTENTION_SOURCES.disk);
+  if(disk.state === "ok" && !disk.unchecked){
+    const d = SYS.disk, tone = toneOf(d.verdict);
+    add(d.verdict && d.verdict.attention ? tone : "ok", tile({filter:"storage", key:"磁盘已用", val:d.usedPct+"%",
+      sub:`剩 ${(d.free/1073741824).toFixed(0)}G`, cls:tone, pct:d.usedPct, pctWhat:"磁盘已用空间占比"}));
+  } else waiting("storage", "磁盘", disk);
 
   // ⚠ available 只表示**记忆池目录**读到了。MEMORY.md 不在或读不了时,
   // linePct / bytePct / indexLines / indexBytes 全是 null,而 available 仍然是 true。
   // 这里原来是 `MEM.linePct||0`,于是一个「索引读不到」的机器上印出的是
   // **绿色的 0%** 和字面量「null/200 行」—— 一个查不成的东西被画成了最健康的样子。
-  // 同一个文件里 renderTodo 早就为此加了判空并写了一段注释,而这一格没跟着改:
-  // **同一个坑修在了两处中的一处**,而两处的输入是同一个对象。
-  if(MEM && MEM.available && (MEM.linePct != null || MEM.bytePct != null)){
-    const p = Math.max(MEM.linePct||0, MEM.bytePct||0);
+  const memory = readState(ATTENTION_SOURCES.memory);
+  if(memory.state === "ok" && !memory.unchecked){
+    const p = Math.max(MEM.linePct||0, MEM.bytePct||0), tone = toneOf(MEM.verdict);
     // 取大的那个:两条上限哪条先撞都是撞。副标题要说出取的是哪一条,
     // 否则这个百分比对不上配置屏那两条独立的条,看起来像两处在打架。
     const pWhich = (MEM.linePct||0) >= (MEM.bytePct||0) ? "行数" : "字节";
     // 副标题必须跟着 pWhich 走。取字节口径时却印「150/200 行」,读的人按 150/200 心算
-    // 是 75%,而大字写着 96.9% : 两个数字算不出彼此,而它们之间没有任何东西说明
-    // 自己分属两条上限。
+    // 是 75%,而大字写着 96.9% : 两个数字算不出彼此。
     const pFrac = (pWhich === "字节" && MEM.indexBytes != null)
       ? `${kb(MEM.indexBytes)}/${kb(MEM.hardBytes)}`
       : `${MEM.indexLines}/${MEM.hardLines} 行`;
-    out.push(tile("resources","记忆索引",p+"%",
-      `${pWhich} ${pFrac} · 已归档 ${MEM.cold}`,
-      toneOf(MEM.verdict),
-      p, "索引额度使用率，超过 100% 时显示斜纹"));
-  } else if(MEM && MEM.available){
+    add(MEM.verdict && MEM.verdict.attention ? tone : "ok", tile({filter:"storage", key:"记忆索引", val:p+"%",
+      sub:`${pWhich} ${pFrac} · 已归档 ${MEM.cold}`, cls:tone, pct:p, pctWhat:"索引额度使用率，超过 100% 时显示斜纹"}));
+  } else if(memory.state === "ok" && MEM.available){
     // 目录读到了、索引没读到 —— 这不是「未检查」,是「查了但查不成」。
-    out.push(tile("resources","记忆索引","?",
-      esc(MEM.indexReason || "MEMORY.md 读不到"),"warn"));
-  } else out.push(tile("resources","记忆索引","-","未检查","idle"));
+    add("warn", tile({filter:"storage", key:"记忆索引", val:"?", sub:MEM.indexReason || "MEMORY.md 读不到", cls:"warn"}));
+  } else waiting("storage", "记忆索引", memory);
 
-  if(CONVOS && CONVOS.available && CONVOS.summary){
-    const C2 = CONVOS.summary;
-    out.push(tile("convos","对话",C2.files,`真人 ${C2.humanish} · ${C2.groups} 个目录`,""));
-  } else out.push(tile("convos","对话","-","未检查","idle"));
-
-  el.innerHTML = out.join("");
+  el.innerHTML = out.sort((a,b)=>TILE_RANK[a.rank]-TILE_RANK[b.rank] || a.at-b.at).map(t=>t.html).join("");
 }
 
 function renderHeat(){
@@ -303,17 +324,22 @@ function renderHeat(){
   const days=H.days||[];
   const rows=ROWS.filter(r=>r.hist).sort((a,b)=>((a.hist.health==null?101:a.hist.health)-(b.hist.health==null?101:b.hist.health)));
   const last=days.length-1;
+  // 行名用和任务表、时间轴同一个中文标题(taskText),机器名进悬停:同一个任务在一屏上两个名字,
+  // 人得先在脑子里对一遍才知道说的是同一件事。行名是一个按钮,点了和任务表的「查看详情」去同一个地方;
+  // data-task 挂在 th 上,由 events.js 里已有的 [data-task] 处理接走,不另写一套跳转。
   const body=rows.map(r=>{
+    const label=taskText(r).title;
     const cells=days.map((d,i)=>{
       const td=i===last?"today":"";
       const c=r.hist.byDay[d];
-      if(!c||!c.n) return `<td class="${td}" title="${esc(r.name)} ${d} 无观察"></td>`;
+      if(!c||!c.n) return `<td class="${td}" title="${esc(label)} ${d} 无观察"></td>`;
       const j=c.n-c.neutral;
-      if(j<=0) return `<td class="${td}" title="${esc(r.name)} ${d} 仅中性观察"></td>`;
+      if(j<=0) return `<td class="${td}" title="${esc(label)} ${d} 仅中性观察"></td>`;
       const p=c.ok/j, k=p>=.99?"h2":p>=.9?"h1":p>=.6?"h3":p>=.25?"h4":"h5";
-      return `<td class="${k} ${td}" title="${esc(r.name)} ${d} 正常 ${c.ok}/${j}${c.bad?" 失败 "+c.bad:""}${c.stale?" 陈旧 "+c.stale:""}"></td>`;
+      return `<td class="${k} ${td}" title="${esc(label)} ${d} 正常 ${c.ok}/${j}${c.bad?" 失败 "+c.bad:""}${c.stale?" 陈旧 "+c.stale:""}"></td>`;
     }).join("");
-    return `<tr><th class="tn" title="检查通过率 ${r.hist.health==null?"-":r.hist.health+"%"}">${esc(r.name)}</th>${cells}</tr>`;
+    const tip=`${r.name} · 检查通过率 ${r.hist.health==null?"-":r.hist.health+"%"} · 点击查看任务详情`;
+    return `<tr><th class="tn" data-task="${esc(r.name)}" title="${esc(tip)}"><button type="button" class="link-button">${esc(label)}</button></th>${cells}</tr>`;
   }).join("");
   // 横轴。这块图原来**一个列标签都没有**,于是右边那片浅灰到底是「最近没数据」
   // 还是「45 天前没数据」只能靠一格一格 hover 问出来 —— 而这两件事的严重程度天差地别,
