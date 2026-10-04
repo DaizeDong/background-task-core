@@ -161,12 +161,13 @@ def test_call_export_states_page_scope_and_excludes_token():
 
 
 def test_refresh_failure_is_visible_and_button_recovers():
-    result = run("refreshPage().then(()=>({text:$('page-refresh-state').textContent,disabled:$('page-refresh').disabled,busy:PAGE_REFRESHING}))", """
+    result = run("refreshPage().then(()=>({text:$('page-refresh-state').textContent,disabled:$('page-refresh').disabled,busy:PAGE_REFRESHING_VIEWS.size}))", """
 CURVIEW='tasks';toast=()=>{};
-PAGE_READS.tasks=[async()=>{API_READS.set('/api/tasks',{sequence:++API_SEQUENCE,error:'synthetic failure'});}];
+fetch=async()=>({ok:false,status:500,json:async()=>({error:'synthetic failure'})});
+PAGE_READS.tasks=[()=>api('/api/tasks').catch(()=>{})];
 """)
     assert "失败" in result["text"]
-    assert result["disabled"] is False and result["busy"] is False
+    assert result["disabled"] is False and result["busy"] == 0
 
 
 def test_cleanup_scan_deduplicates_and_discards_stale_library_response():

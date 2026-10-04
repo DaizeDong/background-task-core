@@ -274,9 +274,13 @@ dialog#work-detail{width:min(760px,calc(100vw - 32px))}#work-detail h3{font-size
   #page-refresh-state{order:0;width:auto}
   /* 横排的侧栏用下划线标出当前项,竖排时那道左边条在这里像一个错位的竖线。 */
   #side .nav-link.active{box-shadow:inset 0 -2px var(--cyan)}
-  /* 带上徽章后五项在 390px 宽放不进一行:换行而不是横向滚动,免得最后的「诊断」被切掉一半。 */
-  #side .navbar-nav{flex-wrap:wrap;overflow:visible}
-  #side .nav-link{padding:8px 5px;gap:3px}
-  #side .nav-link .nav-badge{min-width:18px;padding:0 4px}
+  /* 五项始终排成一行。曾经让它换行:徽章还是「…」时五项放得下,几秒后数字回来(「99+」「14」比「…」宽),
+     「诊断」掉到第二行,导航高出 24px,下面整页往下一跳,人正要点的地方就换成了别的控件。
+     现在收紧内距让 390px 宽在四枚都是「99+」时也放得下;再窄的屏放不下就在这一行里横向滑动,
+     高度不随徽章变。 */
+  #side .navbar-nav{flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden;scrollbar-width:none;padding:0 2px!important}
+  #side .navbar-nav::-webkit-scrollbar{display:none}
+  #side .nav-link{padding:8px 3px;gap:2px}
+  #side .nav-link .nav-badge{min-width:16px;padding:0 2px}
   #view-tabs a{padding-inline:10px}
 }

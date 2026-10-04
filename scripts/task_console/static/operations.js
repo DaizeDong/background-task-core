@@ -1,5 +1,7 @@
 // Shared page controls use existing loaders and in-memory snapshots only.
-let PAGE_REFRESHING=false;
+// 正在刷新的是哪几屏。按屏记,不是一个全局的「忙」:在代码仓库点了刷新(扫一遍要十几秒)再切到模型调用,
+// 模型调用那一屏没在读,它的刷新按钮就该能点,不能灰着说「正在读取这一页」。
+const PAGE_REFRESHING_VIEWS=new Set();
 // Each panel owns its filters. This shared control only calls their existing renderers.
 function resetFilters(scope){
   const clear=ids=>ids.forEach(id=>$(id).value='');
@@ -65,45 +67,72 @@ const PAGE_READS={
   convos:[loadConvos,()=>typeof reloadConvoChain==='function'?reloadConvoChain():undefined],llm:[loadLLM]
 };
 const PAGE_INITIAL_READS=new Map();
-// 每一屏上次读完的时刻,和上次刷新时读失败的那句话。刷新按钮旁边据此写「刚刚刷新」「N 分钟前刷新」:
+// 每一屏上次读完的时刻,和那一次的清点结果(readPage 的 failed / unchecked / text)。
+// 刷新按钮旁边据此写「刚刚刷新」「N 分钟前刷新」或「N 项读取失败」:
 // 光写「读取完成」的话,过了半小时它还这么写,人分不出眼前的数是新是旧。
 const PAGE_READ_AT=new Map(), PAGE_READ_FAILED=new Map();
-let PAGE_REFRESHING_VIEW=null;
+// 读一屏并清点结果:几路读坏了,几路后端答的是「没在查」(api.js 记上 unchecked 的那几路,比如没设仓库根目录)。
+// 第一次进这一屏和点刷新走同一份清点。以前只有刷新会记失败,第一次读就失败的那一屏
+// 照样写「刚刚刷新」,看上去像一次成功的读取。
+// 只数这一屏的读取自己发出的那几路(api.js 的 API_READ_COLLECTORS,在同步调用读取函数期间挂着):
+// 两屏同时在读时按序号区间数,会把另一屏的失败算到这一屏头上。
+function readPage(view){
+  const paths=new Set();
+  let pending;
+  API_READ_COLLECTORS.add(paths);
+  try{ pending=(PAGE_READS[view]||[]).map(load=>load()); }
+  finally{ API_READ_COLLECTORS.delete(paths); }
+  return Promise.allSettled(pending).then(results=>{
+    const settled=[...paths].map(path=>API_READS.get(path)).filter(read=>read && !read.pending && read.error);
+    const unchecked=settled.filter(read=>read.unchecked).length;
+    const failed=settled.length-unchecked+results.filter(result=>result.status==='rejected').length;
+    const text=[failed?`${failed} 项读取失败`:'',unchecked?`${unchecked} 项未检查`:''].filter(Boolean).join('，');
+    return {results,failed,unchecked,text};
+  });
+}
 function loadPageOnce(view){
   if(!PAGE_INITIAL_READS.has(view)){
-    PAGE_INITIAL_READS.set(view,Promise.allSettled((PAGE_READS[view]||[]).map(load=>load())).then(results=>{
-      if(!PAGE_READ_AT.has(view)) PAGE_READ_AT.set(view,Date.now());
+    PAGE_INITIAL_READS.set(view,readPage(view).then(outcome=>{
+      // 第一次读还没回来时人已经点过刷新、而且刷新先读完了的话,以刷新那一次为准。
+      if(!PAGE_READ_AT.has(view)){PAGE_READ_AT.set(view,Date.now());PAGE_READ_FAILED.set(view,outcome);}
       renderRefreshAge();
-      return results;
+      return outcome.results;
     }));
   }
   return PAGE_INITIAL_READS.get(view);
 }
+// 刷新按钮跟着「眼前这一屏」走:这一屏在刷新就灰着转着,别的屏在刷新不关它的事。
+// 每次换屏都经过 renderRefreshAge,所以放在这里,不另找一处挂。
+function syncRefreshButton(){
+  const button=$('page-refresh');if(!button) return;
+  const busy=PAGE_REFRESHING_VIEWS.has(CURVIEW);
+  setDisabled(button,busy?'正在读取这一页，读完后可再刷新':'');
+  if(busy) button.classList?.add?.('spinning');else button.classList?.remove?.('spinning');
+}
 function renderRefreshAge(){
+  syncRefreshButton();
   const note=$('page-refresh-state');if(!note) return;
-  const at=PAGE_READ_AT.get(CURVIEW), failed=PAGE_READ_FAILED.get(CURVIEW);
-  const reading=PAGE_REFRESHING_VIEW===CURVIEW || !at && PAGE_INITIAL_READS.has(CURVIEW);
-  note.textContent=reading?'读取中':failed || (at?fmtTime(at)+'刷新':'');
+  const at=PAGE_READ_AT.get(CURVIEW), outcome=PAGE_READ_FAILED.get(CURVIEW);
+  const reading=PAGE_REFRESHING_VIEWS.has(CURVIEW) || !at && PAGE_INITIAL_READS.has(CURVIEW);
+  // 读坏了就只写坏了几项(红);只是有几路没在查,照常写刷新时间,后面带一句「N 项未检查」,不标红。
+  const bad=!reading && !!outcome?.failed;
+  note.textContent=reading?'读取中':bad?outcome.text:[at?fmtTime(at)+'刷新':'',outcome?.text || ''].filter(Boolean).join('，');
   note.title=at?'这一屏上次读完：'+fullTime(at):'';
-  if(note.dataset) note.dataset.tone=!reading && failed?'bad':'';
+  if(note.dataset) note.dataset.tone=bad?'bad':'';
 }
 async function refreshPage(){
-  if(PAGE_REFRESHING) return;
-  PAGE_REFRESHING=true;
-  const view=CURVIEW, button=$('page-refresh');
-  const before=API_SEQUENCE;
+  const view=CURVIEW;
+  if(PAGE_REFRESHING_VIEWS.has(view)) return;
   // 读的这段时间按钮灰着、图标转着:扫仓库、扫会话要十几秒,一个看不出在忙的按钮会被连点。
-  PAGE_REFRESHING_VIEW=view;setDisabled(button,'正在读取这一页，读完后可再刷新');button.classList?.add('spinning');renderRefreshAge();
+  PAGE_REFRESHING_VIEWS.add(view);renderRefreshAge();
   try{
-    const results=await Promise.allSettled(PAGE_READS[view].map(load=>load()));
-    const failed=[...API_READS.values()].filter(read=>read.sequence>before && read.error);
-    const broken=failed.length+results.filter(result=>result.status==='rejected').length;
-    const text=broken ? `${broken} 项读取失败或不可用` : '';
-    PAGE_READ_AT.set(view,Date.now());PAGE_READ_FAILED.set(view,text);
-    if(broken) toast(text,'bad');
+    const outcome=await readPage(view);
+    PAGE_READ_AT.set(view,Date.now());PAGE_READ_FAILED.set(view,outcome);
+    // 读完时人可能已经换到别的屏:提示里带上是哪一屏,否则「1 项读取失败」说不清是哪儿。
+    const where=view===CURVIEW?'':`「${viewLabel(view)}」`;
+    if(outcome.failed) toast(where+outcome.text,'bad');
   }finally{
-    PAGE_REFRESHING=false;PAGE_REFRESHING_VIEW=null;
-    setDisabled(button,'');button.classList?.remove('spinning');renderRefreshAge();
+    PAGE_REFRESHING_VIEWS.delete(view);renderRefreshAge();
   }
 }
 function pageSnapshot(view){

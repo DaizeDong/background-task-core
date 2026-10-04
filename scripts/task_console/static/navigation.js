@@ -15,12 +15,18 @@ const viewGroup=key=>Object.keys(VIEW_GROUPS).find(group=>key in VIEW_GROUPS[gro
 // 少了它,合并就是纯粹的藏。徽章按视图记数(运行详情、代码仓库、存储清理、模型调用、技术问题),
 // 侧栏那一枚是它所在分组的合计,标签上那一枚是它自己的数。
 //
-// 一枚徽章有四种样子,对应这一页「读取中、未检查、零、读取失败」不许长得一样的规矩:
-// 第一次读取还没回来是「…」,读到零就藏起来,读不到是虚线框里的「?」,其余是数字。
-// 数字之外的三种不靠颜色区分,靠字形,所以色弱和黑白截图里也分得开。
-const BADGE_SOURCES={tasks:['/api/tasks'],repos:['/api/repos'],storage:['/api/sys','/api/mem'],llm:['/api/llmcall'],
+// 一枚徽章有五种样子,对应这一页「读取中、未检查、零、读取失败」不许长得一样的规矩:
+// 第一次读取还没回来是「…」,读到零就藏起来,读不到是虚线框里的「?」,
+// 后端答了「这一路没在查」(没设仓库根目录、没设记忆池)是淡色虚线框里的「—」,其余是数字。
+// 数字之外的几种不靠颜色区分,靠字形,所以色弱和黑白截图里也分得开。
+// 「没在查」不能画成「?」:那里什么都没坏,一枚永远亮着的告警只会教人不再看徽章。
+// 工作台的格子和摘要(overview.js 的 readState)也是这么分的,两处说法必须一致。
+//
+// 每一枚只数它所在那一屏上看得见、能处理的东西。记忆索引在「客户端技能与记忆」那一屏(#membox),
+// 所以记在 resources 上;记到存储清理上的话,人跟着徽章点进去,那一页上找不到任何能处理的东西。
+const BADGE_SOURCES={tasks:['/api/tasks'],repos:['/api/repos'],storage:['/api/sys'],resources:['/api/mem'],llm:['/api/llmcall'],
   diagnostics:['/api/tasks','/api/repos','/api/sys','/api/mem']};
-const BADGE_NAMES={tasks:'计划任务',repos:'代码仓库',storage:'磁盘和记忆索引',llm:'模型调用账本',diagnostics:'技术问题清单'};
+const BADGE_NAMES={tasks:'计划任务',repos:'代码仓库',storage:'磁盘',resources:'记忆索引',llm:'模型调用账本',diagnostics:'技术问题清单'};
 const BADGE_COUNTS={};
 // 至少读完过一次的来源(成功和失败都算)。API_READS 只留最新一条,刷新时那一条变回「读取中」,
 // 拿它判断「第一次还没回来」的话,每点一次刷新所有徽章都会闪回「…」。
@@ -33,26 +39,34 @@ function setBadge(key,n,warn,title){
 }
 function badgeState(key){
   const paths=BADGE_SOURCES[key] || [], name=BADGE_NAMES[key] || key;
-  const failed=paths.map(path=>API_READS.get(path)).filter(read=>read && !read.pending && read.error);
+  const settled=paths.map(path=>API_READS.get(path)).filter(read=>read && !read.pending && read.error);
+  const failed=settled.filter(read=>!read.unchecked), unchecked=settled.filter(read=>read.unchecked);
   if(failed.length) return {state:'broken',title:`${name}读取失败：${failed.map(read=>read.error).join('；')}`};
+  const skipped=unchecked.length?`${name}未检查：${unchecked.map(read=>read.error).join('；')}`:'';
+  // 这一屏的来源全都没在查:没有数可报,也没有坏。
+  if(unchecked.length===paths.length) return {state:'unchecked',title:skipped};
   const count=BADGE_COUNTS[key];
   if(!count || paths.some(path=>!BADGE_SETTLED.has(path))) return {state:'pending',title:`正在读取${name}`};
-  return {state:'count',n:count.n,tone:count.tone,title:count.title};
+  // 部分来源没在查(比如诊断里的仓库):数的是查了的那些,悬停说清哪一路没算进来。
+  return {state:'count',n:count.n,tone:count.tone,title:count.title+(skipped?'\n'+skipped:'')};
 }
 // 分组合计:一个来源读不到,整组就是「?」(合计里少了一块,写个数字等于把缺口说成没事);
 // 一个还在读就是「…」。都读到了才相加,颜色按最严重的那一个。
+// 没在查的标签不算缺口:它没有数,也没有坏,合计只加查了的那些;整组都没在查才是「—」。
 function groupBadge(group){
   const states=Object.keys(VIEW_GROUPS[group]?.views || {}).filter(view=>BADGE_SOURCES[view]).map(view=>badgeState(view));
   if(!states.length) return null;
   const broken=states.filter(state=>state.state==='broken');
   if(broken.length) return {state:'broken',title:broken.map(state=>state.title).join('\n')};
   if(states.some(state=>state.state==='pending')) return {state:'pending',title:states.filter(state=>state.state==='pending').map(state=>state.title).join('\n')};
+  const skipped=states.filter(state=>state.state==='unchecked');
+  if(skipped.length===states.length) return {state:'unchecked',title:skipped.map(state=>state.title).join('\n')};
   const live=states.filter(state=>state.n);
   return {state:'count',n:live.reduce((sum,state)=>sum+state.n,0),tone:live.some(state=>state.tone==='bad')?'bad':'warn',
-    title:live.map(state=>state.title).join('\n') || `${VIEW_GROUPS[group].label}：没有要处理的项`};
+    title:[...live,...skipped].map(state=>state.title).join('\n') || `${VIEW_GROUPS[group].label}：没有要处理的项`};
 }
 function badgeText(badge){
-  return badge.state==='pending'?'…':badge.state==='broken'?'?':badge.n>99?'99+':String(badge.n);
+  return badge.state==='pending'?'…':badge.state==='broken'?'?':badge.state==='unchecked'?'—':badge.n>99?'99+':String(badge.n);
 }
 function paintBadge(el,badge){
   if(!el) return;

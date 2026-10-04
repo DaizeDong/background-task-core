@@ -28,11 +28,13 @@ function updateBadges(){
     setBadge("repos", attention, !broken, `代码仓库：${attention} 个有未提交、未推送的改动或读不出来`);
   }
 
-  // 存储:磁盘吃紧或记忆索引逼近硬上限。还没坏但快了是琥珀色;判成坏的(比如磁盘已满)才是红的。
-  let st = 0, stBad = false;
-  if(SYS && SYS.disk && SYS.disk.verdict && SYS.disk.verdict.attention){ st += 1; stBad = stBad || toneOf(SYS.disk.verdict) === "bad"; }
-  if(MEM && MEM.available && MEM.verdict && MEM.verdict.attention){ st += 1; stBad = stBad || toneOf(MEM.verdict) === "bad"; }
-  setBadge("storage", st, !stBad, `存储清理：${st} 项接近上限（磁盘、记忆索引）`);
+  // 磁盘吃紧记在存储清理上,记忆索引逼近硬上限记在「客户端技能与记忆」上:各自记在能处理它的那一屏。
+  // 还没坏但快了是琥珀色;判成坏的(比如磁盘已满)才是红的。
+  const disk = SYS && SYS.disk && SYS.disk.verdict && SYS.disk.verdict.attention ? SYS.disk.verdict : null;
+  setBadge("storage", disk ? 1 : 0, !disk || toneOf(disk) !== "bad", disk ? "存储清理：磁盘接近上限" : "存储清理：磁盘没有接近上限");
+  const memory = MEM && MEM.available && MEM.verdict && MEM.verdict.attention ? MEM.verdict : null;
+  setBadge("resources", memory ? 1 : 0, !memory || toneOf(memory) !== "bad",
+    memory ? "客户端技能与记忆：记忆索引接近上限" : "客户端技能与记忆：记忆索引没有接近上限");
 }
 
 // 一格瓷砖。filter 是点它时「技术问题」清单切到的范围:点格子只在这一屏里筛清单,不再跳去别的页。

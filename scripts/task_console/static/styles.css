@@ -733,7 +733,7 @@ body{font-size:var(--fs-body)}
 #side .nav-link{display:flex;align-items:center}
 #side .nav-link .nav-badge{margin-left:auto}
 /* 侧栏和标签共用的徽章。红是失败、琥珀是警告,都是实心;第一次读取还没回来是一个淡色的「…」,
-   读不到是虚线框里的「?」:四种样子不靠颜色也分得开。 */
+   读不到是虚线框里的「?」,后端说这一路没在查是淡色虚线框里的「—」:几种样子不靠颜色也分得开。 */
 .nav-badge{display:inline-flex;align-items:center;justify-content:center;min-width:20px;min-height:18px;padding:0 5px;
   border:1px solid transparent;border-radius:9px;font:600 var(--fs-chip)/1 var(--mono);font-variant-numeric:tabular-nums;flex:none}
 .nav-badge[hidden]{display:none}
@@ -741,6 +741,7 @@ body{font-size:var(--fs-body)}
 .nav-badge.warn{background:var(--warn);color:var(--panel)}
 .nav-badge.pending{color:var(--faint);border-color:var(--line);font-weight:400}
 .nav-badge.broken{color:var(--bad);border:1px dashed var(--bad);background:transparent}
+.nav-badge.unchecked{color:var(--faint);border:1px dashed var(--line);background:transparent;font-weight:400}
 /* 这些小按钮一度是单字符图标,同一个 ⏸ 在三处分别表示归档移出、禁用、归档进冷层,
    而它长得像暂停,三个含义一个都不是;于是全部换成了文字。
    现在换回图标,但换的是**另一件东西**:一个含义一个图形,取自页内的 SVG sprite,

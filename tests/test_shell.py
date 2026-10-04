@@ -53,7 +53,7 @@ def test_a_group_badge_sums_its_tabs_and_takes_the_worst_state():
       const settle=path=>{{API_READS.set(path,{{sequence:1,pending:false,error:null}});noteRead(path,{{pending:false}});}};
       settle('/api/repos');setBadge('repos',4,true);
       const waiting={badge('bg-resources')};
-      settle('/api/sys');settle('/api/mem');setBadge('storage',1,false);
+      settle('/api/sys');settle('/api/mem');setBadge('storage',1,false);setBadge('resources',0,true);
       const summed={badge('bg-resources')};
       API_READS.set('/api/mem',{{sequence:2,pending:false,error:'synthetic mem failure'}});noteRead('/api/mem',{{pending:false}});
       return [waiting,summed,{badge('bg-resources')}];
@@ -255,3 +255,151 @@ def test_dead_heading_code_is_gone():
     assert "#s-src" not in styles
     # 模型调用的徽章不再自己找元素、把数字改写成「7日」。
     assert 'bg-llm' not in source and 'textContent="7日"' not in source
+
+
+# 台架里的 fetch:按路径回合成的响应。status 不是 200 的那一路就是「读坏了」。
+FAKE_FETCH = """
+const REPLIES={};
+fetch=async path=>{const key=Object.keys(REPLIES).find(prefix=>path.startsWith(prefix));
+  const [status,body]=key?REPLIES[key]:[200,{}];
+  return {ok:status<400,status,json:async()=>body};};
+"""
+UNSET_REPOS = "{available:false,reason:'没有设 TASK_CONSOLE_REPOS,仓库这一栏是「未检查」。'}"
+UNSET_MEM = "{available:false,reason:'没有设 TASK_CONSOLE_MEMORY,记忆池诊断这一栏是「未检查」。'}"
+
+
+def test_an_unconfigured_source_is_a_muted_dash_not_a_broken_question_mark():
+    # 后端对没配的来源回 200 加 available:false。工作台的格子把它画成「未检查」,徽章必须说同一句话。
+    result = run(f"""(async()=>{{
+      REPLIES['/api/repos']=[200,{UNSET_REPOS}];REPLIES['/api/mem']=[200,{UNSET_MEM}];
+      REPLIES['/api/sys']=[200,{{disk:{{usedPct:40}}}}];REPLIES['/api/tasks']=[200,{{}}];
+      for(const path of ['/api/repos','/api/mem','/api/sys','/api/tasks']) await api(path);
+      setBadge('storage',0,true);setBadge('diagnostics',2,true,'技术问题：2 个对象要处理');
+      const unchecked=['repos','resources','storage','diagnostics'].map(key=>badgeState(key));
+      const group=groupBadge('resources'), diagnostics=groupBadge('diagnostics');
+      // 负对照:同一路真的读坏了(500),照旧是「?」。
+      REPLIES['/api/repos']=[500,{{error:'synthetic scan failure'}}];await api('/api/repos').catch(()=>{{}});
+      return {{unchecked,group,diagnostics,broken:badgeState('repos'),brokenGroup:groupBadge('resources'),
+        text:[badgeText(unchecked[0]),badgeText(group)]}};
+    }})()""", FAKE_FETCH)
+    repos, resources, storage, diagnostics = result["unchecked"]
+    assert repos["state"] == "unchecked" and "TASK_CONSOLE_REPOS" in repos["title"] and "读取失败" not in repos["title"]
+    assert resources["state"] == "unchecked" and "TASK_CONSOLE_MEMORY" in resources["title"]
+    assert storage["state"] == "count" and storage["n"] == 0
+    # 诊断有一部分来源没在查:数照旧是查了的那些,悬停里说清哪几路没算进来。
+    assert diagnostics["state"] == "count" and diagnostics["n"] == 2
+    assert "未检查" in diagnostics["title"] and "TASK_CONSOLE_REPOS" in diagnostics["title"]
+    # 资源组:两个标签没在查、存储是零,合计是零(藏起来),不是「?」。
+    assert result["group"]["state"] == "count" and result["group"]["n"] == 0
+    assert result["text"] == ["—", "0"]
+    assert result["diagnostics"]["state"] == "count" and result["diagnostics"]["n"] == 2
+    assert result["broken"]["state"] == "broken" and "synthetic scan failure" in result["broken"]["title"]
+    assert result["brokenGroup"]["state"] == "broken"
+
+
+def test_an_unconfigured_tab_badge_paints_as_a_dash_with_its_own_class():
+    result = run(f"""(async()=>{{
+      REPLIES['/api/repos']=[200,{UNSET_REPOS}];REPLIES['/api/mem']=[200,{UNSET_MEM}];REPLIES['/api/sys']=[200,{{}}];
+      for(const path of ['/api/repos','/api/mem','/api/sys']) await api(path);
+      const el={{dataset:{{}},setAttribute(){{}}}};paintBadge(el,badgeState('repos'));
+      return {{text:el.textContent,cls:el.className,hidden:el.hidden}};
+    }})()""", FAKE_FETCH)
+    assert result == {"text": "—", "cls": "nav-badge unchecked", "hidden": False}
+    styles = (STATIC / "styles.css").read_text(encoding="utf-8")
+    assert re.search(r"\.nav-badge\.unchecked\{[^}]*dashed", styles)
+
+
+def test_the_memory_index_counts_on_its_own_tab_not_on_storage():
+    # 记忆索引在「客户端技能与记忆」那一屏;存储清理的徽章只数磁盘,读不到记忆索引也不关它的事。
+    result = run("""(()=>{
+      for(const path of ['/api/tasks','/api/repos','/api/sys','/api/mem']){API_READS.set(path,{sequence:1,pending:false,error:null});noteRead(path,{pending:false});}
+      renderPlatformSignals=()=>{};renderAutomations=()=>{};renderTiles=()=>{};renderTodo=()=>0;
+      SYS={disk:{usedPct:40,verdict:{attention:false}}};
+      MEM={available:true,linePct:97,verdict:{attention:true,state:'warn'}};
+      updateBadges();
+      const counted=[badgeState('storage'),badgeState('resources')];
+      API_READS.set('/api/mem',{sequence:2,pending:false,error:'synthetic mem failure'});noteRead('/api/mem',{pending:false});
+      return {counted,failed:[badgeState('storage'),badgeState('resources')],sources:BADGE_SOURCES};
+    })()""")
+    storage, resources = result["counted"]
+    assert storage["state"] == "count" and storage["n"] == 0
+    assert resources["state"] == "count" and resources["n"] == 1 and "记忆索引" in resources["title"]
+    assert result["failed"][0]["state"] == "count"
+    assert result["failed"][1]["state"] == "broken" and "synthetic mem failure" in result["failed"][1]["title"]
+    assert result["sources"]["storage"] == ["/api/sys"] and result["sources"]["resources"] == ["/api/mem"]
+    # 标签栏上「客户端技能与记忆」带一枚徽章,「存储清理」那枚只是磁盘的。
+    tabs = run("(()=>{showView('resources',false);return $('view-tabs').innerHTML;})()", SHOW)
+    assert 'data-badge-for="resources"' in tabs and 'data-badge-for="storage"' in tabs
+
+
+def test_refresh_is_per_page_and_another_page_can_refresh_while_one_is_reading():
+    result = run("""(async()=>{
+      const classes=new Set(), toasts=[];
+      $('page-refresh').classList={add:name=>classes.add(name),remove:name=>classes.delete(name)};
+      $('page-refresh').title='刷新这一页';
+      toast=(text,tone)=>toasts.push([text,tone]);
+      let finishRepos;
+      REPLIES['/api/llmcall']=[200,{windows:[]}];
+      PAGE_READS.repos=[()=>api('/api/repos').catch(()=>{})];
+      PAGE_READS.llm=[()=>api('/api/llmcall')];
+      fetch=async path=>path.startsWith('/api/repos')
+        ? new Promise(resolve=>{finishRepos=()=>resolve({ok:false,status:500,json:async()=>({error:'synthetic scan failure'})});})
+        : {ok:true,status:200,json:async()=>({windows:[]})};
+      CURVIEW='repos';const repos=refreshPage();
+      const onRepos=[$('page-refresh').disabled,classes.has('spinning')];
+      // 换到模型调用:那一屏没在读,按钮亮着、不转。
+      CURVIEW='llm';renderRefreshAge();
+      const onLlm=[$('page-refresh').disabled,classes.has('spinning'),$('page-refresh').title];
+      await refreshPage();
+      const llmDone=[$('page-refresh-state').textContent,$('page-refresh-state').dataset.tone];
+      // 回到代码仓库:它还在读,按钮又灰着转着。
+      CURVIEW='repos';renderRefreshAge();
+      const backOnRepos=[$('page-refresh').disabled,classes.has('spinning'),$('page-refresh-state').textContent];
+      CURVIEW='llm';renderRefreshAge();
+      finishRepos();await repos;
+      // 代码仓库读坏了,但那不是模型调用的失败:模型调用那一屏照旧写刷新时间。
+      const afterRepos=[$('page-refresh-state').textContent,$('page-refresh').disabled];
+      CURVIEW='repos';renderRefreshAge();
+      return {onRepos,onLlm,llmDone,backOnRepos,afterRepos,reposDone:[$('page-refresh-state').textContent,$('page-refresh-state').dataset.tone],
+        toasts,busy:PAGE_REFRESHING_VIEWS.size};
+    })()""", FAKE_FETCH)
+    assert result["onRepos"] == [True, True]
+    assert result["onLlm"] == [False, False, "刷新这一页"]
+    assert result["llmDone"] == ["刚刚刷新", ""]
+    assert result["backOnRepos"] == [True, True, "读取中"]
+    assert result["afterRepos"] == ["刚刚刷新", False]
+    assert result["reposDone"] == ["1 项读取失败", "bad"]
+    # 读完时人在别的屏:提示里带上是哪一屏。
+    assert result["toasts"] == [["「代码仓库」1 项读取失败", "bad"]]
+    assert result["busy"] == 0
+
+
+def test_a_page_whose_first_read_failed_does_not_say_it_was_just_refreshed():
+    result = run("""(async()=>{
+      REPLIES['/api/tasks']=[500,{error:'RuntimeError: simulated failure'}];
+      REPLIES['/api/repos']=[200,""" + UNSET_REPOS + """];
+      PAGE_READS.tasks=[()=>api('/api/tasks').catch(()=>{})];
+      PAGE_READS.repos=[()=>api('/api/repos')];
+      CURVIEW='tasks';await loadPageOnce('tasks');
+      const tasks=[$('page-refresh-state').textContent,$('page-refresh-state').dataset.tone];
+      CURVIEW='repos';await loadPageOnce('repos');
+      const repos=[$('page-refresh-state').textContent,$('page-refresh-state').dataset.tone];
+      // 负对照:工作记录回 available:false 是它的读取器坏了,不是没在查。
+      REPLIES['/api/work']=[200,{available:false,reason:'work_reader_failed'}];
+      PAGE_READS.work=[()=>api('/api/work')];
+      CURVIEW='work';await loadPageOnce('work');
+      return {tasks,repos,work:[$('page-refresh-state').textContent,$('page-refresh-state').dataset.tone]};
+    })()""", FAKE_FETCH)
+    assert result["tasks"] == ["1 项读取失败", "bad"]
+    # 没配仓库根目录不是读坏了:照常写刷新时间,带一句未检查,不标红。
+    assert result["repos"] == ["刚刚刷新，1 项未检查", ""]
+    assert result["work"] == ["1 项读取失败", "bad"]
+
+
+def test_the_phone_nav_stays_one_row_whatever_the_badges_say():
+    # 窄屏横排的五项不换行:换行的话,徽章数字回来那一刻「诊断」掉到第二行,整页往下跳。
+    css = (STATIC / "workbench.css").read_text(encoding="utf-8")
+    block = re.search(r"@media\(max-width:767px\)\{\s*/\* 窄屏时刷新.*?\n\}", css, re.S).group(0)
+    nav = re.search(r"#side \.navbar-nav\{([^}]*)\}", block).group(1)
+    assert "flex-wrap:nowrap" in nav and "overflow-x:auto" in nav
+    assert "flex-wrap:wrap" not in block

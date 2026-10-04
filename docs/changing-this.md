@@ -160,6 +160,8 @@
 来源路径登记在 `BADGE_SOURCES`,补读的函数登记在 `BADGE_LOADERS`:「…」和「?」是靠这两张表和 `api()` 报上来的读取记录判断的,
 漏登记的徽章会一直是「…」。
 
+刷新按屏记(`PAGE_REFRESHING_VIEWS`):一屏在读,别的屏照样能刷新。读完的清点由 `readPage` 做,第一次进屏和点刷新是同一份:它只数这一屏的读取函数**同步**发出的那几路 `api()`(`API_READ_COLLECTORS`),所以新的读取函数要在第一个 `await` 之前调 `api()`,否则它读坏了顶栏看不见。后端对没配的来源回 200 加 `available:false` 的,把路径登记进 `api.js` 的 `API_UNCHECKED_WHEN_UNAVAILABLE`,徽章和顶栏就会把它算成「未检查」(淡色虚线框里的一横)而不是「?」;没登记的 `available:false`(比如工作记录的 `work_reader_failed`)照旧算读取失败。徽章记在能处理那件事的那一屏上:记忆索引在「客户端技能与记忆」,所以它的来源登记在 `BADGE_SOURCES.resources`,不在存储清理上。
+
 ### 对话框、确认框和菜单
 
 对话框一律用 `console-dialog` 外壳(`.dialog-head` 里标题加 ✕,`.dialog-body`,`.dialog-foot` 里次要按钮在前、主按钮在后),

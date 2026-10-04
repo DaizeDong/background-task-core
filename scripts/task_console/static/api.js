@@ -73,6 +73,13 @@ const API_READS=new Map();
 const API_PENDING=new Map();
 const API_LATEST_READS=new Map(), API_ACTIVE_READS=new Map();
 let API_READ_EPOCH=0;
+// 正在清点「这一屏的读取发出了哪几路」的集合,由 operations.js 的 readPage 在同步调用读取函数时挂上。
+// 只靠序号区间数的话,两屏同时在刷新时,另一屏读失败的那一路会被算到这一屏头上。
+const API_READ_COLLECTORS=new Set();
+// 这几路的约定是「200 加 available:false = 没在查」:没设仓库根目录、没设记忆池、没设会话目录
+// (后端的原因里自己写着「未检查」)。别的来源回 available:false 可能是真坏了(工作记录的 work_reader_failed),
+// 不能一概当成没在查,所以按路径登记,不按形状猜。
+const API_UNCHECKED_WHEN_UNAVAILABLE=['/api/repos','/api/mem','/api/convos'];
 function apiError(payload,status){
   const detail=payload?.error;
   const code=detail?.code || payload?.code;
@@ -88,6 +95,8 @@ function api(p,o){
   if(!read && typeof ConsoleActions!=='undefined' && ConsoleActions.readOnly) return Promise.reject(new Error(ConsoleActions.reason));
   const epoch=API_READ_EPOCH, identity=JSON.stringify([p,{...options,method}]);
   const key=JSON.stringify([read?epoch:null,identity]);
+  // 和别处正在读的同一路合并时也要记上:这一屏等的就是那一次的结果。
+  if(read) API_READ_COLLECTORS.forEach(paths=>paths.add(p));
   if(!options.signal && API_PENDING.has(key)) return API_PENDING.get(key);
   if(!read && !inspect) API_READ_EPOCH++;
   const sequence=++API_SEQUENCE;
@@ -124,7 +133,11 @@ function api(p,o){
         throw Object.assign(new Error(apiError(j,r.status)),{payload:j,status:r.status,
           requestRejected:[400,403,404,405].includes(r.status)});
       }
-      record({pending:false,error:j?.error?apiError(j,r.status):(j?.available===false?j.reason || '不可用':null)});
+      // available:false 的原因照旧记进 error,老的读法不变。登记过的那几路另带 unchecked,
+      // 让徽章和顶栏把「没在查」和真的读取失败分开(工作台的 readState 也是这么分的)。
+      const unavailable=!j?.error && j?.available===false;
+      const unchecked=unavailable && API_UNCHECKED_WHEN_UNAVAILABLE.includes(p.split('?')[0]);
+      record({pending:false,error:j?.error?apiError(j,r.status):(unavailable?j.reason || '不可用':null),...(unchecked?{unchecked:true}:{})});
       if(operation) ConsoleActions.finish(operation,j);
       return j;
     }catch(error){
