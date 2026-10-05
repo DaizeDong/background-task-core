@@ -26,6 +26,20 @@
       }
     },
     {
+      "artifact_id": "database-recovery",
+      "path_pattern": "task-console/recovery/**",
+      "purpose": "One compressed consistent database snapshot for versioned recovery",
+      "schema": "current.zip contains console.sqlite3 and schema_version 1 receipt.json; current.json mirrors the receipt and archive digest",
+      "producer": "tools/backup_console_db.py",
+      "consumer_or_final_deliverable": "Private backup and verified database recovery",
+      "rebuild_or_restore": "Verify the archive before extraction. Restore only with the writer stopped and original state preserved.",
+      "max_bytes": 33554432,
+      "retention_rule": {
+        "class": "core",
+        "rule": "Replace one current snapshot after source/saved integrity, schema and table-count validation; version it privately and never prune it as development output."
+      }
+    },
+    {
       "artifact_id": "run-events",
       "path_pattern": "task-console/run-events.jsonl",
       "purpose": "Durable normalized run events beyond the rotating OS log window",

@@ -122,11 +122,9 @@ def plan(data_root, record):
             "files": sum(e["files"] for e in entries), "bytes": sum(e["bytes"] for e in entries)}
 
 
-def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--data-root", required=True)
-    args = parser.parse_args()
-    root = ordinary_path(args.data_root)
+def private_data_root(value):
+    """Prove the selected destination before any real-state operation."""
+    root = ordinary_path(value)
     guard = REPO / "guards/tools/data_boundary.py"
     if not guard.is_file():
         raise RetentionError("Initialize the pinned guards submodule first")
@@ -134,6 +132,14 @@ def main():
     boundary = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(boundary)
     boundary.prove_private_companion(str(root))
+    return root
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--data-root", required=True)
+    args = parser.parse_args()
+    root = private_data_root(args.data_root)
     record_path = relative_path(root, "storage-retention.json")
     if record_path.stat().st_size > MAX_RECORD_BYTES:
         raise RetentionError("Retirement record is too large")

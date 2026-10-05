@@ -15,6 +15,7 @@
     "task-console/console.sqlite3",
     "task-console/run-events.jsonl",
     "task-console/registration/",
+    "task-console/recovery/",
     "launcher-binding.json",
     "declarations-*/",
     "work/",

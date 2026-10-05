@@ -622,6 +622,27 @@ def task_repair_preview_case(existing=None):
                       "polls": None, "observedAt": "2030-01-02 09:00:00"}}
 
 
+def console_backup_case(data_root):
+    """Keep a synthetic writer open so committed changes remain in the WAL."""
+    import sqlite3
+
+    path = data_root / "task-console" / "console.sqlite3"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    connection = sqlite3.connect(path)
+    connection.execute("PRAGMA journal_mode=WAL")
+    connection.executescript('''
+        CREATE TABLE events (id INTEGER PRIMARY KEY, task TEXT);
+        CREATE TABLE settings (name TEXT PRIMARY KEY, value TEXT);
+        CREATE INDEX events_task ON events(task);
+        CREATE VIEW event_names AS SELECT task FROM events;
+        INSERT INTO events VALUES (1, 'AcmeSync');
+        INSERT INTO settings VALUES ('synthetic', 'enabled');
+        PRAGMA user_version=1;
+    ''')
+    connection.commit()
+    return connection
+
+
 def task_repair_order_case(action_state="running", state="pending"):
     """One synthetic repair order as /api/task/repairs maps it to a task name."""
     action = None if action_state is None else {"id": "receipt-1", "state": action_state, "summary": "合成进度",

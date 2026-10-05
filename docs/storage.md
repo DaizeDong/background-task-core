@@ -9,6 +9,23 @@ with `--backfill`: historical task configurations and ingest attempts are retain
 event log rotates. The JSONL export preserves normalized events, but omits `rc_raw` and does not contain
 the other database tables. No complete JSONL-to-database restore command is currently provided.
 
+Refresh the versioned database recovery snapshot before backing up or committing private state:
+`python tools/backup_console_db.py --data-root <private-data>`.
+It proves PRIVATE visibility, reads a consistent SQLite transaction through the online backup API,
+and compares integrity, schema and every table count before publishing. It replaces one
+`<private-data>/task-console/recovery/current.zip` and its fixed `current.json` receipt. The archive
+contains the standalone database and its own receipt, so WAL/SHM files and live locks are not copied.
+The OS lock rejects overlapping captures. A failed refresh exits nonzero and must stop the enclosing
+backup. This command provides an explicit refresh entry; scheduling depends on the installation's
+existing backup integration.
+
+Use the same command with `--verify` to decompress and check the saved database without refreshing it.
+It checks archive contents, database digest, integrity, schema, table counts and the external receipt.
+For recovery, verify first and extract `console.sqlite3` into a separate private staging directory.
+Replacing the live database is a separate operation requiring its writer to be stopped and the
+existing database/side files preserved. A snapshot covers its recorded capture time; later writes
+require another refresh. Keep one current snapshot in private Git, with older versions in Git history.
+
 Create new temporary development work under `<private-data>/work/`. Before retiring a work directory,
 commit its useful code, keep the current release handoff and one concise final result, and confirm that
 its writers have stopped. Record exact paths in `<private-data>/storage-retention.json`, with
