@@ -2,8 +2,6 @@
 
 `storage.contract.json` describes paths relative to the private companion's data directory.
 Its byte limits are review thresholds. They never authorize truncating current state to reach a size target.
-An artifact with `path_base: configuration-backup` is relative to the private configuration backup's
-export root instead of the companion data directory.
 
 Keep the launcher binding, database and required SQLite side files, durable run-event export,
 registration recovery state, and referenced task declarations. The database is not fully reproducible
@@ -61,13 +59,16 @@ journals do not pull historical before-images into this current snapshot. Missin
 fail before replacing an existing archive; there is no initialized-state skip or repository fallback.
 
 The caller stores the ZIP at `secrets/task-console-current/registration-recovery.zip` in its private
-configuration export root. `manifest.json` has `schema_version: 1`, the selected generation/domain,
+configuration export root; that backup owner declares this artifact in its own storage contract.
+`manifest.json` has `schema_version: 1`, the selected generation/domain,
 source roots, document and protected-reference member paths/byte counts/SHA256 hashes, pending journal
 IDs, `missing_references: 0`, and `machine_bound: true`. The archive contains `state/current.json`,
 the selected `state/receipts/<generation>.json`, unresolved `state/journals/<transaction>.json`, and
 only the referenced `vault/task-console-<domain>-<object>.cred` files. Source readback and ZIP-byte
 verification protect capture consistency. They prove ciphertext fidelity, not decrypted reference
 identity. Stable inputs produce the same archive bytes.
+Each input is bounded at 8 MiB and aggregate member input at 128 MiB; these capture limits never
+authorize deletion or truncation of the original state.
 
 Restore requires the matching private declarations and runtime plus the original Windows account
 and machine capable of decrypting DPAPI. Verify archive member hashes, stage the state/vault members

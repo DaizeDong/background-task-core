@@ -51,6 +51,8 @@ def storage_retirement_case(root):
         "task-console/registration/current.json": '{"generation":"example"}',
         "declarations-example/bootstrap/runtime-config.json": '{"example":true}',
         "storage/final-results.md": "Synthetic work complete; source is committed.\n",
+        "maintenance/result.json": '{"synthetic":true}',
+        "profile-rollback/original.json": '{"synthetic":true}',
         "work/completed/build-output.txt": "rebuildable synthetic output",
     }
     for relative, text in files.items():

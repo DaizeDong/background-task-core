@@ -21,7 +21,7 @@ def test_completed_work_is_admitted_without_touching_state_or_recovery(tmp_path)
 
 @pytest.mark.parametrize("target", ["launcher-binding.json", "task-console", "task-console/console.sqlite3",
     "task-console/console.sqlite3-wal", "task-console/run-events.jsonl",
-    "task-console/registration/current.json", "declarations-example", "storage"])
+    "task-console/registration/current.json", "declarations-example", "storage", "maintenance", "profile-rollback"])
 def test_core_state_and_restore_inputs_cannot_be_retired(tmp_path, target):
     record = make_fixtures.storage_retirement_case(tmp_path)
     record["retirements"][0]["path"] = target

@@ -5,10 +5,10 @@
   "budget_policy": "Review threshold, never permission to delete core state. A populated database and its durable event export can already exceed a small development-artifact budget; retired builds have no such exception.",
   "protected_paths": [
     "launcher-binding.json",
-    "task-console/",
-    "declarations-*/",
-    "storage/",
-    "maintenance/"
+    "task-console/**",
+    "declarations-*/**",
+    "storage/**",
+    "maintenance/**"
   ],
   "artifacts": [
     {
@@ -60,26 +60,11 @@
       "schema": "Current pointer, transaction journals, receipts, stages and locks",
       "producer": "registration and runtime_storage",
       "consumer_or_final_deliverable": "Registration recovery and launcher authority",
-      "rebuild_or_restore": "Restore the pointer with its referenced receipt and journal; preserve pending, conflict and uncleaned transactions.",
+      "rebuild_or_restore": "Restore the pointer with its referenced receipt and journal; preserve pending, conflict and uncleaned transactions. Pair current authority with the current protected-input archive declared by the private configuration backup owner's storage contract; see docs/storage.md for the manifest and DPAPI limits.",
       "max_bytes": 8388608,
       "retention_rule": {
         "class": "core",
         "rule": "Artifact cleanup never touches registration; review completed transactions separately above 8 MiB."
-      }
-    },
-    {
-      "artifact_id": "registration-vault-recovery",
-      "path_base": "configuration-backup",
-      "path_pattern": "secrets/task-console-current/registration-recovery.zip",
-      "purpose": "Current registration authority and its minimal protected input closure",
-      "schema": "ZIP manifest.json schema_version 1 with generation/domain, document and protected-reference members/byte counts/SHA256, pending_journals, missing_references=0 and machine_bound=true; state/current.json, current state/receipts entry, unresolved state/journals entries, exact vault/*.cred members",
-      "producer": "tools/export_registration_recovery.py called with all three roots from the authoritative launcher binding",
-      "consumer_or_final_deliverable": "Existing private configuration backup command export",
-      "rebuild_or_restore": "Verify member hashes and current input decoding with the original Windows account/machine and matching private declarations. DPAPI ciphertext fidelity does not prove cross-machine restore or rebind filesystem ownership. No task registration is performed.",
-      "max_bytes": 33554432,
-      "retention_rule": {
-        "class": "core",
-        "rule": "Keep one current archive in private Git. Include current receipt references and pending/uncleaned journal references; exclude closed historical before-images. Missing references are hard errors. The exporter bounds each input at 8 MiB and aggregate member input at 128 MiB."
       }
     },
     {
