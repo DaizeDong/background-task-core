@@ -1,0 +1,169 @@
+{
+  "schema_version": 1,
+  "tool": "task-console",
+  "max_bytes": 201326592,
+  "budget_policy": "Review threshold, never permission to delete core state. A populated database and its durable event export can already exceed a small development-artifact budget; retired builds have no such exception.",
+  "protected_paths": [
+    "launcher-binding.json",
+    "task-console/",
+    "declarations-*/",
+    "storage/",
+    "maintenance/"
+  ],
+  "artifacts": [
+    {
+      "artifact_id": "database",
+      "path_pattern": "task-console/console.sqlite3*",
+      "purpose": "Current read model, historical settings, ingest evidence and cursors",
+      "schema": "SQLite schema.sql user_version 1, including required WAL/SHM side files",
+      "producer": "console_ingest",
+      "consumer_or_final_deliverable": "console_store health, run history and coverage queries",
+      "rebuild_or_restore": "Preserve the current consistent database. Backfill does not recreate all historical settings, failed ingest attempts or events outside the OS log window.",
+      "max_bytes": 134217728,
+      "retention_rule": {
+        "class": "core",
+        "rule": "Never removed or truncated by artifact cleanup; exceeding 128 MiB requires a separate reviewed migration."
+      }
+    },
+    {
+      "artifact_id": "run-events",
+      "path_pattern": "task-console/run-events.jsonl",
+      "purpose": "Durable normalized run events beyond the rotating OS log window",
+      "schema": "JSONL e,r,t,i,ts,rc; event identity is e+r",
+      "producer": "console_ingest.export_run_events",
+      "consumer_or_final_deliverable": "Export watermark and durable event history",
+      "rebuild_or_restore": "Keep versioned in the private companion. It does not contain every database column or provide a complete database restore.",
+      "max_bytes": 50331648,
+      "retention_rule": {
+        "class": "core",
+        "rule": "Append without loss; report above 48 MiB for explicit partition or migration review, never silently discard old events."
+      }
+    },
+    {
+      "artifact_id": "registration",
+      "path_pattern": "task-console/registration/**",
+      "purpose": "Current registration authority and transaction recovery",
+      "schema": "Current pointer, transaction journals, receipts, stages and locks",
+      "producer": "registration and runtime_storage",
+      "consumer_or_final_deliverable": "Registration recovery and launcher authority",
+      "rebuild_or_restore": "Restore the pointer with its referenced receipt and journal; preserve pending, conflict and uncleaned transactions.",
+      "max_bytes": 8388608,
+      "retention_rule": {
+        "class": "core",
+        "rule": "Artifact cleanup never touches registration; review completed transactions separately above 8 MiB."
+      }
+    },
+    {
+      "artifact_id": "binding",
+      "path_pattern": "launcher-binding.json",
+      "purpose": "Current installed launcher binding",
+      "schema": "Launcher binding schemaVersion 1",
+      "producer": "Explicit launcher configuration",
+      "consumer_or_final_deliverable": "Console launcher",
+      "rebuild_or_restore": "Restore from private companion history and validate referenced installed runtime.",
+      "max_bytes": 65536,
+      "retention_rule": {
+        "class": "core",
+        "rule": "Keep the current binding; never infer it from a development directory."
+      }
+    },
+    {
+      "artifact_id": "declarations",
+      "path_pattern": "declarations-*/**",
+      "purpose": "Installed task declarations and source closure",
+      "schema": "Private runtime configuration, desired state, projections and observations",
+      "producer": "Explicit registration preparation",
+      "consumer_or_final_deliverable": "Current binding and registration authority",
+      "rebuild_or_restore": "Keep referenced declarations and recovery closure in the private companion.",
+      "max_bytes": 16777216,
+      "retention_rule": {
+        "class": "core",
+        "rule": "Protected from generic cleanup; remove a declaration only after a separate reference and recovery review."
+      }
+    },
+    {
+      "artifact_id": "final-results",
+      "path_pattern": "storage/**",
+      "purpose": "One bounded final result, current handoff receipts and cleanup receipt",
+      "schema": "Markdown conclusion and schema_version 1 JSON receipts",
+      "producer": "Release closeout and cleanup_storage",
+      "consumer_or_final_deliverable": "Operator review and current release handoff",
+      "rebuild_or_restore": "Version the concise final result; regenerate build payloads from committed sources.",
+      "max_bytes": 1048576,
+      "retention_rule": {
+        "class": "core",
+        "rule": "Replace the latest cleanup receipt; retain one final consolidated result under 256 KiB and the current release handoff only."
+      }
+    },
+    {
+      "artifact_id": "retirement-record",
+      "path_pattern": "storage-retention.json",
+      "purpose": "Explicit completed-work retirement decisions",
+      "schema": "schema_version 1, at most 64 retirement entries and 256 KiB",
+      "producer": "Operator-reviewed closeout",
+      "consumer_or_final_deliverable": "tools/storage_retention.py and tools/cleanup_storage.ps1",
+      "rebuild_or_restore": "Reconstruct from the final result and source reconciliation; never infer approval from file age.",
+      "max_bytes": 262144,
+      "retention_rule": {
+        "class": "core",
+        "rule": "Only completed, source-reconciled work with inactive writers and a retained result can enter the plan."
+      }
+    },
+    {
+      "artifact_id": "development-work",
+      "path_pattern": "work/**",
+      "purpose": "Temporary builds, test environments and diagnostic outputs",
+      "schema": "Disposable build output with an explicit retirement record",
+      "producer": "Development and release tools",
+      "consumer_or_final_deliverable": "Committed source and bounded final result",
+      "rebuild_or_restore": "Rebuild from committed source and the installed artifact authority.",
+      "max_bytes": 33554432,
+      "retention_rule": {
+        "class": "rebuildable",
+        "rule": "Close and retire after source reconciliation and final acceptance; do not keep complete build copies as history."
+      }
+    },
+    {
+      "artifact_id": "legacy-development-work",
+      "path_pattern": "*-20*/**",
+      "purpose": "Previously dated development directories",
+      "schema": "Legacy artifacts explicitly listed in the private retirement record",
+      "producer": "Historical release sessions",
+      "consumer_or_final_deliverable": "Consolidated final result and preserved useful tooling",
+      "rebuild_or_restore": "Committed source retains product changes; the latest handoff is preserved outside these trees.",
+      "max_bytes": 16777216,
+      "retention_rule": {
+        "class": "retired",
+        "rule": "Delete only exact reviewed roots named by the retirement record; protected declarations always take precedence."
+      }
+    },
+    {
+      "artifact_id": "memory-diagnostics",
+      "path_pattern": "memory-pressure-monitor/**",
+      "purpose": "Finite memory diagnostic observations",
+      "schema": "Terminal session receipt, configuration and conclusion",
+      "producer": "Finite diagnostic observer",
+      "consumer_or_final_deliverable": "Bounded diagnostic conclusion",
+      "rebuild_or_restore": "Start a new explicit diagnostic session when fresh samples are needed.",
+      "max_bytes": 1048576,
+      "retention_rule": {
+        "class": "retired",
+        "rule": "After the session is terminal and its writer is absent, retain its conclusion/configuration and retire raw samples explicitly."
+      }
+    },
+    {
+      "artifact_id": "maintenance",
+      "path_pattern": "maintenance/**",
+      "purpose": "Private maintenance conclusions and displaced local telemetry",
+      "schema": "Bounded legacy telemetry and maintenance receipts",
+      "producer": "Explicit local maintenance",
+      "consumer_or_final_deliverable": "Recoverable private maintenance state",
+      "rebuild_or_restore": "Keep in private companion history; never return runtime telemetry to the public tool.",
+      "max_bytes": 1048576,
+      "retention_rule": {
+        "class": "core",
+        "rule": "Preserve displaced original state until explicitly superseded; review above 1 MiB."
+      }
+    }
+  ]
+}

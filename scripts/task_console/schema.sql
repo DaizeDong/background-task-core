@@ -1,12 +1,10 @@
 -- task-console read model.
 --
--- NOTHING IN THIS DATABASE IS A SYSTEM OF RECORD. Every row is derived from two sources that still
--- exist on the machine: the Windows Task Scheduler Operational event log, and the health monitor's
--- text log. Deleting the file and re-running the backfill reproduces it. That property is load
--- bearing and must survive every future change: the moment a table can only be recovered from here,
--- this file becomes a backup problem and the "just delete it and rebuild" lever stops being true.
--- A rollup table that folds raw events and is then exempted from rebuild is exactly how that
--- property gets lost, which is why there is no run_daily here.
+-- Preserve the current database and its required SQLite side files. Backfill can reread the
+-- retained health log and current OS event window, but cannot recreate old task configurations,
+-- failed ingest attempts, or events already rotated out of the OS log. run-events.jsonl is the
+-- durable normalized event export; it omits rc_raw and the other tables. It is not a complete
+-- database backup, and there is currently no complete JSONL-to-database restore command.
 --
 -- WHY A DATABASE AT ALL, stated honestly. The bulk of the win is not SQL: reading the event log
 -- costs 109 seconds end to end, and simply moving that off the request path is most of the benefit.

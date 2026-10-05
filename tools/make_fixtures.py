@@ -7,6 +7,33 @@ import json
 from pathlib import Path
 
 
+def storage_retirement_case(root):
+    """Create disposable work beside synthetic state and restoration inputs."""
+    import hashlib
+
+    root = Path(root)
+    files = {
+        "launcher-binding.json": '{"schemaVersion":1}',
+        "task-console/console.sqlite3": "synthetic database placeholder",
+        "task-console/console.sqlite3-wal": "synthetic pending transaction",
+        "task-console/run-events.jsonl": '{"task":"AcmeTask"}\n',
+        "task-console/registration/current.json": '{"generation":"example"}',
+        "declarations-example/bootstrap/runtime-config.json": '{"example":true}',
+        "storage/final-results.md": "Synthetic work complete; source is committed.\n",
+        "work/completed/build-output.txt": "rebuildable synthetic output",
+    }
+    for relative, text in files.items():
+        path = root / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8")
+    result = root / "storage/final-results.md"
+    return {"schema_version": 1, "protected_paths": [], "retirements": [{
+        "path": "work/completed", "completed": True, "source_reconciled": True,
+        "active_writer": False, "final_deliverable": "storage/final-results.md",
+        "final_sha256": hashlib.sha256(result.read_bytes()).hexdigest(),
+    }]}
+
+
 def synthetic_conversation(number=1, cwd="C:/Acme/project", title=None, turns=2):
     """Generate an in-memory transcript for temporary conversation tests."""
     sid = f"{number:08x}-0000-4000-8000-000000000001"
@@ -438,6 +465,21 @@ def operations_case() -> dict:
                            "unpushedKnown": False, "behindKnown": False}}
 
 
+def generate_storage_schemas(output: Path, *, repo_layout=False) -> None:
+    documents = {
+        "launcher-binding.json.example": {"schemaVersion": 1, "runtime": {
+            "InstalledRoot": "C:/Acme/runtime/installed", "StateRoot": "C:/AcmePrivate/registration"},
+            "environment": {"TASK_CONSOLE_DB": "C:/AcmePrivate/console.sqlite3"}},
+        "storage-retention.json.example": {"schema_version": 1, "protected_paths": [], "retirements": []},
+        "task-console/run-events.jsonl.example": {"e": 1, "r": 1, "t": "AcmeTask", "i": 100,
+                                                "ts": "2030-01-01 00:00:00", "rc": None},
+    }
+    for name, document in documents.items():
+        path = output / (name if repo_layout else Path(name).name)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(document, sort_keys=True) + "\n", encoding="utf-8")
+
+
 def generate(output: Path, *, categories_output: Path | None = None) -> None:
     request = example_request()
     output.mkdir(parents=True, exist_ok=True)
@@ -458,6 +500,7 @@ if __name__ == "__main__":
     root = Path(__file__).resolve().parents[1]
     generate(args.out or root / "examples" / "console",
              categories_output=None if args.out else root / "scripts" / "task_console" / "categories.example.json")
+    generate_storage_schemas(args.out or root, repo_layout=not args.out)
 def consolidated_work_case():
     """Synthetic history, independent alarms and missing/cyclic parents."""
     return [

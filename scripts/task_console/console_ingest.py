@@ -384,16 +384,11 @@ def _watermark_from_file(out: Path) -> tuple[int, int]:
 def export_run_events(con) -> tuple[bool, int, str]:
     """Append new run events to a JSONL beside the database.
 
-    THIS FILE IS THE ONLY PLACE SOME OF THIS DATA WILL EXIST. The rest of the database is a cache:
-    delete it, re-run --backfill, get it back. That is true of health observations because their
-    source log is append-only and never rotates. It is NOT true of run events past about five days,
-    because the Windows Operational log is a circular buffer that overwrites them, measured at 635
-    events an hour against a 64 MB cap.
-
-    So the durable copy has to live somewhere a version control system can actually hold. Not the
-    .sqlite3: it is 4.4 MB and rewritten wholesale every hour, so tracking it would add ~105 MB of
-    unreadable binary objects a day. A JSONL is append-only, diffs line by line, and git stores the
-    increment.
+    The OS event log rotates, so this normalized export preserves events beyond its retained window.
+    Keep it versioned in the private companion. Preserve the current database too: this export omits
+    rc_raw, task configuration history and ingest attempts, and --backfill cannot reconstruct them
+    all. No complete JSONL-to-database restore command is currently provided. The append-only JSONL
+    avoids versioning every change to the database binary without claiming to replace that database.
 
     幂等靠的是水位线 = 最后一条已导出记录的 (log_epoch, record_id)。
 

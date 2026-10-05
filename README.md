@@ -123,3 +123,7 @@ English (`README.md`) · 中文 (`README_CN.md`)
 See [ROADMAP.md](ROADMAP.md) · [CHANGELOG.md](CHANGELOG.md) · [LICENSE](LICENSE) (MIT).
 
 The deviations from the house repository spec, and the reasons for each, are recorded in [docs/2026-09-22-spec-adaptation.md](docs/2026-09-22-spec-adaptation.md).
+
+## Storage retention
+
+[Storage contract and cleanup](docs/storage.md) distinguish protected runtime and recovery state from completed development artifacts. `storage.contract.json` sets review budgets; cleanup never truncates core history to meet them.

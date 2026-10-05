@@ -3,25 +3,39 @@
     "Skill Repo Spec v1 s9 -- every path in this repo belongs to exactly one class.",
     "TOOL    = code, docs, and metrics ABOUT THE TOOL. Public.",
     "FIXTURE = LIFELIKE test data, produced by a generator so a pasted real record fails at commit.",
-    "DATA    = anything a REAL RUN produced. Never git-tracked. Lives in the private companion,",
+    "DATA    = anything a REAL RUN produced. Versioned in the private companion, never the public tool,",
     "          resolved at runtime by the shared resolver in guards/tools/datadir.py.",
     "data_sealed = a path that HELD real data, was purged, and must stay dead.",
     "",
     "Enforced by guards/tools/data_boundary.py in .githooks and in CI."
   ],
-  "_audited": "2026-09-11 EXTRACTION. This repo was carved out of another one, so the declaration is inherited rather than written fresh, and the inherited half is the half worth stating: the console keeps a SQLite read model of real run history at <companion>/data/task-console/console.sqlite3. It is resolved at runtime and passed through assert_outside_own_repo at the point of use, so an edit that ever points it back inside this repo fails loudly instead of writing there. Nothing in that database is a system of record -- every row derives from the Windows Operational event log and the health monitor's text log -- with ONE exception that is the reason the durable export exists: that event log is a circular buffer measured at roughly five days, so run events older than that live only in the companion's run-events.jsonl. Deleting the database and re-running --backfill reproduces everything inside the window and nothing outside it.",
+  "_audited": "The runtime database, durable event export, registration state and launcher configuration live in the PRIVATE companion. The current database is protected: its historical task configurations, ingest attempts and raw event fields cannot all be recovered by --backfill. The JSONL preserves normalized events beyond the rotating OS log window but is not a complete database restore. storage.contract.json defines review budgets and protects state and restoration inputs; only explicit completed-work retirement records permit artifact removal.",
   "_armed": "The empty lists below are a claim re-tested on every commit, not a note taken on faith. data_boundary check 4 runs off the TRACKED FILE LIST rather than off this manifest, so a file wearing the shape of real-run output fails whether or not it is declared here. That distinction is load-bearing: TASK_CONSOLE_DB can point the database anywhere, so 'the default resolver points outside' was never the same statement as 'nothing can land here'.",
   "data": [
-    "task-console/console.sqlite3"
+    "task-console/console.sqlite3",
+    "task-console/run-events.jsonl",
+    "task-console/registration/",
+    "launcher-binding.json",
+    "declarations-*/",
+    "work/",
+    "storage/",
+    "storage-retention.json",
+    "memory-pressure-monitor/",
+    "maintenance/"
   ],
-  "data_sealed": [],
+  "data_sealed": [
+    ".sie/"
+  ],
   "fixture": [
     "examples/console/.console.json",
     "examples/console/bindings.example.json",
     "examples/console/machine.console.example.json",
     "examples/console/baseline.example.json",
     "examples/console/installations.request.example.json",
-    "scripts/task_console/categories.example.json"
+    "scripts/task_console/categories.example.json",
+    "launcher-binding.json.example",
+    "storage-retention.json.example",
+    "task-console/run-events.jsonl.example"
   ],
   "_data_home": "A PRIVATE companion outside this repo, resolved at runtime through guards/tools/datadir.py by the convention that file documents. Deliberately not named here: a public repo that spells out which private repo it pairs with has published the link between them, and the resolver derives the name anyway, so writing it down buys nothing. If this tool ever needs to record real-run output, it goes THERE -- never back into this repo.",
   "_run_shape_probes": [
