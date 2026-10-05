@@ -643,6 +643,39 @@ def console_backup_case(data_root):
     return connection
 
 
+def scheduled_console_backup_case(root):
+    """An isolated synthetic companion and local bare remote with recording Git hooks."""
+    import subprocess
+
+    repo = root / "companion"
+    repo.mkdir()
+    remote = root / "remote.git"
+
+    def git(*args):
+        return subprocess.run(["git", "-C", str(repo), *args], check=True,
+                              capture_output=True, text=True, encoding="utf-8").stdout.strip()
+
+    git("init", "--initial-branch=main")
+    git("config", "user.name", "Acme Example")
+    git("config", "user.email", "user1@example.com")
+    # Fixture hooks record normal execution without using real owner identity policy.
+    git("config", "core.hooksPath", ".git/hooks")
+    for name in ("pre-commit", "pre-push"):
+        hook = repo / ".git/hooks" / name
+        hook.write_text('#!/bin/sh\nprintf "' + name + '\\n" >> "$(git rev-parse --git-path fixture-hooks-ran)"\n',
+                        encoding="utf-8", newline="\n")
+        hook.chmod(0o755)
+    (repo / "README.md").write_text("Synthetic companion for AcmeSync.\n", encoding="utf-8")
+    (repo / ".gitignore").write_text("*.sqlite3\n*.sqlite3-wal\n*.sqlite3-shm\n*.lock\n", encoding="utf-8")
+    git("add", "README.md", ".gitignore")
+    git("commit", "-m", "Initialize synthetic companion")
+    git("init", "--bare", str(remote))
+    git("remote", "add", "origin", str(remote))
+    git("push", "-u", "origin", "main")
+    connection = console_backup_case(repo / "data")
+    return repo, connection
+
+
 def task_repair_order_case(action_state="running", state="pending"):
     """One synthetic repair order as /api/task/repairs maps it to a task name."""
     action = None if action_state is None else {"id": "receipt-1", "state": action_state, "summary": "合成进度",

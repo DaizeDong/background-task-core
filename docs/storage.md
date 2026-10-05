@@ -26,6 +26,27 @@ Replacing the live database is a separate operation requiring its writer to be s
 existing database/side files preserved. A snapshot covers its recorded capture time; later writes
 require another refresh. Keep one current snapshot in private Git, with older versions in Git history.
 
+An existing scheduled backup can call
+`python tools/backup_console_db.py --scheduled --source-db <launcher-selected-database>`.
+The caller must obtain that path from `Read-TaskConsoleLauncherBinding` and pass its
+`Environment['TASK_CONSOLE_DB']` value. The helper supplies that exact value to the console's domain
+resolver; an unrelated ambient DB setting cannot silently select a different database. Only the
+reviewed `<private-data>/task-console/console.sqlite3` layout is supported. Other layouts, a missing
+selected database, or unproven PRIVATE visibility fail before capture.
+
+Scheduled publication requires the companion's `main` branch. It holds the snapshot lock through
+capture, staging, normal-hook commit and push. Only `current.zip` and `current.json` are staged and
+committed; other staged changes or unrelated unpublished commits block the operation. Unstaged
+unrelated work stays untouched. An unchanged verified database reuses the current archive and creates
+no commit. A failed push exits nonzero and leaves its local recovery commit available for the next
+attempt. The next attempt may push only commits whose changed paths belong to that exact pair.
+
+Scheduled stdout is one JSON receipt with `status: published` or `unchanged`; normal Git and hook output
+goes to stderr without truncation. The caller must check the exit code before reading the receipt.
+Calling scheduled mode without a bound source can only report `status: skipped, reason: uninitialized`
+when the shared resolver finds no companion and there is no console configuration in the environment;
+it never infers an existing default database for publication.
+
 Create new temporary development work under `<private-data>/work/`. Before retiring a work directory,
 commit its useful code, keep the current release handoff and one concise final result, and confirm that
 its writers have stopped. Record exact paths in `<private-data>/storage-retention.json`, with
