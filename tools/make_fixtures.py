@@ -510,7 +510,7 @@ def generate_storage_schemas(output: Path, *, repo_layout=False) -> None:
     for name, document in documents.items():
         path = output / (name if repo_layout else Path(name).name)
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(document, sort_keys=True) + "\n", encoding="utf-8")
+        path.write_bytes((json.dumps(document, sort_keys=True) + "\n").encode("utf-8"))
 
 
 def generate(output: Path, *, categories_output: Path | None = None) -> None:

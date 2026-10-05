@@ -78,7 +78,7 @@ def test_markdown_export_after_restart_still_produces_the_blob_download():
 
 def test_fork_after_restart_replays_once_with_the_fresh_token():
     chain = chain_case()
-    got = recover("confirm=()=>true;CH_SEL='h:3';chFork().then(()=>({calls,fres:CH_FRES}))", chain)
+    got = recover("askConfirm=async()=>true;CH_SEL='h:3';chFork().then(()=>({calls,fres:CH_FRES}))", chain)
     # After a successful fork the panel re-reads the conversation list; that read is not the fork.
     assert [c["path"] for c in got["calls"]][:3] == ["/api/convo/fork", "/", "/api/convo/fork"]
     assert [c["path"] for c in got["calls"]].count("/api/convo/fork") == 2

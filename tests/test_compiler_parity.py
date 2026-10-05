@@ -13,7 +13,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 sys.path.insert(0, str(ROOT / "tools"))
-from make_fixtures import example_request, generate
+from make_fixtures import example_request, generate, generate_storage_schemas
 
 
 def plan(request):
@@ -151,6 +151,7 @@ def test_duplicate_json_keys_fail_instead_of_selecting_the_last_value(capsys, mo
 
 def test_examples_are_generated_byte_for_byte(tmp_path):
     generate(tmp_path)
+    generate_storage_schemas(tmp_path)
     manifest = json.loads((ROOT / ".dataclass.json").read_text(encoding="utf-8"))
     for relative in manifest["fixture"]:
         assert (ROOT / relative).read_bytes() == (tmp_path / Path(relative).name).read_bytes()
