@@ -7,6 +7,37 @@ import json
 from pathlib import Path
 
 
+def registration_recovery_case(root, *, pending=False):
+    """Generate synthetic authority documents and opaque ciphertext placeholders."""
+    import hashlib
+
+    root = Path(root)
+    private, state, vault = (root / name for name in ("private", "state", "vault"))
+    for path in (private, state / "locks", state / "receipts", state / "journals", vault):
+        path.mkdir(parents=True)
+    (state / "locks" / (hashlib.sha256(b"authority").hexdigest() + ".lock")).write_bytes(b"0")
+    generation, domain = "a" * 32, "b" * 32
+    def protected(obj, owner):
+        ref = "cred:" + ":".join((domain, obj, "c" * 64, owner))
+        (vault / ("task-console-" + domain + "-" + obj + ".cred")).write_bytes(
+            ("synthetic ciphertext " + obj).encode())
+        return ref
+    receipt = {"schemaVersion": 1, "generation": generation, "domain": domain,
+               "input_reference": protected("d" * 32, generation),
+               "authority": {"authority_epoch": 1, "migrated_tasks": []},
+               "ownership": {}, "file_ownership": {}}
+    encode = lambda v: json.dumps(v, sort_keys=True, ensure_ascii=True, allow_nan=False).encode("ascii")
+    (state / "receipts" / (generation + ".json")).write_bytes(encode(receipt))
+    (state / "current.json").write_bytes(encode({"generation": generation,
+        "receipt_digest": hashlib.sha256(encode(receipt)).hexdigest()}))
+    owner = "e" * 32
+    journal = {"schemaVersion": 1, "transaction_id": owner, "status": "publishing" if pending else "committed",
+               "cleaned": not pending, "locks": ["authority"], "steps": [],
+               "input_before": protected("f" * 32, owner)}
+    (state / "journals" / (owner + ".json")).write_bytes(encode(journal))
+    return private, state, vault, root / "recovery.zip"
+
+
 def storage_retirement_case(root):
     """Create disposable work beside synthetic state and restoration inputs."""
     import hashlib

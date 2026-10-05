@@ -68,6 +68,21 @@
       }
     },
     {
+      "artifact_id": "registration-vault-recovery",
+      "path_base": "configuration-backup",
+      "path_pattern": "secrets/task-console-current/registration-recovery.zip",
+      "purpose": "Current registration authority and its minimal protected input closure",
+      "schema": "ZIP manifest.json schema_version 1 with generation/domain, document and protected-reference members/byte counts/SHA256, pending_journals, missing_references=0 and machine_bound=true; state/current.json, current state/receipts entry, unresolved state/journals entries, exact vault/*.cred members",
+      "producer": "tools/export_registration_recovery.py called with all three roots from the authoritative launcher binding",
+      "consumer_or_final_deliverable": "Existing private configuration backup command export",
+      "rebuild_or_restore": "Verify member hashes and current input decoding with the original Windows account/machine and matching private declarations. DPAPI ciphertext fidelity does not prove cross-machine restore or rebind filesystem ownership. No task registration is performed.",
+      "max_bytes": 33554432,
+      "retention_rule": {
+        "class": "core",
+        "rule": "Keep one current archive in private Git. Include current receipt references and pending/uncleaned journal references; exclude closed historical before-images. Missing references are hard errors. The exporter bounds each input at 8 MiB and aggregate member input at 128 MiB."
+      }
+    },
+    {
       "artifact_id": "binding",
       "path_pattern": "launcher-binding.json",
       "purpose": "Current installed launcher binding",

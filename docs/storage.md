@@ -2,6 +2,8 @@
 
 `storage.contract.json` describes paths relative to the private companion's data directory.
 Its byte limits are review thresholds. They never authorize truncating current state to reach a size target.
+An artifact with `path_base: configuration-backup` is relative to the private configuration backup's
+export root instead of the companion data directory.
 
 Keep the launcher binding, database and required SQLite side files, durable run-event export,
 registration recovery state, and referenced task declarations. The database is not fully reproducible
@@ -46,6 +48,33 @@ goes to stderr without truncation. The caller must check the exit code before re
 Calling scheduled mode without a bound source can only report `status: skipped, reason: uninitialized`
 when the shared resolver finds no companion and there is no console configuration in the environment;
 it never infers an existing default database for publication.
+
+Current registration also depends on protected input files in its configured vault. A backup that
+excludes every `.cred` file cannot restore that authority. The existing configuration-backup caller
+can export the required closure with `tools/export_registration_recovery.py --private-root
+<declaration-root> --state-root <registration-root> --vault-root <configured-vault> --output
+<absolute-temporary-zip>`. Obtain all three roots from the same authoritative launcher-binding parser,
+including any complete runtime overrides. The exporter proves the private declaration repository,
+uses the existing authority lock, validates the current pointer/receipt digest, and includes every
+protected reference required by that receipt and pending or uncleaned journals. Cleaned terminal
+journals do not pull historical before-images into this current snapshot. Missing state or references
+fail before replacing an existing archive; there is no initialized-state skip or repository fallback.
+
+The caller stores the ZIP at `secrets/task-console-current/registration-recovery.zip` in its private
+configuration export root. `manifest.json` has `schema_version: 1`, the selected generation/domain,
+source roots, document and protected-reference member paths/byte counts/SHA256 hashes, pending journal
+IDs, `missing_references: 0`, and `machine_bound: true`. The archive contains `state/current.json`,
+the selected `state/receipts/<generation>.json`, unresolved `state/journals/<transaction>.json`, and
+only the referenced `vault/task-console-<domain>-<object>.cred` files. Source readback and ZIP-byte
+verification protect capture consistency. They prove ciphertext fidelity, not decrypted reference
+identity. Stable inputs produce the same archive bytes.
+
+Restore requires the matching private declarations and runtime plus the original Windows account
+and machine capable of decrypting DPAPI. Verify archive member hashes, stage the state/vault members
+separately, and verify current input decoding before any explicitly reviewed live replacement. The
+exporter neither registers tasks nor restores filesystem ownership receipts. Cross-machine recovery
+and historical rollback are not established by this current ciphertext archive. Keep one current ZIP
+in private Git; older versions remain in private Git history.
 
 Create new temporary development work under `<private-data>/work/`. Before retiring a work directory,
 commit its useful code, keep the current release handoff and one concise final result, and confirm that
