@@ -113,7 +113,7 @@ def test_a_failed_components_read_marks_catalog_and_checks_broken_not_unchecked(
     setup = """const anchors={};
 document.querySelector=sel=>{const m=/data-goto="([^"]+)"/.exec(sel);return m?(anchors[m[1]] ||= {innerHTML:''}):{content:'synthetic'};};
 """
-    # 走真实的 loadComponents:接口抛错时,目录和检查结果两个锚点都要画「!」,不能是「没配置」的「—」。
+    # 走真实的 loadComponents:接口抛错时,目录和检查结果两个锚点都要画「!」,不能是「没配置」的占位符。
     failed = run("""(async()=>{api=async()=>{throw new Error('HTTP 500');};renderPipelines=()=>{};
       await loadComponents();renderResourceAnchors();return [anchors['#catalog-box'].innerHTML,anchors['#catalog-health'].innerHTML];})()""", setup)
     assert all("count-broken" in html and "count-unchecked" not in html for html in failed)

@@ -104,7 +104,7 @@ def test_unstamped_count_is_said_once_and_dead_runs_show_their_error():
     dead = runs.split("备用服务应答")[0]
     assert "synthetic chain budget exhausted" in dead
     assert "整链失败" not in dead
-    # 没有时间戳的段写成淡色的「—」,原因在悬停里。
+    # 没有时间戳的段写成淡色的占位符,原因在悬停里。
     assert 'title="无时间戳">—<' in dead
 
 
