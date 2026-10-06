@@ -138,17 +138,143 @@
       }
     },
     {
-      "artifact_id": "legacy-development-work",
-      "path_pattern": "*-20*/**",
-      "purpose": "Previously dated development directories",
+      "artifact_id": "legacy-console-repair",
+      "path_pattern": "console-repair-20*/**",
+      "purpose": "Legacy console-repair development output",
       "schema": "Legacy artifacts explicitly listed in the private retirement record",
       "producer": "Historical release sessions",
       "consumer_or_final_deliverable": "Consolidated final result and preserved useful tooling",
       "rebuild_or_restore": "Committed source retains product changes; the latest handoff is preserved outside these trees.",
-      "max_bytes": 16777216,
+      "max_bytes": 4194304,
       "retention_rule": {
         "class": "retired",
-        "rule": "Delete only exact reviewed roots named by the retirement record; protected declarations always take precedence."
+        "rule": "Only exact reviewed roots named by the retirement record may be removed after source reconciliation and writer/reference checks. This namespace has a bounded share of the combined 16 MiB legacy review budget."
+      }
+    },
+    {
+      "artifact_id": "legacy-console-ux",
+      "path_pattern": "console-ux-20*/**",
+      "purpose": "Legacy console-ux development output",
+      "schema": "Legacy artifacts explicitly listed in the private retirement record",
+      "producer": "Historical release sessions",
+      "consumer_or_final_deliverable": "Consolidated final result and preserved useful tooling",
+      "rebuild_or_restore": "Committed source retains product changes; the latest handoff is preserved outside these trees.",
+      "max_bytes": 1048576,
+      "retention_rule": {
+        "class": "retired",
+        "rule": "Only exact reviewed roots named by the retirement record may be removed after source reconciliation and writer/reference checks. This namespace has a bounded share of the combined 16 MiB legacy review budget."
+      }
+    },
+    {
+      "artifact_id": "legacy-icon-controls",
+      "path_pattern": "icon-controls-20*/**",
+      "purpose": "Legacy icon-controls development output",
+      "schema": "Legacy artifacts explicitly listed in the private retirement record",
+      "producer": "Historical release sessions",
+      "consumer_or_final_deliverable": "Consolidated final result and preserved useful tooling",
+      "rebuild_or_restore": "Committed source retains product changes; the latest handoff is preserved outside these trees.",
+      "max_bytes": 1048576,
+      "retention_rule": {
+        "class": "retired",
+        "rule": "Only exact reviewed roots named by the retirement record may be removed after source reconciliation and writer/reference checks. This namespace has a bounded share of the combined 16 MiB legacy review budget."
+      }
+    },
+    {
+      "artifact_id": "legacy-automation-ui",
+      "path_pattern": "automation-ui-20*/**",
+      "purpose": "Legacy automation-ui development output",
+      "schema": "Legacy artifacts explicitly listed in the private retirement record",
+      "producer": "Historical release sessions",
+      "consumer_or_final_deliverable": "Consolidated final result and preserved useful tooling",
+      "rebuild_or_restore": "Committed source retains product changes; the latest handoff is preserved outside these trees.",
+      "max_bytes": 1048576,
+      "retention_rule": {
+        "class": "retired",
+        "rule": "Only exact reviewed roots named by the retirement record may be removed after source reconciliation and writer/reference checks. This namespace has a bounded share of the combined 16 MiB legacy review budget."
+      }
+    },
+    {
+      "artifact_id": "legacy-task-ops",
+      "path_pattern": "task-ops-20*/**",
+      "purpose": "Legacy task-ops development output",
+      "schema": "Legacy artifacts explicitly listed in the private retirement record",
+      "producer": "Historical release sessions",
+      "consumer_or_final_deliverable": "Consolidated final result and preserved useful tooling",
+      "rebuild_or_restore": "Committed source retains product changes; the latest handoff is preserved outside these trees.",
+      "max_bytes": 1048576,
+      "retention_rule": {
+        "class": "retired",
+        "rule": "Only exact reviewed roots named by the retirement record may be removed after source reconciliation and writer/reference checks. This namespace has a bounded share of the combined 16 MiB legacy review budget."
+      }
+    },
+    {
+      "artifact_id": "legacy-convo-chain-inspection",
+      "path_pattern": "convo-chain-inspection-20*/**",
+      "purpose": "Legacy convo-chain-inspection development output",
+      "schema": "Legacy artifacts explicitly listed in the private retirement record",
+      "producer": "Historical release sessions",
+      "consumer_or_final_deliverable": "Consolidated final result and preserved useful tooling",
+      "rebuild_or_restore": "Committed source retains product changes; the latest handoff is preserved outside these trees.",
+      "max_bytes": 4194304,
+      "retention_rule": {
+        "class": "retired",
+        "rule": "Only exact reviewed roots named by the retirement record may be removed after source reconciliation and writer/reference checks. This namespace has a bounded share of the combined 16 MiB legacy review budget."
+      }
+    },
+    {
+      "artifact_id": "legacy-convo-delete",
+      "path_pattern": "convo-delete-20*/**",
+      "purpose": "Legacy convo-delete development output",
+      "schema": "Legacy artifacts explicitly listed in the private retirement record",
+      "producer": "Historical release sessions",
+      "consumer_or_final_deliverable": "Consolidated final result and preserved useful tooling",
+      "rebuild_or_restore": "Committed source retains product changes; the latest handoff is preserved outside these trees.",
+      "max_bytes": 1048576,
+      "retention_rule": {
+        "class": "retired",
+        "rule": "Only exact reviewed roots named by the retirement record may be removed after source reconciliation and writer/reference checks. This namespace has a bounded share of the combined 16 MiB legacy review budget."
+      }
+    },
+    {
+      "artifact_id": "legacy-convo-list-clarity",
+      "path_pattern": "convo-list-clarity-20*/**",
+      "purpose": "Legacy convo-list-clarity development output",
+      "schema": "Legacy artifacts explicitly listed in the private retirement record",
+      "producer": "Historical release sessions",
+      "consumer_or_final_deliverable": "Consolidated final result and preserved useful tooling",
+      "rebuild_or_restore": "Committed source retains product changes; the latest handoff is preserved outside these trees.",
+      "max_bytes": 1048576,
+      "retention_rule": {
+        "class": "retired",
+        "rule": "Only exact reviewed roots named by the retirement record may be removed after source reconciliation and writer/reference checks. This namespace has a bounded share of the combined 16 MiB legacy review budget."
+      }
+    },
+    {
+      "artifact_id": "legacy-convo-ux",
+      "path_pattern": "convo-ux-20*/**",
+      "purpose": "Legacy convo-ux development output",
+      "schema": "Legacy artifacts explicitly listed in the private retirement record",
+      "producer": "Historical release sessions",
+      "consumer_or_final_deliverable": "Consolidated final result and preserved useful tooling",
+      "rebuild_or_restore": "Committed source retains product changes; the latest handoff is preserved outside these trees.",
+      "max_bytes": 1048576,
+      "retention_rule": {
+        "class": "retired",
+        "rule": "Only exact reviewed roots named by the retirement record may be removed after source reconciliation and writer/reference checks. This namespace has a bounded share of the combined 16 MiB legacy review budget."
+      }
+    },
+    {
+      "artifact_id": "legacy-loading-repair",
+      "path_pattern": "loading-repair-20*/**",
+      "purpose": "Legacy loading-repair development output",
+      "schema": "Legacy artifacts explicitly listed in the private retirement record",
+      "producer": "Historical release sessions",
+      "consumer_or_final_deliverable": "Consolidated final result and preserved useful tooling",
+      "rebuild_or_restore": "Committed source retains product changes; the latest handoff is preserved outside these trees.",
+      "max_bytes": 1048576,
+      "retention_rule": {
+        "class": "retired",
+        "rule": "Only exact reviewed roots named by the retirement record may be removed after source reconciliation and writer/reference checks. This namespace has a bounded share of the combined 16 MiB legacy review budget."
       }
     },
     {

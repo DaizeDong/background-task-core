@@ -3,6 +3,15 @@
 `storage.contract.json` describes paths relative to the private companion's data directory.
 Its byte limits are review thresholds. They never authorize truncating current state to reach a size target.
 
+Legacy development artifacts use explicit top-level namespaces, so a date in a task declaration
+cannot also classify it as retired work. The legacy scopes partition the existing 16 MiB review
+budget: repair and chain-inspection work have 4 MiB each, and the other eight scopes have 1 MiB each.
+These shares are bounded review thresholds, not estimates of required storage. Classification alone
+does not establish completed work or authorize deletion: the private retirement record must still
+name exact reviewed roots. Unrecognized paths remain undeclared and require a separate review of
+their producer, references and recovery needs; historical cleanup does not justify a broader source
+contract.
+
 Keep the launcher binding, database and required SQLite side files, durable run-event export,
 registration recovery state, and referenced task declarations. The database is not fully reproducible
 with `--backfill`: historical task configurations and ingest attempts are retained there, and the OS

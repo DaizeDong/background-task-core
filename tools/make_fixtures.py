@@ -67,6 +67,36 @@ def storage_retirement_case(root):
     }]}
 
 
+def storage_contract_case(root):
+    """Generate dated declaration, legacy development and unreviewed paths."""
+    root = Path(root)
+    declarations = [
+        "declarations-20991231/bootstrap/runtime-config.json",
+        "declarations-20991231/source-closure/nested/input.json",
+        "declarations-20991231-example/source-closure/input.json",
+    ]
+    retired = [
+        f"{prefix}-20991231-example/nested/output.txt"
+        for prefix in (
+            "console-repair", "console-ux", "icon-controls", "automation-ui", "task-ops",
+            "convo-chain-inspection", "convo-delete", "convo-list-clarity", "convo-ux",
+            "loading-repair",
+        )
+    ]
+    unknown = [
+        "unreviewed-20991231/nested/output.txt",
+        "profile-rollback/original.json",
+        "releases/20991231/generated.txt",
+        "unreviewed-copy/original.txt",
+        "workspaces/console-ux-20991231/nested/output.txt",
+    ]
+    for relative in (*declarations, *retired, *unknown):
+        path = root / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("synthetic artifact\n", encoding="utf-8")
+    return {"declarations": declarations, "retired": retired, "unknown": unknown}
+
+
 def synthetic_conversation(number=1, cwd="C:/Acme/project", title=None, turns=2):
     """Generate an in-memory transcript for temporary conversation tests."""
     sid = f"{number:08x}-0000-4000-8000-000000000001"
