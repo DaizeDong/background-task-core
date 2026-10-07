@@ -1,21 +1,29 @@
 {
   "schema_version": 1,
   "tool": "task-console",
-  "max_bytes": 201326592,
+  "max_bytes": 67108864,
   "budget_policy": "Review threshold, never permission to delete core state. A populated database and its durable event export can already exceed a small development-artifact budget; retired builds have no such exception.",
   "protected_paths": [
-    "launcher-binding.json",
-    "task-console/**",
-    "declarations-*/**",
-    "storage/**",
-    "maintenance/**"
+    "data/launcher-binding.json",
+    "data/declarations-*/**",
+    "data/storage/**",
+    "data/maintenance/**",
+    "data/task-console/run-events.jsonl",
+    "data/task-console/registration/**",
+    "data/task-console/recovery/current.zip",
+    "data/task-console/recovery/current.json",
+    "tools/delete_followup/config.json",
+    "data/task-console/console.sqlite3",
+    "data/task-console/console.sqlite3-wal",
+    "data/task-console/console.sqlite3-shm",
+    "data/task-console/console.sqlite3-journal"
   ],
   "artifacts": [
     {
       "artifact_id": "database",
-      "path_pattern": "task-console/console.sqlite3*",
+      "path_pattern": "data/task-console/console.sqlite3",
       "purpose": "Current read model, historical settings, ingest evidence and cursors",
-      "schema": "SQLite schema.sql user_version 1, including required WAL/SHM side files",
+      "schema": "SQLite schema.sql user_version 1; required transaction side files have separate exact owners",
       "producer": "console_ingest",
       "consumer_or_final_deliverable": "console_store health, run history and coverage queries",
       "rebuild_or_restore": "Preserve the current consistent database. Backfill does not recreate all historical settings, failed ingest attempts or events outside the OS log window.",
@@ -26,10 +34,52 @@
       }
     },
     {
+      "artifact_id": "database-wal",
+      "path_pattern": "data/task-console/console.sqlite3-wal",
+      "purpose": "Pending and checkpointed WAL transactions for the current database",
+      "schema": "SQLite wal side file paired with console.sqlite3",
+      "producer": "SQLite current database writer",
+      "consumer_or_final_deliverable": "Current database consistency and transaction recovery",
+      "rebuild_or_restore": "Preserve with its live database until the writer is stopped and a consistent standalone recovery capture is verified. Do not copy live side files into the recovery archive.",
+      "max_bytes": 33554432,
+      "retention_rule": {
+        "class": "core",
+        "rule": "Never truncate or retire current transaction state through artifact cleanup. Exceeding this review threshold requires reviewed database maintenance."
+      }
+    },
+    {
+      "artifact_id": "database-shm",
+      "path_pattern": "data/task-console/console.sqlite3-shm",
+      "purpose": "WAL shared-memory coordination for the current database",
+      "schema": "SQLite shm side file paired with console.sqlite3",
+      "producer": "SQLite current database writer",
+      "consumer_or_final_deliverable": "Current database consistency and transaction recovery",
+      "rebuild_or_restore": "Preserve with its live database until the writer is stopped and a consistent standalone recovery capture is verified. Do not copy live side files into the recovery archive.",
+      "max_bytes": 1048576,
+      "retention_rule": {
+        "class": "core",
+        "rule": "Never truncate or retire current transaction state through artifact cleanup. Exceeding this review threshold requires reviewed database maintenance."
+      }
+    },
+    {
+      "artifact_id": "database-journal",
+      "path_pattern": "data/task-console/console.sqlite3-journal",
+      "purpose": "Rollback-journal transaction recovery for the current database",
+      "schema": "SQLite journal side file paired with console.sqlite3",
+      "producer": "SQLite current database writer",
+      "consumer_or_final_deliverable": "Current database consistency and transaction recovery",
+      "rebuild_or_restore": "Preserve with its live database until the writer is stopped and a consistent standalone recovery capture is verified. Do not copy live side files into the recovery archive.",
+      "max_bytes": 134217728,
+      "retention_rule": {
+        "class": "core",
+        "rule": "Never truncate or retire current transaction state through artifact cleanup. Exceeding this review threshold requires reviewed database maintenance."
+      }
+    },
+    {
       "artifact_id": "database-recovery",
-      "path_pattern": "task-console/recovery/**",
+      "path_pattern": "data/task-console/recovery/current.zip",
       "purpose": "One compressed consistent database snapshot for versioned recovery",
-      "schema": "current.zip contains console.sqlite3 and schema_version 1 receipt.json; current.json mirrors the receipt and archive digest",
+      "schema": "current.zip contains console.sqlite3 and schema_version 1 receipt.json; the separate current.json mirrors the receipt and archive digest",
       "producer": "tools/backup_console_db.py manual refresh or scheduled bound-source publication",
       "consumer_or_final_deliverable": "Private backup and verified database recovery",
       "rebuild_or_restore": "Verify the archive before extraction. Restore only with the writer stopped and original state preserved.",
@@ -40,8 +90,36 @@
       }
     },
     {
+      "artifact_id": "database-recovery-receipt",
+      "path_pattern": "data/task-console/recovery/current.json",
+      "purpose": "Receipt for the one current consistent database recovery archive",
+      "schema": "Schema-version 1 receipt with database and archive digests, schema and table counts",
+      "producer": "tools/backup_console_db.py",
+      "consumer_or_final_deliverable": "Archive verification and private recovery",
+      "rebuild_or_restore": "Restore with the matching current.zip from one reviewed private revision; mismatched receipts fail verification.",
+      "max_bytes": 65536,
+      "retention_rule": {
+        "class": "core",
+        "rule": "Keep the exact current receipt paired with current.zip. Additional recovery filenames are undeclared until reviewed."
+      }
+    },
+    {
+      "artifact_id": "database-recovery-lock",
+      "path_pattern": "data/task-console/recovery/snapshot.lock",
+      "purpose": "OS-lock coordination for consistent database snapshots",
+      "schema": "Opaque one-byte lock file; file presence does not establish lock ownership",
+      "producer": "tools/backup_console_db.py.snapshot_lock",
+      "consumer_or_final_deliverable": "Overlapping snapshot exclusion",
+      "rebuild_or_restore": "The backup helper recreates the lock file; the OS lock determines ownership.",
+      "max_bytes": 4096,
+      "retention_rule": {
+        "class": "rebuildable",
+        "rule": "Keep while the helper may use it. Remove only after proving there is no lock holder; do not classify staged snapshots or extra archives through this path."
+      }
+    },
+    {
       "artifact_id": "run-events",
-      "path_pattern": "task-console/run-events.jsonl",
+      "path_pattern": "data/task-console/run-events.jsonl",
       "purpose": "Durable normalized run events beyond the rotating OS log window",
       "schema": "JSONL e,r,t,i,ts,rc; event identity is e+r",
       "producer": "console_ingest.export_run_events",
@@ -55,7 +133,7 @@
     },
     {
       "artifact_id": "registration",
-      "path_pattern": "task-console/registration/**",
+      "path_pattern": "data/task-console/registration/**",
       "purpose": "Current registration authority and transaction recovery",
       "schema": "Current pointer, transaction journals, receipts, stages and locks",
       "producer": "registration and runtime_storage",
@@ -69,7 +147,7 @@
     },
     {
       "artifact_id": "binding",
-      "path_pattern": "launcher-binding.json",
+      "path_pattern": "data/launcher-binding.json",
       "purpose": "Current installed launcher binding",
       "schema": "Launcher binding schemaVersion 1",
       "producer": "Explicit launcher configuration",
@@ -83,7 +161,7 @@
     },
     {
       "artifact_id": "declarations",
-      "path_pattern": "declarations-*/**",
+      "path_pattern": "data/declarations-*/**",
       "purpose": "Installed task declarations and source closure",
       "schema": "Private runtime configuration, desired state, projections and observations",
       "producer": "Explicit registration preparation",
@@ -97,7 +175,7 @@
     },
     {
       "artifact_id": "final-results",
-      "path_pattern": "storage/**",
+      "path_pattern": "data/storage/**",
       "purpose": "One bounded final result, current handoff receipts and cleanup receipt",
       "schema": "Markdown conclusion and schema_version 1 JSON receipts",
       "producer": "Release closeout and cleanup_storage",
@@ -111,7 +189,7 @@
     },
     {
       "artifact_id": "retirement-record",
-      "path_pattern": "storage-retention.json",
+      "path_pattern": "data/storage-retention.json",
       "purpose": "Explicit completed-work retirement decisions",
       "schema": "schema_version 1, at most 64 retirement entries and 256 KiB",
       "producer": "Operator-reviewed closeout",
@@ -125,7 +203,7 @@
     },
     {
       "artifact_id": "development-work",
-      "path_pattern": "work/**",
+      "path_pattern": "data/work/**",
       "purpose": "Temporary builds, test environments and diagnostic outputs",
       "schema": "Disposable build output with an explicit retirement record",
       "producer": "Development and release tools",
@@ -139,7 +217,7 @@
     },
     {
       "artifact_id": "legacy-console-repair",
-      "path_pattern": "console-repair-20*/**",
+      "path_pattern": "data/console-repair-20*/**",
       "purpose": "Legacy console-repair development output",
       "schema": "Legacy artifacts explicitly listed in the private retirement record",
       "producer": "Historical release sessions",
@@ -153,7 +231,7 @@
     },
     {
       "artifact_id": "legacy-console-ux",
-      "path_pattern": "console-ux-20*/**",
+      "path_pattern": "data/console-ux-20*/**",
       "purpose": "Legacy console-ux development output",
       "schema": "Legacy artifacts explicitly listed in the private retirement record",
       "producer": "Historical release sessions",
@@ -167,7 +245,7 @@
     },
     {
       "artifact_id": "legacy-icon-controls",
-      "path_pattern": "icon-controls-20*/**",
+      "path_pattern": "data/icon-controls-20*/**",
       "purpose": "Legacy icon-controls development output",
       "schema": "Legacy artifacts explicitly listed in the private retirement record",
       "producer": "Historical release sessions",
@@ -181,7 +259,7 @@
     },
     {
       "artifact_id": "legacy-automation-ui",
-      "path_pattern": "automation-ui-20*/**",
+      "path_pattern": "data/automation-ui-20*/**",
       "purpose": "Legacy automation-ui development output",
       "schema": "Legacy artifacts explicitly listed in the private retirement record",
       "producer": "Historical release sessions",
@@ -195,7 +273,7 @@
     },
     {
       "artifact_id": "legacy-task-ops",
-      "path_pattern": "task-ops-20*/**",
+      "path_pattern": "data/task-ops-20*/**",
       "purpose": "Legacy task-ops development output",
       "schema": "Legacy artifacts explicitly listed in the private retirement record",
       "producer": "Historical release sessions",
@@ -209,7 +287,7 @@
     },
     {
       "artifact_id": "legacy-convo-chain-inspection",
-      "path_pattern": "convo-chain-inspection-20*/**",
+      "path_pattern": "data/convo-chain-inspection-20*/**",
       "purpose": "Legacy convo-chain-inspection development output",
       "schema": "Legacy artifacts explicitly listed in the private retirement record",
       "producer": "Historical release sessions",
@@ -223,7 +301,7 @@
     },
     {
       "artifact_id": "legacy-convo-delete",
-      "path_pattern": "convo-delete-20*/**",
+      "path_pattern": "data/convo-delete-20*/**",
       "purpose": "Legacy convo-delete development output",
       "schema": "Legacy artifacts explicitly listed in the private retirement record",
       "producer": "Historical release sessions",
@@ -237,7 +315,7 @@
     },
     {
       "artifact_id": "legacy-convo-list-clarity",
-      "path_pattern": "convo-list-clarity-20*/**",
+      "path_pattern": "data/convo-list-clarity-20*/**",
       "purpose": "Legacy convo-list-clarity development output",
       "schema": "Legacy artifacts explicitly listed in the private retirement record",
       "producer": "Historical release sessions",
@@ -251,7 +329,7 @@
     },
     {
       "artifact_id": "legacy-convo-ux",
-      "path_pattern": "convo-ux-20*/**",
+      "path_pattern": "data/convo-ux-20*/**",
       "purpose": "Legacy convo-ux development output",
       "schema": "Legacy artifacts explicitly listed in the private retirement record",
       "producer": "Historical release sessions",
@@ -265,7 +343,7 @@
     },
     {
       "artifact_id": "legacy-loading-repair",
-      "path_pattern": "loading-repair-20*/**",
+      "path_pattern": "data/loading-repair-20*/**",
       "purpose": "Legacy loading-repair development output",
       "schema": "Legacy artifacts explicitly listed in the private retirement record",
       "producer": "Historical release sessions",
@@ -279,7 +357,7 @@
     },
     {
       "artifact_id": "memory-diagnostics",
-      "path_pattern": "memory-pressure-monitor/**",
+      "path_pattern": "data/memory-pressure-monitor/**",
       "purpose": "Finite memory diagnostic observations",
       "schema": "Terminal session receipt, configuration and conclusion",
       "producer": "Finite diagnostic observer",
@@ -293,7 +371,7 @@
     },
     {
       "artifact_id": "maintenance",
-      "path_pattern": "maintenance/**",
+      "path_pattern": "data/maintenance/**",
       "purpose": "Private maintenance conclusions and displaced local telemetry",
       "schema": "Bounded legacy telemetry and maintenance receipts",
       "producer": "Explicit local maintenance",
@@ -303,6 +381,230 @@
       "retention_rule": {
         "class": "core",
         "rule": "Preserve displaced original state until explicitly superseded; review above 1 MiB."
+      }
+    },
+    {
+      "artifact_id": "companion-attributes",
+      "path_pattern": ".gitattributes",
+      "purpose": "Private repository text and archive attributes",
+      "schema": "Git attributes document",
+      "producer": "Reviewed companion configuration",
+      "consumer_or_final_deliverable": "Private versioning and stable archive handling",
+      "rebuild_or_restore": "Restore the reviewed private repository revision.",
+      "max_bytes": 4096,
+      "retention_rule": {
+        "class": "core",
+        "rule": "Retain this exact configuration until explicitly superseded."
+      }
+    },
+    {
+      "artifact_id": "companion-ignore",
+      "path_pattern": ".gitignore",
+      "purpose": "Private repository rules for transient live database state",
+      "schema": "Git ignore document",
+      "producer": "Reviewed companion configuration",
+      "consumer_or_final_deliverable": "Private versioning without live SQLite side-file churn",
+      "rebuild_or_restore": "Restore the reviewed private repository revision.",
+      "max_bytes": 8192,
+      "retention_rule": {
+        "class": "core",
+        "rule": "Retain this exact configuration; ignore rules do not authorize deleting untracked files."
+      }
+    },
+    {
+      "artifact_id": "companion-guide",
+      "path_pattern": "README.md",
+      "purpose": "Private companion usage and recovery instructions",
+      "schema": "Markdown repository guide",
+      "producer": "Reviewed companion documentation",
+      "consumer_or_final_deliverable": "Operator recovery and storage review",
+      "rebuild_or_restore": "Restore the reviewed private repository revision and consult the source-owned storage contract.",
+      "max_bytes": 65536,
+      "retention_rule": {
+        "class": "core",
+        "rule": "Keep the current guide; do not retain copied source or logs as guide content."
+      }
+    },
+    {
+      "artifact_id": "data-directory-marker",
+      "path_pattern": "data/.gitkeep",
+      "purpose": "Empty private data-directory initialization marker",
+      "schema": "Empty file",
+      "producer": "Companion initialization",
+      "consumer_or_final_deliverable": "Versioned empty data directory",
+      "rebuild_or_restore": "Recreate an empty marker when the data directory would otherwise be absent from Git.",
+      "max_bytes": 4096,
+      "retention_rule": {
+        "class": "rebuildable",
+        "rule": "Retain only as an initialization marker; it carries no observations or recovery state."
+      }
+    },
+    {
+      "artifact_id": "console-data-guide",
+      "path_pattern": "data/task-console/README.md",
+      "purpose": "Current console-state layout and restore instructions",
+      "schema": "Markdown data guide",
+      "producer": "Reviewed private documentation",
+      "consumer_or_final_deliverable": "Database, event-ledger and registration operators",
+      "rebuild_or_restore": "Restore its reviewed private revision; domain tools remain authoritative for recovery.",
+      "max_bytes": 65536,
+      "retention_rule": {
+        "class": "core",
+        "rule": "Keep this exact current guide without admitting arbitrary console logs or copied runtime source."
+      }
+    },
+    {
+      "artifact_id": "ingest-success-marker",
+      "path_pattern": "data/task-console/runlog-ingest-ok.txt",
+      "purpose": "Last complete successful ingestion timestamp",
+      "schema": "Timestamp text updated only after the complete ingestion succeeds",
+      "producer": "console_ingest",
+      "consumer_or_final_deliverable": "Ingest freshness checks",
+      "rebuild_or_restore": "A new successful ingestion refreshes it; preserve the previous stamp until that succeeds.",
+      "max_bytes": 4096,
+      "retention_rule": {
+        "class": "rebuildable",
+        "rule": "Keep the current success stamp; age is an observation, never proof that ingestion currently succeeds."
+      }
+    },
+    {
+      "artifact_id": "private-delete-policy",
+      "path_pattern": "tools/delete_followup/config.json",
+      "purpose": "Operator-reviewed policy for a scoped private follow-up helper",
+      "schema": "Private helper configuration document",
+      "producer": "Explicit operator configuration",
+      "consumer_or_final_deliverable": "Private follow-up helper planning",
+      "rebuild_or_restore": "Restore the reviewed private configuration; never infer authority from a dated work directory.",
+      "max_bytes": 65536,
+      "retention_rule": {
+        "class": "core",
+        "rule": "Keep the exact configured input until its consumer is reconciled; configuration is not deletion approval."
+      }
+    },
+    {
+      "artifact_id": "private-delete-helper",
+      "path_pattern": "tools/delete_followup/*.py",
+      "purpose": "Private follow-up helper source retained for source reconciliation",
+      "schema": "Python source files",
+      "producer": "Prior reviewed private tooling",
+      "consumer_or_final_deliverable": "Source reconciliation and reviewed follow-up planning",
+      "rebuild_or_restore": "Reconcile useful code into its source owner before retiring these private helper files.",
+      "max_bytes": 262144,
+      "retention_rule": {
+        "class": "rebuildable",
+        "rule": "Keep until source ownership and current references are reconciled; do not archive generated work here."
+      }
+    },
+    {
+      "artifact_id": "private-delete-guide",
+      "path_pattern": "tools/delete_followup/README.md",
+      "purpose": "Instructions for the scoped private follow-up helper",
+      "schema": "Markdown helper guide",
+      "producer": "Private tooling documentation",
+      "consumer_or_final_deliverable": "Reviewed private helper use",
+      "rebuild_or_restore": "Preserve useful instructions in the source owner before retiring this exact guide.",
+      "max_bytes": 65536,
+      "retention_rule": {
+        "class": "rebuildable",
+        "rule": "Reconcile the guide with its source; private placement alone does not make it runtime core."
+      }
+    },
+    {
+      "artifact_id": "private-delete-tests",
+      "path_pattern": "tools/delete_followup/tests/**",
+      "purpose": "Synthetic tests for retained private follow-up tooling",
+      "schema": "Python test sources and synthetic fixtures",
+      "producer": "Private helper development",
+      "consumer_or_final_deliverable": "Source reconciliation and test verification",
+      "rebuild_or_restore": "Recreate from the reconciled helper source; retain pending useful-code reconciliation.",
+      "max_bytes": 262144,
+      "retention_rule": {
+        "class": "rebuildable",
+        "rule": "Retire only after useful tests are preserved in their source owner and writers and references are clear."
+      }
+    },
+    {
+      "artifact_id": "private-release-handoff",
+      "path_pattern": "tools/release/handoff_console.ps1",
+      "purpose": "Final listener and binding handoff helper",
+      "schema": "PowerShell release helper",
+      "producer": "Reviewed release tooling",
+      "consumer_or_final_deliverable": "Explicitly authorized console release handoff",
+      "rebuild_or_restore": "Reconcile useful handoff code into its source owner before retiring this exact helper.",
+      "max_bytes": 65536,
+      "retention_rule": {
+        "class": "rebuildable",
+        "rule": "Keep pending source reconciliation and referenced release review; classification never authorizes running the helper."
+      }
+    },
+    {
+      "artifact_id": "private-release-guide",
+      "path_pattern": "tools/release/README.md",
+      "purpose": "Instructions for the final release handoff helper",
+      "schema": "Markdown release guide",
+      "producer": "Reviewed release tooling documentation",
+      "consumer_or_final_deliverable": "Explicit release operator review",
+      "rebuild_or_restore": "Reconcile useful instructions with the source-owned helper.",
+      "max_bytes": 65536,
+      "retention_rule": {
+        "class": "rebuildable",
+        "rule": "Keep with its helper until source and current references are reconciled; no copied release payloads are admitted."
+      }
+    },
+    {
+      "artifact_id": "legacy-profile-copy",
+      "path_pattern": "data/profile-rollback/legacy-*/**",
+      "purpose": "Superseded profile snapshot and copied skill payloads",
+      "schema": "Legacy pointer, manifest and copied profile generation tree",
+      "producer": "Historical profile preservation",
+      "consumer_or_final_deliverable": "Source reconciliation and reviewed retirement",
+      "rebuild_or_restore": "Compare current profile authority and retained useful source before any retirement; this copy is not a database recovery snapshot.",
+      "max_bytes": 4194304,
+      "retention_rule": {
+        "class": "retired",
+        "rule": "Keep pending an exact reference, uniqueness and useful-code review. Retired classification alone does not prove it dispensable or allow removal."
+      }
+    },
+    {
+      "artifact_id": "legacy-one-click-release",
+      "path_pattern": "data/releases/*-one-click/**",
+      "purpose": "Historical one-click release development and diagnostic outputs",
+      "schema": "Legacy release scripts, receipts, screenshots and observations",
+      "producer": "Historical release development",
+      "consumer_or_final_deliverable": "Current release handoff and one bounded final conclusion",
+      "rebuild_or_restore": "Reconcile useful unique code and final evidence with source and current handoff; do not create another full release copy.",
+      "max_bytes": 1048576,
+      "retention_rule": {
+        "class": "retired",
+        "rule": "Only exact reviewed roots may be retired after source and current-reference clearance; keep unresolved historical evidence until reviewed."
+      }
+    },
+    {
+      "artifact_id": "legacy-release-attributes",
+      "path_pattern": "data/releases/.gitattributes",
+      "purpose": "Attributes belonging to the historical release workspace",
+      "schema": "Git attributes document",
+      "producer": "Historical release development",
+      "consumer_or_final_deliverable": "Reviewed legacy workspace retirement",
+      "rebuild_or_restore": "Useful rules belong in the private repository root configuration.",
+      "max_bytes": 4096,
+      "retention_rule": {
+        "class": "retired",
+        "rule": "Retire only with a reviewed legacy release group after useful settings are reconciled."
+      }
+    },
+    {
+      "artifact_id": "superseded-storage-followup",
+      "path_pattern": "data/storage-followup/20??-??-??/**",
+      "purpose": "Dated one-shot storage review watcher configuration and terminal observations",
+      "schema": "Watcher configuration, bounded receipts, terminal status and lock marker",
+      "producer": "Finite private metadata review watcher",
+      "consumer_or_final_deliverable": "One concise retained conclusion and source-owned watcher",
+      "rebuild_or_restore": "Retain required configuration and conclusion before retiring raw outputs; a lock file requires an inactive-holder check.",
+      "max_bytes": 65536,
+      "retention_rule": {
+        "class": "retired",
+        "rule": "Review exact terminal or superseded runs for source, result and writer clearance. This namespace is not a permitted new long-lived runtime store."
       }
     }
   ]

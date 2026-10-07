@@ -6,6 +6,12 @@ All notable changes to this project are documented here (Keep a Changelog style)
 
 ### Changed
 
+- Set a 64 MiB aggregate storage review threshold while preserving current
+  database, transaction files and recovery protection.
+- Make storage declarations relative to the complete private companion repository.
+  Protect exact database and recovery files, and distinguish current state from
+  legacy development copies and helpers awaiting source reconciliation.
+
 - **docs: unify repo structure (Skill Repo Spec v1).** The README was restructured to the house section order with philosophy first, a Chinese counterpart was added section for section, and the mandatory `ROADMAP.md` and `CHANGELOG.md` were written. No functional version bump: nothing about the console changed.
 
   The repository declared no version number anywhere before this, so `0.1.0` was chosen and the choice is argued in `docs/2026-09-22-spec-adaptation.md` rather than presented as a fact discovered in the code.

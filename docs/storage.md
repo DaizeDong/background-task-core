@@ -1,7 +1,18 @@
 # Storage and completed-work retirement
 
-`storage.contract.json` describes paths relative to the private companion's data directory.
-Its byte limits are review thresholds. They never authorize truncating current state to reach a size target.
+`storage.contract.json` describes paths relative to the private companion repository root.
+Runtime paths therefore begin with `data/`; exact root Git configuration and the companion guide
+have separate owners. The shared checker must receive the entire PRIVATE worktree, never its
+`data/` subdirectory. Its byte limits are review thresholds. They never authorize truncating
+current state to reach a size target. The aggregate working-data review threshold
+is 64 MiB, excluding Git administration. It can be exceeded before an individual
+database threshold; either finding requires reviewed retention or representation
+work, not automatic truncation of database or recovery state.
+
+The native cleanup and database-backup commands still accept `<private-data>`, the companion's
+`data/` directory. Their retirement records remain relative to that directory. They do not load
+`storage.contract.json`; changing the shared contract's path basis does not change their runtime
+paths or their separate protection rules.
 
 Legacy development artifacts use explicit top-level namespaces, so a date in a task declaration
 cannot also classify it as retired work. The legacy scopes partition the existing 16 MiB review
@@ -12,8 +23,25 @@ name exact reviewed roots. Unrecognized paths remain undeclared and require a se
 their producer, references and recovery needs; historical cleanup does not justify a broader source
 contract.
 
+Legacy profile copies under `data/profile-rollback/legacy-*/` and historical one-click release
+workspaces under `data/releases/*-one-click/` are separately classified as retired development
+artifacts. Preserve any unique useful code, required inputs and bounded conclusions before a
+reviewed retirement. Dated storage follow-up observations have the same source, result and writer
+checks; a terminal or superseded status does not establish that a lock has no holder. None of these
+scopes admits a new runtime output location or permits deletion by age. Unrecognized profile,
+release, helper and recovery siblings remain undeclared. The native cleaner conservatively refuses
+the entire profile-rollback namespace even when the shared contract marks legacy copies retired.
+
+Private `tools/release/` and `tools/delete_followup/` source files are bounded reconciliation inputs.
+Their useful code and tests must be preserved in the appropriate source owner before retirement;
+they are not core runtime history. The delete helper's exact `config.json` remains core while its
+configured consumer needs it. This classification does not authorize running either helper.
+
 Keep the launcher binding, database and required SQLite side files, durable run-event export,
-registration recovery state, and referenced task declarations. The database is not fully reproducible
+registration recovery state, and referenced task declarations. The exact
+`data/task-console/README.md` documents the current layout. The ingest success stamp is
+rebuildable freshness metadata; its age never certifies present success. Other logs and copied
+runtime source receive no console-wide core owner. The database is not fully reproducible
 with `--backfill`: historical task configurations and ingest attempts are retained there, and the OS
 event log rotates. The JSONL export preserves normalized events, but omits `rc_raw` and does not contain
 the other database tables. No complete JSONL-to-database restore command is currently provided.
@@ -24,6 +52,10 @@ It proves PRIVATE visibility, reads a consistent SQLite transaction through the 
 and compares integrity, schema and every table count before publishing. It replaces one
 `<private-data>/task-console/recovery/current.zip` and its fixed `current.json` receipt. The archive
 contains the standalone database and its own receipt, so WAL/SHM files and live locks are not copied.
+The contract protects only the exact current ZIP and external JSON receipt as core recovery
+artifacts. `snapshot.lock` is separately rebuildable coordination state: its presence is not
+ownership evidence, and any retirement requires proving the OS lock has no holder. Staged snapshots
+and additional archives remain undeclared until separately reviewed.
 The OS lock rejects overlapping captures. A failed refresh exits nonzero and must stop the enclosing
 backup. This command provides an explicit refresh entry; scheduling depends on the installation's
 existing backup integration.

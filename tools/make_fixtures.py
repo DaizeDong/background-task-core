@@ -68,33 +68,70 @@ def storage_retirement_case(root):
 
 
 def storage_contract_case(root):
-    """Generate dated declaration, legacy development and unreviewed paths."""
+    """Generate companion-root paths with reviewed and unknown storage owners."""
     root = Path(root)
     declarations = [
-        "declarations-20991231/bootstrap/runtime-config.json",
-        "declarations-20991231/source-closure/nested/input.json",
-        "declarations-20991231-example/source-closure/input.json",
+        "data/declarations-20991231/bootstrap/runtime-config.json",
+        "data/declarations-20991231/source-closure/nested/input.json",
+        "data/declarations-20991231-example/source-closure/input.json",
     ]
-    retired = [
-        f"{prefix}-20991231-example/nested/output.txt"
+    legacy_scopes = [
+        f"data/{prefix}-20991231-example/nested/output.txt"
         for prefix in (
             "console-repair", "console-ux", "icon-controls", "automation-ui", "task-ops",
             "convo-chain-inspection", "convo-delete", "convo-list-clarity", "convo-ux",
             "loading-repair",
         )
     ]
-    unknown = [
-        "unreviewed-20991231/nested/output.txt",
-        "profile-rollback/original.json",
-        "releases/20991231/generated.txt",
-        "unreviewed-copy/original.txt",
-        "workspaces/console-ux-20991231/nested/output.txt",
+    retired = [
+        *legacy_scopes,
+        "data/profile-rollback/legacy-example/generations/example/files/skill.md",
+        "data/releases/20991231-one-click/nested/output.txt",
+        "data/releases/.gitattributes",
+        "data/storage-followup/2099-12-31/status.json",
     ]
-    for relative in (*declarations, *retired, *unknown):
+    core = [
+        ".gitattributes", ".gitignore", "README.md",
+        "data/task-console/console.sqlite3",
+        "data/task-console/console.sqlite3-wal",
+        "data/task-console/console.sqlite3-shm",
+        "data/task-console/console.sqlite3-journal",
+        "data/task-console/run-events.jsonl",
+        "data/task-console/recovery/current.zip",
+        "data/task-console/recovery/current.json",
+        "data/task-console/registration/current.json",
+        "data/task-console/README.md",
+        "tools/delete_followup/config.json",
+    ]
+    rebuildable = [
+        "data/.gitkeep", "data/task-console/runlog-ingest-ok.txt",
+        "data/task-console/recovery/snapshot.lock",
+        "tools/delete_followup/delete_followup.py",
+        "tools/delete_followup/README.md",
+        "tools/delete_followup/tests/test_example.py",
+        "tools/release/handoff_console.ps1", "tools/release/README.md",
+    ]
+    unknown = [
+        "data/unreviewed-20991231/nested/output.txt",
+        "data/profile-rollback/original.json",
+        "data/releases/20991231/generated.txt",
+        "data/unreviewed-copy/original.txt",
+        "data/workspaces/console-ux-20991231/nested/output.txt",
+        "data/task-console/recovery/old.zip",
+        "data/task-console/recovery/snapshot-example/console.sqlite3",
+        "data/task-console/old-log.jsonl",
+        "data/task-console/console.sqlite3-old-copy",
+        "tools/unreviewed-copy/source.py",
+        "tools/delete_followup/copied-source/module.py",
+        "task-console/console.sqlite3",
+    ]
+    for relative in (*declarations, *retired, *core, *rebuildable, *unknown):
         path = root / relative
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text("synthetic artifact\n", encoding="utf-8")
-    return {"declarations": declarations, "retired": retired, "unknown": unknown}
+    return {"declarations": declarations, "legacy_scopes": legacy_scopes,
+            "retired": retired, "core": core, "rebuildable": rebuildable,
+            "unknown": unknown}
 
 
 def synthetic_conversation(number=1, cwd="C:/Acme/project", title=None, turns=2):
