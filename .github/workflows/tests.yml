@@ -71,7 +71,7 @@ jobs:
           gh api meta --jq '.ssh_keys[] | "github.com " + .' > "$hosts"
           export GIT_SSH_COMMAND="ssh -i $key -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$hosts"
           python -m pip install --quiet pytest pywin32 PyYAML "setuptools>=77" wheel \
-            "fleet-guards @ git+https://github.com/DaizeDong/fleet-guards@3256802e39ba8a996c9f8988f7c4474224e7ccfa" \
+            "fleet-guards @ git+https://github.com/DaizeDong/fleet-guards@a05de96fff14864dde15fb94d1aa93cf8c13fe34" \
             "llmcall @ git+ssh://git@github.com/DaizeDong/llmcall.git@98af777c57a64dfab3ae48a43a02cc80f404dab5" \
             "convo-chain @ git+https://github.com/DaizeDong/convo-chain@e4e0d2f9e0972ed5a9b1a6f1ef458e46a4bb782c" \
             "skill-smith @ git+https://github.com/DaizeDong/skill-smith@ff47b5fedfc5b4bd15eace93811736287c1bfda1"
