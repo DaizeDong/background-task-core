@@ -7,4 +7,5 @@ examples/console/.console.json text eol=lf
 scripts/task_console/categories.example.json text eol=lf
 launcher-binding.json.example text eol=lf
 storage-retention.json.example text eol=lf
+settings.ps1.example text eol=lf
 task-console/run-events.jsonl.example text eol=lf

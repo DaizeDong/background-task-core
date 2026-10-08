@@ -81,6 +81,12 @@ OVERRIDES = (
      "数据库位置。默认由 datadir 解析器从私有伴生仓算出来,环境变量只是覆盖 —— "
      "它没设是正常状态,列进面板会变成一条永远显示「未设」的噪音。"
      "库本身可不可用由 load_from_db 的 reason 单独报。"),
+    ("TASK_CONSOLE_CONFIG",
+     "私有伴生仓根目录的首选覆盖项，不是独立面板来源；数据库的可用性由 load_from_db 的 reason 单独报告。"),
+    ("TASK_CONSOLE_CONFIG_DIR",
+     "私有伴生仓根目录的兼容覆盖项，优先级低于 TASK_CONSOLE_CONFIG；它选择存储位置，不增加独立面板来源。"),
+    ("TASK_CONSOLE_DATA_DIR",
+     "旧数据目录覆盖项，可指向伴生仓或其 data 子目录；仅用于位置选择，数据库状态由读取结果单独报告。"),
     ("TASK_CONSOLE_POWERSHELL",
      "解释器覆盖。没设时钉死在系统目录的绝对路径上,那才是正常形态。"),
     ("TASK_CONSOLE_LLMCALL_LEDGER",

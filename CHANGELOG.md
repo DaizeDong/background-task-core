@@ -5,6 +5,7 @@ All notable changes to this project are documented here (Keep a Changelog style)
 ## [Unreleased]
 
 ### Configuration and storage admission
+- Keep generated PowerShell settings examples byte-identical on Windows checkouts, account for native configuration overrides in self-check, and align scheduled-backup unit fixtures with the current authorization boundary.
 - Set a 256 MiB operating review cap with explicit database, event, recovery and registration allowances. Retained historical artifacts still count; core history is not truncated to meet the cap.
 - Require this source payload's pinned resolver and source-owned PRIVATE versioned admission for database overrides and durable event exports. Remove ancestor and vendored resolver fallback.
 - Declare SQLite coordination sidecars as exact transient leaves while retaining their transaction recovery obligations; the main database remains versionable.
