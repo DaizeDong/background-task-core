@@ -15,6 +15,10 @@ All notable changes to this project are documented here (Keep a Changelog style)
 
 ### Changed
 
+- Move the CI llmcall pin from 98af777 (0.3.0) to a7b8d8f (0.3.1, current llmcall main).
+  `llmcall.process` is byte-identical between the two, so `llmcall>=0.3.0` stays the
+  bound; 0.3.1 also declares `fleet-guards>=0.2.1`, which the CI fleet-guards pin satisfies.
+
 - Require `llmcall>=0.3.0` and move the CI pin from 39dd746 (0.2.0) to 98af777
   (0.3.0, Windows Job Object ownership of every client process tree). The console
   uses only `llmcall.process` (`execution_scope`, `current_control`,

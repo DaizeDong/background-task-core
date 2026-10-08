@@ -46,7 +46,7 @@ jobs:
       #   convo-chain   0.3.0, public (server.py, convos.py, work_context.py).
       #   fleet-guards  0.2.1, public; the importable fleet_guards package and canonical
       #                 companion runtime admission used by source and installed packages.
-      #   llmcall       0.3.0, PRIVATE; process containment for controller, runtime_windows,
+      #   llmcall       0.3.1, PRIVATE; process containment for controller, runtime_windows,
       #                 observations and git_ops. Read with a per-consumer read-only deploy key on
       #                 DaizeDong/llmcall, the same arrangement email-monitor and schedule-reminder use.
       #   skill-smith   0.1.4, public; the skill catalog the observation adapter reads. Imported
@@ -72,7 +72,7 @@ jobs:
           export GIT_SSH_COMMAND="ssh -i $key -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$hosts"
           python -m pip install --quiet pytest pywin32 PyYAML "setuptools>=77" wheel \
             "fleet-guards @ git+https://github.com/DaizeDong/fleet-guards@0f454415f015f2adab247e3b4829c4c8c0de40da" \
-            "llmcall @ git+ssh://git@github.com/DaizeDong/llmcall.git@98af777c57a64dfab3ae48a43a02cc80f404dab5" \
+            "llmcall @ git+ssh://git@github.com/DaizeDong/llmcall.git@a7b8d8f412cec73787fbe7f1ff2b742085a0c0c5" \
             "convo-chain @ git+https://github.com/DaizeDong/convo-chain@e4e0d2f9e0972ed5a9b1a6f1ef458e46a4bb782c" \
             "skill-smith @ git+https://github.com/DaizeDong/skill-smith@ff47b5fedfc5b4bd15eace93811736287c1bfda1"
           # The console itself, installed from a clean export of this commit. Several tests start the
