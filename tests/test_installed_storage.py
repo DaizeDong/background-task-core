@@ -19,6 +19,37 @@ def run(arguments, **kwargs):
     return execution
 
 
+def test_installed_observation_binding_rejects_its_package_directory(tmp_path):
+    spec = importlib.util.spec_from_file_location("console_fixtures", ROOT / "tools/make_fixtures.py")
+    generator = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(generator)
+    binding = generator.observation_binding_case(tmp_path)
+    # CI installs the clean console wheel and pinned dependencies before this probe.
+    # Isolated mode must exercise that installation, without source-path assistance.
+    probe = """
+import json, pathlib, sys
+from task_console import observations
+package = pathlib.Path(observations.__file__).resolve().parent
+assert package.is_relative_to(pathlib.Path(sys.prefix))
+assert not package.is_relative_to(pathlib.Path(sys.argv[2]))
+path = pathlib.Path(sys.argv[1])
+binding = observations.load_binding(path)
+assert not pathlib.Path(binding['snapshot']).exists()
+binding.update(private_dir=str(package), snapshot=str(package / 'synthetic-snapshot.json'))
+path.write_text(json.dumps(binding), encoding='utf-8')
+try:
+    observations.load_binding(path)
+except RuntimeError as error:
+    assert 'INSIDE its own repo' in str(error), str(error)
+else:
+    raise AssertionError('installed observation output inside its own package was admitted')
+assert not pathlib.Path(binding['snapshot']).exists()
+print('installed observation binding: external accepted; package refused')
+"""
+    output = run([sys.executable, "-I", "-B", "-c", probe, str(binding), str(ROOT)], cwd=tmp_path)
+    assert output.stdout.strip() == "installed observation binding: external accepted; package refused"
+
+
 def test_cold_wheel_preserves_private_admission_and_requires_its_own_contract(tmp_path):
     source = tmp_path / "source"
     source.mkdir()

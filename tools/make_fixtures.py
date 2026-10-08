@@ -7,6 +7,18 @@ import json
 from pathlib import Path
 
 
+def observation_binding_case(root):
+    """Generate a passive binding without reading or collecting machine state."""
+    root = Path(root)
+    private = root / "private"
+    private.mkdir(parents=True)
+    binding = {"schemaVersion": 1, "request": str(root / "request.json"),
+               "private_dir": str(private), "snapshot": str(private / "snapshot.json")}
+    path = root / "binding.json"
+    path.write_text(json.dumps(binding), encoding="utf-8")
+    return path
+
+
 def registration_recovery_case(root, *, pending=False):
     """Generate synthetic authority documents and opaque ciphertext placeholders."""
     import hashlib

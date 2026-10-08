@@ -19,9 +19,9 @@ import sys
 import time
 
 try:
-    from fleet_guards import filesystem as fs, datadir
+    from fleet_guards import filesystem as fs
     from llmcall import process
-    from . import registration, component_status, health
+    from . import registration, component_status, health, console_store
     from .runtime_storage import ResourceLocks, decode
 except ImportError:
     if __name__ == "__main__":
@@ -120,7 +120,7 @@ def load_binding(path):
     if not private.is_dir():
         raise ValueError("private_directory_must_exist")
     output = fs.validate_path(binding["snapshot"], root=private)
-    datadir.assert_outside_own_repo(output, "task-console", consumer_root=Path(__file__).parent)
+    console_store._load_datadir().assert_outside_own_repo(output, "task-console")
     if output == absolute(str(path)):
         raise ValueError("snapshot_overwrites_binding")
     if output == private or ("request" in binding and output == absolute(binding["request"])):

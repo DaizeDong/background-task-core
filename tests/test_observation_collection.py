@@ -58,6 +58,16 @@ def verdict(snapshot, now=NOW):
     return component_status.evaluate_snapshot(snapshot, now)["tasks"][0]
 
 
+@pytest.mark.parametrize("destination", [REPO, REPO / "scripts/task_console"])
+def test_snapshot_cannot_land_in_consumer_source(case, destination):
+    config, path, _, _ = case
+    config.update(private_dir=str(destination), snapshot=str(destination / "synthetic-snapshot.json"))
+    write(path, config)
+    with pytest.raises(RuntimeError, match="INSIDE its own repo"):
+        observations.load_binding(path)
+    assert not Path(config["snapshot"]).exists()
+
+
 @pytest.mark.parametrize("migrated", [False, True])
 def test_compiles_then_publishes_same_reader_input(case, monkeypatch, migrated):
     config, path, request, capture = case
