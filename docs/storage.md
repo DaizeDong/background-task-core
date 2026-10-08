@@ -5,9 +5,13 @@ Runtime paths therefore begin with `data/`; exact root Git configuration and the
 have separate owners. The shared checker must receive the entire PRIVATE worktree, never its
 `data/` subdirectory. Its byte limits are review thresholds. They never authorize truncating
 current state to reach a size target. The aggregate working-data review threshold
-is 64 MiB, excluding Git administration. It can be exceeded before an individual
-database threshold; either finding requires reviewed retention or representation
-work, not automatic truncation of database or recovery state.
+is 256 MiB, excluding Git administration. The operating allowances are 128 MiB for the
+database, 48 MiB for the event export, 32 MiB for recovery and 8 MiB for registration,
+with remaining room for coordination, configuration and retained historical artifacts.
+Current protected operating state can exceed the former 64 MiB development threshold.
+All retained retired bytes continue to count until actual reviewed removal. Exceeding
+either the aggregate or an artifact limit requires retention or representation review;
+it never authorizes automatic truncation of database or recovery state.
 
 The native cleanup and database-backup commands still accept `<private-data>`, the companion's
 `data/` directory. Their retirement records remain relative to that directory. They do not load
@@ -134,3 +138,9 @@ Unlisted work is retained. A running process referring to a candidate blocks cle
 The tool prints a small receipt. Replace the previous receipt in `<private-data>/storage/` instead of
 creating another dated archive. Raw diagnostic sampling ends with its session; after preserving the
 conclusion and configuration, its completed raw observations can use the same explicit retirement path.
+
+Native settings and discovery are specified in [CONFIG.md](../CONFIG.md). Main database
+versionability is required before writing. The exact WAL, SHM and journal leaves have transient
+persistence because SQLite controls their lifetime, while their core retention protects pending
+transactions until checkpoint or consistent recovery. Eligibility for Git does not make copying
+or staging a live database safe; keep coordinated online/cold backup procedures.

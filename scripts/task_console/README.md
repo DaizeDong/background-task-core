@@ -200,7 +200,7 @@ produce the same empty-looking chart weeks later.
 
 ## Configure it
 
-Copy `categories.example.json` to `~/.task-console/categories.json` and replace the synthetic
+Copy `categories.example.json` to `<private-companion>/categories.json` and replace the synthetic
 names with your own tasks. Everything else is optional.
 
 Each category has `name`, `tasks` (Windows task names), and an optional category `desc`.
@@ -322,6 +322,9 @@ the generator by the fixture boundary gate. Regenerate it from the repository ro
 | `TASK_CONSOLE_ALLOWED_HOSTS` | extra Host header values to accept | only the three loopback spellings are accepted |
 | `TASK_CONSOLE_IDENTITIES` | a table of `login\|display name\|commit email`, one per line, `#` for comments, saying which identity each repository owner should be committed under | unset means the account-match column reads NOT CHECKED for every repository, which is deliberately not the same as saying they match; no address from this file is ever rendered, only the account name and the verdict |
 | `TASK_CONSOLE_CONVO_CACHE` | where the conversation index caches its scan | unset means the first scan of every page load walks every transcript again; correctness is unaffected, the page is just slower |
+| `TASK_CONSOLE_CONFIG` | PRIVATE versioned companion root | when unset, falls back to CONFIG_DIR, DATA_DIR, sibling and home discovery described in CONFIG.md |
+| `TASK_CONSOLE_CONFIG_DIR` | alias companion root | used when CONFIG is unset; explicit missing roots do not fall through |
+| `TASK_CONSOLE_DATA_DIR` | companion root or its `data` child | when unset, falls back to sibling and home discovery; canonical database uses `<root>/data/task-console/console.sqlite3` |
 | `TASK_CONSOLE_DB` | the SQLite file the ingester writes and the page reads | falls back to the companion repo's `data/task-console/console.sqlite3`, and if no companion resolves it reports UNINITIALISED with setup instructions rather than falling back into this repo |
 | `TASK_CONSOLE_LLMCALL_LEDGER` | the append-only JSONL ledger the LLM-call primitive writes, one line per call | falls back to `~/.llmcall/ledger.jsonl`; a missing file makes the call view read NOT CHECKED, which is deliberately not the same as reading zero calls |
 | `TASK_CONSOLE_LLMCALL_CHAIN` | the file the call view writes a fallback-chain order into | falls back to `~/.llmcall/chain.txt`. This is the one path on this console that writes into another program's configuration, and it is shadowed by the `LLMCALL_CHAIN` environment variable: when that variable is set, the page says so in as many words instead of reporting a save that changes nothing |
@@ -331,7 +334,7 @@ the generator by the fixture boundary gate. Regenerate it from the repository ro
 | `TASK_CONSOLE_DELETED_ARCHIVE` | absolute private directory, outside every git worktree and outside the backup, where deleting a task the Controller does not own first writes its exported XML and a receipt | no default; unset blocks the delete of an unmanaged task in its preview; Controller-owned tasks keep their before-image in the Controller's vault and do not use it |
 | `TASK_CONSOLE_POWERSHELL` | the powershell.exe that task commands run through | falls back to the pinned `System32\WindowsPowerShell\v1.0\powershell.exe`, and only to a bare `powershell.exe` off PATH when that file is not there |
 
-The tool defaults only into its own namespace. Pointing it at whatever else a machine keeps its
+The llmcall and executable defaults are documented in the table above. Pointing it at whatever else a machine keeps its
 watch-list and allow-list in is the launcher's job, and the launcher belongs on that machine.
 
 That last row is the important one. **Unknown and pass are never rendered the same.** A console
@@ -444,7 +447,7 @@ normal user session. The console says so instead of reporting a bare access-deni
 | File | What it is |
 |---|---|
 | `server.py` | the HTTP layer: routing, auth, host allowlist, the two write endpoints |
-| `console.html` | the whole page: one file, still no build step |
+| `console.html` | page shell loading separate static CSS and JavaScript; no build step |
 | `vendor/tabler/` | Tabler v1.5.0 (MIT), the dashboard shell. Vendored, not a CDN link |
 | `collect.ps1` / `act.ps1` / `runlog.ps1` | the Windows side |
 | `evtlog.py` | the fast event log reader (EvtQuery), with the PowerShell path as fallback |
@@ -624,3 +627,7 @@ apply/retire/recover CLI entrypoints. It does not change the read-only plan abov
 See [the registration contract](../../docs/task-registration.md) for required
 private inputs, transport guarantees, recovery semantics and integration gaps.
 No production runtime adapters or automatic authority cutover are installed.
+
+Configuration lifecycle, full companion discovery and PRIVATE database admission are described
+in [CONFIG.md](../../CONFIG.md). The native environment template is `settings.ps1` in the PRIVATE
+companion. `console.html` contains the page shell and loads the separate static modules.

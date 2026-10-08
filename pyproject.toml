@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "Local work, automation and resource console with guarded Windows task controls"
 readme = "README.md"
 requires-python = ">=3.11"
-dependencies = ["convo-chain==0.3.0", "fleet-guards>=0.1.0", "llmcall>=0.2.0", "PyYAML>=6", "pywin32>=306; sys_platform == 'win32'"]
+dependencies = ["convo-chain==0.3.0", "fleet-guards>=0.2.1", "llmcall>=0.3.0", "PyYAML>=6", "pywin32>=306; sys_platform == 'win32'"]
 license = "MIT"
 
 [project.scripts]

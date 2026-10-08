@@ -37,6 +37,11 @@ sys.path.insert(0, os.path.join(
 import console_store as S  # noqa: E402
 
 
+@pytest.fixture(autouse=True)
+def connection_test_admission(monkeypatch):
+    monkeypatch.setattr(S, "authorize_write", lambda *args, **kwargs: None)
+
+
 def test_the_corrupt_branch_closes_explicitly():
     """形状检查:CORRUPT 分支里要有显式的 close。
 

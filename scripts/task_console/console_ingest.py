@@ -337,6 +337,7 @@ def _stamp_runlog_success(added: int) -> None:
         if not p:
             return
         stamp = Path(p).parent / "runlog-ingest-ok.txt"
+        console_store.authorize_write(stamp, artifact_id="ingest-success-marker")
         stamp.write_text("%s added=%d" % (now(), added) + chr(10), encoding="utf-8")
     except Exception:
         # A stamp that cannot be written must not fail an ingest that DID succeed. The monitor will
@@ -429,6 +430,7 @@ def export_run_events(con) -> tuple[bool, int, str]:
         return True, 0, ""
 
     try:
+        console_store.authorize_write(out, artifact_id="run-events")
         with out.open("a", encoding="utf-8", newline="\n") as fh:
             for r in rows:
                 fh.write(json.dumps({

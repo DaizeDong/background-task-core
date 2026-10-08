@@ -1,0 +1,4 @@
+# Synthetic native environment schema; review private paths before use.
+$env:TASK_CONSOLE_CONFIG = 'C:/AcmePrivate/task-console-config'
+$env:TASK_CONSOLE_DB = 'C:/AcmePrivate/task-console-config/data/task-console/console.sqlite3'
+$env:TASK_CONSOLE_READ_ONLY = '1'

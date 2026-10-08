@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "repository_kind": "software",
+  "configuration": "settings",
+  "rationale": "Native configuration controls selected runtime resources and private state; storage discovery alone cannot establish readiness.",
+  "documentation": [
+    "README.md",
+    "README_CN.md",
+    "CONFIG.md"
+  ],
+  "settings": {
+    "schema_document": "CONFIG.md",
+    "discovery_document": "CONFIG.md",
+    "environment": "TASK_CONSOLE_CONFIG",
+    "aliases": [
+      "TASK_CONSOLE_CONFIG_DIR",
+      "TASK_CONSOLE_DATA_DIR"
+    ],
+    "precedence": [
+      "TASK_CONSOLE_DB selects an exact declared database path",
+      "TASK_CONSOLE_CONFIG",
+      "TASK_CONSOLE_CONFIG_DIR",
+      "TASK_CONSOLE_DATA_DIR",
+      "sibling task-console-config",
+      "~/.task-console-config",
+      "~/.task-console-data"
+    ],
+    "required_fields": [
+      "TASK_CONSOLE_DB"
+    ],
+    "initializer": {
+      "path": "tools/init_config.py",
+      "args": [
+        "--out",
+        "{output}"
+      ]
+    },
+    "doctor": {
+      "path": "tools/verify_config.py",
+      "args": [
+        "--json"
+      ]
+    }
+  }
+}

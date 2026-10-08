@@ -60,6 +60,7 @@ def both_paths(tmp_path, monkeypatch):
     刻意不读这台机器上的任何东西:一个引用了操作者真实路径的公开仓测试,
     既是 PII 泄漏也是「换台机器就 skip」的空检查。
     """
+    monkeypatch.setattr(console_store, "authorize_write", lambda *a, **kw: None)
     log = tmp_path / "monitor.log"
     log.write_text(LOG, encoding="utf-8")
     db = tmp_path / "console.sqlite3"

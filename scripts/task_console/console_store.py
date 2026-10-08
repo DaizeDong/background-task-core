@@ -12,9 +12,8 @@ through it. Resolution order:
        instructions. A repo-relative fallback is how real data ends up in a public repo, and it is
        the specific defect this boundary exists to prevent.
 
-Every resolved path is passed through datadir.assert_outside_own_repo before it is used, so a
-future edit that reintroduces an in-repo default fails loudly at the point of use rather than
-silently writing there.
+Every resolved path requires the source-owned storage contract and a PRIVATE versioned
+companion proof. An override selects a location; it cannot bypass admission or missing Guards.
 
 READS DEGRADE, WRITES DO NOT. Readers open the file read-only through a URI and, when it is absent
 or unreadable, return a state object carrying a Chinese sentence explaining which of the six
@@ -32,37 +31,78 @@ HERE = Path(__file__).resolve().parent
 SKILL = "task-console"
 DB_NAME = "console.sqlite3"
 
-# The shared resolver ships in the guards submodule. Import it by path rather than assuming it is
-# importable, because its location moved on 2026-09-01 when the kit became a submodule.
-#
-# SEARCH UPWARDS, never a fixed number of levels. This used to be HERE.parents[3], which was the
-# repo root only because this file happened to sit four directories deep inside another project.
-# Extracting the console into its own repository put it two deep, parents[3] walked out past the
-# repo entirely, and the resolver came back NO_RESOLVER: no companion, no database, and a console
-# that silently fell back to reading the event log on every request. The comment directly above
-# already records that this location moved once before, so the fixed depth had failed once and was
-# repaired by changing the number rather than the assumption.
+# A wheel carries the source-owned contract beside the installed package.
+_checkout = HERE.parents[1]
+SOURCE_ROOT = (_checkout if (_checkout / ".git").exists()
+               and (_checkout / "pyproject.toml").is_file() else HERE)
 _datadir = None
+_storage = None
+_storage_root = None
+
+
+def _pinned_module(filename, name):
+    import importlib.util
+    source = SOURCE_ROOT / "guards" / "fleet_guards" / filename
+    if not source.is_file():
+        raise ValueError("Initialize this payload's pinned Guards submodule: missing " + filename)
+    spec = importlib.util.spec_from_file_location(name, source)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    spec.loader.exec_module(module)
+    return module
 
 
 def _load_datadir():
     global _datadir
-    if _datadir is not None:
-        return _datadir
-    import importlib.util
-    cands = []
-    for base in (HERE,) + tuple(HERE.parents):
-        cands.append(base / "guards" / "tools" / "datadir.py")   # repo_root/guards/tools
-        cands.append(base / "tools" / "datadir.py")              # pre-2026-09-01 vendored layout
-    for cand in cands:
-        if cand.exists():
-            spec = importlib.util.spec_from_file_location("sr_datadir", cand)
-            mod = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(mod)
-            _datadir = mod
-            return mod
-    _datadir = False
-    return False
+    if _datadir is None:
+        _datadir = _load_storage().companion_resolver(source_root=SOURCE_ROOT)
+    if not callable(getattr(_datadir, "resolve_companion_root", None)):
+        raise ValueError("This payload lacks a usable pinned Guards resolver")
+    return _datadir
+
+
+def _load_storage():
+    global _storage, _storage_root
+    if _storage is None or _storage_root != SOURCE_ROOT:
+        if SOURCE_ROOT == HERE:
+            try:
+                from fleet_guards import runtime
+            except ImportError as error:
+                raise ValueError("Install the pinned Guards runtime package (fleet-guards>=0.2.1)") from error
+            _storage = runtime
+        else:
+            _storage = _pinned_module("runtime.py", "task_console_guard_runtime")
+        _storage_root = SOURCE_ROOT
+    if not all(callable(getattr(_storage, name, None))
+               for name in ("companion_resolver", "authorize_artifact_write")):
+        raise ValueError("This payload's pinned Guards lacks companion runtime authorization")
+    return _storage
+
+
+def companion_root():
+    """Select configuration once; an explicit missing root never falls through."""
+    resolver = _load_datadir()
+    for key in ("TASK_CONSOLE_CONFIG", "TASK_CONSOLE_CONFIG_DIR"):
+        if os.environ.get(key):
+            return Path(os.environ[key]).expanduser().absolute()
+    if os.environ.get("TASK_CONSOLE_DATA_DIR"):
+        selected = Path(os.environ["TASK_CONSOLE_DATA_DIR"]).expanduser().absolute()
+        return selected.parent if selected.name == "data" else selected
+    root = resolver.resolve_companion_root(SKILL)
+    return Path(root).absolute() if root else None
+
+
+def authorize_write(destination, *, artifact_id=None):
+    """Admit a concrete source-owned leaf without creating directories or files."""
+    _load_datadir()  # Missing discovery dependency is never bypassed by an override.
+    path = Path(destination).expanduser().absolute()
+    roots = [node for node in path.parents
+             if os.path.lexists(node / ".git")]
+    if not roots:
+        raise ValueError("DATA requires an initialized PRIVATE versioned companion")
+    root = roots[0]
+    return _load_storage().authorize_artifact_write(
+        SOURCE_ROOT, root, path.relative_to(root).as_posix(), artifact_id=artifact_id)
 
 
 class DbState:
@@ -76,39 +116,46 @@ class DbState:
 
 
 def resolve_db(create_parent: bool = False):
-    """Return (Path, None) or (None, DbState). Never returns a repo-relative path."""
-    env = os.environ.get("TASK_CONSOLE_DB")
-    if env:
-        p = Path(os.path.expanduser(env))
-    else:
-        dd = _load_datadir()
-        if not dd:
-            return None, DbState(
-                "NO_RESOLVER",
-                "找不到共享的 datadir 解析器(guards/tools/datadir.py)。数据库位置无法确定,"
-                "而猜一个仓内路径正是数据边界要防的事,所以这里拒绝继续。")
-        try:
-            root = dd.resolve_data_dir(SKILL, create=create_parent)
-        except Exception as e:
-            return None, DbState("RESOLVER_REFUSED", f"datadir 拒绝解析: {e}")
-        if not root:
-            return None, DbState(
-                "NO_COMPANION",
-                "没有私有伴生目录,所以没有数据库。这是「未初始化」,不是「没有历史」。"
-                f"建一个 {SKILL}-config 兄弟仓,里面放 data/ 即可。")
-        p = Path(root) / "task-console" / DB_NAME
+    """Return a proven database path or a distinct unavailable state; never write on reads."""
+    try:
+        _load_datadir()
+        if os.environ.get("TASK_CONSOLE_DB"):
+            p = Path(os.environ["TASK_CONSOLE_DB"]).expanduser().absolute()
+        else:
+            root = companion_root()
+            if root is None:
+                return None, DbState("NO_COMPANION",
+                    "尚未配置伴生仓。请按 CONFIG.md 设置 PRIVATE 版本化存储。")
+            p = root / "data" / "task-console" / DB_NAME
+        authorize_write(p, artifact_id="database")
+        if create_parent:
+            for suffix, owner in (("-wal", "database-wal"), ("-shm", "database-shm"),
+                                  ("-journal", "database-journal")):
+                authorize_write(str(p) + suffix, artifact_id=owner)
+            p.parent.mkdir(parents=True, exist_ok=True)
+            authorize_write(p, artifact_id="database")
+        return p, None
+    except (OSError, ValueError, RuntimeError, ImportError) as error:
+        code = "NO_RESOLVER" if "pinned Guards" in str(error) else "STORAGE_REFUSED"
+        return None, DbState(code, "存储核验失败: " + str(error))
 
-    dd = _load_datadir()
-    if dd:
-        try:
-            # Fails loudly if a future edit ever points this back inside the public repo.
-            dd.assert_outside_own_repo(p, SKILL)
-        except Exception as e:
-            return None, DbState("INSIDE_REPO", f"拒绝把数据库放在仓内: {e}", str(p))
 
-    if create_parent:
-        p.parent.mkdir(parents=True, exist_ok=True)
-    return p, None
+def validate_read_schema(connection):
+    """Check the declared schema version and columns without reading or changing runtime rows."""
+    expected = sqlite3.connect(":memory:")
+    try:
+        expected.executescript((HERE / "schema.sql").read_text(encoding="utf-8"))
+        if connection.execute("PRAGMA user_version").fetchone()[0] != expected.execute("PRAGMA user_version").fetchone()[0]:
+            raise sqlite3.DatabaseError("database schema version does not match this payload")
+        tables = expected.execute("SELECT name FROM sqlite_schema WHERE type='table' AND name NOT LIKE 'sqlite_%'")
+        for (table,) in tables:
+            literal = '"' + table.replace('"', '""') + '"'
+            required = {row[1] for row in expected.execute("PRAGMA table_info(" + literal + ")")}
+            present = {row[1] for row in connection.execute("PRAGMA table_info(" + literal + ")")}
+            if not required <= present:
+                raise sqlite3.DatabaseError("database lacks required columns in " + table)
+    finally:
+        expected.close()
 
 
 def connect_ro():
@@ -125,7 +172,7 @@ def connect_ro():
     try:
         con = sqlite3.connect(f"file:{p.as_posix()}?mode=ro", uri=True, timeout=5)
         con.row_factory = sqlite3.Row
-        con.execute("SELECT 1 FROM meta LIMIT 1")
+        validate_read_schema(con)
         return con, None
     except sqlite3.DatabaseError as e:
         # 探针抛异常时连接已经建起来了,而调用方拿到的是 (None, DbState),手上没有它。

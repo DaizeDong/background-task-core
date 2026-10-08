@@ -45,3 +45,6 @@ input or unresolved content decisions through the current llmcall interface.
 Apply approved changes through registration, preserve before-images, and read back the actual
 definition and enabled state. Verify owner results separately from successful registration.
 Report what was reused or changed and its ID; never describe an enqueued job as completed.
+
+Native configuration and storage readiness are documented in [CONFIG.md](../../CONFIG.md).
+A source plan or local configuration check does not prove Scheduler adoption or execution.

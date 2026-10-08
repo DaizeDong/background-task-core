@@ -41,3 +41,6 @@ scratchpad/
 # Local development and verification output
 *.stackdump
 /Microsoft/Windows/PowerShell/ModuleAnalysisCache
+
+# Public-source secret exclusion; native configuration lives in PRIVATE storage.
+*.env

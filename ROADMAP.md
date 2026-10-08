@@ -13,9 +13,20 @@ Feature names only. Why each one behaves the way it does lives in `docs/changing
 - Maintenance verbs in one closed table: run, stop, enable, disable, retire a task; archive or restore a skill; archive a memory entry; enable or disable a plugin; delete abandoned clone staging directories; fetch a repository.
 - A test suite that targets Windows, with poisoning and negative controls recorded per gate, run on `windows-latest` in CI under a collected count floor.
 
+## Implemented since the initial baseline
+
+- Split page markup from static CSS and JavaScript.
+- Add declaration planning, reviewed registration and work-platform projections over owner records.
+- Bind database/export writes to the pinned source contract and PRIVATE versioned storage.
+- Add native settings initialization and a read-only local configuration doctor.
+
+These source changes have scoped synthetic tests. They do not establish installed service parity,
+current ingestion, external delivery or publication. Historical audit and release records remain
+in [CHANGELOG.md](CHANGELOG.md); configuration scope is in [CONFIG.md](CONFIG.md).
+
 ## Planned
 
 - **Bring the storage and memory thresholds back to the server.** The backend ships percentages and several places in the page each apply their own threshold. That is one rule written more than once, and the drift will render normally in every copy.
-- **Split `console.html`.** It is past four thousand lines and holds the CSS, the markup and the page script together. The audit proposed it and it has not been done.
+- Continue targeted UI maintenance across `console.html` and the separate static CSS/JavaScript modules; the page split is already implemented.
 - **A run history that does not depend on the event channel.** Everything outside the channel's roughly five day window exists only because ingestion happened to run, which makes the durable export the system of record for a period nobody declared.
 - **Finish the audit in `docs/cleanup-plan.md`.** Its top section records which items landed; what remains is listed there rather than copied here.

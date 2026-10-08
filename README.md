@@ -30,7 +30,7 @@ It exists to answer one question honestly: **is anything broken that currently l
 
 `scripts/task_console/server.py` serves a single page on `127.0.0.1`, mints a token per start and never writes it down. `console_ingest.py` pays the cost of reading the Windows Operational event log out of band, so page loads do not; that log is a circular buffer with retention determined by its configured size and event volume, so anything not ingested inside that window is gone rather than late, and the console says so rather than showing a confident number that stopped moving.
 
-It is **not** a Claude Code skill or plugin, and it ships no `SKILL.md`: it is a server you run. It is **not** a monitoring service, since nothing polls and nothing alerts. It is **not** portable: it reads the Windows Task Scheduler through PowerShell and `pywin32`, and `server.py` refuses to start anywhere else on purpose.
+The primary product is a server. It also ships the auxiliary [automation-management skill](skills/automation-management/SKILL.md) for declaration, review and registration workflows. It is **not** a monitoring service, since nothing polls and nothing alerts. It is **not** portable: it reads the Windows Task Scheduler through PowerShell and `pywin32`, and `server.py` refuses to start anywhere else on purpose.
 
 ## What the page can do
 
@@ -65,7 +65,11 @@ The console also imports three pinned libraries at module top: `convo-chain`, `f
 python scripts/task_console/server.py --port 8787
 ```
 
-Every path it reads comes from a `TASK_CONSOLE_*` environment variable. The tool ships **no defaults outside its own namespace**, so an unconfigured console starts, serves, and tells you it checked nothing.
+Selected sources come from environment settings; their defaults and unavailable states are listed in the [environment table](scripts/task_console/README.md). llmcall resources and executable discovery retain their own documented defaults. An unconfigured source remains visibly unchecked.
+
+## Config
+
+Set `TASK_CONSOLE_CONFIG` to the PRIVATE companion root. To switch configurations, select and dot-source the other companion's reviewed settings and recheck explicit resource overrides. [CONFIG.md](CONFIG.md) defines discovery, native environment settings, initialization and read-only diagnosis. `tools/init_config.py` writes a reviewed `settings.ps1` in an initialized PRIVATE companion; `tools/verify_config.py --json` checks local server/history prerequisites. It does not run ingestion or prove optional actions. Database overrides still require source-owned PRIVATE versioned admission.
 
 ## Where the details live
 

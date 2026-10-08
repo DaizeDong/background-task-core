@@ -579,6 +579,32 @@ def generate_storage_schemas(output: Path, *, repo_layout=False) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes((json.dumps(document, sort_keys=True) + "\n").encode("utf-8"))
 
+    (output / "settings.ps1.example").write_bytes(
+        b"# Synthetic native environment schema; review private paths before use.\n"
+        b"$env:TASK_CONSOLE_CONFIG = 'C:/AcmePrivate/task-console-config'\n"
+        b"$env:TASK_CONSOLE_DB = 'C:/AcmePrivate/task-console-config/data/task-console/console.sqlite3'\n"
+        b"$env:TASK_CONSOLE_READ_ONLY = '1'\n")
+
+
+def configuration_database(path: Path, defect: str | None = None) -> None:
+    """Build synthetic read-model shapes for the native doctor's consumer-parity tests."""
+    import sqlite3
+    path.parent.mkdir(parents=True, exist_ok=True)
+    connection = sqlite3.connect(path)
+    try:
+        connection.executescript((Path(__file__).resolve().parents[1] / "scripts/task_console/schema.sql").read_text(encoding="utf-8"))
+        if defect == "missing-table":
+            connection.execute("DROP TABLE health_obs")
+        elif defect == "missing-column":
+            connection.execute("ALTER TABLE run_event RENAME COLUMN rc_norm TO wrong_column")
+        elif defect == "version":
+            connection.execute("PRAGMA user_version=0")
+        elif defect is not None:
+            raise ValueError("Unknown synthetic schema defect")
+        connection.commit()
+    finally:
+        connection.close()
+
 
 def generate(output: Path, *, categories_output: Path | None = None) -> None:
     request = example_request()

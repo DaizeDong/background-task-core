@@ -26,7 +26,7 @@
 
 `scripts/task_console/server.py` 在 `127.0.0.1` 上服务单页，每次启动现铸一个令牌，且从不落盘。`console_ingest.py` 在带外承担读取 Windows Operational 事件日志的开销，这样页面加载就不必付这笔钱；那份日志是个环形缓冲，能留多久取决于它配置的大小和事件量，所以没能在窗口内被摄取的东西是丢了而不是晚了，控制台会明说这件事，而不是给一个已经不动了却看着很笃定的数字。
 
-它**不是** Claude Code 的 skill 或 plugin，也不带 `SKILL.md`：它是一个你跑起来的服务端。它**不是**监控服务，没有轮询，也没有告警。它**不**可移植：它通过 PowerShell 和 `pywin32` 读 Windows 计划任务，`server.py` 在别的平台上会刻意拒绝启动。
+主体是本地服务端，同时附带 [automation-management skill](skills/automation-management/SKILL.md)，用于声明、审核和登记流程。它**不是**监控服务，没有轮询，也没有告警。它**不**可移植：它通过 PowerShell 和 `pywin32` 读 Windows 计划任务，`server.py` 在别的平台上会刻意拒绝启动。
 
 ## 页面能做什么
 
@@ -61,7 +61,11 @@ git config core.hooksPath .githooks    # 装上闸门；本地配置，提交不
 python scripts/task_console/server.py --port 8787
 ```
 
-它读的每一个路径都来自一个 `TASK_CONSOLE_*` 环境变量。这个工具**不在自己的命名空间之外出厂任何默认值**，所以一个没配过的控制台照样启动、照样服务，然后告诉你它什么都没查。
+资源路径由环境变量选择，默认值和未配置状态见[环境变量表](scripts/task_console/README.md)。llmcall 资源和可执行文件保留各自已有的默认位置。未配置的来源会明确显示为未检查。
+
+## 配置
+
+将 `TASK_CONSOLE_CONFIG` 指向 PRIVATE 伴生仓。切换配置时，在启动进程中加载另一个伴生仓的设置，并重新核对显式资源覆盖值。[CONFIG.md](CONFIG.md) 说明完整发现顺序、环境变量、初始化和只读检查。`tools/init_config.py` 在已初始化的 PRIVATE 伴生仓生成 `settings.ps1`，已有文件保持原样。`tools/verify_config.py --json` 检查本地服务端和历史数据库的前提条件，不启动摄取，也不替可选动作作就绪证明。数据库覆盖路径仍须通过来源契约、PRIVATE 和版本管理检查。
 
 ## 细节各自住在哪
 
@@ -100,3 +104,9 @@ English (`README.md`) · 中文 (`README_CN.md`)
 见 [ROADMAP.md](ROADMAP.md) · [CHANGELOG.md](CHANGELOG.md) · [LICENSE](LICENSE)（MIT）。
 
 与仓库统一规范的每一处偏离及其理由，记在 [docs/2026-09-22-spec-adaptation.md](docs/2026-09-22-spec-adaptation.md)。
+
+## 只读声明生成与保留规则
+
+`task_console.compiler.plan(request)` 和 `task-console plan` 根据组件声明、私有绑定和机器配置生成待审方案，不写文件、不查询或启动计划任务。安装后的示例入口是 `python -m task_console plan`；源码入口是 `python -m scripts.task_console plan`。具体参数和合成示例见[控制台说明](scripts/task_console/README.md)。真实请求和方案保存在私有仓；公开示例由 `python tools/make_fixtures.py` 生成。
+
+[存储说明](docs/storage.md)和[来源契约](storage.contract.json)区分当前状态、恢复证据与已完成的开发产物。超过预算需要审核，不能因此截断核心历史。

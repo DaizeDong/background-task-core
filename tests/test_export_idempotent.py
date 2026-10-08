@@ -30,6 +30,8 @@ import console_store  # noqa: E402
 
 @pytest.fixture
 def db(tmp_path, monkeypatch):
+    # This suite checks ingestion transactions; native storage admission has its own suite.
+    monkeypatch.setattr(CI.console_store, "authorize_write", lambda *a, **kw: None)
     monkeypatch.setenv("TASK_CONSOLE_DB", str(tmp_path / "console.sqlite3"))
     con, path = CI.open_rw()
     assert con, f"建不出临时数据库: {path}"

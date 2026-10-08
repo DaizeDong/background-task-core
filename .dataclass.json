@@ -10,7 +10,7 @@
     "Enforced by guards/tools/data_boundary.py in .githooks and in CI."
   ],
   "_audited": "The runtime database, durable event export, registration state and launcher configuration live in the PRIVATE companion. The current database is protected: its historical task configurations, ingest attempts and raw event fields cannot all be recovered by --backfill. The JSONL preserves normalized events beyond the rotating OS log window but is not a complete database restore. storage.contract.json uses private-companion repository-root paths with a data/ prefix for runtime state. It defines review budgets and protects current state and the exact current recovery archive/receipt, while legacy copies and private helper source require separate reconciliation. This manifest still names source-relative forbidden runtime DATA paths; only explicit reviewed retirement permits artifact removal.",
-  "_armed": "The empty lists below are a claim re-tested on every commit, not a note taken on faith. data_boundary check 4 runs off the TRACKED FILE LIST rather than off this manifest, so a file wearing the shape of real-run output fails whether or not it is declared here. That distinction is load-bearing: TASK_CONSOLE_DB can point the database anywhere, so 'the default resolver points outside' was never the same statement as 'nothing can land here'.",
+  "_armed": "The empty lists below are a claim re-tested on every commit, not a note taken on faith. data_boundary check 4 runs off the TRACKED FILE LIST rather than off this manifest, so a file wearing the shape of real-run output fails whether or not it is declared here. That distinction is load-bearing: TASK_CONSOLE_DB is an explicit selection, but current runtime admission still requires the canonical source-owned leaf in PRIVATE versioned storage. Discovery alone is not write authorization.",
   "data": [
     "task-console/console.sqlite3",
     "task-console/run-events.jsonl",
@@ -22,7 +22,8 @@
     "storage/",
     "storage-retention.json",
     "memory-pressure-monitor/",
-    "maintenance/"
+    "maintenance/",
+    "settings.ps1"
   ],
   "data_sealed": [
     ".sie/"
@@ -36,7 +37,8 @@
     "scripts/task_console/categories.example.json",
     "launcher-binding.json.example",
     "storage-retention.json.example",
-    "task-console/run-events.jsonl.example"
+    "task-console/run-events.jsonl.example",
+    "settings.ps1.example"
   ],
   "_data_home": "A PRIVATE companion outside this repo, resolved at runtime through guards/tools/datadir.py by the convention that file documents. Deliberately not named here: a public repo that spells out which private repo it pairs with has published the link between them, and the resolver derives the name anyway, so writing it down buys nothing. If this tool ever needs to record real-run output, it goes THERE -- never back into this repo.",
   "_run_shape_probes": [

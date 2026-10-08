@@ -4,7 +4,21 @@ All notable changes to this project are documented here (Keep a Changelog style)
 
 ## [Unreleased]
 
+### Configuration and storage admission
+- Set a 256 MiB operating review cap with explicit database, event, recovery and registration allowances. Retained historical artifacts still count; core history is not truncated to meet the cap.
+- Require this source payload's pinned resolver and source-owned PRIVATE versioned admission for database overrides and durable event exports. Remove ancestor and vendored resolver fallback.
+- Declare SQLite coordination sidecars as exact transient leaves while retaining their transaction recovery obligations; the main database remains versionable.
+- Add portable native environment initialization and a read-only local doctor that verifies the declared database version and table columns; align English/Chinese usage and completed UI split documentation.
+- Preserve artifact admission in installed wheels through `fleet-guards>=0.2.1` and a build-time copy of the sole source storage contract. Missing package policy fails visibly.
+
+
 ### Changed
+
+- Require `llmcall>=0.3.0` and move the CI pin from 39dd746 (0.2.0) to 98af777
+  (0.3.0, Windows Job Object ownership of every client process tree). The console
+  uses only `llmcall.process` (`execution_scope`, `current_control`,
+  `remaining_timeout`, `run`, `resolve_context`, `CallContext`), whose signatures
+  are unchanged between the two, so a 0.2.0 install no longer satisfies the bound.
 
 - Set a 64 MiB aggregate storage review threshold while preserving current
   database, transaction files and recovery protection.
@@ -16,13 +30,13 @@ All notable changes to this project are documented here (Keep a Changelog style)
 
   The repository declared no version number anywhere before this, so `0.1.0` was chosen and the choice is argued in `docs/2026-09-22-spec-adaptation.md` rather than presented as a fact discovered in the code.
 
-  Several requirements of that spec are deliberately not met, every one of them because meeting it would claim something untrue of a local server: no `.claude-plugin/plugin.json`, no Claude Code Skill badge, no `SKILL.md` and therefore no L0 or L1 documentation layer, no load budget workflow, and five of the nine fingerprint topics refused. All of them are recorded in the same adaptation document rather than left as silent gaps.
+  Several requirements of that spec are deliberately not met, every one of them because meeting it would claim something untrue of a local server: no `.claude-plugin/plugin.json`, no Claude Code Skill badge, no root `SKILL.md` or root L0/L1 documentation layer (the auxiliary automation-management skill is documented separately), no load budget workflow, and five of the nine fingerprint topics refused. All of them are recorded in the same adaptation document rather than left as silent gaps.
 
 ### Added
 
 - **Task declarations, registration and observations** (`codex/infra-20260917`): component `.console.json` declarations compiled by a read-only planner, a registration transaction that records authority and recovery evidence before changing a task definition, periodic observations, and guarded task control through `task_control` instead of `act.ps1`. See `docs/task-registration.md`.
 - **Work platform and console UX** (from `codex/console-ux-20260922`): an integrations registry (`/api/integrations`) with bounded shared source reads, creation preflight (`creation-check`), a deletion flow, manual completion of human todos, optional panels and a preloading script loader.
-- **Conversation chain view.** Turn-by-turn chains of saved transcripts with compaction points, real branches and subagents; export any node as Markdown or fork a session at any node into a new transcript file. The transcript logic is the pinned library `convo-chain==0.1.0`; the console keeps routes, token checks and the panel.
+- **Conversation chain view.** Turn-by-turn chains of saved transcripts with compaction points, real branches and subagents; export any node as Markdown or fork a session at any node into a new transcript file. The transcript logic is the pinned library `convo-chain` at the revision declared by the current dependency contract; the console keeps routes, token checks and the panel.
 - **CI installs the real dependencies.** `tests.yml` installs `convo-chain`, `fleet-guards` and the private `llmcall` at pinned commits (the latter through a read-only deploy key), plus `skill-smith`, `PyYAML`, `pywin32` and the console package itself, instead of letting collection fail on a missing import. Tests that bind a private owner source are marked `owner_integration` from the fixtures they request and deselected on the hosted runner with a notice; locally they still fail loudly when the source is unset.
 - **`.github/workflows/dash-guard.yml`.** The style submodule was pinned and its gate had never been wired to anything, so the house rule that published prose carries no en or em dash had never been enforced here. The first tree scan reported 179 lines across 39 files, which is what a gate nobody ran looks like.
 
