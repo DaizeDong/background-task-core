@@ -15,6 +15,8 @@ All notable changes to this project are documented here (Keep a Changelog style)
 
 ### Changed
 
+- Move the CI skill-smith pin from ff47b5f (0.1.4) to 7ec8280 (0.2.0) and the convo-chain pin from e4e0d2f to 36be94d (both 0.3.0), the versions the runtime generation ships beside the console, so CI tests what production runs.
+
 - Move the CI llmcall pin from 98af777 (0.3.0) to a7b8d8f (0.3.1, current llmcall main).
   `llmcall.process` is byte-identical between the two, so `llmcall>=0.3.0` stays the
   bound; 0.3.1 also declares `fleet-guards>=0.2.1`, which the CI fleet-guards pin satisfies.

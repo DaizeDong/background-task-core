@@ -49,7 +49,7 @@ jobs:
       #   llmcall       0.3.1, PRIVATE; process containment for controller, runtime_windows,
       #                 observations and git_ops. Read with a per-consumer read-only deploy key on
       #                 DaizeDong/llmcall, the same arrangement email-monitor and schedule-reminder use.
-      #   skill-smith   0.1.4, public; the skill catalog the observation adapter reads. Imported
+      #   skill-smith   0.2.0, public; the skill catalog the observation adapter reads. Imported
       #                 lazily there, so it is a test dependency rather than a pyproject one.
       # A pin is a commit, not a branch, so a change over there cannot turn this build red or green
       # on its own. Move a pin deliberately, together with the pyproject requirement it satisfies.
@@ -73,8 +73,8 @@ jobs:
           python -m pip install --quiet pytest pywin32 PyYAML "setuptools>=77" wheel \
             "fleet-guards @ git+https://github.com/DaizeDong/fleet-guards@0f454415f015f2adab247e3b4829c4c8c0de40da" \
             "llmcall @ git+ssh://git@github.com/DaizeDong/llmcall.git@a7b8d8f412cec73787fbe7f1ff2b742085a0c0c5" \
-            "convo-chain @ git+https://github.com/DaizeDong/convo-chain@e4e0d2f9e0972ed5a9b1a6f1ef458e46a4bb782c" \
-            "skill-smith @ git+https://github.com/DaizeDong/skill-smith@ff47b5fedfc5b4bd15eace93811736287c1bfda1"
+            "convo-chain @ git+https://github.com/DaizeDong/convo-chain@36be94d60207180b7798fc5ea28de0c991e5fb76" \
+            "skill-smith @ git+https://github.com/DaizeDong/skill-smith@7ec8280a5a9108fb6a7dde2fecffc10e8fd26e63"
           # The console itself, installed from a clean export of this commit. Several tests start the
           # observation worker with `python -I`, which ignores PYTHONPATH on purpose, exactly as the
           # installed generation runs it, so they need the package importable the way production has
