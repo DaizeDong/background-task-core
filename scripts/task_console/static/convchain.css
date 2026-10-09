@@ -148,3 +148,7 @@
 .ch-back-link:focus-visible{outline:2px solid var(--cyan);outline-offset:1px}
 .ch-back-sep{color:var(--faint)}
 #chbox .ch-back .card-title{min-width:0;overflow-wrap:anywhere;margin:0}
+#chbox .ch-back .card-title:has(.cv-inline){flex:1 1 100%}
+.ch-title-btn{margin:0;padding:0;border:0;background:transparent;color:inherit;font:inherit;text-align:left;cursor:text;overflow-wrap:anywhere}
+.ch-title-btn:not(:disabled):hover{color:var(--cyan);text-decoration:underline dotted}
+.ch-title-btn:focus-visible{outline:2px solid var(--cyan);outline-offset:2px}

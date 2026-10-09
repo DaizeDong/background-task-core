@@ -70,6 +70,7 @@ import task_repair
 import selfcheck
 import sysinfo
 import timeline
+import title_suggest
 # 这里原来是 `import norm_rc as _norm_rc_unused`,而下面又抄了一份同名实现,于是渲染侧和
 # 写入侧是两份代码。它们当时逐位等价(20 个输入含各边界实测过),但任何一侧改了边界条件
 # 另一侧不会跟着变,而症状是**同一个退出码在两个面板上一个算成功一个算失败**,不报警。
@@ -122,6 +123,10 @@ CONVO_RENAME_KEYS = frozenset(("id", "title", "expectedProject"))
 CONVO_MOVE_KEYS = frozenset(("id", "targetProject", "expectedProject"))
 CONVO_DELETE_PLAN_KEYS = frozenset(("id", "expectedProject"))
 CONVO_DELETE_KEYS = CONVO_DELETE_PLAN_KEYS | frozenset(("fingerprint", "requestId", "confirmed"))
+CONVO_SUGGEST_KEYS = frozenset(("id", "expectedProject"))
+# 起名建议要等模型,可能几十秒。它不改任何文件,所以不在 do_POST 那把对话锁里等:
+# 只在读转录的那一小段持锁(见 _convo_suggest_title),等模型时别的会话操作照常进行。
+CONVO_UNLOCKED_POSTS = frozenset(("/api/convo/suggest-title",))
 _CONVO_ACCESS = threading.RLock()
 # 对话链的判定(索引、形状闸、链、节点、导出、分叉)全在 convo-chain 库里。它是这台控制台
 # 钉死版本的库依赖(和 llmcall、fleet_guards 一样在进程内导入,索引缓存因此活在这个进程里),
@@ -1298,6 +1303,40 @@ class Handler(BaseHTTPRequestHandler):
             status = 409 if error.code in ("busy", "conflict", "recovery_conflict", "cleanup_pending", "ambiguous") else 400
             return self._json(status, _convo_refused(error, root))
 
+    def _convo_suggest_title(self):
+        """给一场会话起名的建议。只读不写:返回 {title, provider},保存仍走 /api/convo/rename。
+
+        读转录在对话锁里(和改名、迁移、删除互斥,读到的不会是写了一半的文件);
+        等模型在锁外,一次几十秒的调用不该挡住别的会话操作。
+        """
+        if not self._authed():
+            self._drain()
+            return self._json(403, {"error": "bad token"})
+        body = self._convo_body(CONVO_SUGGEST_KEYS)
+        if body is None:
+            return None
+        root = _convo_root()
+        try:
+            with _CONVO_ACCESS:
+                convo_chain.shape(body.get("id"))
+                expected = body.get("expectedProject")
+                if expected is not None and (not isinstance(expected, str) or len(expected) > 255):
+                    raise convo_chain.ConvoChainError("来源项目标识不正确", "bad_project")
+                loc = convo_chain.locate(body.get("id"), root=root)
+                if expected is not None and loc["projectDir"].name != expected:
+                    raise convo_chain.ConvoChainError("会话位置已改变，请刷新后再操作", "conflict")
+                digest = title_suggest.collect_digest(loc["main"])
+            return self._json(200, title_suggest.suggest(digest, digest["title"]))
+        except title_suggest.SuggestError as error:
+            return self._json(error.status, {"error": str(error), "code": error.code})
+        except convo_chain.Unavailable as error:
+            return self._json(400, {"error": CONVO_ROOT_UNSET if root is None else str(error), "code": "unavailable"})
+        except convo_chain.ConvoChainError as error:
+            status = 409 if error.code in ("conflict", "ambiguous") else 400
+            return self._json(status, _convo_refused(error, root))
+        except OSError as error:
+            return self._json(409, {"error": f"会话文件暂时读不了：{type(error).__name__}", "code": "busy"})
+
     def _convo_list(self):
         if not self._authed():
             return self._json(403, {"error": "bad token"})
@@ -1514,7 +1553,8 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         try:
-            if self.path.split("?", 1)[0].startswith("/api/convo/") and self._authed():
+            route = self.path.split("?", 1)[0]
+            if route.startswith("/api/convo/") and route not in CONVO_UNLOCKED_POSTS and self._authed():
                 with _CONVO_ACCESS:
                     return self._guard(self._do_POST, "POST " + self.path.split("?", 1)[0])
             return self._guard(self._do_POST, "POST " + self.path.split("?", 1)[0])
@@ -1792,6 +1832,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._convo_edit()
         if self.path.split("?", 1)[0] in ("/api/convo/delete-plan", "/api/convo/delete"):
             return self._convo_delete()
+        if self.path.split("?", 1)[0] == "/api/convo/suggest-title":
+            return self._convo_suggest_title()
         if self.path.split("?", 1)[0] != "/api/act":
             self._drain()
             return self._json(404, {"error": "not found"})

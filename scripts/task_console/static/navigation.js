@@ -260,6 +260,8 @@ function handleEscape(event){
   const dropdown=closeStrayDropdown(event);
   if(dropdown==='inside') return false;
   if(dropdown){ event.preventDefault(); return true; }
+  // 就地改名的编辑器是一层:Esc 取消它,而不是像搜索框那样清空里面的字(conversation-actions.js)。
+  if(typeof cvInlineEscape==='function' && cvInlineEscape()){ event.preventDefault(); return true; }
   const el=document.activeElement;
   if(isTextEntry(el)){
     // 搜索框里有字:先清空,再按一次才离开。清空后自己发一次 input 事件,

@@ -4,6 +4,11 @@ All notable changes to this project are documented here (Keep a Changelog style)
 
 ## [Unreleased]
 
+### Conversations
+- Rename a session in place. Each list row has a pencil after its title, and the title of an open conversation chain is itself the rename control. The inline box takes Enter to save and Esc to cancel; a click outside closes it only when the name is unchanged. Saving reuses the existing rename request and updates the row and chain header immediately.
+- AI 起名 in the inline box and in the rename dialog asks the new read only route `POST /api/convo/suggest-title` for one short Chinese name. The route digests only what the person typed (head and tail of the transcript, bounded), asks `llmcall` in judge mode, validates and normalises the answer, and writes nothing. The suggestion fills the box for the owner to confirm.
+- The delete dialog now shows the session's working directory, short ID and last activity, and warns when the loaded list holds sessions with the same title or the same fork base, naming how many and that only this one will be deleted. Forks are titled `<original> (fork @ <8 chars>)`, so deleting one used to look like a failed delete when its look alike stayed in the list.
+
 ### Configuration and storage admission
 - Keep generated PowerShell settings examples byte-identical on Windows checkouts, account for native configuration overrides in self-check, and align scheduled-backup unit fixtures with the current authorization boundary.
 - Raise the aggregate storage review threshold from the earlier 64 MiB development threshold to a 256 MiB operating cap, with explicit database, event, recovery and registration allowances. Retained historical artifacts still count; current databases, transaction files and recovery state remain protected, and core history is not truncated to meet the cap.

@@ -422,13 +422,16 @@
       <div class="dialog-head"><h2 id="cv-dialog-title"></h2><button type="button" class="icon-only dialog-x" data-dismiss="cv-cancel" title="关闭"><svg class="ic" aria-hidden="true"><use href="#i-close"/></svg><span class="control-label">关闭</span></button></div>
       <div class="dialog-body">
       <p class="cv-location" id="cv-current"></p>
-      <label class="cv-field" id="cv-title-field">会话名称<input id="cv-new-title" type="text" maxlength="200" autocomplete="off" aria-describedby="cv-edit-note"></label>
+      <div class="cv-field" id="cv-title-field"><label for="cv-new-title">会话名称</label>
+        <div class="cv-title-row"><input id="cv-new-title" type="text" maxlength="200" autocomplete="off" aria-describedby="cv-edit-note"><button id="cv-suggest" type="button" title="根据你在这场会话里输入的内容生成一个中文名称，不会自动保存">AI 起名</button></div></div>
       <div class="cv-field" id="cv-target-field" hidden>
         <label for="cv-target">目标项目<select id="cv-target"></select></label>
         <p class="cv-location" id="cv-target-path"></p>
         <span class="faint">会话及其关联文件会一起移到目标项目，原有历史会保留。</span>
       </div>
       <div id="cv-delete-field" hidden>
+        <p id="cv-delete-facts" class="cv-delete-facts"></p>
+        <p id="cv-delete-alike" class="cv-notice" role="alert" hidden></p>
         <p id="cv-delete-scope"></p>
         <p class="cv-notice error">永久删除后无法从控制台恢复。正在使用的会话请先关闭。</p>
         <button id="cv-repreview" type="button" hidden>重新查看删除范围</button>

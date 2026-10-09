@@ -34,7 +34,7 @@
 
 ## 页面能做什么
 
-页面的维护动作定义在 `maint.py`。会话操作使用独立的鉴权路由，并由 [convo-chain](https://github.com/DaizeDong/convo-chain) 提供转录解析、导出、分叉、重命名、移动和确认删除。控制台负责路由、请求检查与界面，库负责转录规则和文件事务。操作范围与限制见[控制台 README](scripts/task_console/README.md)。
+页面的维护动作定义在 `maint.py`。会话操作使用独立的鉴权路由，并由 [convo-chain](https://github.com/DaizeDong/convo-chain) 提供转录解析、导出、分叉、重命名、移动和确认删除。控制台负责路由、请求检查与界面，库负责转录规则和文件事务。会话的中文名称建议由 `llmcall` 生成，只填进改名框，保存仍是一次普通的改名。操作范围与限制见[控制台 README](scripts/task_console/README.md)。
 
 任务的创建和迁移走[任务登记](docs/task-registration.md)里描述的声明、审核与登记接口。网页动作表不提供一条不受约束的计划任务捷径。登记在改动任务定义之前先记下授权与恢复证据；对外动作仍保留原有的审核步骤。
 

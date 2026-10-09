@@ -88,8 +88,13 @@ function cvRows(g){
     const off=disabled?' disabled':'';
     const key=r.id || r.file, menu=cvMenuId(key);
     // 标题本身就是「打开」;删除收进菜单最底下、和别的项隔开:一行一个常驻的垃圾桶,永久删除就只差一次手滑。
+    // 标题后面的铅笔是就地改名(conversation-actions.js);正在改名的那一行,标题换成输入框。
+    const editing=valid && typeof cvInlineHtml==='function'?cvInlineHtml('list',r.id):'';
+    const quick=manage && typeof cvQuickRename==='function'
+      ?`<button type="button" class="icon-only mini cv-quick" data-cvquick="${esc(r.id)}"${off} title="重命名"><svg class="ic" aria-hidden="true"><use href="#i-edit"/></svg><span class="control-label">重命名</span></button>`:'';
+    const title=chain?`<button class="t" data-cvopen="${esc(r.id)}" title="查看会话：${esc(r.title)}">${esc(r.title)}</button>`:`<span class="t">${esc(r.title)}</span>`;
     return `<div class="cv-r${r.humanSeen>=2?' human':''}" data-cvfile="${esc(r.file)}"${chain?` data-cvid="${esc(r.id)}"`:''}>
-      <div class="cv-main">${chain?`<button class="t" data-cvopen="${esc(r.id)}" title="查看会话：${esc(r.title)}">${esc(r.title)}</button>`:`<span class="t">${esc(r.title)}</span>`}
+      <div class="cv-main">${editing || `<div class="cv-title-line">${title}${quick}</div>`}
         ${r.preview&&r.preview!==r.title?`<span class="pv">${esc(r.preview)}</span>`:''}</div>
       <span class="cv-updated">${cvAge(r.ageHours)}</span>
       <button type="button" class="icon-only mini cv-more" popovertarget="${esc(menu)}" data-cvmenu="${esc(key)}" title="更多操作"><svg class="ic" aria-hidden="true"><use href="#i-more"/></svg><span class="control-label">更多操作</span></button>
@@ -128,6 +133,7 @@ function cvPaintGroup(g){
   const top=window.scrollY;
   el.querySelector('.cv-list').innerHTML=el.classList.contains('open')?cvLocation(g)+cvRows(g)+cvPage(g):'';
   window.scrollTo({top,behavior:'instant'});cvCount();cvObserve();cvReopenMenu();
+  if(typeof cvInlineAfterPaint==='function') cvInlineAfterPaint();
 }
 async function cvLoadMore(id){
   const g=CONVOS?.groups.find(x=>cvKey(x)===id);
@@ -197,6 +203,7 @@ function renderConvos(){
   const top=window.scrollY;
   $('cvgroups').innerHTML=rest.map(groupHtml).join('')+ephHtml || '<p class="review-empty">没有匹配的会话</p>';
   window.scrollTo({top,behavior:'instant'});cvCount();cvObserve();cvReopenMenu();
+  if(typeof cvInlineAfterPaint==='function') cvInlineAfterPaint();
 }
 function cvLocation(g){
   return `${g.locationWarning?`<p class="cv-notice error" role="alert">项目位置需要核对：${esc(g.locationWarning)}</p>`:''}

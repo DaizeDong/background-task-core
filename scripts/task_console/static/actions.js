@@ -8,7 +8,7 @@ const ConsoleActions={
   reason:'只读预览，请用正式控制台',
   // 只在本页改草稿的几样也在这里:调用顺序的上下移、放弃修改,清理列表的全选和清空。
   // 它们自己不发请求,可在只读预览里点了只会攒出一份永远存不下来的草稿。
-  selector:'[data-work-action],[data-work-stop],[data-act],[data-task-repair],[data-task-delete],[data-mt],[data-delete],[data-rpact]:not([data-rpact="copy"]):not([data-rpact="web"]),[data-fix],[data-fixall],[data-bulk]:not([data-bulk="clear"]),[data-ctfork],[data-cvdelete],[data-cvrename],[data-cvmove],[data-cvdrag],[data-mv],#cv-submit,#lcsave,#lcreset,#cxall,#cxnone,#cxdel,#delete-confirm,#task-delete-preview,#task-delete-confirm,#repair-submit',
+  selector:'[data-work-action],[data-work-stop],[data-act],[data-task-repair],[data-task-delete],[data-mt],[data-delete],[data-rpact]:not([data-rpact="copy"]):not([data-rpact="web"]),[data-fix],[data-fixall],[data-bulk]:not([data-bulk="clear"]),[data-ctfork],[data-cvdelete],[data-cvrename],[data-cvquick],[data-cvquick-chain],[data-cvinline-save],[data-cvinline-ai],[data-cvmove],[data-cvdrag],[data-mv],#cv-submit,#cv-suggest,#lcsave,#lcreset,#cxall,#cxnone,#cxdel,#delete-confirm,#task-delete-preview,#task-delete-confirm,#repair-submit',
   // 页面自己的禁用原因走这里:只读预览的原因压过它,因为那时按钮无论如何都点不了。
   gate(button,reason){setDisabled(button,this.readOnly?this.reason:reason,this.readOnly?'console-mode':undefined);},
   allowWrite(){if(!this.readOnly) return true;toast(this.reason,'bad');return false;},
@@ -130,7 +130,7 @@ function operationLabel(path,body){
     'skill.archive':'归档技能','skill.restore':'恢复技能','plugin.enable':'启用插件','plugin.disable':'禁用插件',
     'memory.archive':'归档记忆','memory.restore':'恢复记忆','clean.tempgit':'清理临时目录',
     'repo.fetch':'获取远程更新','repo.reveal':'打开目录','repo.status':'查看改动','repo.commitpush':'提交并推送'};
-  const endpoints={'/api/codex/delete':'删除所选转录','/api/maintenance/delete':'删除或卸载','/api/llmcall/chain':'保存调用顺序','/api/work/action':'提交工作','/api/work/stop':'停止工作','/api/convo/fork':'分叉会话','/api/convo/rename':'重命名会话','/api/convo/move':'迁移会话文件','/api/convo/delete':'永久删除会话',
+  const endpoints={'/api/codex/delete':'删除所选转录','/api/maintenance/delete':'删除或卸载','/api/llmcall/chain':'保存调用顺序','/api/work/action':'提交工作','/api/work/stop':'停止工作','/api/convo/fork':'分叉会话','/api/convo/rename':'重命名会话','/api/convo/suggest-title':'生成名称建议','/api/convo/move':'迁移会话文件','/api/convo/delete':'永久删除会话',
     '/api/task/delete/apply':'删除任务','/api/task/repair/preview':'读取任务事实','/api/task/repair':'提交修复工单'};
   return (labels[body.action || body.verb] || endpoints[path] || '执行操作')+(body.name?' · '+body.name:'');
 }
@@ -164,6 +164,8 @@ function operationOutcome(path,body,reply,error){
   if(path==='/api/convo/fork') return {tone:'ok',message:'已新建会话 '+String(result?.newId || '').slice(0,8)+'，原会话未改动'};
   if(path==='/api/convo/delete') return {tone:result.deleted===true?'ok':'warn',message:result.deleted===true?'会话及关联文件已永久删除':'删除结果尚未确认'};
   if(path==='/api/convo/rename') return {tone:'ok',message:'已保存会话名称'};
+  // 名称建议照理以 inspect 发出,不进这张表;万一进了,也只说「建议」,不说成一次保存。
+  if(path==='/api/convo/suggest-title') return {tone:'ok',message:'已生成名称建议，尚未保存'};
   if(path==='/api/convo/move') return {tone:'ok',message:result.unchanged?'会话已在目标目录':'已迁移会话文件和关联记录'};
   return {tone:'ok',message:result?.message || (result?.deleted!=null?`已删除 ${result.deleted} 项`:'操作已完成')};
 }

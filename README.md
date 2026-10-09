@@ -34,7 +34,7 @@ The primary product is a local server with an auxiliary [automation-management s
 
 ## What the page can do
 
-The page's maintenance verbs are defined in `maint.py`. Conversation operations have their own authenticated routes and use [convo-chain](https://github.com/DaizeDong/convo-chain) for transcript rules and file transactions. The console owns the routes, request checks and panel; the library owns parsing, export, fork, rename, migration and confirmed deletion. See [the console README](scripts/task_console/README.md) for the supported controls and limits.
+The page's maintenance verbs are defined in `maint.py`. Conversation operations have their own authenticated routes and use [convo-chain](https://github.com/DaizeDong/convo-chain) for transcript rules and file transactions. The console owns the routes, request checks and panel; the library owns parsing, export, fork, rename, migration and confirmed deletion. A suggested Chinese name for a session comes from `llmcall` and is only filled into the rename box; saving it is still a normal rename. See [the console README](scripts/task_console/README.md) for the supported controls and limits.
 
 Task creation and migration use the declaration, review and registration APIs described in [task registration](docs/task-registration.md). The web action table does not provide an unrestricted Scheduler shortcut. Registration records authority and recovery evidence before changing task definitions; the console keeps its existing review step for outgoing actions.
 

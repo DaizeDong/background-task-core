@@ -21,6 +21,24 @@
 .cv-main{min-width:0}
 .cv-r .t{display:block;width:100%;min-width:0;min-height:28px;margin:0;padding:2px 0;border:0;border-radius:0;background:transparent;color:var(--ink);font:inherit;font-weight:500;line-height:1.45;text-align:left;white-space:normal;overflow-wrap:anywhere}
 .cv-r button.t:not(:disabled):hover{color:var(--cyan);text-decoration:underline}
+/* 标题和它后面的铅笔一行。铅笔平时淡出、悬停或焦点落进这一行时出现;触屏没有悬停,一直显示。
+   用透明度而不是 display:none 藏:藏起来的铅笔仍然能用 Tab 走到,走到时整行 focus-within 让它现形。 */
+.cv-title-line{display:flex;align-items:flex-start;gap:4px;min-width:0}
+.cv-title-line .t{width:auto;flex:0 1 auto}
+.cv-quick{flex:none;opacity:0;transition:opacity .12s}
+.cv-r:hover .cv-quick,.cv-r:focus-within .cv-quick{opacity:1}
+@media (pointer:coarse){.cv-quick{opacity:1}}
+.cv-inline{display:flex;flex-wrap:wrap;align-items:center;gap:6px;min-width:0;font-size:var(--fs-body);font-weight:400}
+.cv-inline input{flex:1 1 220px;min-width:0;min-height:30px;padding:4px 8px;border:1px solid var(--cyan);border-radius:3px;background:var(--panel2);color:var(--ink);font:inherit}
+.cv-inline-actions{display:inline-flex;flex-wrap:wrap;gap:6px}
+.cv-inline-note{flex:1 0 100%;color:var(--dim);font-size:var(--fs-meta);overflow-wrap:anywhere}
+.cv-inline-note:empty{display:none}
+.cv-inline-note.error{color:var(--bad)}
+.cv-title-row{display:flex;gap:6px;min-width:0}
+.cv-title-row input{flex:1 1 auto}
+.cv-title-row button{flex:none}
+.cv-delete-facts{display:flex;flex-wrap:wrap;gap:4px 16px;color:var(--dim);font-size:var(--fs-meta);overflow-wrap:anywhere}
+.cv-delete-facts code{color:var(--ink)}
 .cv-r .pv{display:block;max-width:100%;color:var(--dim);font-size:var(--fs-meta);line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .cv-updated{color:var(--dim);font-size:var(--fs-meta);white-space:nowrap}
 .cv-detail-body button,.cv-page button{min-height:32px;padding:4px 8px;line-height:1.3;white-space:normal}

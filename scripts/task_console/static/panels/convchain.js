@@ -266,7 +266,17 @@ function chRender(){
 function chRenderHead(){
   const cr=$("chcrumb"), hd=$("chhead"), wn=$("chwarn");
   const title=$("chtitle");
-  if(title){ title.textContent=chTitleText(); title.title=CH_ID || ""; }
+  if(title){
+    // 标题点一下就地改名(conversation-actions.js);子代理只读,没载入改名模块或只读预览时就是纯文字。
+    // 列表里的标题仍然是「打开会话」,改名在它旁边的铅笔上。
+    const editing=!CH_SUB && CH_ID && typeof cvInlineHtml==="function" ? cvInlineHtml("chain", CH_ID) : "";
+    const renamable=!CH_SUB && CH_ID && CH && CH.available && typeof cvQuickRename==="function" && !ConsoleActions.readOnly;
+    if(editing) title.innerHTML=editing;
+    else if(renamable) title.innerHTML=`<button type="button" class="ch-title-btn" data-cvquick-chain="${esc(CH_ID)}" title="点击重命名">${esc(chTitleText())}</button>`;
+    else title.textContent=chTitleText();
+    title.title=CH_ID || "";
+    if(editing && typeof cvInlineAfterPaint==="function") cvInlineAfterPaint();
+  }
   const find=$("chfind");
   if(find) find.hidden=!(CH && CH.available);
   // 面包屑这一行只在子代理里出现(返回主会话)。子代理选择器很少用,收进「更多操作与详情」菜单里,

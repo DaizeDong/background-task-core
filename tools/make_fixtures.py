@@ -162,6 +162,39 @@ def synthetic_conversation(number=1, cwd="C:/Acme/project", title=None, turns=2)
     return sid, "".join(json.dumps(row, ensure_ascii=False) + "\n" for row in records)
 
 
+def synthetic_mixed_conversation(number=700, human=8, cwd="C:/Acme/source", text_chars=60, title=None):
+    """A generated transcript where only some user records are text a person typed.
+
+    Each human turn is followed by the records a real run interleaves with it: an injected
+    reminder string, a command echo, a tool result (list content), a sidechain user message
+    and an assistant reply. Only the `human` messages are typed text; everything else must
+    stay out of anything that claims to be "what the person wrote".
+    """
+    sid = f"{number:08x}-0000-4000-8000-000000000001"
+    records, parent, step = [], None, 0
+
+    def add(kind, content, **extra):
+        nonlocal parent, step
+        step += 1
+        uid = f"{number:08x}-0000-4000-8000-{step:012x}"
+        records.append({"type": kind, "uuid": uid, "parentUuid": parent, "sessionId": sid, "cwd": cwd,
+                        "message": {"role": kind, "content": content}, **extra})
+        parent = uid
+
+    for turn in range(human):
+        filler = ("Acme widget " * ((text_chars // 12) + 1))[:max(0, text_chars - 24)]
+        add("user", f"Synthetic human ask {turn:03d}: {filler}")
+        add("user", f"<system-reminder>Synthetic injected reminder {turn}</system-reminder>")
+        add("user", f"<command-name>/example</command-name><command-args>Synthetic echo {turn}</command-args>")
+        add("assistant", [{"type": "tool_use", "id": f"call-{turn}", "name": "Read", "input": {"path": "example.txt"}}])
+        add("user", [{"type": "tool_result", "tool_use_id": f"call-{turn}", "content": f"Synthetic tool output {turn}"}])
+        add("user", f"Synthetic sidechain prompt {turn}", isSidechain=True)
+        add("assistant", [{"type": "text", "text": f"Synthetic reply {turn}"}])
+    if title:
+        records.append({"type": "custom-title", "customTitle": title, "sessionId": sid})
+    return sid, "".join(json.dumps(row, ensure_ascii=False) + "\n" for row in records)
+
+
 def synthetic_tool_conversation(number=500, turns=32, cwd="C:/Acme/source"):
     """A generated conversation with expandable tool/result chains for browser QA."""
     sid = f"{number:08x}-0000-4000-8000-000000000001"
