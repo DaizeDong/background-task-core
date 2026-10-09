@@ -1,6 +1,10 @@
 # task-console
 
-一台 Windows 机器的本地控制台，只监听环回地址：看它的计划任务、某个根目录下的所有 git 仓库，以及你指给它的 skill、记忆和对话目录。
+用于单台 Windows 机器的本地控制台，仅监听环回地址，展示计划任务、指定根目录下的 Git 仓库，以及配置的技能、记忆和对话目录。
+
+控制台汇总 agent 工作、记录的结果、待办承诺和本机自动化。工作记录由现有 reminder 属主提供；Windows 计划任务提供触发器，task-console 保留声明、登记记录和受控操作。
+
+工作台区分人工决策与技术诊断。每个来源报告检查覆盖范围：来源不可用时不会显示成检查成功的空列表，完成摘要也不能替代执行证据。
 
 [![本地控制台](https://img.shields.io/badge/%E6%9C%AC%E5%9C%B0-%E6%8E%A7%E5%88%B6%E5%8F%B0-orange?style=flat)](scripts/task_console/server.py)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
@@ -14,19 +18,19 @@
 
 ## ⭐ 先读这里，设计理念
 
-它存在只为诚实地回答一个问题：**有没有什么东西坏了，但现在看起来是好的？** 由此引出三条承诺，它们比任何一块面板都重要。
+控制台帮助识别检查缺失、状态异常和缺乏执行证据的情况。
 
-**「没查」和「零」必须是两种输出。** 每块面板都分开报告两件事：它有没有查成，以及它查出了什么。一个没人配过的来源显示为 NOT CHECKED，绝不画一张空的绿表；自检把它算进自己的分母，所以一次跳过了来源的检查不可能打出满分。
+**检查状态与检查结果分别报告。** 每块面板区分未检查、测量值为零和不可用或错误。未配置的来源显示 NOT CHECKED，并计入自检分母，跳过检查不能获得完整通过结论。
 
-**任何清单都不留第二份。** 页面能执行的动作全在 `maint.py` 的一张封闭表里，那张表自己就是权威。它读的每一个环境变量列在 `scripts/task_console/README.md`，并由一条测试双向对账，因为设置这些变量的启动器住在这个仓之外。第二份删不掉的，就上闸门把两份钉在一起；删得掉的，就删掉。
+**每项控制有明确权威。** `maint.py` 的封闭动作表定义页面可执行的维护操作。`scripts/task_console/README.md` 列出环境变量，测试双向核对文档与代码；仓外启动器依赖这份契约。无法消除的重复表示必须有一致性检查。
 
-**闸门必须先被证明会失败，才值得信。** 投毒证明它会红，负对照证明它不是对什么都红。这个仓的测试里记着那些「第一次投毒没红」的具体原因，那才是最值钱的部分。
+**检查器需要失败样本和负对照。** 注入故障验证检查能够拒绝错误状态，负对照验证合法状态能够通过。测试保留曾漏检的故障条件，防止同类回归。
 
 ## 它是什么（不是什么）
 
-`scripts/task_console/server.py` 在 `127.0.0.1` 上服务单页，每次启动现铸一个令牌，且从不落盘。`console_ingest.py` 在带外承担读取 Windows Operational 事件日志的开销，这样页面加载就不必付这笔钱；那份日志是个环形缓冲，能留多久取决于它配置的大小和事件量，所以没能在窗口内被摄取的东西是丢了而不是晚了，控制台会明说这件事，而不是给一个已经不动了却看着很笃定的数字。
+`scripts/task_console/server.py` 在 `127.0.0.1` 提供单页服务，每次启动生成新令牌，令牌从不落盘。`console_ingest.py` 独立读取 Windows Operational 事件日志，页面加载不执行摄取。
 
-主体是本地服务端，同时附带 [automation-management skill](skills/automation-management/SKILL.md)，用于声明、审核和登记流程。它**不是**监控服务，没有轮询，也没有告警。它**不**可移植：它通过 PowerShell 和 `pywin32` 读 Windows 计划任务，`server.py` 在别的平台上会刻意拒绝启动。
+主体是本地服务端，附带用于声明、审核和登记的 [automation-management skill](skills/automation-management/SKILL.md)。服务通过 PowerShell 和 `pywin32` 读取 Windows 计划任务，在其他平台上拒绝启动。采集时效与历史覆盖限制见下文“局限”。
 
 ## 页面能做什么
 
@@ -38,7 +42,7 @@
 
 流水线证据只说它能说的：一张零差异的同步回执不能证明能力对齐，一份新鲜的备份产物也不能证明每一步都跑了。界面不新增调度器、状态存储、通知通道或 agent 执行器。已有的任务控制授权和对外动作审核照常生效。
 
-凡是会离开这台机器的动作，一律两步，绝不一步。
+对外动作保留两步审核流程。
 
 ## 安装
 
@@ -69,7 +73,7 @@ python scripts/task_console/server.py --port 8787
 
 ## 细节各自住在哪
 
-每份清单只有一个家，而且不是这个文件。手上的问题是哪一个，就顺着哪一条指针走。
+运行接口、配置和维护约束由以下参考文档定义。
 
 | 读这个 | 当你要问 |
 | --- | --- |
@@ -79,9 +83,19 @@ python scripts/task_console/server.py --port 8787
 | [docs/changing-this.md](docs/changing-this.md) | 一次改动不能破什么，以及这个仓已经踩过的坑 |
 | [docs/cleanup-plan.md](docs/cleanup-plan.md) | 一次全仓审查查出了什么，其中执行了多少 |
 
+<a id="只读声明生成与保留规则"></a>
+
+## 只读声明生成
+
+`task_console.compiler.plan(request)` 和 `task-console plan` 根据组件 `.console.json` 声明、显式私有绑定、机器覆盖项及调用方提供的旧版快照生成字段差异和文件内容，不写文件、不查询或启动计划任务。现有任务定义在审核通过的接管或迁移事务转移责任之前仍有权威，生成方案本身不会转移权威。
+
+安装到独立运行环境后，入口为 `python -m task_console plan`；源码入口为 `python -m scripts.task_console plan`。原有 `python scripts/task_console/server.py` 入口保留。完整合成示例、输入契约和一致性限制见[控制台说明](scripts/task_console/README.md)。真实请求和方案保存在私有仓；公开示例由 `python tools/make_fixtures.py` 生成。
+
 ## 真实数据住在哪
 
-这个仓里不存任何真实数据。控制台的数据库和它的持久导出住在一个私有伴生仓，运行时由 `guards/tools/datadir.py` 这个共享解析器解出来。解析不到伴生仓时，控制台报 UNINITIALISED 并给出初始化指引；它绝不会退回到往这个仓里写，因为仓内 fallback 不是便利，它就是泄漏。
+控制台数据库和持久导出保存在私有伴生仓，运行时由 `guards/tools/datadir.py` 解析。解析不到伴生仓时报告 UNINITIALISED 并提供初始化指引；禁止写回工具仓。
+
+[存储说明](docs/storage.md)和[来源契约](storage.contract.json)区分当前运行状态、恢复证据与已完成的开发产物。预算用于触发审核，不允许为达标而截断核心历史。
 
 ## 测试
 
@@ -89,11 +103,11 @@ python scripts/task_console/server.py --port 8787
 python -m pytest tests/ -q
 ```
 
-测试面向 Windows，因为被测的东西就是 Windows。CI 在 `windows-latest` 上跑同一套，并在收集到的条数掉到某个绿色运行实测出来的下限以下时判失败。
+测试针对 Windows 平台。CI 在 `windows-latest` 上运行同一套测试，收集数量低于已通过运行中观察到的下限时会失败。
 
 ## 局限
 
-只管一台机器，就是它自己跑着的那台。只支持 Windows。没有轮询也没有告警，所以控制台报的是你打开它那一刻为真的东西。它推导运行历史所依据的事件日志是个环形缓冲，能留多久取决于配置的大小和事件量，所以窗口之外的历史只活在持久导出里，而且只覆盖开始摄取之后的那段时间。
+控制台只报告所在 Windows 机器的状态，不轮询，也不发送告警。运行历史来自环形事件日志，其保留窗口取决于配置容量和事件量。窗口内未被摄取的事件无法在之后补回；窗口外的历史仅限于摄取开始后已保存在持久导出中的记录。页面报告来源与摄取时效，不能据此假定历史完整。
 
 ## 语言
 
@@ -104,9 +118,3 @@ English (`README.md`) · 中文 (`README_CN.md`)
 见 [ROADMAP.md](ROADMAP.md) · [CHANGELOG.md](CHANGELOG.md) · [LICENSE](LICENSE)（MIT）。
 
 与仓库统一规范的每一处偏离及其理由，记在 [docs/2026-09-22-spec-adaptation.md](docs/2026-09-22-spec-adaptation.md)。
-
-## 只读声明生成与保留规则
-
-`task_console.compiler.plan(request)` 和 `task-console plan` 根据组件声明、私有绑定和机器配置生成待审方案，不写文件、不查询或启动计划任务。安装后的示例入口是 `python -m task_console plan`；源码入口是 `python -m scripts.task_console plan`。具体参数和合成示例见[控制台说明](scripts/task_console/README.md)。真实请求和方案保存在私有仓；公开示例由 `python tools/make_fixtures.py` 生成。
-
-[存储说明](docs/storage.md)和[来源契约](storage.contract.json)区分当前状态、恢复证据与已完成的开发产物。超过预算需要审核，不能因此截断核心历史。

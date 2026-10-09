@@ -18,19 +18,19 @@ The workbench separates human decisions from technical diagnostics. Every source
 
 ## ⭐ Read this first, the design philosophy
 
-It exists to answer one question honestly: **is anything broken that currently looks fine?** Three commitments follow from that, and they matter more than any panel does.
+The console identifies missing checks, unhealthy state and gaps in execution evidence.
 
-**Unchecked and zero are different outputs.** Every panel reports whether it was able to check, separately from what it found. A source nobody configured renders NOT CHECKED, never an empty green table, and the self check counts it in its own denominator, so a run that skipped a source cannot print full marks.
+**Check status and findings are reported separately.** Each panel distinguishes unchecked, measured zero and unavailable/error states. An unconfigured source renders NOT CHECKED and remains in the self-check denominator, so skipped coverage cannot receive a complete pass.
 
-**No list is kept twice.** The verbs the page can perform live in one closed table in `maint.py`, and that table is the authority. Every environment variable it reads is listed in `scripts/task_console/README.md`, and a test reconciles that table against the code in both directions, because the launcher that sets those variables lives outside this repository. Where a second copy cannot be deleted, a gate holds the two together; where it can, it is deleted.
+**Each control has an explicit authority.** The closed table in `maint.py` defines page maintenance verbs. `scripts/task_console/README.md` lists environment variables, and tests reconcile that contract with code in both directions because external launchers depend on it. Representations that must be duplicated require consistency checks.
 
-**A gate is trusted only after it has been shown to fail.** Poisoning proves the check can go red, and a negative control proves it is not red about everything. The tests here carry the record of the poisonings that did not go red the first time, and those notes are the valuable part.
+**Checks require failure cases and negative controls.** Fault injection establishes that a check rejects invalid state; negative controls establish that valid state passes. Tests retain previously missed failure conditions to prevent regressions.
 
 ## What it is (and isn't)
 
-`scripts/task_console/server.py` serves a single page on `127.0.0.1`, mints a token per start and never writes it down. `console_ingest.py` pays the cost of reading the Windows Operational event log out of band, so page loads do not; that log is a circular buffer with retention determined by its configured size and event volume, so anything not ingested inside that window is gone rather than late, and the console says so rather than showing a confident number that stopped moving.
+`scripts/task_console/server.py` serves a single page on `127.0.0.1`, generates a token per start and never persists it. `console_ingest.py` reads the Windows Operational event log separately, so page loads do not perform ingestion.
 
-The primary product is a server. It also ships the auxiliary [automation-management skill](skills/automation-management/SKILL.md) for declaration, review and registration workflows. It is **not** a monitoring service, since nothing polls and nothing alerts. It is **not** portable: it reads the Windows Task Scheduler through PowerShell and `pywin32`, and `server.py` refuses to start anywhere else on purpose.
+The primary product is a local server with an auxiliary [automation-management skill](skills/automation-management/SKILL.md) for declaration, review and registration. It reads Windows Task Scheduler through PowerShell and `pywin32` and refuses to start on other platforms. Collection freshness and history coverage are described under Limitations.
 
 ## What the page can do
 
@@ -42,7 +42,7 @@ Navigation groups information into work, automation and resources. Work, result 
 
 Pipeline evidence remains scoped: a zero-difference sync receipt does not prove capability parity, and a fresh backup artifact does not prove every step ran. The UI adds no scheduler, state store, notification transport or agent runner. Existing task-control authority and outgoing-action reviews remain in force.
 
-Anything that leaves the machine is two steps, never one.
+Outgoing actions retain a two-step review flow.
 
 ## Install
 
@@ -73,7 +73,7 @@ Set `TASK_CONSOLE_CONFIG` to the PRIVATE companion root. To switch configuration
 
 ## Where the details live
 
-Each list has exactly one home, and it is not this file. Follow a pointer when the question it answers is the one you have.
+These references define runtime interfaces, configuration and maintenance constraints.
 
 | Read this | When you are asking |
 | --- | --- |
@@ -104,7 +104,11 @@ Regenerate the public examples with `python tools/make_fixtures.py`.
 
 ## Where the data lives
 
-Nothing real is stored in this repository. The console's database and its durable export live in a private companion repository resolved at runtime by the shared resolver in `guards/tools/datadir.py`. If no companion resolves, the console reports UNINITIALISED with instructions; it never falls back to writing inside this repository, because an in-repo fallback is not a convenience, it is the leak.
+The database and durable export live in a private companion resolved by `guards/tools/datadir.py`. If no companion resolves, the console reports UNINITIALISED with setup instructions. Writes never fall back to this tool repository.
+
+<a id="storage-retention"></a>
+
+[Storage contract and cleanup](docs/storage.md) distinguish protected runtime and recovery state from completed development artifacts. `storage.contract.json` sets review budgets; cleanup never truncates core history to meet them.
 
 ## Tests
 
@@ -112,11 +116,11 @@ Nothing real is stored in this repository. The console's database and its durabl
 python -m pytest tests/ -q
 ```
 
-They target Windows, because the thing under test is Windows. CI runs the same suite on `windows-latest` and fails if the collected count drops below a floor observed on a green run.
+The tests target Windows. CI runs the same suite on `windows-latest` and fails if the collected count falls below the floor observed in a passing run.
 
 ## Limitations
 
-One machine, the one it runs on. Windows only. Nothing polls and nothing alerts, so the console reports what is true when you open it. The event log it derives run history from is a circular buffer whose retention depends on its configured size and event volume, so history outside that window exists only in the durable export, and only for the period since ingestion started.
+The console reports only the Windows machine on which it runs. It does not poll or send alerts. Run history comes from a circular event log whose retention depends on configured size and event volume. Events missed within that window cannot be backfilled later; older history is limited to records retained in the durable export since ingestion began. Reported source and ingestion freshness do not establish complete history.
 
 ## Languages
 
@@ -127,7 +131,3 @@ English (`README.md`) · 中文 (`README_CN.md`)
 See [ROADMAP.md](ROADMAP.md) · [CHANGELOG.md](CHANGELOG.md) · [LICENSE](LICENSE) (MIT).
 
 The deviations from the house repository spec, and the reasons for each, are recorded in [docs/2026-09-22-spec-adaptation.md](docs/2026-09-22-spec-adaptation.md).
-
-## Storage retention
-
-[Storage contract and cleanup](docs/storage.md) distinguish protected runtime and recovery state from completed development artifacts. `storage.contract.json` sets review budgets; cleanup never truncates core history to meet them.

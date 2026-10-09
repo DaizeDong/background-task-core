@@ -6,7 +6,7 @@ All notable changes to this project are documented here (Keep a Changelog style)
 
 ### Configuration and storage admission
 - Keep generated PowerShell settings examples byte-identical on Windows checkouts, account for native configuration overrides in self-check, and align scheduled-backup unit fixtures with the current authorization boundary.
-- Set a 256 MiB operating review cap with explicit database, event, recovery and registration allowances. Retained historical artifacts still count; core history is not truncated to meet the cap.
+- Raise the aggregate storage review threshold from the earlier 64 MiB development threshold to a 256 MiB operating cap, with explicit database, event, recovery and registration allowances. Retained historical artifacts still count; current databases, transaction files and recovery state remain protected, and core history is not truncated to meet the cap.
 - Require this source payload's pinned resolver and source-owned PRIVATE versioned admission for database overrides and durable event exports. Remove ancestor and vendored resolver fallback.
 - Declare SQLite coordination sidecars as exact transient leaves while retaining their transaction recovery obligations; the main database remains versionable.
 - Add portable native environment initialization and a read-only local doctor that verifies the declared database version and table columns; align English/Chinese usage and completed UI split documentation.
@@ -27,8 +27,6 @@ All notable changes to this project are documented here (Keep a Changelog style)
   `remaining_timeout`, `run`, `resolve_context`, `CallContext`), whose signatures
   are unchanged between the two, so a 0.2.0 install no longer satisfies the bound.
 
-- Set a 64 MiB aggregate storage review threshold while preserving current
-  database, transaction files and recovery protection.
 - Make storage declarations relative to the complete private companion repository.
   Protect exact database and recovery files, and distinguish current state from
   legacy development copies and helpers awaiting source reconciliation.

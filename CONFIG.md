@@ -31,7 +31,7 @@ resolver search. The event export has its own declared owner and admission check
 ## Native settings and resources
 
 The complete environment schema and each optional panel's absent-source behavior live in the
-[environment table](scripts/task_console/README.md#configuration). Core server requirements are
+[environment table](scripts/task_console/README.md#configure-it). Core server requirements are
 Windows, a supported Python interpreter and the imports declared by `pyproject.toml`. Usable
 history also requires the admitted database with the expected schema and separately operated
 ingestion. The doctor tests those local prerequisites without launching the server or ingester.

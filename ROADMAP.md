@@ -4,7 +4,9 @@ Current: **v0.1.0**
 
 ## v0.1.0 (current)
 
-Feature names only. Why each one behaves the way it does lives in `docs/changing-this.md`, which is the single home for those invariants, and what changed lives in `CHANGELOG.md`.
+The current feature set includes the original extraction and subsequent source changes.
+[docs/changing-this.md](docs/changing-this.md) defines maintenance invariants;
+[CHANGELOG.md](CHANGELOG.md) retains their history.
 
 - A loopback-only single page server with a per start token, a host allowlist, and task names re-enumerated against the live system before any verb runs.
 - Panels over scheduled tasks, artifact freshness, git repositories under one root, skills, the memory pool, plugins, disk, saved conversations, and the LLM call ledger.
@@ -13,7 +15,9 @@ Feature names only. Why each one behaves the way it does lives in `docs/changing
 - Maintenance verbs in one closed table: run, stop, enable, disable, retire a task; archive or restore a skill; archive a memory entry; enable or disable a plugin; delete abandoned clone staging directories; fetch a repository.
 - A test suite that targets Windows, with poisoning and negative controls recorded per gate, run on `windows-latest` in CI under a collected count floor.
 
-## Implemented since the initial baseline
+<a id="implemented-since-the-initial-baseline"></a>
+
+The following capabilities were added after the initial extraction:
 
 - Split page markup from static CSS and JavaScript.
 - Add declaration planning, reviewed registration and work-platform projections over owner records.
@@ -26,7 +30,7 @@ in [CHANGELOG.md](CHANGELOG.md); configuration scope is in [CONFIG.md](CONFIG.md
 
 ## Planned
 
-- **Bring the storage and memory thresholds back to the server.** The backend ships percentages and several places in the page each apply their own threshold. That is one rule written more than once, and the drift will render normally in every copy.
+- **Centralize storage and memory thresholds in the server.** Several page components currently apply separate thresholds to backend percentages, allowing their classifications to diverge.
 - Continue targeted UI maintenance across `console.html` and the separate static CSS/JavaScript modules; the page split is already implemented.
-- **A run history that does not depend on the event channel.** Everything outside the channel's roughly five day window exists only because ingestion happened to run, which makes the durable export the system of record for a period nobody declared.
+- **Define history retention independently of the event channel.** The historical measurement found a roughly five-day event window; actual retention depends on configured size and event volume. Older records survive only when ingestion captured them in the durable export.
 - **Finish the audit in `docs/cleanup-plan.md`.** Its top section records which items landed; what remains is listed there rather than copied here.
