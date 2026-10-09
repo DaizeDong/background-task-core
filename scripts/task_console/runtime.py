@@ -39,6 +39,7 @@ class RuntimeConfig:
     paths: dict
     active_xml: dict
     launchers: dict
+    source_path: Path | None = None
 
     @classmethod
     def read(cls, path, *, private_root, state_root, vault_root):
@@ -46,7 +47,8 @@ class RuntimeConfig:
         private = fs.validate_path(private_root)
         state = fs.validate_path(state_root)
         vault = fs.validate_path(vault_root)
-        document = read_json(fs.validate_path(path, root=private))
+        source_path = fs.validate_path(path, root=private)
+        document = read_json(source_path)
         if set(document) != {'schemaVersion', 'domain', 'desired', 'adoption', 'paths', 'active_xml', 'launchers'} or document['schemaVersion'] != 1:
             raise reg.Conflict('invalid_runtime_config', 'runtime')
         def resolve(value):
@@ -66,7 +68,7 @@ class RuntimeConfig:
                 or state.is_relative_to(vault) or vault.is_relative_to(state)
                 or desired == adoption):
             raise reg.Conflict('aliased_runtime_paths', 'runtime')
-        return cls(private, state, vault, identifier(document['domain']), desired, adoption, paths, exports, launchers)
+        return cls(private, state, vault, identifier(document['domain']), desired, adoption, paths, exports, launchers, source_path)
 
 
 class GenerationAuthority:

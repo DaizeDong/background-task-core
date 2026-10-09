@@ -34,7 +34,7 @@ def _read(path: str):
 
 def main(argv: list[str] | None = None, *, runtime=None) -> int:
     parser = _Parser(description=__doc__)
-    parser.add_argument("command", choices=["plan", "registration-plan", "creation-check", "runtime-status", "apply", "retire", "recover", "control", "retire-plan", "export", "restore-plan", "restore", "restore-recover", "adoption-plan", "adoption-apply", "adoption-resume"])
+    parser.add_argument("command", choices=["plan", "registration-plan", "creation-check", "runtime-status", "apply", "retire", "recover", "control", "retire-plan", "export", "restore-plan", "restore", "restore-recover", "adoption-plan", "adoption-apply", "adoption-resume", "reconcile-plan", "reconcile-apply", "reconcile-resume"])
     parser.add_argument('--source-binding')
     parser.add_argument('--review-only', action='store_true')
     parser.add_argument('--approval-revision')
@@ -73,9 +73,29 @@ def main(argv: list[str] | None = None, *, runtime=None) -> int:
             if runtime is None:
                 runtime = controller.load_runtime(runtime_config=args.runtime_config, private_root=args.private_root,
                                                  state_root=args.state_root, vault_root=args.vault_root,
-                                                 for_recovery=args.command in ('recover', 'restore-recover', 'adoption-plan', 'adoption-apply', 'adoption-resume', 'runtime-status'))
+                                                 for_recovery=args.command in ('recover', 'restore-recover', 'adoption-plan', 'adoption-apply', 'adoption-resume', 'runtime-status', 'reconcile-plan', 'reconcile-apply', 'reconcile-resume'))
             if any((args.component, args.bindings, args.machine, args.baseline)):
                 raise ContractError("invalid_arguments", "mutation")
+            if args.command.startswith('reconcile-'):
+                from . import reconcile
+                if any((args.task_id, args.name, args.verb, args.reason, args.migrate,
+                        args.approve_enable, args.expected_revision, args.source_binding,
+                        args.review_only)) or args.operation != 'apply':
+                    raise ContractError('invalid_arguments', 'reconciliation')
+                if args.command == 'reconcile-resume':
+                    if not args.transaction_id or not args.approval_revision or args.request:
+                        raise ContractError('invalid_arguments', 'reconciliation')
+                    result = reconcile.resume(args.transaction_id, args.approval_revision, runtime=runtime)
+                else:
+                    if args.transaction_id or (args.command == 'reconcile-plan' and args.approval_revision):
+                        raise ContractError('invalid_arguments', 'reconciliation')
+                    if args.command == 'reconcile-apply' and not args.approval_revision:
+                        raise ContractError('missing_field', 'approval_revision')
+                    payload = _read(args.request) if args.request else json.load(sys.stdin, object_pairs_hook=_unique_keys)
+                    result = (reconcile.build_plan(runtime, payload) if args.command == 'reconcile-plan'
+                              else reconcile.apply(payload, args.approval_revision, runtime=runtime))
+                print(json.dumps(result, ensure_ascii=True, sort_keys=True, allow_nan=False))
+                return 0 if args.command == 'reconcile-plan' or result.get('ok') else 3
             if args.command.startswith('adoption-'):
                 from . import adoption
                 if any((args.task_id, args.name, args.verb, args.migrate, args.approve_enable, args.expected_revision)):
@@ -137,9 +157,14 @@ def main(argv: list[str] | None = None, *, runtime=None) -> int:
                 bootstrap = [record['transaction_id'] for record in selected.journal.list()
                              if isinstance(record.get('bootstrap'), dict)
                              and record['transaction_id'] in pending]
+                reconciliation = [record['transaction_id'] for record in selected.journal.list()
+                                  if isinstance(record.get('reconcile'), dict)
+                                  and record['transaction_id'] in pending]
                 authority = getattr(selected, 'authority', None)
                 result = {'schemaVersion': 1, 'pending': pending, 'pending_bootstrap': bootstrap,
-                          'action_required': 'adoption-resume' if bootstrap else None}
+                          'pending_reconciliation': reconciliation,
+                          'action_required': ('adoption-resume' if bootstrap else
+                                              'reconcile-resume' if reconciliation else None)}
                 try:
                     bundle = selected.load()
                     registration._compile(bundle)
