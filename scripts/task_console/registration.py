@@ -812,6 +812,15 @@ def apply(plan, expected_revision, *, runtime=None, restore_approval=None):
         return _result(journal)
 
 
+def _ordinary_recovery_shape(journal):
+    require(journal, 'input_revision', str)
+    if 'linked_work_items' not in journal:
+        raise Conflict('missing_field', 'linked_work_items')
+    # A failed or unconfigured linked reader is explicitly represented by None.
+    if journal['linked_work_items'] is not None:
+        require(journal, 'linked_work_items', dict)
+
+
 def recover(transaction_id, *, runtime=None):
     runtime = _use(runtime)
     if runtime.vault is None:
@@ -820,6 +829,13 @@ def recover(transaction_id, *, runtime=None):
     versioned(journal, "journal")
     if journal["transaction_id"] != transaction_id:
         raise Conflict("journal_identity_mismatch", "journal")
+    if 'reconcile' in journal and not isinstance(journal['reconcile'], dict):
+        raise Conflict('journal_operation_unknown', 'journal')
+    if isinstance(journal.get('reconcile'), dict):
+        # Accepting external file edits requires the exact reviewed approval;
+        # these current before-images must never enter ordinary compensation.
+        from .reconcile import _result as reconciliation_result
+        return reconciliation_result(journal)
     if isinstance(journal.get("bootstrap"), dict):
         # Initial-authority journals are recognized before any rollback, cleanup
         # or result construction. This recovery neither knows those authority
@@ -834,8 +850,14 @@ def recover(transaction_id, *, runtime=None):
                 "action_required": "adoption-resume" if incomplete else None,
                 "message": ("complete this initial authority transaction with the explicitly approved "
                             "adoption-resume command and this transaction_id") if incomplete else None}
+    # A missing operation marker must not turn an acceptance journal into an
+    # ordinary compensating transaction. These are required standard fields.
+    _ordinary_recovery_shape(journal)
     with runtime.locks.hold(journal["locks"]):
         journal = runtime.journal.load(transaction_id)
+        if 'reconcile' in journal or 'bootstrap' in journal:
+            raise Conflict('journal_operation_changed', 'journal')
+        _ordinary_recovery_shape(journal)
         if journal['status'] == 'committing' and hasattr(runtime, 'finish'):
             runtime.finish(journal, journal['completion']['status'])
             _cleanup(runtime, journal)
