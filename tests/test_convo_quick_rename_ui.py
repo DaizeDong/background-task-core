@@ -229,3 +229,133 @@ def test_operation_tables_never_call_a_suggestion_a_save():
     result = run("[operationLabel('/api/convo/suggest-title',{}),operationOutcome('/api/convo/suggest-title',{},{title:'x'})]")
     assert result[0] == "生成名称建议"
     assert result[1]["message"] == "已生成名称建议，尚未保存"
+
+
+# ---------- 复审补的几条 ----------
+
+def test_a_save_button_rendered_disabled_gets_its_plain_title_back_once_enabled():
+    """渲染成禁用的按钮带 data-locked-title,打字让它可用以后悬停提示回到「保存」。"""
+    result = run("""(()=>{
+      cvQuickRename(SID,'list');const html=cvInlineHtml('list',SID);
+      const save=html.split('id="cv-inline-save"')[1].split('>')[0];
+      const locked=(save.match(/data-locked-title="([^"]*)"/) || [])[1];
+      const title=(save.match(/ title="([^"]*)"/) || [])[1];
+      const button={disabled:true,title,dataset:{label:'保存',lockedTitle:locked}};
+      setDisabled(button,'');
+      return {locked,title,after:{disabled:button.disabled,title:button.title}};
+    })()""".replace("SID", json.dumps(SID)), setup())
+    assert result["locked"] and result["locked"] == result["title"] and "名称没有变化" in result["title"]
+    assert result["after"] == {"disabled": False, "title": "保存"}
+
+
+def test_closing_the_editor_returns_focus_to_its_opener():
+    result = run("""(async()=>{
+      const asked=[], focused=[];
+      document.querySelector=s=>{asked.push(s);return s.startsWith('[data-cvquick')?{focus(){focused.push(s);}}:null;};
+      cvQuickRename(SID,'list');cvInlineEscape();
+      const esc=[...focused];focused.length=0;
+      api=async()=>({id:SID,title:'Acme 新名字',projectDir:'C--Acme-source',warnings:[]});
+      cvQuickRename(SID,'list');CV_INLINE.value='Acme 新名字';await cvInlineSave();
+      const saved=[...focused];focused.length=0;
+      CH_ID=SID;CH_SUB=null;CH={available:true,id:SID,title:'Acme pipeline',projectDir:'C--Acme-source',turns:[],subagents:[],leafIsDefault:true};
+      cvQuickRename(SID,'chain');cvInlineClose();
+      const chain=[...focused];focused.length=0;
+      document.activeElement={tagName:'BUTTON',isConnected:true};
+      cvQuickRename(SID,'list');cvInlineClose();
+      return {esc,saved,chain,busyElsewhere:[...focused]};
+    })()""".replace("SID", json.dumps(SID)), setup())
+    assert result["esc"] == [f'[data-cvquick="{SID}"]']
+    # 保存后重画一次、整表刷新后再一次:两次都把焦点还回铅笔。
+    assert result["saved"] == [f'[data-cvquick="{SID}"]'] * 2
+    assert result["chain"] == [f'[data-cvquick-chain="{SID}"]']
+    # 负对照:焦点已经在别的元素上(人点了别处)就不抢。
+    assert result["busyElsewhere"] == []
+
+
+def test_escape_with_the_list_hidden_behind_a_chain_closes_the_chain_not_the_editor():
+    result = run("""(()=>{
+      let chainEsc=0;convoChainEscape=()=>{chainEsc++;return true;};
+      cvQuickRename(SID,'list');CV_INLINE.value='Acme typed but unsaved';
+      $('cvbox').hidden=true;$('chbox').hidden=false;
+      cvInlinePointerDown({target:{closest:()=>null}});
+      const tone=CV_INLINE.tone;
+      const handled=handleEscape(key('Escape'));
+      const after={value:CV_INLINE?.value,chainEsc};
+      $('cvbox').hidden=false;
+      const visible=cvInlineEscape();
+      return {tone,handled,after,visible,open:CV_INLINE};
+    })()""".replace("SID", json.dumps(SID)), setup())
+    # 列表被盖住时:点别处不往看不见的编辑器里写提示,Esc 退的是对话链,打的字留着。
+    assert result["tone"] == ""
+    assert result["handled"] is True and result["after"] == {"value": "Acme typed but unsaved", "chainEsc": 1}
+    # 正对照:列表回来以后,同一个 Esc 关的是编辑器。
+    assert result["visible"] is True and result["open"] is None
+
+
+def test_closing_the_chain_drops_its_title_editor_and_keeps_the_typed_name_visible():
+    result = run("""(()=>{
+      CH_ID=SID;CH_SUB=null;CH={available:true,id:SID,title:'Acme pipeline',projectDir:'C--Acme-source',turns:[],subagents:[],leafIsDefault:true};
+      $('chbox').hidden=false;
+      cvQuickRename(SID,'chain');CV_INLINE.value='Acme typed in chain header';
+      chClose(true);
+      const afterClose=CV_INLINE;
+      $('cvbox').hidden=false;cvQuickRename(OTHER,'list');
+      return {afterClose,toasts,listEditor:CV_INLINE&&{id:CV_INLINE.id,scope:CV_INLINE.scope}};
+    })()""".replace("SID", json.dumps(SID)).replace("OTHER", json.dumps(OTHER)), setup())
+    assert result["afterClose"] is None
+    assert any("Acme typed in chain header" in m and tone == "warn" for m, tone in result["toasts"])
+    # 列表的铅笔照常能用。
+    assert result["listEditor"] == {"id": OTHER, "scope": "list"}
+
+
+def test_a_dirty_editor_hidden_behind_the_chain_explains_itself_in_a_toast():
+    result = run("""(()=>{
+      cvQuickRename(SID,'list');CV_INLINE.value='Acme 未保存';
+      $('cvbox').hidden=true;$('chbox').hidden=false;CH_ID=OTHER;
+      cvQuickRename(OTHER,'chain');
+      return {kept:{id:CV_INLINE.id,scope:CV_INLINE.scope,value:CV_INLINE.value,note:CV_INLINE.note},toasts};
+    })()""".replace("SID", json.dumps(SID)).replace("OTHER", json.dumps(OTHER)), setup())
+    assert result["kept"] == {"id": SID, "scope": "list", "value": "Acme 未保存", "note": ""}
+    assert any("列表里有一个还没保存的名称" in m for m, _ in result["toasts"])
+
+
+def test_rename_dialog_locks_the_field_while_a_suggestion_is_pending():
+    result = run("""(async()=>{
+      let finish;api=()=>new Promise(resolve=>finish=resolve);
+      cvOpenManager('rename',SID);const pending=cvDialogSuggest();
+      const during={disabled:$('cv-new-title').disabled,title:$('cv-new-title').title};
+      finish({title:'示例名称',provider:'p'});await pending;
+      const after={disabled:$('cv-new-title').disabled,value:$('cv-new-title').value};
+      CV_EDIT=null;cvOpenManager('move',SID);
+      return {during,after,move:$('cv-new-title').disabled};
+    })()""".replace("SID", json.dumps(SID)), setup())
+    assert result["during"]["disabled"] is True and "正在生成名称" in result["during"]["title"]
+    assert result["after"] == {"disabled": False, "value": "示例名称"}
+    assert result["move"] is False
+
+
+def test_enter_in_the_inline_box_does_nothing_while_save_is_disabled():
+    result = run("""(()=>{
+      const sent=[];api=async(path)=>{sent.push(path);return {id:SID,title:'x'};};
+      cvQuickRename(SID,'list');CV_INLINE.value='Acme 新名字';
+      const ev=()=>({target:{id:'cv-inline-input'},key:'Enter',preventDefault(){}});
+      $('cv-inline-save').disabled=true;cvInlineKeydown(ev());
+      const blocked=[...sent], stillOpen=!!CV_INLINE && !CV_INLINE.busy;
+      $('cv-inline-save').disabled=false;cvInlineKeydown(ev());
+      return {blocked,stillOpen,sent};
+    })()""".replace("SID", json.dumps(SID)), setup())
+    assert result["blocked"] == [] and result["stillOpen"] is True
+    # 正对照:按钮可用时 Enter 照常保存。
+    assert result["sent"] == ["/api/convo/rename"]
+
+
+def test_delete_mode_gives_the_submit_button_its_own_hover_title():
+    result = run("""(async()=>{
+      const plan={files:2,bytes:900,indexEntries:1,fingerprint:'a'.repeat(64)};
+      api=async()=>plan;
+      cvOpenManager('rename',SID);const rename={title:$('cv-submit').title,label:$('cv-submit').dataset.label};
+      $('cv-dialog').close();cvOpenManager('delete',OTHER);await Promise.resolve();await Promise.resolve();
+      return {rename,del:{text:$('cv-submit').textContent,title:$('cv-submit').title,label:$('cv-submit').dataset.label}};
+    })()""".replace("SID", json.dumps(SID)).replace("OTHER", json.dumps(OTHER)), setup())
+    assert result["rename"]["label"] == "保存名称" and result["rename"]["title"].startswith("保存名称")
+    assert result["del"] == {"text": "永久删除", "title": "永久删除", "label": "永久删除"}

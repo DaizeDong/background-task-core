@@ -6,8 +6,10 @@
   build_prompt     摘要加上现在的名字,拼成给模型的一句话
   suggest          调 llmcall,用 normalize_title 当 extract= 校验答案
 
-「人亲手打的字」只认 convo_chain 的 typed_text / looks_injected:skill 正文、工具结果、
-提醒块和命令回显都不进摘要。同一条规则在这里另写一份,就是这个仓反复出过的那种分叉。
+「人亲手打的字」照 convo_chain 判 human 的同一组条件:typed_text 取文本、looks_injected 拒注入,
+再加上两个记录标志:isMeta(skill 正文、框架消息)和 isCompactSummary(/compact 之后助手写的摘要)。
+convo_chain 没有把这组条件导出成一个函数,文本部分用的是它导出的两个函数;两个标志在 _is_human
+里照抄,并有测试拿这两种记录形状钉住。skill 正文、工具结果、提醒块、命令回显和压缩摘要都不进摘要。
 
 转录可以有几十上百兆。这里只读头尾两段(和 convos.read_one 一样),所以内存和耗时都有上限;
 代价是中间的消息看不到。起名要的是「这场对话从什么开始、最后在做什么」,头尾正好是这两样。
@@ -60,8 +62,20 @@ def _clip(text: str, limit: int) -> str:
     return text if len(text) <= limit else text[: limit - 1] + "…"
 
 
-def _scan(chunk: bytes, *, drop_first_line: bool, titles: dict):
-    """一段字节里人打的消息,按出现顺序给 (uuid, 文本);顺手记下这一段里最后一次的名字记录。
+def _is_human(entry: dict) -> str | None:
+    """这条记录是人亲手打的字就返回文本,否则 None。条件与 convo_chain 判 human 的那一支相同。"""
+    if entry.get("type") != "user" or entry.get("isSidechain"):
+        return None
+    if entry.get("isMeta") or entry.get("isCompactSummary"):
+        return None
+    text = typed_text(entry)
+    return text if text and not looks_injected(text) else None
+
+
+def _scan(chunk: bytes, *, region: str, drop_first_line: bool, titles: dict):
+    """一段字节里人打的消息,按出现顺序给 (键, 文本);顺手记下这一段里最后一次的名字记录。
+
+    键是 uuid;没有 uuid 的记录用 (段名, 行号),这样两条不同的消息永远不会撞键。
 
     从文件中间切出来的那段,第一行多半是半截,丢掉;半截的 JSON 本来也解析不了。
     名字只从读到的这两段里取:它只是给模型的提示,为它把整个文件再扫一遍不值。
@@ -69,7 +83,7 @@ def _scan(chunk: bytes, *, drop_first_line: bool, titles: dict):
     lines = chunk.split(b"\n")
     if drop_first_line and lines:
         lines = lines[1:]
-    for raw in lines:
+    for index, raw in enumerate(lines):
         raw = raw.strip()
         if not raw.startswith(b"{"):
             continue
@@ -84,11 +98,10 @@ def _scan(chunk: bytes, *, drop_first_line: bool, titles: dict):
             titles["custom"] = entry["customTitle"].strip()
         elif kind == "ai-title" and isinstance(entry.get("aiTitle"), str) and entry["aiTitle"].strip():
             titles["ai"] = entry["aiTitle"].strip()
-        if kind != "user" or entry.get("isSidechain"):
-            continue
-        text = typed_text(entry)
-        if text and not looks_injected(text):
-            yield entry.get("uuid") or id(entry), text
+        text = _is_human(entry)
+        if text:
+            uuid = entry.get("uuid")
+            yield (uuid if isinstance(uuid, str) and uuid else (region, index)), text
 
 
 def collect_digest(path, *, head_bytes: int = HEAD_BYTES, tail_bytes: int = TAIL_BYTES,
@@ -110,8 +123,8 @@ def collect_digest(path, *, head_bytes: int = HEAD_BYTES, tail_bytes: int = TAIL
             fh.seek(-tail_bytes, os.SEEK_END)
             tail, partial = fh.read(), True
     titles = {}
-    first = list(_scan(head, drop_first_line=False, titles=titles))
-    last = list(_scan(tail, drop_first_line=True, titles=titles)) if tail else []
+    first = list(_scan(head, region="head", drop_first_line=False, titles=titles))
+    last = list(_scan(tail, region="tail", drop_first_line=True, titles=titles)) if tail else []
     # 头尾两段不重叠(上面只在文件够大时才分开读),但同一个 uuid 出现两次时仍只算一次。
     seen, ordered = set(), []
     for key, text in first + last:

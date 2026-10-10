@@ -24,8 +24,19 @@ function cvSubmitReason(){
   if(CV_EDIT.kind==='move') return CV_EDIT.targets?'':'还没有其他项目目录可供迁移';
   return CV_EDIT.deletion?'':'请重新查看删除范围';
 }
+// 提交按钮的名字随模式变(保存名称 / 移动到此项目 / 永久删除 / 重试…)。悬停提示和 setDisabled 用来
+// 还原提示的 data-label 也跟着换,否则红色的「永久删除」悬停时还写着上一个模式的「保存」。
+function cvSubmitLabel(label){
+  const button=$('cv-submit');
+  button.textContent=label;button.dataset.label=label;button.dataset.plainTitle=label;
+  delete button.dataset.lockedTitle;button.title=label;
+}
 function cvSyncSubmit(){
   ConsoleActions.gate($('cv-submit'),cvSubmitReason());
+  // 生成建议时输入框也锁住:和就地改名一样,否则人这时打的字会被随后回来的建议盖掉。
+  const input=$('cv-new-title'), waiting=CV_EDIT?.kind==='rename' && !!CV_EDIT.suggesting;
+  if(input.disabled!==waiting) input.disabled=waiting;
+  if(waiting) input.title='正在生成名称，完成后可以编辑';else if(input.title) input.title='';
   ConsoleActions.gate($('cv-suggest'),CV_EDIT_BUSY?'正在处理':CV_EDIT?.suggesting?'正在生成名称':'');
   // 改名框里打了新名字时,误点一下遮罩不该把它丢掉;Esc 和取消照样能关。
   const typed=CV_EDIT?.kind==='rename' && String($('cv-new-title').value || '').trim()!==String(CV_EDIT.row.title || '').trim();
@@ -50,7 +61,7 @@ function cvOpenManager(kind,id,target){
   // 拖到某个项目上松手时,目标就是那个项目:对话框里预先选好,确认一下就走。
   if(target && options.some(g=>cvKey(g)===target)) $('cv-target').value=target;
   $('cv-target').required=!rename;
-  $('cv-submit').textContent=rename?'保存名称':'移动到此项目';
+  cvSubmitLabel(rename?'保存名称':'移动到此项目');
   $('cv-edit-note').textContent=!rename && !options.length?'还没有其他项目目录可供迁移':'';
   $('cv-edit-note').className='cv-notice';
   cvSyncSubmit();cvTargetLocation();$('cv-dialog').showModal();
@@ -96,14 +107,14 @@ async function cvOpenDelete(row,refresh=false){
   $('cv-title-field').hidden=true;$('cv-target-field').hidden=true;
   $('cv-new-title').required=false;$('cv-target').required=false;
   $('cv-delete-field').hidden=false;$('cv-repreview').hidden=true;
-  $('cv-submit').classList.remove('primary');$('cv-submit').classList.add('danger');$('cv-submit').textContent='永久删除';
+  $('cv-submit').classList.remove('primary');$('cv-submit').classList.add('danger');cvSubmitLabel('永久删除');
   $('cv-edit-note').className='cv-notice';$('cv-edit-note').textContent='';
   if(!dialog.open) dialog.showModal();
   const key=cvDeleteKey(row), previous=CV_DELETIONS.get(key);
   if(previous && !refresh){
     CV_EDIT.deletion=previous;cvDeleteSummary(previous.plan);
     $('cv-edit-note').textContent='上次删除结果尚未确认。再次提交会核对同一请求。';
-    $('cv-submit').textContent='重试原删除请求';cvSyncSubmit();
+    cvSubmitLabel('重试原删除请求');cvSyncSubmit();
     return;
   }
   CV_EDIT_BUSY=true;cvSyncSubmit();$('cv-cancel').disabled=true;
@@ -144,8 +155,8 @@ async function cvDelete(){
     $('cv-edit-note').textContent=error.status?error.message:'删除结果尚未确认。重试会核对原请求。'+error.message;
     if(code==='conflict'){
       CV_DELETIONS.delete(key);CV_EDIT.deletion=null;
-      $('cv-repreview').hidden=false;$('cv-submit').textContent='请重新查看删除范围';
-    }else $('cv-submit').textContent='重试原删除请求';
+      $('cv-repreview').hidden=false;cvSubmitLabel('请重新查看删除范围');
+    }else cvSubmitLabel('重试原删除请求');
   }finally{
     CV_EDIT_BUSY=false;$('cv-cancel').disabled=false;cvSyncSubmit();
   }
@@ -194,7 +205,9 @@ async function cvDialogSuggest(){
   try{
     const result=await cvRequestSuggestion(edit.row);
     if(CV_EDIT!==edit || seq!==CV_DIALOG_SUGGEST || !$('cv-dialog').open) return;
-    $('cv-new-title').value=result.title;
+    // 先解锁输入框再填和选中:锁着的输入框拿不到焦点。
+    edit.suggesting=false;cvSyncSubmit();
+    $('cv-new-title').value=result.title;cvSyncSubmit();
     $('cv-edit-note').textContent=cvSuggestedNote(result);
     $('cv-new-title').focus?.();$('cv-new-title').select?.();
   }catch(error){
@@ -253,8 +266,10 @@ function cvInlineHtml(scope,id){
   const state=CV_INLINE;
   if(!state || state.scope!==scope || state.id!==id) return '';
   const button=([key,label,cls])=>{
-    const why=cvInlineReason(key);
-    return `<button type="button" id="cv-inline-${key}" class="mini${cls?' '+cls:''}" data-cvinline-${key}${why?' disabled':''} data-label="${label}" title="${esc(why?disabledTitle(label,why):label)}">${label}</button>`;
+    const why=cvInlineReason(key), title=why?disabledTitle(label,why):label;
+    // 渲染成禁用时同时写 data-locked-title:setDisabled 只认这个标记来把悬停提示还原成「保存」,
+    // 少了它,打字让按钮变可用以后悬停仍写着「不可用」。
+    return `<button type="button" id="cv-inline-${key}" class="mini${cls?' '+cls:''}" data-cvinline-${key}${why?` disabled data-locked-title="${esc(title)}"`:''} data-label="${label}" title="${esc(title)}">${label}</button>`;
   };
   // 保存或生成进行中输入框也锁住:否则人打的字会被随后回来的建议盖掉。
   const locked=state.busy || state.suggesting;
@@ -294,14 +309,25 @@ function cvInlineNote(note,tone=''){
   if(!CV_INLINE) return;
   CV_INLINE.note=note;CV_INLINE.tone=tone;cvInlineSync();
 }
+// 编辑器所在的那一处现在看得见吗。列表在对话链打开时整块藏起来;对话链那一处还得是同一场会话。
+// 看不见的编辑器不接 Esc、不接「点别处」,也不能把提示写进一个看不见的地方。
+function cvInlineHostVisible(state=CV_INLINE){
+  if(!state) return false;
+  if(state.scope==='list') return !$('cvbox')?.hidden;
+  return !$('chbox')?.hidden && typeof CH_ID!=='undefined' && CH_ID===state.id;
+}
 function cvQuickRename(id,scope){
   if(!ConsoleActions.allowWrite()) return;
   if(CV_INLINE){
     if(CV_INLINE.id===id && CV_INLINE.scope===scope){cvInlineFocus(false);return;}
     if(CV_INLINE.busy || cvInlineDirty()){
-      cvInlineNote('这里有一个还没保存的名称：先保存，或按「取消」放弃','error');cvInlineFocus(false);return;
+      if(cvInlineHostVisible()){
+        cvInlineNote('这里有一个还没保存的名称：先保存，或按「取消」放弃','error');cvInlineFocus(false);
+      }else toast(CV_INLINE.scope==='list'?'列表里有一个还没保存的名称：回到列表先保存，或按「取消」放弃'
+        :'对话链标题里有一个还没保存的名称：先保存，或按「取消」放弃','warn');
+      return;
     }
-    cvInlineClose();
+    cvInlineClose(false);
   }
   const row=cvSession(id);
   if(!row){toast('这场会话的位置已改变，请刷新列表后重试','bad');return;}
@@ -309,11 +335,30 @@ function cvQuickRename(id,scope){
   CV_INLINE={id,scope,row,original:title,value:title,busy:false,suggesting:false,note:'',tone:''};
   cvInlineRepaint(scope,id,'select');
 }
-function cvInlineClose(){
+function cvInlineClose(returnFocus=true){
   const state=CV_INLINE;
   if(!state) return;
   CV_INLINE=null;CV_INLINE_SEQ++;
   cvInlineRepaint(state.scope,state.id);
+  if(returnFocus) cvInlineReturnFocus(state.scope,state.id);
+}
+// 编辑器收起(Esc、取消、保存成功)以后,焦点回到打开它的那支铅笔或对话链标题,
+// 键盘用户不用从页面顶上重新 Tab 过来。焦点已经在别处(人点了别的东西)就不抢。
+function cvInlineReturnFocus(scope,id){
+  const active=document.activeElement;
+  if(active && active!==document.body && active.tagName!=='BODY' && active.isConnected!==false) return;
+  const value=typeof CSS!=='undefined' && CSS.escape?CSS.escape(id):String(id).replace(/[^A-Za-z0-9_-]/g,'');
+  const opener=document.querySelector(scope==='list'?`[data-cvquick="${value}"]`:`[data-cvquick-chain="${value}"]`);
+  try{opener?.focus?.({preventScroll:true});}catch(error){}
+}
+// 编辑器的那一处没了(对话链关掉或换成另一场):编辑器跟着收起。打过的字不能一声不吭地丢,
+// 所以改过的名字放进提示里,人还能复制回去。保存进行中的不动,结果回来时自己收尾。
+function cvInlineHostGone(scope){
+  const state=CV_INLINE;
+  if(!state || state.scope!==scope || state.busy) return;
+  const dirty=cvInlineDirty(), typed=String(state.value || '').trim();
+  CV_INLINE=null;CV_INLINE_SEQ++;
+  if(dirty) toast(`对话链已关闭，这个名称没有保存：${typed}`,'warn');
 }
 // 列表或对话链整块重画以后,焦点会掉回 body。编辑器还开着就把焦点还给它;人已经点到别处去了就不抢。
 function cvInlineAfterPaint(){
@@ -332,13 +377,18 @@ async function cvInlineSave(){
     cvApplyTitle(result.id || state.row.id,result.title);
     cvUpdateSession(result,result.title);
     cvInlineRepaint(state.scope,state.id);
+    cvInlineReturnFocus(state.scope,state.id);
     toast('会话名称已保存','ok');
     for(const warning of result.warnings || []) toast(warning,'warn');
     await loadConvos();
+    // 刷新整表又把那一行重画了一遍,焦点再掉回 body:再还一次。
+    if(!CV_INLINE) cvInlineReturnFocus(state.scope,state.id);
   }catch(error){
     if(CV_INLINE!==state) return;
     state.busy=false;state.tone='error';
     state.note=error.status?error.message:'结果尚未确认。重试会核对同一会话，不会创建副本。'+error.message;
+    // 保存期间那一处没了(对话链被关掉):错误写进看不见的地方等于没写,改成提示并收起。
+    if(!cvInlineHostVisible(state)){CV_INLINE=null;CV_INLINE_SEQ++;toast('会话名称没有保存：'+state.note,'bad');return;}
     cvInlineRepaint(state.scope,state.id,'keep');
   }
 }
@@ -361,17 +411,29 @@ async function cvInlineSuggest(){
   }
 }
 // Esc 的一层。保存进行中吃掉这一下但不关:请求已经发出去了,关掉只会让人看不到结果。
+// 编辑器看不见(列表被对话链盖住)时不接:这一下该退的是看得见的那一层,也就是对话链。
 function cvInlineEscape(){
   if(!CV_INLINE) return false;
   if(typeof CURVIEW!=='undefined' && CURVIEW!=='convos') return false;
+  if(!cvInlineHostVisible()) return false;
   if(!CV_INLINE.busy) cvInlineClose();
   return true;
 }
 function cvInlinePointerDown(event){
-  if(!CV_INLINE || CV_INLINE.busy) return;
+  if(!CV_INLINE || CV_INLINE.busy || !cvInlineHostVisible()) return;
   if(event.target?.closest?.('[data-cvinline]')) return;
   if(cvInlineDirty()){cvInlineNote('名称还没保存：点「保存」，或点「取消」放弃','error');return;}
-  cvInlineClose();
+  cvInlineClose(false);
+}
+// Enter 就是按「保存」:按钮不可用(名字没变、页面上另一个写操作还没完成)时 Enter 也什么都不发。
+// 输入法组字时的 Enter 是在选字,不算。
+function cvInlineKeydown(event){
+  if(event.target?.id!=='cv-inline-input') return;
+  if(event.key!=='Enter' || event.isComposing || event.repeat || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return;
+  event.preventDefault();
+  const save=$('cv-inline-save');
+  if(!save || save.disabled) return;
+  cvInlineSave();
 }
 function cvClearDrag(){
   CV_DRAG=null;document.querySelectorAll('.cv-dropover').forEach(el=>el.classList.remove('cv-dropover'));
@@ -412,12 +474,7 @@ function startConversationActions(){
     if(CV_INLINE.tone==='error'){CV_INLINE.note='';CV_INLINE.tone='';}
     cvInlineSync();
   });
-  // Enter 就是按「保存」。输入法组字时的 Enter 是在选字,不算。
-  document.addEventListener('keydown',event=>{
-    if(event.target?.id!=='cv-inline-input') return;
-    if(event.key!=='Enter' || event.isComposing || event.repeat || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return;
-    event.preventDefault();cvInlineSave();
-  });
+  document.addEventListener('keydown',cvInlineKeydown);
   $('cv-suggest').addEventListener('click',cvDialogSuggest);
   $('cv-form').addEventListener('submit',event=>{
     event.preventDefault();if(!CV_EDIT || $('cv-submit').disabled) return;

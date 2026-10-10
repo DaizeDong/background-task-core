@@ -118,6 +118,7 @@ async function openConvoChain(id, opts){
     keepOpen=Object.keys(CH_OPEN).filter(ti=>CH_OPEN[ti]).map(ti=>(CH.turns[+ti]||{}).u).filter(Boolean);
   }
   if(!same){
+    if(CH_ID!==id && typeof cvInlineHostGone==="function") cvInlineHostGone("chain");
     CH_SEL=null; CH_FROM=null; CH_TO=null; CH_OPEN={}; CH_FRES=null;
     if(CH_ID!==id){ CH_SUBQ=""; chFindReset(); }
     if(!sub || CH_ID!==id) CH_PARENT=null;
@@ -178,6 +179,8 @@ function chAfterLoad(focusU, keepSel, keepHead, keepOpen){
 }
 
 function chClose(keepHash){
+  // 标题里开着的就地改名编辑器跟着对话链一起收起,不留一个看不见、却挡住列表铅笔的编辑器。
+  if(typeof cvInlineHostGone==="function") cvInlineHostGone("chain");
   CH_SEQ++; clearTimeout(CH_NT);
   CH=null; CH_ID=null; CH_SUB=null; CH_LEAF=null; CH_PARENT=null; CH_SEL=null; CH_ERR=null; chFindReset();
   CH_FROM=null; CH_TO=null; CH_OPEN={}; CH_FKOPEN=null; CH_MOREOPEN=false; CH_FRES=null; CH_NODE.clear();

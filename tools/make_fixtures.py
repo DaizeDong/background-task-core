@@ -162,13 +162,16 @@ def synthetic_conversation(number=1, cwd="C:/Acme/project", title=None, turns=2)
     return sid, "".join(json.dumps(row, ensure_ascii=False) + "\n" for row in records)
 
 
-def synthetic_mixed_conversation(number=700, human=8, cwd="C:/Acme/source", text_chars=60, title=None):
+def synthetic_mixed_conversation(number=700, human=8, cwd="C:/Acme/source", text_chars=60, title=None,
+                                 uuids=True):
     """A generated transcript where only some user records are text a person typed.
 
     Each human turn is followed by the records a real run interleaves with it: an injected
-    reminder string, a command echo, a tool result (list content), a sidechain user message
-    and an assistant reply. Only the `human` messages are typed text; everything else must
-    stay out of anything that claims to be "what the person wrote".
+    reminder string, a command echo, a tool result (list content), a sidechain user message,
+    a skill body flagged isMeta, a compaction summary flagged isCompactSummary and an assistant
+    reply. Only the `human` messages are typed text; everything else must stay out of anything
+    that claims to be "what the person wrote". With uuids=False no record carries a uuid, the
+    shape that makes any dedupe keyed on uuid fall back to something else.
     """
     sid = f"{number:08x}-0000-4000-8000-000000000001"
     records, parent, step = [], None, 0
@@ -177,8 +180,12 @@ def synthetic_mixed_conversation(number=700, human=8, cwd="C:/Acme/source", text
         nonlocal parent, step
         step += 1
         uid = f"{number:08x}-0000-4000-8000-{step:012x}"
-        records.append({"type": kind, "uuid": uid, "parentUuid": parent, "sessionId": sid, "cwd": cwd,
-                        "message": {"role": kind, "content": content}, **extra})
+        row = {"type": kind, "uuid": uid, "parentUuid": parent, "sessionId": sid, "cwd": cwd,
+               "message": {"role": kind, "content": content}, **extra}
+        if not uuids:
+            row.pop("uuid")
+            row.pop("parentUuid")
+        records.append(row)
         parent = uid
 
     for turn in range(human):
@@ -189,6 +196,9 @@ def synthetic_mixed_conversation(number=700, human=8, cwd="C:/Acme/source", text
         add("assistant", [{"type": "tool_use", "id": f"call-{turn}", "name": "Read", "input": {"path": "example.txt"}}])
         add("user", [{"type": "tool_result", "tool_use_id": f"call-{turn}", "content": f"Synthetic tool output {turn}"}])
         add("user", f"Synthetic sidechain prompt {turn}", isSidechain=True)
+        add("user", f"Base directory for this skill: C:/Acme/skills/example\n\nSynthetic skill body {turn}", isMeta=True)
+        add("user", f"This session is being continued from a previous conversation. Synthetic compact summary {turn}",
+            isCompactSummary=True)
         add("assistant", [{"type": "text", "text": f"Synthetic reply {turn}"}])
     if title:
         records.append({"type": "custom-title", "customTitle": title, "sessionId": sid})

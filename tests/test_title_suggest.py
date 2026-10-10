@@ -103,11 +103,28 @@ def test_digest_keeps_only_what_a_person_typed(tmp_path):
     digest = TS.collect_digest(path)
     assert len(digest["messages"]) == 4
     assert all(m.startswith("Synthetic human ask") for m in digest["messages"])
-    for leaked in ("injected reminder", "Synthetic echo", "tool output", "sidechain", "Synthetic reply"):
+    noise = ("injected reminder", "Synthetic echo", "tool output", "sidechain", "Synthetic reply",
+             "Synthetic skill body", "Synthetic compact summary")
+    for leaked in noise:
         assert leaked not in digest["text"], leaked
     # 负对照:那些东西确实在转录里,摘要里没有不是因为生成器没写。
-    for present in ("injected reminder", "Synthetic echo", "tool output", "sidechain", "Synthetic reply"):
+    for present in noise:
         assert present in text, present
+    # 两个标志各自单独钉住:isMeta 和 isCompactSummary 的记录本身是普通字符串内容,
+    # 只靠 typed_text / looks_injected 会把它们当成人打的字。
+    rows = [json.loads(line) for line in text.splitlines()]
+    assert any(r.get("isMeta") and isinstance(r["message"]["content"], str) for r in rows)
+    assert any(r.get("isCompactSummary") and isinstance(r["message"]["content"], str) for r in rows)
+
+
+def test_digest_keeps_every_message_when_records_have_no_uuid(tmp_path):
+    """没有 uuid 的记录不许互相撞键:8 条不同的消息进来,8 条都在。"""
+    sid, text = synthetic_mixed_conversation(709, human=8, uuids=False)
+    assert '"uuid"' not in text
+    path = tmp_path / (sid + ".jsonl")
+    path.write_text(text, encoding="utf-8")
+    digest = TS.collect_digest(path)
+    assert [m.split(":")[0] for m in digest["messages"]] == [f"Synthetic human ask {n:03d}" for n in range(8)]
 
 
 def test_digest_is_bounded_and_takes_the_head_and_the_tail(tmp_path):
@@ -224,6 +241,37 @@ def test_route_rejects_without_token_and_from_a_rebinding_host(srv, sessions, mo
     body = {"id": sid, "expectedProject": project.name}
     assert call(srv, "POST", ROUTE, body=body)[0] == 403
     assert call(srv, "POST", ROUTE, host="attacker.example:80", token=TOKEN, body=body)[0] == 400
+    assert seen == []
+
+
+def test_route_reads_the_body_before_refusing_a_bad_token(srv, sessions, monkeypatch):
+    """没带令牌也先把正文读掉再回 403:不读就关连接,客户端常收到的是连接被重置而不是 403。"""
+    seen = stub(monkeypatch, "示例名称")
+    drained = []
+    real = S.Handler._drain
+
+    def spy(self):
+        drained.append(self.path)
+        return real(self)
+    monkeypatch.setattr(S.Handler, "_drain", spy)
+    _, project, sid, _ = sessions
+    st, _ = call(srv, "POST", ROUTE, body={"id": sid, "expectedProject": project.name, "pad": "x" * 5000})
+    assert st == 403
+    assert drained == [ROUTE]
+    assert seen == []
+
+
+def test_route_reports_a_transcript_it_cannot_read_as_busy(srv, sessions, monkeypatch):
+    """读转录撞上 OSError(被别的进程锁着、权限):回 409 busy,让人稍后重试,不是 500。"""
+    seen = stub(monkeypatch, "示例名称")
+
+    def locked(path, **kwargs):
+        raise PermissionError("synthetic sharing violation")
+    monkeypatch.setattr(TS, "collect_digest", locked)
+    _, project, sid, _ = sessions
+    st, data = call(srv, "POST", ROUTE, token=TOKEN, body={"id": sid, "expectedProject": project.name})
+    payload = json.loads(data)
+    assert (st, payload["code"]) == (409, "busy") and "PermissionError" in payload["error"]
     assert seen == []
 
 
