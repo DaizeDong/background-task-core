@@ -270,7 +270,7 @@ def test_periodic_cli_source_workers_and_existing_capture_only(live, monkeypatch
 @pytest.mark.parametrize('mode', ['ok', 'missing_python', 'bad_output', 'failed', 'missing_binding',
                                  'bad_count', 'missing_provenance'])
 def test_monitor_collection_only_has_no_downstream_side_effects(tmp_path, mode, config_source):
-    monitor = config_source / 'claude/scripts/task-health-monitor.ps1'
+    monitor = config_source / 'backup/claude-home/scripts/task-health-monitor.ps1'
     stub = tmp_path / 'synthetic-python.ps1'
     receipt = {'schemaVersion': 1, 'published': True, 'authority_generation': 'a' * 32,
                'input_revision': 'sha256:' + 'b' * 64, 'sha256': 'c' * 64, 'tasks': 1, 'subjects': 1,

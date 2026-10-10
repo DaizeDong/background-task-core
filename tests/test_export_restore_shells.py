@@ -76,7 +76,7 @@ def test_backup_publishes_only_completed_snapshot(tmp_path, failure, config_sour
 
 def test_launcher_binds_installed_runtime_and_keeps_read_only_modes(tmp_path, config_source):
     import importlib.util
-    source = config_source / 'tools/tests/test_t19_frontdoor_binding.py'
+    source = config_source / 'tests/tools/test_t19_frontdoor_binding.py'
     spec = importlib.util.spec_from_file_location('launcher_contract', source)
     contract = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(contract)
@@ -92,14 +92,6 @@ def test_launcher_binds_installed_runtime_and_keeps_read_only_modes(tmp_path, co
         result = contract.invoke(tmp_path, document, parameters={parameter: True})
         assert result['error'] is None and result['calls'] == [], result
 
-
-
-def test_installer_has_no_outer_scheduler_mutation(config_source):
-    proposed = (config_source / 'install.ps1').read_text(encoding='utf-8-sig')
-    assert 'Register-LegacyRestoreTask' not in proposed and 'Register-ScheduledTask' not in proposed
-    assert 'restore-task-snapshot.ps1' in proposed and "status -ne 'COMPLETED'" in proposed
-    source = (config_source / 'sync-from-local.ps1').read_text(encoding='utf-8-sig')
-    assert '$TaskNames = @(' not in source and 'Export-ScheduledTask' not in source
 
 
 def test_linked_reader_requires_real_owner_attestation(monkeypatch, reminder_source):

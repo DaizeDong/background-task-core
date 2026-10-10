@@ -67,7 +67,7 @@ def test_actual_task_block_reports_declared_checked_and_excluded(tmp_path, failu
     source = (config_source / 'tools/check-drift.ps1').read_text(encoding='utf-8-sig')
     block = source.split('# ---------- 2. TASK ----------')[1].split('# ---------- 3. SURFACE ----------')[0]
     repo = tmp_path / 'config'
-    for name in ('tools/check-task-backup.ps1', 'claude/scripts/task-console-binding.ps1', 'sync-from-local.ps1'):
+    for name in ('tools/check-task-backup.ps1', 'backup/claude-home/scripts/task-console-binding.ps1', 'sync/sync-from-local.ps1'):
         destination = repo / name
         destination.parent.mkdir(parents=True, exist_ok=True)
         destination.write_bytes((config_source / name).read_bytes())

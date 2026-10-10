@@ -155,7 +155,7 @@ $b=Initialize-TaskBudget -TaskName AcmeRefresh -TimeoutSec 14400 -Scheduled
 
 @pytest.mark.parametrize('name,relative,limit,want', [
     ('DemandMiningEOD','skills/demand-mining/scripts/wrapper.ps1','PT1H',2640),
-    ('CcDailyTriage','claude/scripts/cc-daily-triage.ps1','PT2H',6240),
+    ('CcDailyTriage','backup/claude-home/scripts/cc-daily-triage.ps1','PT2H',6240),
 ])
 def test_actual_entry_budget_uses_scheduler_start_before_business(tmp_path,name,relative,limit,want,config_source,demand_source):
     root=config_source if name=='CcDailyTriage' else demand_source
