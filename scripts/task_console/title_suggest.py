@@ -2,7 +2,7 @@
 
 三步,各自可测:
 
-  collect_digest   从转录的头尾两段里挑出人亲手打的字,裁成一份有上限的摘要
+  collect_digest   从转录里挑出人亲手打的字,裁成一份有上限的摘要
   build_prompt     摘要加上现在的名字,拼成给模型的一句话
   suggest          调 llmcall,用 normalize_title 当 extract= 校验答案
 
@@ -11,8 +11,9 @@
 convo_chain 没有把这组条件导出成一个函数,文本部分用的是它导出的两个函数;两个标志在 _is_human
 里照抄,并有测试拿这两种记录形状钉住。skill 正文、工具结果、提醒块、命令回显和压缩摘要都不进摘要。
 
-转录可以有几十上百兆。这里只读头尾两段(和 convos.read_one 一样),所以内存和耗时都有上限;
-代价是中间的消息看不到。起名要的是「这场对话从什么开始、最后在做什么」,头尾正好是这两样。
+转录可以有几十上百兆。这里逐行流式读完整份文件,只解析可能是用户消息或名字记录的行,
+内存里只留头几条和尾几条;起名要的是「这场对话从什么开始、最后在做什么」。
+不能只读头尾两段:真实转录开头常是几百 KB 的系统提示快照和压缩摘要,那样会一条人打的字都找不到。
 
 调用方可以注入:suggest(..., caller=fn)。测试一律注入假的,永远不碰真模型。
 """
@@ -20,16 +21,15 @@ convo_chain 没有把这组条件导出成一个函数,文本部分用的是它�
 from __future__ import annotations
 
 import json
-import os
 import re
+from collections import deque
 import unicodedata
 from pathlib import Path
 
 from convo_chain import looks_injected, typed_text
 
-# 读转录的头尾各多少字节。一条人打的消息很少超过几 KB,半兆足够装下头尾各六条。
-HEAD_BYTES = 512_000
-TAIL_BYTES = 512_000
+# 一行超过这么多字节就不解析:人打的字不会这么长,这么长的是系统提示快照、工具结果、附件。
+LINE_MAX = 2_000_000
 # 摘要取头几条、尾几条、每条留多少字、合计多少字。
 HEAD_MESSAGES = 6
 TAIL_MESSAGES = 6
@@ -72,20 +72,19 @@ def _is_human(entry: dict) -> str | None:
     return text if text and not looks_injected(text) else None
 
 
-def _scan(chunk: bytes, *, region: str, drop_first_line: bool, titles: dict):
-    """一段字节里人打的消息,按出现顺序给 (键, 文本);顺手记下这一段里最后一次的名字记录。
+def _entries(fh, titles: dict):
+    """逐行读转录,按出现顺序给 (键, 人打的字);顺手记下最后一次的名字记录。
 
-    键是 uuid;没有 uuid 的记录用 (段名, 行号),这样两条不同的消息永远不会撞键。
+    整份文件都过一遍,而不是只读头尾:真实转录的开头常常是几百 KB 的系统提示快照和压缩摘要,
+    只读头尾时这种会话一条人打的字都找不到(实测过)。内存仍有上限:一次只拿一行,
+    超过 LINE_MAX 的行和不可能是用户消息或名字记录的行连 JSON 都不解析。
 
-    从文件中间切出来的那段,第一行多半是半截,丢掉;半截的 JSON 本来也解析不了。
-    名字只从读到的这两段里取:它只是给模型的提示,为它把整个文件再扫一遍不值。
+    键是 uuid;没有 uuid 的记录用行号,这样两条不同的消息永远不会撞键。
     """
-    lines = chunk.split(b"\n")
-    if drop_first_line and lines:
-        lines = lines[1:]
-    for index, raw in enumerate(lines):
-        raw = raw.strip()
-        if not raw.startswith(b"{"):
+    for index, raw in enumerate(fh):
+        if len(raw) > LINE_MAX or not raw.lstrip().startswith(b"{"):
+            continue
+        if b'"user"' not in raw and b"-title" not in raw:
             continue
         try:
             entry = json.loads(raw.decode("utf-8", "replace"))
@@ -101,46 +100,36 @@ def _scan(chunk: bytes, *, region: str, drop_first_line: bool, titles: dict):
         text = _is_human(entry)
         if text:
             uuid = entry.get("uuid")
-            yield (uuid if isinstance(uuid, str) and uuid else (region, index)), text
+            yield (uuid if isinstance(uuid, str) and uuid else index), text
 
 
-def collect_digest(path, *, head_bytes: int = HEAD_BYTES, tail_bytes: int = TAIL_BYTES,
-                   head_messages: int = HEAD_MESSAGES, tail_messages: int = TAIL_MESSAGES,
+def collect_digest(path, *, head_messages: int = HEAD_MESSAGES, tail_messages: int = TAIL_MESSAGES,
                    message_chars: int = MESSAGE_CHARS, total_chars: int = DIGEST_CHARS) -> dict:
     """转录里人打的字的摘要:头几条加尾几条,每条裁短,合计不超过 total_chars。
 
-    返回 {"messages": [...], "skipped": 中间没进摘要的条数(只算读到的), "partial": 是否只读了头尾,
-    "text": 拼好的摘要, "title": 读到的最后一个名字(改过的名字优先,其次自动标题,都没有是 None)}。
+    返回 {"messages": [...], "skipped": 中间没进摘要的条数, "text": 拼好的摘要,
+    "title": 最后一个名字(改过的名字优先,其次自动标题,都没有是 None)}。
     一条人打的字都没有时 messages 为空,由调用方判 no_content。
+    只留头几条和一个尾部窗口,所以消息再多,内存里也只有这么多条。
     """
-    path = Path(path)
-    size = path.stat().st_size
-    with open(path, "rb") as fh:
-        if size <= head_bytes + tail_bytes:
-            head, tail, partial = fh.read(), b"", False
-        else:
-            head = fh.read(head_bytes)
-            fh.seek(-tail_bytes, os.SEEK_END)
-            tail, partial = fh.read(), True
-    titles = {}
-    first = list(_scan(head, region="head", drop_first_line=False, titles=titles))
-    last = list(_scan(tail, region="tail", drop_first_line=True, titles=titles)) if tail else []
-    # 头尾两段不重叠(上面只在文件够大时才分开读),但同一个 uuid 出现两次时仍只算一次。
-    seen, ordered = set(), []
-    for key, text in first + last:
-        if key in seen:
-            continue
-        seen.add(key)
-        ordered.append(text)
-    if len(ordered) <= head_messages + tail_messages:
-        picked, skipped = ordered, 0
-    else:
-        picked = ordered[:head_messages] + ordered[-tail_messages:]
-        skipped = len(ordered) - len(picked)
-    clipped = [_clip(text, message_chars) for text in picked]
+    titles, seen = {}, set()
+    first, last, total = [], deque(maxlen=tail_messages), 0
+    with open(Path(path), "rb") as fh:
+        for key, text in _entries(fh, titles):
+            if key in seen:
+                continue
+            seen.add(key)
+            total += 1
+            text = _clip(text, message_chars)
+            if len(first) < head_messages:
+                first.append(text)
+            else:
+                last.append(text)
+    picked = first + list(last)
+    skipped = total - len(picked)
     lines, used = [], 0
-    for n, text in enumerate(clipped, 1):
-        if n == head_messages + 1 and skipped:
+    for n, text in enumerate(picked, 1):
+        if n == len(first) + 1 and skipped:
             marker = f"(中间省略 {skipped} 条)"
             lines.append(marker)
             used += len(marker) + 1
@@ -152,7 +141,7 @@ def collect_digest(path, *, head_bytes: int = HEAD_BYTES, tail_bytes: int = TAIL
             break
         lines.append(line)
         used += len(line) + 1
-    return {"messages": clipped, "skipped": skipped, "partial": partial, "text": "\n".join(lines),
+    return {"messages": picked, "skipped": skipped, "text": "\n".join(lines),
             "title": titles.get("custom") or titles.get("ai")}
 
 

@@ -143,43 +143,55 @@ def test_digest_is_bounded_and_takes_the_head_and_the_tail(tmp_path):
     assert len(small["text"]) <= 1500 and 0 < small["text"].count("Synthetic human ask") < 12
 
 
-def test_digest_reads_only_the_head_and_tail_of_a_large_file(tmp_path, monkeypatch):
-    """大文件只读头尾两段:中间的消息看不到,而且一次 read 不会超过两段之和。"""
+def test_digest_finds_typed_text_behind_a_large_preamble(tmp_path):
+    """真实转录开头常是几百 KB 的系统提示快照和压缩摘要。人打的字在那之后,照样要找到。
+
+    回归:旧实现只读头尾各 500 KB,一场 9 MB、第一条人打的字在 800 KB 处的会话报了 no_content。
+    """
+    sid, text = synthetic_mixed_conversation(710, human=3)
+    snapshot = json.dumps({"type": "attachment", "attachment": {"type": "prompt_snapshot",
+                           "systemPrompt": ["Synthetic system prompt. " * 60000]}})
+    filler = json.dumps({"type": "assistant", "message": {"role": "assistant",
+                         "content": [{"type": "text", "text": "Synthetic reply " * 5000}]}})
+    path = tmp_path / (sid + ".jsonl")
+    lines = [snapshot] + [filler] * 40 + text.splitlines() + [filler] * 120
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    assert path.stat().st_size > 3 * 1024 * 1024
+    digest = TS.collect_digest(path)
+    assert [m.split(":")[0] for m in digest["messages"]] == [f"Synthetic human ask {n:03d}" for n in range(3)]
+
+
+def test_digest_skips_oversized_lines_without_parsing_them(tmp_path, monkeypatch):
+    """超过 LINE_MAX 的行连 JSON 都不解析(那种行只可能是快照、附件、工具结果)。"""
+    sid, text = synthetic_mixed_conversation(711, human=2)
+    huge = json.dumps({"type": "user", "message": {"role": "user", "content": "Synthetic huge paste " * 200}})
+    path = tmp_path / (sid + ".jsonl")
+    path.write_text(huge + "\n" + text, encoding="utf-8")
+    parsed = []
+    real = TS.json.loads
+    monkeypatch.setattr(TS.json, "loads", lambda raw, *a, **k: (parsed.append(len(raw)), real(raw, *a, **k))[1])
+    monkeypatch.setattr(TS, "LINE_MAX", 2000)
+    digest = TS.collect_digest(path)
+    assert all(n <= 2000 for n in parsed) and parsed
+    assert not any("Synthetic huge paste" in m for m in digest["messages"])
+    assert len(digest["messages"]) == 2
+    # 负对照:同一份文件,上限放宽就会读进那一行。
+    monkeypatch.setattr(TS, "LINE_MAX", 10_000_000)
+    assert any("Synthetic huge paste" in m for m in TS.collect_digest(path)["messages"])
+
+
+def test_digest_keeps_only_a_bounded_window_in_memory(tmp_path):
+    """消息再多,只留头几条和尾几条:中间的一条都不在结果里,计数却是全的。"""
     sid, text = synthetic_mixed_conversation(704, human=200)
     path = tmp_path / (sid + ".jsonl")
     path.write_text(text, encoding="utf-8")
-    size = path.stat().st_size
-    reads = []
-    real_open = open
-
-    class Spy:
-        def __init__(self, fh):
-            self.fh = fh
-
-        def read(self, n=-1):
-            data = self.fh.read(n)
-            reads.append(len(data))
-            return data
-
-        def __getattr__(self, name):
-            return getattr(self.fh, name)
-
-        def __enter__(self):
-            return self
-
-        def __exit__(self, *exc):
-            self.fh.close()
-
-    monkeypatch.setattr(TS, "open", lambda p, mode="r", *a, **k: Spy(real_open(p, mode, *a, **k)), raising=False)
-    digest = TS.collect_digest(path, head_bytes=4000, tail_bytes=4000)
-    assert size > 8000 * 10 and digest["partial"] is True
-    assert sum(reads) <= 8000 and reads, reads
+    digest = TS.collect_digest(path)
     numbers = [int(m.split(":")[0].rsplit(" ", 1)[1]) for m in digest["messages"]]
-    assert numbers[0] == 0 and numbers[-1] == 199
-    assert not any(50 <= n <= 150 for n in numbers)
+    assert numbers == list(range(6)) + list(range(194, 200))
+    assert digest["skipped"] == 188
 
 
-def test_digest_takes_the_name_hint_from_the_regions_it_read(tmp_path):
+def test_digest_takes_the_name_hint_from_the_last_name_record(tmp_path):
     sid, text = synthetic_mixed_conversation(707, human=2, title="Acme 改过的名字")
     path = tmp_path / (sid + ".jsonl")
     path.write_text(text + json.dumps({"type": "ai-title", "aiTitle": "Acme 自动标题"}) + "\n", encoding="utf-8")
