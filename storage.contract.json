@@ -16,7 +16,9 @@
     "data/task-console/console.sqlite3",
     "data/task-console/console.sqlite3-wal",
     "data/task-console/console.sqlite3-shm",
-    "data/task-console/console.sqlite3-journal"
+    "data/task-console/console.sqlite3-journal",
+    "data/user-state/deleted-tasks/*-????????T??????Z.xml",
+    "data/user-state/deleted-tasks/*-????????T??????Z.json"
   ],
   "artifacts": [
     {
@@ -625,6 +627,79 @@
         "class": "core",
         "rule": "Keep the active native settings and the versions needed for recovery."
       }
+    },
+    {
+      "artifact_id": "conversation-cache",
+      "path_pattern": "data/user-state/convo-cache.json",
+      "purpose": "Current transcript metadata index",
+      "schema": "JSON path-to-metadata map produced by convos.scan",
+      "producer": "convos._write_cache_atomically",
+      "consumer_or_final_deliverable": "Conversation index reuse",
+      "rebuild_or_restore": "Rebuild from the selected transcripts; retain originals independently.",
+      "retention_rule": {
+        "class": "rebuildable",
+        "rule": "Replace on a successful scan; failed publication preserves the preceding complete index."
+      },
+      "max_bytes": 8388608
+    },
+    {
+      "artifact_id": "conversation-cache-staging",
+      "path_pattern": "data/user-state/convo-cache.json.tmp-*",
+      "purpose": "Exclusive atomic cache staging",
+      "schema": "Complete or interrupted UTF-8 JSON staging file",
+      "producer": "convos._write_cache_atomically",
+      "consumer_or_final_deliverable": "Conversation index reuse",
+      "rebuild_or_restore": "Rebuild from selected transcripts after resolving any interrupted writer.",
+      "retention_rule": {
+        "class": "rebuildable",
+        "rule": "Keep while its writer is active; review failed publication evidence before retirement."
+      },
+      "max_bytes": 8388608,
+      "persistence": "transient",
+      "transient_reason": "Local staging or structural container; retained final files have separate versioned owners."
+    },
+    {
+      "artifact_id": "task-delete-container",
+      "path_pattern": "data/user-state/deleted-tasks",
+      "purpose": "Container for separately owned task deletion recovery files",
+      "schema": "Ordinary directory; this exact path grants no child ownership",
+      "producer": "Operator setup for task_delete._archive",
+      "consumer_or_final_deliverable": "Reviewed task recovery and deletion readback",
+      "rebuild_or_restore": "Recreate the directory before using the configured deletion archive.",
+      "retention_rule": {
+        "class": "rebuildable",
+        "rule": "An empty directory may be recreated; XML and receipt recovery records have independent retention."
+      },
+      "persistence": "transient",
+      "transient_reason": "Local staging or structural container; retained final files have separate versioned owners."
+    },
+    {
+      "artifact_id": "task-delete-xml",
+      "path_pattern": "data/user-state/deleted-tasks/*-????????T??????Z.xml",
+      "purpose": "Original task definition retained before unregister",
+      "schema": "UTF-16 Task Scheduler XML",
+      "producer": "task_delete._archive",
+      "consumer_or_final_deliverable": "Reviewed task recovery and deletion readback",
+      "rebuild_or_restore": "Restore the exact exported definition from private Git; review before registering it.",
+      "retention_rule": {
+        "class": "core",
+        "rule": "Preserve original task definitions and incomplete archive evidence; no age-based or automatic retirement."
+      },
+      "max_bytes": 16777216
+    },
+    {
+      "artifact_id": "task-delete-receipt",
+      "path_pattern": "data/user-state/deleted-tasks/*-????????T??????Z.json",
+      "purpose": "Task deletion recovery and audit receipt",
+      "schema": "Schema 1 JSON with name, reason, exportedAt, XML name/digest and actions",
+      "producer": "task_delete._archive",
+      "consumer_or_final_deliverable": "Reviewed task recovery and deletion readback",
+      "rebuild_or_restore": "Restore alongside the matching XML from private Git.",
+      "retention_rule": {
+        "class": "core",
+        "rule": "Preserve with its task definition; an archive receipt alone does not prove unregister succeeded."
+      },
+      "max_bytes": 4194304
     }
   ]
 }

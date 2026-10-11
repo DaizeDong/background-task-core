@@ -114,6 +114,8 @@ def storage_contract_case(root):
         "data/task-console/registration/current.json",
         "data/task-console/README.md",
         "tools/delete_followup/config.json",
+        "data/user-state/deleted-tasks/AcmeSync-20991231T235959Z.xml",
+        "data/user-state/deleted-tasks/AcmeSync-20991231T235959Z.json",
     ]
     rebuildable = [
         "data/.gitkeep", "data/task-console/runlog-ingest-ok.txt",
@@ -122,6 +124,8 @@ def storage_contract_case(root):
         "tools/delete_followup/README.md",
         "tools/delete_followup/tests/test_example.py",
         "tools/release/handoff_console.ps1", "tools/release/README.md",
+        "data/user-state/convo-cache.json",
+        "data/user-state/convo-cache.json.tmp-0123456789abcdef",
     ]
     unknown = [
         "data/unreviewed-20991231/nested/output.txt",
@@ -136,6 +140,13 @@ def storage_contract_case(root):
         "tools/unreviewed-copy/source.py",
         "tools/delete_followup/copied-source/module.py",
         "task-console/console.sqlite3",
+        "data/user-state/convo-cache-copy.json",
+        "data/user-state/convo-cache.json.old",
+        "data/user-state/deleted-tasks/AcmeSync.xml",
+        "data/user-state/deleted-tasks/AcmeSync-20991231T235959Z.txt",
+        "data/user-state/deleted-tasks/notes.json",
+        "data/user-state/deleted-tasks/nested/AcmeSync-20991231T235959Z.xml",
+        "data/user-state/deleted-tasks-copy/AcmeSync-20991231T235959Z.json",
     ]
     for relative in (*declarations, *retired, *core, *rebuildable, *unknown):
         path = root / relative
@@ -144,6 +155,36 @@ def storage_contract_case(root):
     return {"declarations": declarations, "legacy_scopes": legacy_scopes,
             "retired": retired, "core": core, "rebuildable": rebuildable,
             "unknown": unknown}
+
+
+def user_state_storage_case(root):
+    """Generate transcript metadata and an exported task without reading host state."""
+    import hashlib
+
+    root = Path(root)
+    sessions = root / "sessions"
+    sid, transcript = synthetic_conversation(title="Acme maintenance review")
+    source = sessions / "acme-project" / (sid + ".jsonl")
+    source.parent.mkdir(parents=True)
+    source.write_text(transcript, encoding="utf-8")
+    xml = ('<?xml version="1.0" encoding="UTF-16"?>\n'
+           '<Task><Actions><Exec><Command>C:\\Acme\\sync.exe</Command>'
+           '<Arguments>--daily</Arguments></Exec></Actions></Task>')
+    task = {"name": "Acme Backup Daily", "state": "Ready", "xml": xml,
+            "sha256": hashlib.sha256(xml.encode("utf-8")).hexdigest(),
+            "actions": [{"execute": "C:\\Acme\\sync.exe", "arguments": "--daily",
+                         "workingDirectory": "C:\\Acme"}]}
+    return {"sessions": sessions, "transcript": source, "session_id": sid,
+            "cache": {str(source): {"id": sid, "title": "Acme maintenance review",
+                                    "bytes": source.stat().st_size}},
+            "invalid_cache": {
+                "malformed-json": b'{"synthetic":',
+                "top-list": b'[]',
+                "top-null": b'null',
+                "entry-list": json.dumps({str(source): []}).encode("utf-8"),
+                "entry-null": json.dumps({str(source): None}).encode("utf-8"),
+            },
+            "task": task, "reason": "Synthetic task retirement review"}
 
 
 def synthetic_conversation(number=1, cwd="C:/Acme/project", title=None, turns=2):

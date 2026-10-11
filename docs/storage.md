@@ -144,3 +144,15 @@ versionability is required before writing. The exact WAL, SHM and journal leaves
 persistence because SQLite controls their lifetime, while their core retention protects pending
 transactions until checkpoint or consistent recovery. Eligibility for Git does not make copying
 or staging a live database safe; keep coordinated online/cold backup procedures.
+
+Conversation metadata uses the exact `data/user-state/convo-cache.json` leaf. Its selected transcript
+files remain the source of truth. Every read selection and cache publication requires current
+PRIVATE admission; publication uses a unique declared staging leaf and atomic replacement.
+A refused cache does not stop transcript browsing: `summary.cached` is false and
+`summary.cacheError` reports the failure. Failed staging files are retained for explicit review.
+
+Unmanaged task deletion uses the existing `data/user-state/deleted-tasks` directory. Only its
+separately declared timestamped XML definitions and JSON receipts are protected recovery state.
+Each file must pass fresh PRIVATE, versionability and source-owner checks before its exclusive
+write. Both are flushed and checked before unregister; failure leaves the task registered and
+preserves any partial archive. Unknown user-state siblings remain undeclared.

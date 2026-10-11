@@ -80,3 +80,25 @@ def test_recovery_archive_and_receipt_are_exact_protected_core(tmp_path, contrac
     assert "data/task-console/**" not in protected
     assert "data/task-console/recovery/**" not in {
         row["path_pattern"] for row in contract["artifacts"]}
+
+
+def test_user_state_owners_separate_cache_container_and_recovery_records(tmp_path, contract):
+    make_fixtures.storage_contract_case(tmp_path)
+    expected = {
+        "data/user-state/convo-cache.json": "conversation-cache",
+        "data/user-state/convo-cache.json.tmp-0123456789abcdef": "conversation-cache-staging",
+        "data/user-state/deleted-tasks": "task-delete-container",
+        "data/user-state/deleted-tasks/AcmeSync-20991231T235959Z.xml": "task-delete-xml",
+        "data/user-state/deleted-tasks/AcmeSync-20991231T235959Z.json": "task-delete-receipt",
+    }
+    for relative, owner in expected.items():
+        found = storage_owners(contract, tmp_path, relative)
+        assert [row["artifact_id"] for row in found] == [owner]
+        if owner in {"task-delete-xml", "task-delete-receipt"}:
+            assert found[0]["path_pattern"] in contract["protected_paths"]
+            assert found[0].get("persistence", "versioned") == "versioned"
+        elif owner in {"conversation-cache-staging", "task-delete-container"}:
+            assert found[0]["persistence"] == "transient"
+    assert "data/user-state/**" not in contract["protected_paths"]
+    assert not any(row["path_pattern"] == "data/user-state/deleted-tasks/**"
+                   for row in contract["artifacts"])
