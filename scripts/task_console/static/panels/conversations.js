@@ -181,7 +181,8 @@ function renderConvos(){
   $('cvhead').innerHTML=`<span class="cv-total"><b>${S.matched ?? S.files}</b> 个会话，分布在 <b>${S.groups}</b> 个项目</span>
     <label>排序 <select id="cvsort">${[['new','最近更新'],['count','会话最多'],['old','最早更新'],['size','占用空间']].map(([v,t])=>`<option value="${v}"${CV_SORT===v?' selected':''}>${t}</option>`).join('')}</select></label>
     <label title="根据已读取的内容识别，长会话可能只统计了一部分"><input type="checkbox" id="cvonly"${CV_HUMAN_ONLY?' checked':''}> 至少两次用户提问</label>
-    ${S.unreadable?`<span class="bad" role="alert">${S.unreadable} 个文件或目录读取失败，列表可能不完整。请检查访问权限后刷新。</span>`:''}`;
+    ${S.unreadable?`<span class="bad" role="alert">${S.unreadable} 个文件或目录读取失败，列表可能不完整。请检查访问权限后刷新。</span>`:''}
+    ${S.cacheError?`<span class="warn" role="status" title="${esc(S.cacheError)}">缓存暂时不可用，列表仍可使用，后续刷新可能较慢。</span>`:''}`;
   const groups=[...CONVOS.groups];
   const compare={new:(a,b)=>b.newest-a.newest,old:(a,b)=>a.newest-b.newest,
     size:(a,b)=>b.bytes-a.bytes,count:(a,b)=>b.count-a.count};

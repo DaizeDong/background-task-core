@@ -92,7 +92,7 @@ def companion_root():
     return Path(root).absolute() if root else None
 
 
-def authorize_write(destination, *, artifact_id=None):
+def authorize_write(destination, *, artifact_id=None, directory=False):
     """Admit a concrete source-owned leaf without creating directories or files."""
     _load_datadir()  # Missing discovery dependency is never bypassed by an override.
     path = Path(destination).expanduser().absolute()
@@ -102,7 +102,8 @@ def authorize_write(destination, *, artifact_id=None):
         raise ValueError("DATA requires an initialized PRIVATE versioned companion")
     root = roots[0]
     return _load_storage().authorize_artifact_write(
-        SOURCE_ROOT, root, path.relative_to(root).as_posix(), artifact_id=artifact_id)
+        SOURCE_ROOT, root, path.relative_to(root).as_posix(),
+        artifact_id=artifact_id, directory=directory)
 
 
 class DbState:

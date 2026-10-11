@@ -23,7 +23,8 @@
     "storage-retention.json",
     "memory-pressure-monitor/",
     "maintenance/",
-    "settings.ps1"
+    "settings.ps1",
+    "user-state/"
   ],
   "data_sealed": [
     ".sie/"

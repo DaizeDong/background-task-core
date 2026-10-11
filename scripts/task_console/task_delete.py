@@ -36,6 +36,7 @@ import threading
 import time
 
 import controller as task_control
+import console_store
 import maint
 from winps import powershell
 
@@ -435,21 +436,18 @@ def _edit_categories(path, name, planned_digest) -> dict:
 
 
 # --------------------------------------------------------------------------- archive
-def _inside_git(path: Path) -> bool:
-    return any((p / ".git").exists() for p in (path, *path.parents))
-
-
 def _archive_dir(env):
-    """(目录, 不能用的原因)。存档必须是一个已经存在、不在任何 git 工作树里的私有目录。"""
+    """Require the declared archive directory in verified PRIVATE versioned storage."""
     raw = env.get(ARCHIVE_ENV)
     if not raw:
         return None, "没有设置删除存档目录（TASK_CONSOLE_DELETED_ARCHIVE），不受控制器管理的任务不能删除"
     path = Path(raw)
     if not path.is_absolute() or not path.is_dir():
         return None, "删除存档目录不是一个已存在的绝对路径，不受控制器管理的任务不能删除"
-    if _inside_git(path):
-        # 公开仓、备份仓都是 git 工作树。存档里是任务原件,原件进了任何一个仓都是事故。
-        return None, "删除存档目录位于 git 工作树内，拒绝把任务原件写进去"
+    try:
+        console_store.authorize_write(path, artifact_id="task-delete-container", directory=True)
+    except (OSError, ValueError, RuntimeError, ImportError) as error:
+        return None, f"删除存档目录未通过 PRIVATE 存储校验（{type(error).__name__}）: {error}"
     return path, None
 
 
@@ -466,12 +464,25 @@ def _archive(directory: Path, name, reason, described) -> tuple[bool, str, dict]
     receipt_bytes = (json.dumps(receipt, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
     files = {"xml": str(xml_path), "receipt": str(receipt_path)}
     try:
-        for path, data in ((xml_path, xml_bytes), (receipt_path, receipt_bytes)):
-            if not fs.create_no_replace(path, data):
-                return False, f"存档文件已存在，没有覆盖: {path.name}", files
+        entries = ((xml_path, xml_bytes, "task-delete-xml"),
+                   (receipt_path, receipt_bytes, "task-delete-receipt"))
+        # Check both leaves before writing either, then refresh each admission at creation.
+        for path, _, owner in entries:
+            console_store.authorize_write(path, artifact_id=owner)
+        for path, data, owner in entries:
+            console_store.authorize_write(path, artifact_id=owner)
+            with path.open("xb") as stream:
+                stream.write(data)
+                stream.flush()
+                os.fsync(stream.fileno())
+        fs.sync_directory(directory)
+        for path, data, owner in entries:
+            console_store.authorize_write(path, artifact_id=owner)
             if path.read_bytes() != data:
                 return False, f"存档写入后读回的内容不一致: {path.name}", files
-    except (OSError, ValueError) as error:
+    except FileExistsError:
+        return False, f"存档文件已存在，没有覆盖: {path.name}", files
+    except (OSError, ValueError, RuntimeError, ImportError) as error:
         return False, f"存档写入失败（{type(error).__name__}）", files
     return True, "", files
 

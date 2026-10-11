@@ -37,8 +37,13 @@ import math
 import os
 import re
 import time
+import uuid
 from pathlib import Path
 
+if __package__:
+    from . import console_store
+else:
+    import console_store
 from convo_chain import looks_injected, typed_text
 from convo_chain.session_ops import project_info
 from convo_chain.errors import ConvoChainError
@@ -238,43 +243,41 @@ def read_one(path: Path, now: float | None = None) -> dict:
 
 
 def _write_cache_atomically(cpath: Path, data: dict) -> None:
-    """写临时文件再原子替换,而不是就地整文件覆盖。
+    """Publish a complete PRIVATE cache; preserve staging evidence on failure.
 
-    ⚠ 原来是 `cpath.write_text(...)`,整文件覆盖、无锁、非原子。而服务器是
-    ThreadingHTTPServer,每个 /api/convos 请求一个线程:两个请求并发时两个线程各自
-    把完整字典写进同一个路径,内容互相交叠;写到一半进程被关掉同样留下半个文件。
-    而 `_load_cache` 把 ValueError 和 OSError 都吞成 `{}` —— 于是**坏掉的缓存和
-    「还没有缓存」在行为上完全一致**:之后每次打开会话面板都是全量重读,
-    响应从秒级回到十几秒,而页面上没有任何一处说缓存已经坏了。
-
-    临时文件名带上进程号与线程号:两个并发写者各写各的临时文件,最后谁替换谁都行,
-    因为两份内容都是完整且自洽的。用同一个临时名反而会把交叠从目标文件搬到临时文件。
-    os.replace 在同一个卷上是原子的(Windows 上也是),所以读方永远看到完整的一份。
+    Each concurrent writer owns a unique exclusive staging file. Admission is
+    renewed before creation and publication; scan reports failures separately
+    from its independently available transcript results.
     """
-    import os as _os
-    import threading as _th
-    tmp = cpath.with_name(
-        cpath.name + ".tmp-%d-%d" % (_os.getpid(), _th.get_ident()))
-    try:
-        cpath.parent.mkdir(parents=True, exist_ok=True)
-        tmp.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
-        _os.replace(tmp, cpath)
-    except OSError:
-        # 缓存写不进去不该让这次扫描失败:扫描的结果已经在手上了,缓存只是下次快一点。
-        try:
-            if tmp.exists():
-                tmp.unlink()
-        except OSError:
-            pass
+    tmp = cpath.with_name(cpath.name + ".tmp-" + uuid.uuid4().hex)
+    console_store.authorize_write(cpath, artifact_id="conversation-cache")
+    console_store.authorize_write(tmp, artifact_id="conversation-cache-staging")
+    cpath.parent.mkdir(parents=True, exist_ok=True)
+    console_store.authorize_write(tmp, artifact_id="conversation-cache-staging")
+    with tmp.open("x", encoding="utf-8") as stream:
+        opened = os.fstat(stream.fileno())
+        stream.write(json.dumps(data, ensure_ascii=False))
+        stream.flush()
+        os.fsync(stream.fileno())
+    console_store.authorize_write(cpath, artifact_id="conversation-cache")
+    console_store.authorize_write(tmp, artifact_id="conversation-cache-staging")
+    current = tmp.stat()
+    if (current.st_dev, current.st_ino) != (opened.st_dev, opened.st_ino):
+        raise ValueError("conversation cache staging identity changed")
+    os.replace(tmp, cpath)
 
 
 def _load_cache(p: Path | None) -> dict:
-    if not p or not p.is_file():
+    if p is None:
         return {}
     try:
-        return json.loads(p.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
+        raw = p.read_text(encoding="utf-8")
+    except FileNotFoundError:
         return {}
+    cached = json.loads(raw)
+    if not isinstance(cached, dict) or any(not isinstance(value, dict) for value in cached.values()):
+        raise ValueError("conversation cache must map transcript paths to metadata objects")
+    return cached
 
 
 def _page_scope(group, query, human_only):
@@ -334,7 +337,14 @@ def scan(root: str | None = None, cache: str | None = None,
     cpath = Path(os.path.expanduser(cache)) if cache else (
         Path(os.path.expanduser(os.environ["TASK_CONSOLE_CONVO_CACHE"]))
         if os.environ.get("TASK_CONSOLE_CONVO_CACHE") else None)
-    cached = _load_cache(cpath)
+    cache_error = None
+    try:
+        if cpath:
+            console_store.authorize_write(cpath, artifact_id="conversation-cache")
+        cached = _load_cache(cpath)
+    except (OSError, ValueError, RuntimeError, ImportError) as error:
+        cache_error = f"Conversation cache unavailable ({type(error).__name__}): {error}"
+        cached = {}
     fresh, hits, misses = {}, 0, 0
     if group is not None:
         # A page refresh owns only this directory's cache entries. Other projects
@@ -396,8 +406,11 @@ def scan(root: str | None = None, cache: str | None = None,
             rows.append(rec)
             projects[d.name][1].append(rec)
 
-    if cpath:
-        _write_cache_atomically(cpath, fresh)
+    if cpath and cache_error is None:
+        try:
+            _write_cache_atomically(cpath, fresh)
+        except (OSError, ValueError, RuntimeError, ImportError) as error:
+            cache_error = f"Conversation cache write failed ({type(error).__name__}): {error}"
 
     if group is not None and group not in projects:
         raise ValueError("project no longer exists; refresh the list")
@@ -454,7 +467,8 @@ def scan(root: str | None = None, cache: str | None = None,
             "bytes": sum(r["bytes"] for r in rows),
             "cacheHits": hits,
             "cacheMisses": misses,
-            "cached": bool(cpath),
+            "cached": bool(cpath) and cache_error is None,
+            "cacheError": cache_error,
             # 读不动的文件要报出来。悄悄跳过会让「没有这些对话」和「我没读到」变成同一个数字。
             "unreadable": failed,
         },

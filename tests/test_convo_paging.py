@@ -14,6 +14,7 @@ import convos
 @pytest.fixture(autouse=True)
 def isolated_cache(tmp_path, monkeypatch):
     monkeypatch.setenv("TASK_CONSOLE_CONVO_CACHE", str(tmp_path / "metadata-cache.json"))
+    monkeypatch.setattr(convos.console_store, "authorize_write", lambda *args, **kwargs: None)
 
 
 def populate(root, count=95, *, project_name="C--Acme-project", turns=2):

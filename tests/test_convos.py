@@ -26,6 +26,12 @@ import convos as C  # noqa: E402
 NOW = 1_800_000_000.0
 
 
+@pytest.fixture(autouse=True)
+def synthetic_storage_admission(monkeypatch):
+    # Algorithm tests isolate admission; test_private_admission covers real Git routes.
+    monkeypatch.setattr(C.console_store, "authorize_write", lambda *args, **kwargs: None)
+
+
 def line(**kw):
     return json.dumps(kw, ensure_ascii=False) + "\n"
 
@@ -348,9 +354,7 @@ def test_a_complete_cache_entry_still_hits(tmp_path):
 # 服务器是 ThreadingHTTPServer,每个 /api/convos 请求一个线程。缓存原来是
 # `cpath.write_text(...)` 整文件覆盖、无锁、非原子:两个请求并发时两个线程各自把完整字典
 # 写进同一个路径,内容互相交叠;写到一半进程被关掉同样留下半个文件。
-# 而 _load_cache 把 ValueError 和 OSError 都吞成 {}, **坏掉的缓存和「还没有缓存」
-# 在行为上完全一致**:之后每次打开会话面板都是全量重读,响应从秒级回到十几秒,
-# 而页面上没有任何一处说缓存已经坏了,只有一个没人会盯的 cacheHits 在暗示。
+# Read failures now have a separate cacheError; these cases verify publication itself.
 
 def test_concurrent_cache_writes_never_leave_an_unreadable_file(tmp_path, monkeypatch):
     """两个写者并发时,目标文件必须始终是**某一个写者的完整内容**。
@@ -369,16 +373,34 @@ def test_concurrent_cache_writes_never_leave_an_unreadable_file(tmp_path, monkey
     import time
 
     cpath = tmp_path / "convo-cache.json"
-    real_write_text = C.Path.write_text
+    real_open = C.Path.open
 
-    def slow_write_text(self, data, *a, **k):
-        half = len(data) // 2
-        real_write_text(self, data[:half], *a, **k)
-        time.sleep(0.05)                       # 让另一个写者挤进来
-        with open(self, "a", encoding="utf-8") as fh:
-            fh.write(data[half:])
+    class SlowStream:
+        def __init__(self, stream):
+            self.stream = stream
 
-    monkeypatch.setattr(C.Path, "write_text", slow_write_text)
+        def __enter__(self):
+            self.stream.__enter__()
+            return self
+
+        def __exit__(self, *args):
+            return self.stream.__exit__(*args)
+
+        def __getattr__(self, name):
+            return getattr(self.stream, name)
+
+        def write(self, data):
+            half = len(data) // 2
+            self.stream.write(data[:half])
+            self.stream.flush()
+            time.sleep(0.05)
+            self.stream.write(data[half:])
+
+    def slow_open(path, mode="r", *args, **kwargs):
+        stream = real_open(path, mode, *args, **kwargs)
+        return SlowStream(stream) if mode in ("w", "x") else stream
+
+    monkeypatch.setattr(C.Path, "open", slow_open)
 
     payloads = [{"k": chr(97 + i) * 400} for i in range(2)]
     errs = []
@@ -405,28 +427,23 @@ def test_concurrent_cache_writes_never_leave_an_unreadable_file(tmp_path, monkey
 def test_the_cache_is_still_written_at_all(tmp_path):
     """正对照:上面那条只证明「没写坏」,一个什么都不写的实现同样能通过。"""
     cpath = tmp_path / "c.json"
-    C._write_cache_atomically(cpath, {"a": 1})
+    C._write_cache_atomically(cpath, {"a": {}})
     assert cpath.is_file()
-    assert C._load_cache(cpath) == {"a": 1}
+    assert C._load_cache(cpath) == {"a": {}}
 
 
-def test_a_write_failure_does_not_raise(tmp_path):
-    """缓存写不进去不该让这次扫描失败:结果已经在手上了,缓存只是下次快一点。"""
+def test_a_write_failure_is_reported_by_the_writer(tmp_path):
+    """The writer fails explicitly; scan owns the optional-cache degradation."""
     cpath = tmp_path / "nodir" / "sub" / "c.json"
     # 把父目录做成一个文件,mkdir 必然失败
     (tmp_path / "nodir").write_text("x", encoding="utf-8")
-    C._write_cache_atomically(cpath, {"a": 1})     # 不抛
+    with pytest.raises(OSError):
+        C._write_cache_atomically(cpath, {"a": 1})
     assert not cpath.exists()
 
 
-def test_a_failed_replace_leaves_no_temp_file_behind(tmp_path, monkeypatch):
-    """替换那一步失败时,临时文件必须被清掉。
-
-    ⚠ 这条是投毒逼出来的:清理只在 OSError 那条路上跑,而上面那条失败用例
-    在**建临时文件之前**就失败了,于是把清理整个删掉,整套照样全绿 ——
-    一个从来没走到那条分支的负对照,覆盖的是别的东西。
-    这里让替换本身失败,那时临时文件已经躺在磁盘上了。
-    """
+def test_a_failed_replace_preserves_the_complete_staging_file(tmp_path, monkeypatch):
+    """Failed publication retains inspectable evidence and never reports success."""
     import os as _os
     cpath = tmp_path / "c.json"
 
@@ -434,9 +451,11 @@ def test_a_failed_replace_leaves_no_temp_file_behind(tmp_path, monkeypatch):
         raise OSError(5, "Access is denied")
 
     monkeypatch.setattr(_os, "replace", boom)
-    C._write_cache_atomically(cpath, {"a": 1})       # 不抛
+    with pytest.raises(OSError):
+        C._write_cache_atomically(cpath, {"a": 1})
     assert not cpath.exists()
-    assert not list(tmp_path.glob("*.tmp-*")), "替换失败之后临时文件留在了磁盘上"
+    staged, = tmp_path.glob("*.tmp-*")
+    assert json.loads(staged.read_text(encoding="utf-8")) == {"a": 1}
 
 
 def test_the_typed_by_a_person_rule_has_one_home():
