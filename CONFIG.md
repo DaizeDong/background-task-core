@@ -8,9 +8,9 @@ to report usable history.
 
 ## Storage selection
 
-`TASK_CONSOLE_DB` selects the exact database leaf. It must still be the declared
-`data/task-console/console.sqlite3` inside a PRIVATE, versioned companion. It cannot select a
-loose directory, another public repository, an ignored main database, or an undeclared filename.
+`TASK_CONSOLE_DB` selects the exact database leaf. It is used as given, except that a path inside
+this payload's own source tree is refused. Point it into the PRIVATE companion; keeping DATA out of
+public repositories is enforced at commit and push time by the hooks and CI, not at runtime.
 
 Without that override, the companion root is selected in this order:
 
@@ -25,16 +25,17 @@ still recognize legacy home-directory candidates; verify the pinned resolver whe
 Explicit roots remain selected even when absent. The database always occupies the canonical
 `<root>/data/task-console/console.sqlite3`; this avoids changing layout based on whether `data/`
 already exists. Overrides do not copy, initialize or migrate databases. Source checkouts use
-their pinned Guards kit; installed wheels use the accepted `fleet_guards.runtime` package API
-with the bundled source contract. Missing dependencies report unavailable and block writers. There is no ancestor or vendored
-resolver search. The event export has its own declared owner and admission check.
+their pinned Guards kit; installed wheels use the accepted `fleet_guards.runtime` package API.
+Missing dependencies report unavailable and block writers. There is no ancestor or vendored
+resolver search. Resolution makes no Git or network calls: it is a path decision plus the
+own-source-tree refusal.
 
 ## Native settings and resources
 
 The complete environment schema and each optional panel's absent-source behavior live in the
 [environment table](scripts/task_console/README.md#configure-it). Core server requirements are
 Windows, a supported Python interpreter and the imports declared by `pyproject.toml`. Usable
-history also requires the admitted database with the expected schema and separately operated
+history also requires the resolved database with the expected schema and separately operated
 ingestion. The doctor tests those local prerequisites without launching the server or ingester.
 
 Work records additionally need both `TASK_CONSOLE_REMINDER_CLI` and `TASK_CONSOLE_REMINDER_DB`;
@@ -44,20 +45,19 @@ state; the basic doctor's success is not authorization or proof for these option
 
 `TASK_CONSOLE_CATEGORIES` selects an explicit category file; otherwise the console uses
 `categories.json` in its resolved PRIVATE companion. Missing selection or files are reported as
-unconfigured. Category writes require private Git admission.
+unconfigured. Category writes refuse a path inside this source tree; no Git check runs.
 
 The llmcall ledger and chain are separate producer resources. Their explicit console overrides
 and producer settings are listed in the environment table. There is no native home-directory
 fallback for these resources; missing selection is reported instead of creating a new tree.
-Chain writes require private Git admission. Switching the console companion does not relocate
-llmcall files, and selected executables can still use PATH.
+Chain writes refuse a path inside this source tree; no Git check runs. Switching the console
+companion does not relocate llmcall files, and selected executables can still use PATH.
 
 ## Initialize and switch
 
-Create or clone a PRIVATE companion with committed HEAD and current Guards visibility evidence.
-Source checkouts use the pinned Guards submodule. Built wheels carry the same source storage
-contract beside the installed package and require the supported `fleet-guards>=0.2.1` runtime API.
-A missing contract or runtime API fails visibly; installed packages do not search checkout ancestors.
+Create or clone the PRIVATE companion. Source checkouts use the pinned Guards submodule. Built
+wheels require the supported `fleet-guards>=0.2.1` runtime API for companion discovery. A missing
+runtime API fails visibly; installed packages do not search checkout ancestors.
 From this source root:
 
 ```powershell

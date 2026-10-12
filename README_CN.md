@@ -69,7 +69,7 @@ python scripts/task_console/server.py --port 8787
 
 ## 配置
 
-将 `TASK_CONSOLE_CONFIG` 指向 PRIVATE 伴生仓。切换配置时，在启动进程中加载另一个伴生仓的设置，并重新核对显式资源覆盖值。[CONFIG.md](CONFIG.md) 说明完整发现顺序、环境变量、初始化和只读检查。`tools/init_config.py` 在已初始化的 PRIVATE 伴生仓生成 `settings.ps1`，已有文件保持原样。`tools/verify_config.py --json` 检查本地服务端和历史数据库的前提条件，不启动摄取，也不替可选动作作就绪证明。数据库覆盖路径仍须通过来源契约、PRIVATE 和版本管理检查。
+将 `TASK_CONSOLE_CONFIG` 指向 PRIVATE 伴生仓。切换配置时，在启动进程中加载另一个伴生仓的设置，并重新核对显式资源覆盖值。[CONFIG.md](CONFIG.md) 说明完整发现顺序、环境变量、初始化和只读检查。`tools/init_config.py` 在已初始化的 PRIVATE 伴生仓生成 `settings.ps1`，已有文件保持原样。`tools/verify_config.py --json` 检查本地服务端和历史数据库的前提条件，不启动摄取，也不替可选动作作就绪证明。数据库覆盖路径按原样使用，只拒绝落在本仓源码目录里的路径。
 
 ## 细节各自住在哪
 

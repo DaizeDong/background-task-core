@@ -243,24 +243,18 @@ def read_one(path: Path, now: float | None = None) -> dict:
 
 
 def _write_cache_atomically(cpath: Path, data: dict) -> None:
-    """Publish a complete PRIVATE cache; preserve staging evidence on failure.
+    """Publish a complete cache; preserve staging evidence on failure.
 
-    Each concurrent writer owns a unique exclusive staging file. Admission is
-    renewed before creation and publication; scan reports failures separately
-    from its independently available transcript results.
+    Each concurrent writer owns a unique exclusive staging file. Scan reports
+    failures separately from its independently available transcript results.
     """
     tmp = cpath.with_name(cpath.name + ".tmp-" + uuid.uuid4().hex)
-    console_store.authorize_write(cpath, artifact_id="conversation-cache")
-    console_store.authorize_write(tmp, artifact_id="conversation-cache-staging")
     cpath.parent.mkdir(parents=True, exist_ok=True)
-    console_store.authorize_write(tmp, artifact_id="conversation-cache-staging")
     with tmp.open("x", encoding="utf-8") as stream:
         opened = os.fstat(stream.fileno())
         stream.write(json.dumps(data, ensure_ascii=False))
         stream.flush()
         os.fsync(stream.fileno())
-    console_store.authorize_write(cpath, artifact_id="conversation-cache")
-    console_store.authorize_write(tmp, artifact_id="conversation-cache-staging")
     current = tmp.stat()
     if (current.st_dev, current.st_ino) != (opened.st_dev, opened.st_ino):
         raise ValueError("conversation cache staging identity changed")
@@ -340,7 +334,7 @@ def scan(root: str | None = None, cache: str | None = None,
     cache_error = None
     try:
         if cpath:
-            console_store.authorize_write(cpath, artifact_id="conversation-cache")
+            cpath = console_store.outside_source(cpath)
         cached = _load_cache(cpath)
     except (OSError, ValueError, RuntimeError, ImportError) as error:
         cache_error = f"Conversation cache unavailable ({type(error).__name__}): {error}"

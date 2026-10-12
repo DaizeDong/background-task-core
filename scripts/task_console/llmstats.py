@@ -1044,9 +1044,9 @@ def write_chain(names) -> dict:
     try:
         import console_store
         from fleet_guards import filesystem
-        fp = console_store.authorize_private_write(fp)
+        fp = console_store.check_write_path(fp)
     except (OSError, ValueError, RuntimeError, ImportError) as error:
-        raise Refused("链配置没有通过 PRIVATE 存储校验", "storage_refused") from error
+        raise Refused("链配置路径无效", "storage_refused") from error
     body = "\n".join(names) + "\n"
     filesystem.atomic_replace(fp, body)
     return chain_config()

@@ -74,16 +74,6 @@ def world(tmp_path, monkeypatch):
     monkeypatch.setattr(D, "_authority", lambda env: None)
     archive = tmp_path / "deleted-archive"
     archive.mkdir()
-    def authorize(path, **options):
-        if Path(path) != archive and archive not in Path(path).parents:
-            raise ValueError("synthetic PRIVATE archive selection refused")
-    # Deletion mechanics use a synthetic archive; real admission has separate Git tests.
-    monkeypatch.setattr(D.console_store, "authorize_write", authorize)
-    def authorize_categories(path):
-        path = Path(path)
-        path.relative_to(tmp_path)
-        return path
-    monkeypatch.setattr(D.console_store, "authorize_private_write", authorize_categories)
     categories = tmp_path / "categories.json"
     write_categories(categories, default_categories())
     env = {D.ARCHIVE_ENV: str(archive)}
@@ -471,12 +461,10 @@ def test_an_unmanaged_delete_without_the_archive_binding_is_blocked_and_gets_no_
     assert preview["steps"][0]["status"] == "blocked"
 
 
-def test_an_unproven_archive_is_refused(world):
-    repo = world.tmp / "acme-repo"
-    (repo / ".git").mkdir(parents=True)
-    (repo / "archive").mkdir()
-    preview = plan(world, env={D.ARCHIVE_ENV: str(repo / "archive")})
-    assert preview["token"] is None and any("PRIVATE" in reason for reason in preview["blocking"])
+def test_an_archive_inside_the_source_tree_is_refused(world):
+    inside = Path(D.__file__).resolve().parent
+    preview = plan(world, env={D.ARCHIVE_ENV: str(inside)})
+    assert preview["token"] is None and any("删除存档目录位置无效" in reason for reason in preview["blocking"])
 
 
 def test_an_unmanaged_delete_exports_first_then_unregisters_by_data_and_verifies_absence(world, monkeypatch):

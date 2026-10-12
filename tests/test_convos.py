@@ -26,11 +26,6 @@ import convos as C  # noqa: E402
 NOW = 1_800_000_000.0
 
 
-@pytest.fixture(autouse=True)
-def synthetic_storage_admission(monkeypatch):
-    # Algorithm tests isolate admission; test_private_admission covers real Git routes.
-    monkeypatch.setattr(C.console_store, "authorize_write", lambda *args, **kwargs: None)
-
 
 def line(**kw):
     return json.dumps(kw, ensure_ascii=False) + "\n"

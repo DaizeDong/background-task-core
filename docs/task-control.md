@@ -134,13 +134,12 @@ directory) and its exported XML digest are captured now, before anything is unre
   `TASK_CONSOLE_DELETE_WITHOUT_AUTHORITY=1` explicitly allows treating every task as unmanaged; the
   preview then says so in its notes.
 - **Unmanaged**: requires `TASK_CONSOLE_DELETED_ARCHIVE`, the existing absolute
-  `data/user-state/deleted-tasks` directory in a verified PRIVATE versioned companion. Unset or unusable is a
+  `data/user-state/deleted-tasks` directory in the PRIVATE companion. Unset or unusable is a
   blocking reason in the preview, so no token is issued. Apply writes `<safe name>-<UTC stamp>.xml`
   (UTF-16, as the export declares) and a JSON receipt (name, reason, original actions, XML digest),
   both exclusively created, flushed and read back byte for byte, then unregisters at the root path.
-  Directory admission is checked during preview; each exact file receives fresh source-contract
-  admission before writing and during final readback. Partial archives are preserved and block
-  unregister. Public, unknown, ignored or undeclared destinations are refused. The name
+  The directory is checked during preview (it must exist, be absolute and lie outside this source
+  tree). Partial archives are preserved and block unregister. The name
   travels as `TC_NAME` in the environment, never inside the command text, and the same PowerShell
   call re-exports the task and refuses if its digest differs from the preview. Absence is then
   verified by a separate root enumeration that throws rather than guesses. That enumeration also

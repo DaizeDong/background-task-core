@@ -1,4 +1,4 @@
-"""Create a reviewable native PowerShell environment template in PRIVATE storage."""
+"""Create a reviewable native PowerShell environment template in the private companion."""
 import argparse
 from pathlib import Path
 import sys
@@ -9,8 +9,7 @@ import console_store
 
 def initialize(root):
     root = Path(root).expanduser().absolute()
-    path = root / "settings.ps1"
-    console_store.authorize_write(path, artifact_id="native-settings")
+    path = console_store.outside_source(root / "settings.ps1")
     if path.exists():
         return path, False
     content = ("# Review and dot-source this file in the console process environment.\n"
@@ -30,7 +29,7 @@ def main(argv=None):
     try:
         root = args.out or console_store.companion_root()
         if root is None:
-            raise ValueError("Select an initialized PRIVATE companion with --out or TASK_CONSOLE_CONFIG")
+            raise ValueError("Select the private companion with --out or TASK_CONSOLE_CONFIG")
         path, created = initialize(root)
     except (OSError, ValueError, RuntimeError, ImportError) as error:
         print("NOT READY: " + str(error))

@@ -69,7 +69,7 @@ Selected sources come from environment settings; their defaults and unavailable 
 
 ## Config
 
-Set `TASK_CONSOLE_CONFIG` to the PRIVATE companion root. To switch configurations, select and dot-source the other companion's reviewed settings and recheck explicit resource overrides. [CONFIG.md](CONFIG.md) defines discovery, native environment settings, initialization and read-only diagnosis. `tools/init_config.py` writes a reviewed `settings.ps1` in an initialized PRIVATE companion; `tools/verify_config.py --json` checks local server/history prerequisites. It does not run ingestion or prove optional actions. Database overrides still require source-owned PRIVATE versioned admission.
+Set `TASK_CONSOLE_CONFIG` to the PRIVATE companion root. To switch configurations, select and dot-source the other companion's reviewed settings and recheck explicit resource overrides. [CONFIG.md](CONFIG.md) defines discovery, native environment settings, initialization and read-only diagnosis. `tools/init_config.py` writes a reviewed `settings.ps1` in an initialized PRIVATE companion; `tools/verify_config.py --json` checks local server/history prerequisites. It does not run ingestion or prove optional actions. A database override is used as given, except that a path inside this source tree is refused.
 
 ## Where the details live
 

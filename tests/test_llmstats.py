@@ -80,12 +80,6 @@ def isolate(tmp_path, monkeypatch):
     """
     monkeypatch.delenv(llmstats.ENV_CHAIN, raising=False)
     monkeypatch.delenv("LLMCALL_LEDGER", raising=False)
-    import console_store
-    def authorize_synthetic(path):
-        path = Path(path)
-        path.relative_to(tmp_path)
-        return path
-    monkeypatch.setattr(console_store, "authorize_private_write", authorize_synthetic)
     # 开发机上真的设了这两个时,整批伴生仓用例会测到真机的目录, 而且是全绿地测到。
     monkeypatch.delenv(llmstats.ENV_LLMCALL_DATA, raising=False)
     monkeypatch.delenv(llmstats.ENV_LLMCALL_CONFIG, raising=False)

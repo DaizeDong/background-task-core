@@ -52,7 +52,7 @@ the other database tables. No complete JSONL-to-database restore command is curr
 
 Refresh the versioned database recovery snapshot before backing up or committing private state:
 `python tools/backup_console_db.py --data-root <private-data>`.
-It proves PRIVATE visibility, reads a consistent SQLite transaction through the online backup API,
+It reads a consistent SQLite transaction through the online backup API,
 and compares integrity, schema and every table count before publishing. It replaces one
 `<private-data>/task-console/recovery/current.zip` and its fixed `current.json` receipt. The archive
 contains the standalone database and its own receipt, so WAL/SHM files and live locks are not copied.
@@ -77,7 +77,7 @@ The caller must obtain that path from `Read-TaskConsoleLauncherBinding` and pass
 `Environment['TASK_CONSOLE_DB']` value. The helper supplies that exact value to the console's domain
 resolver; an unrelated ambient DB setting cannot silently select a different database. Only the
 reviewed `<private-data>/task-console/console.sqlite3` layout is supported. Other layouts, a missing
-selected database, or unproven PRIVATE visibility fail before capture.
+selected database, or a data root inside this source tree fail before capture.
 
 Scheduled publication requires the companion's `main` branch. It holds the snapshot lock through
 capture, staging, normal-hook commit and push. Only `current.zip` and `current.json` are staged and
@@ -139,20 +139,19 @@ The tool prints a small receipt. Replace the previous receipt in `<private-data>
 creating another dated archive. Raw diagnostic sampling ends with its session; after preserving the
 conclusion and configuration, its completed raw observations can use the same explicit retirement path.
 
-Native settings and discovery are specified in [CONFIG.md](../CONFIG.md). Main database
-versionability is required before writing. The exact WAL, SHM and journal leaves have transient
+Native settings and discovery are specified in [CONFIG.md](../CONFIG.md). Writers resolve paths
+without Git or network calls; the only runtime check is that a destination is not inside this source
+tree. The exact WAL, SHM and journal leaves have transient
 persistence because SQLite controls their lifetime, while their core retention protects pending
 transactions until checkpoint or consistent recovery. Eligibility for Git does not make copying
 or staging a live database safe; keep coordinated online/cold backup procedures.
 
 Conversation metadata uses the exact `data/user-state/convo-cache.json` leaf. Its selected transcript
-files remain the source of truth. Every read selection and cache publication requires current
-PRIVATE admission; publication uses a unique declared staging leaf and atomic replacement.
-A refused cache does not stop transcript browsing: `summary.cached` is false and
+files remain the source of truth. Publication uses a unique staging leaf and atomic replacement.
+A cache path inside this source tree is refused; a refused or unreadable cache does not stop transcript browsing: `summary.cached` is false and
 `summary.cacheError` reports the failure. Failed staging files are retained for explicit review.
 
 Unmanaged task deletion uses the existing `data/user-state/deleted-tasks` directory. Only its
 separately declared timestamped XML definitions and JSON receipts are protected recovery state.
-Each file must pass fresh PRIVATE, versionability and source-owner checks before its exclusive
-write. Both are flushed and checked before unregister; failure leaves the task registered and
+Each file is created exclusively. Both are flushed and checked before unregister; failure leaves the task registered and
 preserves any partial archive. Unknown user-state siblings remain undeclared.

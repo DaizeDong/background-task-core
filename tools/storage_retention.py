@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import argparse
 import hashlib
-import importlib.util
 import json
 import os
 from pathlib import Path, PurePosixPath, PureWindowsPath
@@ -122,16 +121,11 @@ def plan(data_root, record):
             "files": sum(e["files"] for e in entries), "bytes": sum(e["bytes"] for e in entries)}
 
 
-def private_data_root(value):
-    """Prove the selected destination before any real-state operation."""
+def data_root(value):
+    """Select a DATA root outside this source tree. Pure path check; no Git or network calls."""
     root = ordinary_path(value)
-    guard = REPO / "guards/tools/data_boundary.py"
-    if not guard.is_file():
-        raise RetentionError("Initialize the pinned guards submodule first")
-    spec = importlib.util.spec_from_file_location("retention_data_boundary", guard)
-    boundary = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(boundary)
-    boundary.prove_private_companion(str(root))
+    if root == REPO or REPO in root.parents:
+        raise RetentionError("DATA root must be outside this source tree")
     return root
 
 
@@ -139,7 +133,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--data-root", required=True)
     args = parser.parse_args()
-    root = private_data_root(args.data_root)
+    root = data_root(args.data_root)
     record_path = relative_path(root, "storage-retention.json")
     if record_path.stat().st_size > MAX_RECORD_BYTES:
         raise RetentionError("Retirement record is too large")

@@ -195,3 +195,30 @@ def test_manual_completion_offer_survives_missing_executor(tmp_path, monkeypatch
     reply = work_status.read_configured({'TASK_CONSOLE_REMINDER_CLI': str(cli), 'TASK_CONSOLE_REMINDER_DB': str(tmp_path / 'db')})
     actions = reply['items'][0]['actions']
     assert actions['available'] and not actions['offers'][0]['enabled'] and actions['offers'][1]['enabled']
+
+
+def _read_feed(tmp_path, monkeypatch):
+    cli = tmp_path / 'owner.py'
+    cli.touch()
+    env = {'TASK_CONSOLE_REMINDER_CLI': str(cli), 'TASK_CONSOLE_REMINDER_DB': str(tmp_path / 'db')}
+    feed = work_feed_case()
+    feed['items'] = [work_action_case()]
+    calls = []
+    monkeypatch.setattr(subprocess, 'run', lambda *a, **kw: calls.append(a) or SimpleNamespace(returncode=0, stdout=json.dumps(feed)))
+    assert work_status.read_configured(env)['available']
+    return env, feed['items'][0], calls
+
+
+def test_agent_context_reuses_the_last_feed_at_the_clicked_revision(tmp_path, monkeypatch):
+    env, item, calls = _read_feed(tmp_path, monkeypatch)
+    monkeypatch.setattr(work_status, 'read_configured', lambda env: pytest.fail('a matching revision must not re-run work-feed'))
+    assert work_actions._context(item['id'], env, item['actions']['revision']) == ''
+    assert len(calls) == 1
+
+
+def test_agent_context_reads_fresh_when_the_revision_moved(tmp_path, monkeypatch):
+    env, item, _ = _read_feed(tmp_path, monkeypatch)
+    fresh = []
+    monkeypatch.setattr(work_status, 'read_configured', lambda env: fresh.append(env) or {'available': True, 'items': [item]})
+    assert work_actions._context(item['id'], env, 'synthetic-newer-revision') == ''
+    assert fresh == [env]

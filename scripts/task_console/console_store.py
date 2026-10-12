@@ -12,8 +12,9 @@ through it. Resolution order:
        instructions. A repo-relative fallback is how real data ends up in a public repo, and it is
        the specific defect this boundary exists to prevent.
 
-Every resolved path requires the source-owned storage contract and a PRIVATE versioned
-companion proof. An override selects a location; it cannot bypass admission or missing Guards.
+Resolution is a path decision only: no Git or GitHub calls happen at runtime. The one check kept
+is a pure path comparison that refuses a destination inside this payload's own source tree. Keeping
+DATA out of public repositories is enforced at commit and push time by the hooks and CI.
 
 READS DEGRADE, WRITES DO NOT. Readers open the file read-only through a URI and, when it is absent
 or unreadable, return a state object carrying a Chinese sentence explaining which of the six
@@ -73,9 +74,8 @@ def _load_storage():
         else:
             _storage = _pinned_module("runtime.py", "task_console_guard_runtime")
         _storage_root = SOURCE_ROOT
-    if not all(callable(getattr(_storage, name, None))
-               for name in ("companion_resolver", "authorize_artifact_write")):
-        raise ValueError("This payload's pinned Guards lacks companion runtime authorization")
+    if not callable(getattr(_storage, "companion_resolver", None)):
+        raise ValueError("This payload's pinned Guards lacks the companion resolver")
     return _storage
 
 
@@ -92,35 +92,23 @@ def companion_root():
     return Path(root).absolute() if root else None
 
 
-def authorize_write(destination, *, artifact_id=None, directory=False):
-    """Admit a concrete source-owned leaf without creating directories or files."""
-    _load_datadir()  # Missing discovery dependency is never bypassed by an override.
+def outside_source(destination):
+    """Refuse a DATA destination inside this payload's own source tree. Pure path comparison."""
     path = Path(destination).expanduser().absolute()
-    roots = [node for node in path.parents
-             if os.path.lexists(node / ".git")]
-    if not roots:
-        raise ValueError("DATA requires an initialized PRIVATE versioned companion")
-    root = roots[0]
-    return _load_storage().authorize_artifact_write(
-        SOURCE_ROOT, root, path.relative_to(root).as_posix(),
-        artifact_id=artifact_id, directory=directory)
+    _load_datadir().assert_outside_own_repo(path, SKILL)
+    return path
 
 
-def authorize_private_write(destination):
-    """Check an external configuration leaf without creating its parents."""
+def check_write_path(destination):
+    """Path-only check for an external configuration leaf; creates nothing, runs no Git.
+
+    Refuses unsafe lexical forms and links (Guards filesystem rules) and any destination inside
+    this payload's own source tree, including its Git metadata.
+    """
     from fleet_guards import filesystem
 
     path = filesystem.validate_path(Path(destination).expanduser().absolute())
-    existing = path.parent
-    while not os.path.lexists(existing):
-        existing = existing.parent
-    storage = _load_storage()
-    prove = getattr(storage, "prove_private_companion", None)
-    if not callable(prove):
-        raise ValueError("This payload lacks PRIVATE companion proof support")
-    proof = prove(existing)
-    path.relative_to(Path(proof.root).resolve())
-    return path
+    return outside_source(path)
 
 
 class DbState:
@@ -134,28 +122,23 @@ class DbState:
 
 
 def resolve_db(create_parent: bool = False):
-    """Return a proven database path or a distinct unavailable state; never write on reads."""
+    """Return the database path or a distinct unavailable state; never write on reads."""
     try:
-        _load_datadir()
         if os.environ.get("TASK_CONSOLE_DB"):
             p = Path(os.environ["TASK_CONSOLE_DB"]).expanduser().absolute()
         else:
             root = companion_root()
             if root is None:
                 return None, DbState("NO_COMPANION",
-                    "尚未配置伴生仓。请按 CONFIG.md 设置 PRIVATE 版本化存储。")
+                    "尚未配置伴生仓。请按 CONFIG.md 设置私有伴生仓。")
             p = root / "data" / "task-console" / DB_NAME
-        authorize_write(p, artifact_id="database")
+        p = outside_source(p)
         if create_parent:
-            for suffix, owner in (("-wal", "database-wal"), ("-shm", "database-shm"),
-                                  ("-journal", "database-journal")):
-                authorize_write(str(p) + suffix, artifact_id=owner)
             p.parent.mkdir(parents=True, exist_ok=True)
-            authorize_write(p, artifact_id="database")
         return p, None
     except (OSError, ValueError, RuntimeError, ImportError) as error:
         code = "NO_RESOLVER" if "pinned Guards" in str(error) else "STORAGE_REFUSED"
-        return None, DbState(code, "存储核验失败: " + str(error))
+        return None, DbState(code, "存储位置无效: " + str(error))
 
 
 def validate_read_schema(connection):

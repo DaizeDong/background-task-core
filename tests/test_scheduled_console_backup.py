@@ -21,11 +21,8 @@ def git(repo, *args):
 @pytest.fixture
 def companion(tmp_path, monkeypatch):
     repo, connection = make_fixtures.scheduled_console_backup_case(tmp_path)
-    # Keep real source selection; this local bare fixture cannot prove PRIVATE admission.
     store = recovery.console_store()
-    monkeypatch.setattr(store, "authorize_write", lambda *args, **kwargs: None)
     monkeypatch.setattr(recovery, "console_store", lambda: store)
-    monkeypatch.setattr(recovery, "private_data_root", lambda path: Path(path))
     with closing(connection):
         yield repo, connection, repo / "data/task-console/console.sqlite3"
 
@@ -52,18 +49,6 @@ def test_missing_selected_database_is_an_error(companion):
         recovery.scheduled_backup(str(repo / "absent/task-console/console.sqlite3"))
 
 
-def test_private_proof_failure_precedes_writes(companion, monkeypatch):
-    repo, _, source = companion
-
-    def refuse(path):
-        raise ValueError("synthetic unproven destination")
-
-    monkeypatch.setattr(recovery, "private_data_root", refuse)
-    with pytest.raises(ValueError, match="unproven"):
-        recovery.scheduled_backup(str(source))
-    assert not (repo / "data/task-console/recovery").exists()
-
-
 @pytest.mark.parametrize("ambient", [None, "stale.sqlite3"])
 def test_resolver_admission_refusal_precedes_writes_and_restores_environment(companion, monkeypatch, ambient):
     repo, _, source = companion
@@ -74,15 +59,15 @@ def test_resolver_admission_refusal_precedes_writes_and_restores_environment(com
         monkeypatch.setenv("TASK_CONSOLE_DB", previous)
     selected = []
 
-    def refuse(destination, *, artifact_id=None):
-        selected.append((Path(destination), artifact_id))
-        raise ValueError("Synthetic storage admission refusal")
+    def refuse(destination):
+        selected.append(Path(destination))
+        raise ValueError("Synthetic storage location refusal")
 
-    monkeypatch.setattr(recovery.console_store(), "authorize_write", refuse)
+    monkeypatch.setattr(recovery.console_store(), "outside_source", refuse)
     before = git(repo, "rev-parse", "HEAD")
     with pytest.raises(ValueError, match="resolver refused the launcher-selected source"):
         recovery.scheduled_backup(str(source))
-    assert selected == [(source, "database")]
+    assert selected == [source]
     assert recovery.os.environ.get("TASK_CONSOLE_DB") == previous
     assert not (repo / "data/task-console/recovery").exists()
     assert git(repo, "rev-parse", "HEAD") == before

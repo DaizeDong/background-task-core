@@ -11,7 +11,7 @@ import re
 import tempfile
 import zipfile
 
-from storage_retention import REPO, ordinary_path, private_data_root
+from storage_retention import REPO, ordinary_path
 
 LIMIT = 8 * 1024 * 1024
 TOTAL_LIMIT = 128 * 1024 * 1024
@@ -61,15 +61,6 @@ def read(path):
     if len(data) > LIMIT or any(getattr(before, k) != getattr(after, k) for k in fields):
         raise ValueError("Registration recovery source changed during read")
     return data
-
-
-def verify_output_boundary(output):
-    """Allow transient non-worktree staging; require PRIVATE for any worktree."""
-    output = ordinary_path(output)
-    for parent in output.parents:
-        if (parent / ".git").exists():
-            private_data_root(parent)
-            break
 
 
 @contextmanager
@@ -193,7 +184,6 @@ def export(private_root, state_root, vault_root, output):
         raise ValueError("State and vault roots must be disjoint")
     if any(output == p or p in output.parents for p in (private, state, vault)):
         raise ValueError("Recovery output must be separate from its source roots")
-    verify_output_boundary(output)
     with authority_lock(state):
         manifest, members, sources, journals = collect(private, state, vault)
         members["manifest.json"] = encode(manifest)
@@ -216,7 +206,6 @@ def export(private_root, state_root, vault_root, output):
                     or any(read(path) != raw for path, raw in sources.items())):
                 raise ValueError("Registration sources changed before recovery publication")
             raw = temporary.read_bytes()
-            verify_output_boundary(output)
             os.replace(temporary, output)
         finally:
             temporary.unlink(missing_ok=True)
@@ -232,7 +221,6 @@ def main():
     for name in ("private-root", "state-root", "vault-root", "output"):
         parser.add_argument("--" + name, required=True)
     args = parser.parse_args()
-    private_data_root(absolute_path(args.private_root))
     print(json.dumps(export(args.private_root, args.state_root, args.vault_root, args.output), sort_keys=True))
 
 

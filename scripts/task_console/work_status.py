@@ -6,6 +6,13 @@ import subprocess
 import sys
 
 
+# The last valid feed this process read, keyed by (cli, database). The page renders its buttons
+# from that same read, so a click can look its item up here instead of re-running the whole
+# work-feed subprocess. Callers that need a decision accept a hit only at the exact revision the
+# owner later re-checks; anything else reads fresh.
+_LAST_FEED = {}
+
+
 def owner_environment(env):
     child = dict(env)
     child['SCHEDULE_DB_PATH'] = env.get('TASK_CONSOLE_REMINDER_DB', '')
@@ -53,9 +60,20 @@ def read_configured(env=None):
                     offer.update(enabled=False, reason='执行服务尚未连接')
             if actions.get('offers') and not actions.get('current') and not any(offer.get('enabled') for offer in actions['offers']):
                 actions.update(available=False, reason='执行服务尚未连接', offers=[])
+        _LAST_FEED[(cli, database)] = payload
         return payload
     except (OSError, ValueError, subprocess.SubprocessError):
         return dict(unavailable, reason="work_reader_failed")
+
+
+def last_item(item_id, env=None, revision=None):
+    """The item from the last valid feed, or None. With a revision, only an exact match counts."""
+    env = os.environ if env is None else env
+    feed = _LAST_FEED.get((env.get("TASK_CONSOLE_REMINDER_CLI"), env.get("TASK_CONSOLE_REMINDER_DB")))
+    item = next((row for row in (feed or {}).get("items", []) if row.get("id") == item_id), None)
+    if item is None or revision is not None and (item.get("actions") or {}).get("revision") != revision:
+        return None
+    return item
 
 
 def _valid_actions(actions):

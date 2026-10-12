@@ -74,11 +74,17 @@ def _run_task(task_id, runtime):
     return controller.Controller(runtime).action(selected['name'], 'run')
 
 
-def _context(item_id, env):
-    feed = work_status.read_configured(env)
-    if not feed.get('available'):
-        raise ActionError('work_binding_invalid')
-    item = next((row for row in feed['items'] if row['id'] == item_id), None)
+def _context(item_id, env, revision=None):
+    # The page's buttons come from the feed this process last read. At the clicked revision the
+    # session link is the same one a fresh read would return (the revision covers the item fields
+    # the link derives from), and work-action re-checks the revision anyway. Only a miss pays for
+    # another full work-feed subprocess.
+    item = work_status.last_item(item_id, env, revision)
+    if item is None:
+        feed = work_status.read_configured(env)
+        if not feed.get('available'):
+            raise ActionError('work_binding_invalid')
+        item = next((row for row in feed['items'] if row['id'] == item_id), None)
     if not item:
         raise ActionError('item_not_found')
     links = item.get('actions', {}).get('links', [])
@@ -114,7 +120,7 @@ def submit(request, *, stop=False, env=None):
         runtime = controller.load_runtime(environ=env)
         if request['action_id'] == 'agent' and not env.get('TASK_CONSOLE_AGENT_TASK_ID'):
             raise ActionError('queue_not_configured')
-        context = _context(request['item_id'], env) if request['action_id'] == 'agent' else ''
+        context = _context(request['item_id'], env, request['revision']) if request['action_id'] == 'agent' else ''
         reply = invoke('work-action', {'request': request, 'context': context}, env)
         dispatch = reply.pop('dispatch', None)
         if dispatch:

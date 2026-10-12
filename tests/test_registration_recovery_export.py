@@ -116,17 +116,12 @@ def test_empty_linked_journal_inventory_is_refused(tmp_path):
     assert not paths[-1].exists()
 
 
-def test_other_worktree_output_requires_private_visibility(tmp_path, monkeypatch):
+def test_output_inside_the_source_tree_is_refused(tmp_path):
     paths = make_fixtures.registration_recovery_case(tmp_path)
-    other = tmp_path / "other-worktree"
-    (other / ".git").mkdir(parents=True)
-    def refuse(path):
-        assert path == other
-        raise ValueError("PUBLIC or unknown destination")
-    monkeypatch.setattr(recovery, "private_data_root", refuse)
-    with pytest.raises(ValueError, match="PUBLIC or unknown"):
-        recovery.export(*paths[:3], other / "recovery.zip")
-    assert not (other / "recovery.zip").exists()
+    output = recovery.REPO / "synthetic-recovery.zip"
+    with pytest.raises(ValueError, match="public tool repository"):
+        recovery.export(*paths[:3], output)
+    assert not output.exists()
 
 
 @pytest.mark.parametrize("fault", ["input-missing", "wrong-domain", "empty-ciphertext"])

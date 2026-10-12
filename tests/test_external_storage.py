@@ -1,8 +1,8 @@
-"""Native defaults never recreate retired home directories; writes prove PRIVATE storage."""
+"""Native defaults never recreate retired home directories; writes use path-only checks."""
 import hashlib
 from pathlib import Path
 import sys
-from types import SimpleNamespace
+import subprocess
 
 import pytest
 
@@ -25,7 +25,7 @@ def isolate(monkeypatch):
 
 
 def rejected(*args, **kwargs):
-    raise ValueError("synthetic PRIVATE proof refusal")
+    raise ValueError("synthetic path refusal")
 
 
 def test_unconfigured_reads_and_write_refusal_do_not_touch_home(tmp_path, monkeypatch):
@@ -65,21 +65,32 @@ def test_producer_ledger_disable(monkeypatch, value):
     assert llmstats.ledger_path() is None
 
 
-def test_chain_write_rejects_unproven_storage_before_mkdir(monkeypatch, tmp_path):
-    path = tmp_path / "refused" / "chain.txt"
+def test_chain_write_inside_source_tree_is_refused_before_mkdir(monkeypatch):
+    path = ROOT / "refused-chain-dir" / "chain.txt"
     monkeypatch.setenv("TASK_CONSOLE_LLMCALL_CHAIN", str(path))
-    monkeypatch.setattr(console_store, "_load_storage", lambda: SimpleNamespace(prove_private_companion=rejected))
     with pytest.raises(llmstats.Refused) as error:
         llmstats.write_chain(["cc"])
     assert error.value.code == "storage_refused"
     assert not path.parent.exists()
 
 
-def test_chain_write_admitted_by_private_proof(monkeypatch, tmp_path):
+def test_chain_write_into_git_metadata_is_refused(monkeypatch):
+    path = ROOT / ".git" / "refused-chain.txt"
+    monkeypatch.setenv("TASK_CONSOLE_LLMCALL_CHAIN", str(path))
+    with pytest.raises(llmstats.Refused) as error:
+        llmstats.write_chain(["cc"])
+    assert error.value.code == "storage_refused"
+    assert not path.exists()
+
+
+def test_chain_write_outside_source_needs_no_git_proof(monkeypatch, tmp_path):
     path = tmp_path / "private" / "chain.txt"
     monkeypatch.setenv("TASK_CONSOLE_LLMCALL_CHAIN", str(path))
-    monkeypatch.setattr(console_store, "_load_storage", lambda: SimpleNamespace(
-        prove_private_companion=lambda parent: SimpleNamespace(root=tmp_path)))
+    def no_git(*args, **kwargs):
+        raise AssertionError("runtime write must not run Git or GitHub")
+    monkeypatch.setattr(subprocess, "run", no_git)
+    monkeypatch.setattr(subprocess, "Popen", no_git)
+    assert not (tmp_path / ".git").exists()
     assert llmstats.write_chain(["cc"])["effective"] == ("cc",)
     assert path.read_bytes() == b"cc\n"
 
@@ -94,10 +105,10 @@ def test_categories_use_companion_or_explicit_override(monkeypatch, tmp_path):
     assert server.categories_path() == selected
 
 
-def test_category_mutation_rechecks_private_proof(monkeypatch, tmp_path):
+def test_category_mutation_rechecks_write_path(monkeypatch, tmp_path):
     path = external_categories_case(tmp_path)
     before = path.read_bytes()
-    monkeypatch.setattr(console_store, "authorize_private_write", rejected)
+    monkeypatch.setattr(console_store, "check_write_path", rejected)
     assert task_delete._inspect_categories(path, "AcmeSync")["editable"] is False
     result = task_delete._edit_categories(path, "AcmeSync", hashlib.sha256(before).hexdigest())
     assert result["status"] == "failed"

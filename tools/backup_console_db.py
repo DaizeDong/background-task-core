@@ -17,7 +17,7 @@ import tempfile
 import time
 import zipfile
 
-from storage_retention import REPO, ordinary_path, private_data_root, relative_path
+from storage_retention import REPO, ordinary_path, data_root, relative_path
 
 
 def digest(path):
@@ -87,7 +87,7 @@ def verify_archive(archive, staging):
 
 
 def backup(data_root, *, verify_only=False, timeout=120):
-    """Caller supplies a proven private root, or a synthetic test directory."""
+    """Caller supplies the private companion data root, or a synthetic test directory."""
     root = ordinary_path(data_root)
     source = relative_path(root, "task-console/console.sqlite3")
     recovery = relative_path(root, "task-console/recovery")
@@ -196,7 +196,7 @@ def resolve_scheduled_source(source_db):
         raise ValueError("Scheduled backup requires the reviewed task-console/console.sqlite3 layout")
     if not source.is_file():
         raise FileNotFoundError("Launcher-selected database is missing")
-    return private_data_root(source.parent.parent)
+    return ordinary_path(source.parent.parent)  # resolve_db already refused the source tree
 
 
 def git(repo, *arguments, mutation=False):
@@ -295,7 +295,7 @@ def scheduled_backup(source_db=None):
         raise ValueError("Scheduled backup refuses Git repository, index or configuration overrides")
     repo = ordinary_path(git(root, "rev-parse", "--show-toplevel"))
     if repo != root and repo not in root.parents:
-        raise ValueError("Recovery DATA must be inside its proven private repository")
+        raise ValueError("Recovery DATA must be inside its private repository")
     pair = tuple((root / "task-console/recovery" / name).relative_to(repo).as_posix()
                  for name in ("current.zip", "current.json"))
     recovery = relative_path(root, "task-console/recovery")
@@ -308,11 +308,9 @@ def scheduled_backup(source_db=None):
         pending = assert_pending_scope(repo, published, before, pair)
         for commit in pending:
             verify_pending_snapshot(root, repo, commit, pair)
-        private_data_root(root)
         receipt = _backup_locked(root)
         assert_main_head(repo, before)
         assert_snapshot_index(repo, pair)
-        private_data_root(root)
         if origin_target(repo) != target:
             raise ValueError("Origin changed during recovery capture")
         git(repo, "add", "--", *pair, mutation=True)
@@ -329,7 +327,6 @@ def scheduled_backup(source_db=None):
         _, committed = committed_pair(repo, head, pair)
         if committed != receipt:
             raise ValueError("Committed recovery pair differs from the verified capture; refusing publication")
-        private_data_root(root)
         if origin_target(repo) != target:
             raise ValueError("Origin changed before recovery publication")
         if head != published:
@@ -354,7 +351,7 @@ def main():
     if args.scheduled and args.verify or args.source_db and not args.scheduled:
         parser.error("--source-db requires --scheduled; --verify is a manual saved-snapshot check")
     result = scheduled_backup(args.source_db) if args.scheduled else backup(
-        private_data_root(args.data_root), verify_only=args.verify)
+        data_root(args.data_root), verify_only=args.verify)
     print(json.dumps(result, sort_keys=True))
 
 

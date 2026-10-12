@@ -45,7 +45,7 @@ jobs:
       # so CI exercises the import path production uses:
       #   convo-chain   0.3.0, public (server.py, convos.py, work_context.py).
       #   fleet-guards  0.2.1, public; the importable fleet_guards package and canonical
-      #                 companion runtime admission used by source and installed packages.
+      #                 companion discovery used by source and installed packages.
       #   llmcall       0.3.1, PRIVATE; process containment for controller, runtime_windows,
       #                 observations and git_ops. Read with a per-consumer read-only deploy key on
       #                 DaizeDong/llmcall, the same arrangement email-monitor and schedule-reminder use.

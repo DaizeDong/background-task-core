@@ -19,7 +19,7 @@ def doctor():
     if state:
         problems.append(state.message)
     else:
-        checks["private_versioned_database_destination"] = True
+        checks["database_destination"] = True
         if not path.is_file():
             problems.append("TASK_CONSOLE_DB database is uninitialized; configure ingestion separately")
         elif any(Path(str(path) + suffix).exists() for suffix in ("-wal", "-journal")):
