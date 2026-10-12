@@ -79,6 +79,13 @@ def isolate(tmp_path, monkeypatch):
     测到另一个东西 —— 而且是全绿地测到。
     """
     monkeypatch.delenv(llmstats.ENV_CHAIN, raising=False)
+    monkeypatch.delenv("LLMCALL_LEDGER", raising=False)
+    import console_store
+    def authorize_synthetic(path):
+        path = Path(path)
+        path.relative_to(tmp_path)
+        return path
+    monkeypatch.setattr(console_store, "authorize_private_write", authorize_synthetic)
     # 开发机上真的设了这两个时,整批伴生仓用例会测到真机的目录, 而且是全绿地测到。
     monkeypatch.delenv(llmstats.ENV_LLMCALL_DATA, raising=False)
     monkeypatch.delenv(llmstats.ENV_LLMCALL_CONFIG, raising=False)
@@ -95,12 +102,10 @@ def test_ledger_path_env_wins(tmp_path, monkeypatch):
     assert llmstats.ledger_path() == tmp_path / "x.jsonl"
 
 
-def test_ledger_path_default_is_home_llmcall(monkeypatch):
-    """对照:没设环境变量时**不能**还是 tmp 那个值,必须落到默认位置。"""
+def test_ledger_path_default_is_unconfigured(monkeypatch):
+    """Missing selectors are explicit uninitialized storage, with no home fallback."""
     monkeypatch.delenv(llmstats.ENV_LEDGER, raising=False)
-    p = llmstats.ledger_path()
-    assert p.name == "ledger.jsonl"
-    assert p.parent.name == ".llmcall"
+    assert llmstats.ledger_path() is None
 
 
 def test_ledger_path_does_not_raise_when_missing(tmp_path, monkeypatch):

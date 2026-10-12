@@ -106,6 +106,23 @@ def authorize_write(destination, *, artifact_id=None, directory=False):
         artifact_id=artifact_id, directory=directory)
 
 
+def authorize_private_write(destination):
+    """Check an external configuration leaf without creating its parents."""
+    from fleet_guards import filesystem
+
+    path = filesystem.validate_path(Path(destination).expanduser().absolute())
+    existing = path.parent
+    while not os.path.lexists(existing):
+        existing = existing.parent
+    storage = _load_storage()
+    prove = getattr(storage, "prove_private_companion", None)
+    if not callable(prove):
+        raise ValueError("This payload lacks PRIVATE companion proof support")
+    proof = prove(existing)
+    path.relative_to(Path(proof.root).resolve())
+    return path
+
+
 class DbState:
     """Why there is no database, in a form the page can render verbatim."""
 

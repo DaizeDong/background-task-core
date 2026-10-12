@@ -384,6 +384,11 @@ def _inspect_categories(path, name) -> dict:
     if _format(data, document) is None:
         out["reason"] = "分类配置的写法无法原样重写，拒绝自动修改；请手动删除这个任务的条目"
         return out
+    try:
+        console_store.authorize_private_write(path)
+    except (OSError, ValueError, RuntimeError, ImportError) as error:
+        out["reason"] = f"分类配置未通过 PRIVATE 存储校验（{type(error).__name__}），不会自动修改"
+        return out
     out["editable"] = True
     return out
 
@@ -424,11 +429,12 @@ def _edit_categories(path, name, planned_digest) -> dict:
     if not removed:
         return dict(step, status="ok", detail="分类配置里没有这个任务，无需修改")
     new = _serialise(edited, fmt)
-    from fleet_guards import filesystem as fs
     try:
+        from fleet_guards import filesystem as fs
+        console_store.authorize_private_write(path)
         fs.atomic_replace(Path(path), new)
         written = Path(path).read_bytes()
-    except (OSError, ValueError) as error:
+    except (OSError, ValueError, RuntimeError, ImportError) as error:
         return dict(step, status="failed", detail=f"分类配置写入失败（{type(error).__name__}），条目可能仍在，请核对")
     if written != new:
         return dict(step, status="failed", detail="分类配置写入后读回的内容不一致，请核对")
