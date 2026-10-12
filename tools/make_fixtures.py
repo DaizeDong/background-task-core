@@ -7,6 +7,17 @@ import json
 from pathlib import Path
 
 
+def native_dpapi_case(*, large_size=65537):
+    """Generate nonsecret plaintext and malformed encoding cases in memory."""
+    return {
+        "text": {"empty": "", "ascii": 'Acme fixture: quotes " and slash \\',
+                 "unicode": "Acme \u96ea \U0001f680", "nul": "Acme\x00fixture\x00",
+                 "large": "x" * large_size},
+        "malformed_utf16": {"odd": b"x", "surrogate": b"\x00\xd8"},
+        "invalid_cipher": b"00" * 100,
+    }
+
+
 def observation_binding_case(root):
     """Generate a passive binding without reading or collecting machine state."""
     root = Path(root)
@@ -16,6 +27,16 @@ def observation_binding_case(root):
                "private_dir": str(private), "snapshot": str(private / "snapshot.json")}
     path = root / "binding.json"
     path.write_text(json.dumps(binding), encoding="utf-8")
+    return path
+
+
+def external_categories_case(root):
+    """An editable synthetic classifier for PRIVATE write-admission tests."""
+    root = Path(root)
+    root.mkdir(parents=True, exist_ok=True)
+    path = root / "categories.json"
+    path.write_text(json.dumps({"categories": [{"name": "Acme", "tasks": ["AcmeSync"]}]},
+                               indent=2) + "\n", encoding="utf-8")
     return path
 
 
@@ -317,6 +338,197 @@ def add_creation_candidate(request):
     binding['name'] = 'AcmeSyncCopy'
     request['bindings']['tasks'][duplicate] = binding
     return original, duplicate
+
+
+def reconciliation_history_case(root):
+    """Two independently named tasks, then only the active declaration remains."""
+    from task_console.runtime_storage import digest, encode
+
+    request = example_request()
+    active_id = 'acme-maintenance/sync'
+    historical_id = 'acme-maintenance/legacy'
+    declaration = deepcopy(request['components'][0]['tasks'][0])
+    declaration.update(id='legacy', entrypoint='acme-legacy', concurrency_key='acme-legacy-destination')
+    request['components'][0]['tasks'].append(declaration)
+    binding = deepcopy(request['bindings']['tasks'][active_id])
+    binding.update(name='AcmeLegacySync', argv=['C:/Acme/runtime/python.exe', 'C:/Acme/source/legacy.py'])
+    request['bindings']['tasks'][historical_id] = binding
+    baseline = deepcopy(request['baseline']['tasks'][0])
+    baseline.update(name=binding['name'], argv=binding['argv'])
+    request['baseline']['tasks'].append(baseline)
+    request['baseline']['task_names'] = "$TaskNames = @( 'AcmeSync', 'AcmeLegacySync' )\n"
+    request['baseline']['task_health']['tasks'].extend(
+        dict(deepcopy(check['legacy']), name=binding['name']) for check in binding['checks'])
+    request['baseline']['categories']['categories'][0]['tasks'].append(binding['name'])
+    desired = example_request()
+    desired['bindings']['tasks'][active_id]['argv'].append('--refresh')
+    paths = {'bindings': 'bindings.json', 'machine': 'machine.json', 'task-health.json': 'health.json',
+             'TaskNames.ps1': 'names.ps1', 'categories.json': 'categories.json', 'tombstones': 'tombstones.json'}
+    config = {'schemaVersion': 1, 'domain': '1' * 32, 'desired': 'desired.json', 'adoption': 'adoption.json',
+              'paths': paths, 'active_xml': {active_id: None, historical_id: None},
+              'launchers': {active_id: 'hidden.vbs', historical_id: 'legacy-hidden.vbs'}}
+    source = Path(root) / 'private/source-binding.json'
+    maintained = Path(root) / 'private/maintained.py'
+    maintained_bytes = b'# Synthetic maintained source.\n'
+    source_binding = {'schemaVersion': 1, 'input_revision': None,
+                      'installed_generation': 'synthetic-generation', 'prerequisites': [],
+                      'tasks': {task_id: {'status': 'reviewed', 'reason_codes': []}
+                                for task_id in (active_id, historical_id)},
+                      'sources': {str(Path(root) / 'private/desired.json'): digest(encode(request)),
+                                  str(maintained): digest(maintained_bytes)}}
+    return {'request': request, 'desired': desired, 'config': config, 'active_id': active_id,
+            'historical_id': historical_id, 'source': source, 'source_binding': source_binding,
+            'maintained': maintained, 'maintained_bytes': maintained_bytes,
+            'unknown_id': 'acme-maintenance/unknown', 'wrong_name': 'AcmeUnrelatedSync',
+            'wrong_identity': 'task-definition:' + 'f' * 64, 'missing_generation': 'f' * 32}
+
+
+def reconciliation_receipt_chain(runtime, generations):
+    """Pin the supplied complete synthetic sequence without following receipt links."""
+    from task_console import registration as reg
+    from task_console.runtime_storage import FileResources, digest, encode, read_json
+
+    chain = []
+    for generation in reversed(generations):
+        receipt = read_json(runtime.authority.config.state_root / 'receipts' / (generation + '.json'))
+        journal_path = runtime.journal.root / (generation + '.json')
+        resources = FileResources([journal_path], runtime.authority.config.state_root / 'stages')
+        chain.append({'generation': generation, 'receipt_digest': digest(encode(receipt)),
+                      'journal_fingerprint': reg.fingerprint(resources.read(str(journal_path)))})
+    return chain
+
+
+def selected_scheduler_reconciliation_case(root, *, with_history=False, desired_run_level='LeastPrivilege',
+                                           with_passthrough=False, enabled=False):
+    """Owned synthetic tasks with one independently updated desired definition."""
+    from task_console.runtime_storage import digest, encode
+
+    case = reconciliation_history_case(root)
+    case['unselected_id'] = case.pop('historical_id')
+    request = case['request']
+    request['bindings']['tasks'][case['active_id']]['enabled'] = enabled
+    request['baseline']['tasks'][0]['enabled'] = enabled
+    if with_history:
+        historical_id = 'acme-maintenance/retained'
+        declaration = deepcopy(request['components'][0]['tasks'][1])
+        declaration.update(id='retained', entrypoint='acme-retained', concurrency_key='acme-retained-destination')
+        request['components'][0]['tasks'].append(declaration)
+        binding = deepcopy(request['bindings']['tasks'][case['unselected_id']])
+        binding.update(name='AcmeHistoricalSync', argv=['C:/Acme/runtime/python.exe', 'C:/Acme/source/retained.py'])
+        request['bindings']['tasks'][historical_id] = binding
+        baseline = deepcopy(request['baseline']['tasks'][1])
+        baseline.update(name=binding['name'], argv=binding['argv'])
+        request['baseline']['tasks'].append(baseline)
+        request['baseline']['task_names'] = "$TaskNames = @( 'AcmeSync', 'AcmeLegacySync', 'AcmeHistoricalSync' )\n"
+        request['baseline']['task_health']['tasks'].extend(
+            dict(deepcopy(check['legacy']), name=binding['name']) for check in binding['checks'])
+        request['baseline']['categories']['categories'][0]['tasks'].append(binding['name'])
+        case['config']['active_xml'][historical_id] = None
+        case['config']['launchers'][historical_id] = 'retained-hidden.vbs'
+        case['historical_id'] = historical_id
+    migration = deepcopy(request)
+    if with_history:
+        migration['components'][0]['tasks'] = migration['components'][0]['tasks'][:2]
+        migration['bindings']['tasks'].pop(case['historical_id'])
+        migration['baseline'] = reconciliation_history_case(root)['request']['baseline']
+    case['migration_request'] = migration
+    case['desired'] = deepcopy(migration)
+    case['desired']['bindings']['tasks'][case['active_id']]['argv'].append('--reviewed')
+    case['desired']['bindings']['tasks'][case['active_id']]['timeout_seconds'] = 900
+    case['desired']['bindings']['tasks'][case['active_id']]['principal']['run_level'] = desired_run_level
+    if with_passthrough:
+        import xml.etree.ElementTree as ET
+        from task_console import registration as reg
+        from task_console.runtime_xml import NS, parse, render
+        spec = next(spec for spec in reg.compile_plan(migration)['task_specs']
+                    if spec['task_id'] == case['active_id'])
+        xml = parse(render(spec, {'state': 'absent'}, spec['enabled'])['xml'])
+        trigger = xml.find('./{' + NS + '}Triggers/{' + NS + '}CalendarTrigger')
+        trigger.find('{' + NS + '}StartBoundary').text = '2000-01-01T03:15:00+01:00'
+        ET.SubElement(trigger, '{' + NS + '}RandomDelay').text = 'PT7M'
+        binding = case['desired']['bindings']['tasks'][case['active_id']]
+        binding['timezone'] = 'Europe/Berlin'
+        binding['xml_passthrough'] = {'xml': ET.tostring(xml, encoding='unicode'),
+                                      'owner': 'synthetic', 'reason': 'Preserve reviewed offset and delay'}
+    case['source_binding']['tasks'] = {task_id: {'status': 'reviewed', 'reason_codes': []}
+                                     for task_id in request['bindings']['tasks']}
+    case['source_binding']['sources'][str(Path(root) / 'private/desired.json')] = digest(encode(request))
+    case['wrong_principal'] = 'AcmeAlternateService'
+    case['wrong_action'] = 'C:/Acme/unreviewed.exe'
+    case['wrong_trigger_start'] = '2000-01-01T04:15:00Z'
+    return case
+
+
+def selected_scheduler_review(task_id, name, old_identity, snapshot):
+    """Explicit synthetic review of a complete observed Scheduler definition."""
+    from task_console import registration as reg
+
+    return {'task_id': task_id, 'name': name, 'expected_receipt_identity': old_identity,
+            'reviewed_identity': snapshot['identity'],
+            'reviewed_fingerprint': reg.fingerprint(reg._scheduler_config(snapshot)),
+            'reason': 'Accept independently reviewed synthetic definition'}
+
+
+def legacy_file_reconciliation_pending(runtime, review, *, stage='preparing'):
+    """Generate the pre-Scheduler-review plan and journal shapes independently."""
+    from dataclasses import asdict
+    from task_console import registration as reg
+    from fleet_guards import filesystem as fs
+    from task_console.runtime_storage import FileResources, digest, encode
+
+    if stage not in ('preparing', 'committing', 'committed'):
+        raise ValueError(stage)
+
+    authority, config = runtime.authority, runtime.authority.config
+    receipt = authority.receipt()
+    inputs = authority._inputs(receipt['input_reference'])
+    config_value = {key: str(value) if isinstance(value, Path) else value
+                    for key, value in asdict(config).items()}
+    config_files = FileResources([config.source_path, config.desired], config.state_root / 'stages')
+    files = {path: reg.fingerprint(runtime.files.read(path)) for path in sorted(runtime.files.paths)}
+    scheduler = {}
+    for task_id, proof in sorted(receipt['ownership'].items()):
+        current = reg._scheduler_config(runtime.scheduler.read(proof['name']))
+        scheduler[task_id] = {'name': proof['name'], 'fingerprint': reg.fingerprint(current),
+                              'receipt_identity': proof['identity'], 'current_identity': current.get('identity')}
+    baseline = {'pointer': authority._pointer(), 'receipt_revision': reg.revision(receipt),
+                'configuration_revision': reg.revision(config_value),
+                'configuration_fingerprint': reg.fingerprint(config_files.read(str(config.source_path))),
+                'desired_fingerprint': reg.fingerprint(config_files.read(str(config.desired))),
+                'inputs_revision': reg.revision(inputs), 'files': files, 'scheduler': scheduler,
+                'unselected_scheduler_drift': [task_id for task_id, value in scheduler.items()
+                                               if value['receipt_identity'] != value['current_identity']]}
+    plan = {'schemaVersion': 1, 'kind': 'authority-reconciliation', 'review': deepcopy(review), 'baseline': baseline}
+    plan['approval_revision'] = reg.revision(plan)
+    transaction_id = 'e' * 32
+    journal = {'schemaVersion': 1, 'transaction_id': transaction_id, 'status': 'preparing',
+               'locks': ['authority'] + ['file:' + path for path in sorted(files)],
+               'steps': [], 'cleaned': False, 'file_before': {},
+               'reconcile': {'plan': deepcopy(plan), 'evidence': {'tasks': {}}}}
+    if stage != 'preparing':
+        def protect(snapshot):
+            return runtime.vault.put(transaction_id + ':legacy-reconcile', snapshot)
+        evidence = journal['reconcile']['evidence']
+        evidence['receipt'] = protect({'state': 'present', 'identity': 'authority-receipt-v1',
+                                       'value': encode(receipt)})
+        for key in ('input_before', 'input_after'):
+            journal[key] = protect({'state': 'present', 'identity': 'effective-input-v1', 'value': inputs})
+        journal['file_before'] = {path: protect(runtime.files.read(path)) for path in sorted(files)}
+        for task_id, proof in sorted(receipt['ownership'].items()):
+            stable = deepcopy(runtime.scheduler.read(proof['name']))
+            if stable['state'] == 'present':
+                stable['value'].pop('running')
+            evidence['tasks'][task_id] = protect(stable)
+        completed = deepcopy(receipt)
+        completed.update(generation=transaction_id, input_reference=journal['input_after'],
+                         file_ownership=deepcopy(files))
+        journal.update(status=stage, cleaned=stage == 'committed',
+                       completion={'status': 'committed', 'receipt': completed, 'previous': baseline['pointer']})
+        if stage == 'committed':
+            fs.atomic_replace(config.state_root / 'receipts' / (transaction_id + '.json'), encode(completed))
+            fs.atomic_replace(authority.pointer, encode({'generation': transaction_id,
+                                                         'receipt_digest': digest(encode(completed))}))
+    return plan, journal
 
 
 def legacy_creation_xml(user_id='AcmeService'):

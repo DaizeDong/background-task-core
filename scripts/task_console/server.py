@@ -469,12 +469,19 @@ def load_from_db():
 # --------------------------------------------------------------------------- merge
 def categories_path() -> Path | None:
     """分类配置在哪。页面读它、删除任务时改它,两边必须是同一个文件,所以位置只在这里算一次。"""
-    return cfg_path("TASK_CONSOLE_CATEGORIES", ".task-console", "categories.json")
+    explicit = cfg_path("TASK_CONSOLE_CATEGORIES")
+    if explicit is not None:
+        return explicit
+    root = console_store.companion_root()
+    return root / "categories.json" if root is not None else None
 
 
 def load_categories() -> tuple[list[dict], str | None]:
     """Return (categories, warning). A missing map is a stated condition, never a silent default."""
-    p = categories_path()
+    try:
+        p = categories_path()
+    except (OSError, ValueError, RuntimeError, ImportError) as error:
+        return [], f"分类配置目录不可用: {error}"
     if not p or not p.exists():
         return [], (f"没有分类配置({p}),所有任务归入「未分类」。"
                     f"复制仓里的 categories.example.json 过去并按你的实际任务改。")
@@ -991,6 +998,9 @@ def llm_records():
     """读账本,带失效缓存。返回 (records, meta)。"""
     with _LEDGER_LOCK:
         p = llmstats.ledger_path()
+        if p is None:
+            _LEDGER_CACHE.clear()
+            return llmstats.read()
         try:
             st = os.stat(p)
             key = (str(p), st.st_size, st.st_mtime_ns)
