@@ -183,9 +183,9 @@ legacy callback invokes it without that opt-in refusal flag while holding the lo
    directly inside this transaction. Launcher creation/update remains a blocking
    integration gap; current producer supports already prepared/preserved launchers.
 5. Connect the existing encrypted `.cred` SecureString boundary through durable,
-   verified put/get references. CONFIG's portable `secrets-vault.ps1` already
-   selects credential files from its configured secret directory and rewraps restored credentials. That boundary
-   may be reused; no new crypto or second vault is needed. The transaction adapter
+   verified put/get references. Reuse the reviewed credential owner's portable
+   export and restore tooling; copying machine-bound DPAPI files alone is not a
+   portable backup. No new crypto or second vault is needed. The transaction adapter
    still must define object naming, durable references, access controls, retention
    and restore validation. Supply durable journal/filesystem/lock adapters,
    generation-pointer handling and receipt-derived ownership refresh together.
