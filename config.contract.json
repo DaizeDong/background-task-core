@@ -21,9 +21,7 @@
       "TASK_CONSOLE_CONFIG",
       "TASK_CONSOLE_CONFIG_DIR",
       "TASK_CONSOLE_DATA_DIR",
-      "sibling task-console-config",
-      "~/.task-console-config",
-      "~/.task-console-data"
+      "sibling task-console-config"
     ],
     "required_fields": [
       "TASK_CONSOLE_DB"

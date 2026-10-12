@@ -37,7 +37,6 @@ from __future__ import annotations
 import json
 import os
 import re
-import tempfile
 import time
 from collections import Counter, deque
 from pathlib import Path
@@ -117,7 +116,19 @@ class Refused(Exception):
 # 路径
 # --------------------------------------------------------------------------
 
-def ledger_path() -> Path:
+def _runtime_dir() -> Path | None:
+    """Use the selected producer data root; never invent a home directory."""
+    value = os.environ.get(ENV_LLMCALL_DATA)
+    if value:
+        return Path(os.path.expanduser(value)) / "runtime"
+    value = os.environ.get(ENV_LLMCALL_CONFIG)
+    if value:
+        root = Path(os.path.expanduser(value))
+        return (root if root.name == "data" else root / "data") / "runtime"
+    return None
+
+
+def ledger_path() -> Path | None:
     """账本路径。**不检查存在性,也不因为找不到而抛。**
 
     存在与否是调用方要显示的事实,不是这里要替它决定的。在这里抛异常会让
@@ -126,20 +137,25 @@ def ledger_path() -> Path:
     v = os.environ.get(ENV_LEDGER)
     if v:
         return Path(os.path.expanduser(v))
-    return Path(os.path.expanduser("~")) / ".llmcall" / "ledger.jsonl"
+    producer = os.environ.get("LLMCALL_LEDGER")
+    if producer is not None:
+        if producer.strip().lower() in ("0", "off", "false", ""):
+            return None
+        return Path(os.path.expanduser(producer))
+    root = _runtime_dir()
+    return root / "ledger.jsonl" if root is not None else None
 
 
-def chain_file_path() -> Path:
-    """链配置文件路径:显式覆盖 > 账本同目录下的 chain.txt。
-
-    默认账本是 `~/.llmcall/ledger.jsonl`,所以默认链文件正好是 `~/.llmcall/chain.txt`。
-    跟着账本走而不是各自写死,是为了让一次环境变量重定向把两者一起挪开 ——
-    只挪一半会让测试往真机的配置里写东西。
-    """
+def chain_file_path() -> Path | None:
+    """Explicit chain, explicit console ledger sibling, then producer runtime root."""
     v = os.environ.get(ENV_CHAIN_FILE)
     if v:
         return Path(os.path.expanduser(v))
-    return ledger_path().parent / "chain.txt"
+    ledger = os.environ.get(ENV_LEDGER)
+    if ledger:
+        return Path(os.path.expanduser(ledger)).parent / "chain.txt"
+    root = _runtime_dir()
+    return root / "chain.txt" if root is not None else None
 
 
 def _resolve_bodies() -> dict:
@@ -268,7 +284,7 @@ def read(limit=None):
     """
     p = ledger_path()
     meta = {
-        "path": str(p),
+        "path": str(p) if p is not None else None,
         "exists": False,
         "bytes": 0,
         "lines": 0,
@@ -283,6 +299,10 @@ def read(limit=None):
         "truncated": False,
         "read_error": None,
     }
+
+    if p is None:
+        meta["read_error"] = "llmcall 账本未配置或已禁用；请设置账本路径或生产方配置目录"
+        return [], meta
 
     try:
         st = p.stat()
@@ -867,8 +887,11 @@ def _observed_chain(records=None):
         return None, None
 
     tail = deque(maxlen=OBSERVE_TAIL)
+    path = ledger_path()
+    if path is None:
+        return None, None
     try:
-        with ledger_path().open("r", encoding="utf-8", errors="replace") as f:
+        with path.open("r", encoding="utf-8", errors="replace") as f:
             for i, line in enumerate(f, start=1):
                 t = line.strip()
                 if t:
@@ -926,7 +949,7 @@ def chain_config(records=None) -> dict:
         "env_name": ENV_CHAIN,
         "env_value": os.environ.get(ENV_CHAIN),
         "env_error": None,
-        "file_path": str(fp),
+        "file_path": str(fp) if fp is not None else None,
         "file_value": None,
         "file_error": None,
         "shadowed_by_env": False,
@@ -936,9 +959,12 @@ def chain_config(records=None) -> dict:
     # 文件先读,因为 shadowed_by_env 要知道文件里到底有没有东西。
     file_names = None
     try:
+        if fp is None:
+            raise FileNotFoundError("chain path not configured")
         raw = fp.read_text(encoding="utf-8")
     except FileNotFoundError:
-        pass
+        if fp is None:
+            out["file_error"] = "链配置目录未初始化"
     except OSError as e:
         out["file_error"] = f"{type(e).__name__}: {e}"
     else:
@@ -1013,21 +1039,16 @@ def write_chain(names) -> dict:
         raise Refused("链里有重复的名字(整批拒绝,未写入任何内容): " + ", ".join(dup), "duplicate")
 
     fp = chain_file_path()
-    fp.parent.mkdir(parents=True, exist_ok=True)
-    body = "\n".join(names) + "\n"
-    fd, tmp = tempfile.mkstemp(dir=str(fp.parent), prefix=".chain-", suffix=".tmp")
+    if fp is None:
+        raise Refused("先配置 PRIVATE 伴生仓中的链配置路径", "storage_unconfigured")
     try:
-        with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as f:
-            f.write(body)
-            f.flush()
-            os.fsync(f.fileno())
-        os.replace(tmp, str(fp))
-    except BaseException:
-        try:
-            os.unlink(tmp)
-        except OSError:
-            pass
-        raise
+        import console_store
+        from fleet_guards import filesystem
+        fp = console_store.authorize_private_write(fp)
+    except (OSError, ValueError, RuntimeError, ImportError) as error:
+        raise Refused("链配置没有通过 PRIVATE 存储校验", "storage_refused") from error
+    body = "\n".join(names) + "\n"
+    filesystem.atomic_replace(fp, body)
     return chain_config()
 
 

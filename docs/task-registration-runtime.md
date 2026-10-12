@@ -15,8 +15,10 @@ Python callers can inject a Scheduler transport/protector for synthetic testing.
 Import/construction/status do not run tasks or provision locks/state.
 
 The caller must establish private directory ownership, ACLs and backup policy.
-No repository/home discovery or plaintext fallback exists. `vault_root` must be
-the existing secrets directory captured by CONFIG secrets-vault.ps1 (`*.cred`).
+No repository/home discovery or plaintext fallback exists. `vault_root` must name
+the existing private directory for DPAPI-protected `*.cred` files. Its owner must
+provide portable credential export and restore separately; this runtime does not
+select a backup destination or make machine-bound DPAPI bytes portable.
 State and vault roots must be disjoint; desired/adoption files and output paths
 cannot alias runtime storage. Paths in this synthetic config resolve beneath the
 supplied private root:
