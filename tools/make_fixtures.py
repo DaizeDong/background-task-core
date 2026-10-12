@@ -7,6 +7,17 @@ import json
 from pathlib import Path
 
 
+def native_dpapi_case(*, large_size=65537):
+    """Generate nonsecret plaintext and malformed encoding cases in memory."""
+    return {
+        "text": {"empty": "", "ascii": 'Acme fixture: quotes " and slash \\',
+                 "unicode": "Acme \u96ea \U0001f680", "nul": "Acme\x00fixture\x00",
+                 "large": "x" * large_size},
+        "malformed_utf16": {"odd": b"x", "surrogate": b"\x00\xd8"},
+        "invalid_cipher": b"00" * 100,
+    }
+
+
 def observation_binding_case(root):
     """Generate a passive binding without reading or collecting machine state."""
     root = Path(root)

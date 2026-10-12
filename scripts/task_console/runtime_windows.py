@@ -148,15 +148,42 @@ class DPAPIProtector:
 
     def _convert(self, operation, data):
         text = self._validate(data, cipher=operation == 'unprotect')
-        result = powershell(_PROTECT, {'operation': operation, 'text': text})
-        if not isinstance(result, dict) or not isinstance(result.get('text'), str):
-            raise Conflict('protector_invalid', 'vault')
+        if operation == 'unprotect':
+            text = self._unprotect(text)
+        else:
+            result = powershell(_PROTECT, {'operation': operation, 'text': text})
+            if not isinstance(result, dict) or not isinstance(result.get('text'), str):
+                raise Conflict('protector_invalid', 'vault')
+            text = result['text']
         try:
-            output = result['text'].encode('ascii')
+            output = text.encode('ascii')
         except UnicodeError:
             raise Conflict('protector_invalid', 'vault') from None
         self._validate(output, cipher=operation == 'protect')
         return output
+
+    @staticmethod
+    def _unprotect(text):
+        if os.name != 'nt':
+            raise Conflict('windows_required', 'transport')
+        try:
+            import win32crypt
+        except ImportError:
+            raise Conflict('protector_dependency_unavailable', 'vault') from None
+        try:
+            # Null entropy and CRYPTPROTECT_UI_FORBIDDEN preserve the unkeyed
+            # CurrentUser SecureString format without an interactive prompt.
+            _, plain = win32crypt.CryptUnprotectData(bytes.fromhex(text), None, None, None, 1)
+        except Exception:
+            raise Conflict('protector_failed', 'vault') from None
+        if not isinstance(plain, bytes) or len(plain) % 2:
+            raise Conflict('protector_invalid', 'vault')
+        if len(plain) > 2 * DPAPIProtector.PLAIN_LIMIT:
+            raise Conflict('protector_limit', 'vault')
+        try:
+            return plain.decode('utf-16-le')
+        except UnicodeError:
+            raise Conflict('protector_invalid', 'vault') from None
 
     def protect(self, data):
         return self._convert('protect', data)
@@ -180,6 +207,10 @@ class DPAPIProtector:
             self._cache.move_to_end(key)
             return self._cache[key]
         value = self._convert('unprotect', data)
+        if control.is_set():
+            raise Conflict('transport_cancelled', 'transport')
+        if remaining_timeout(25) <= 0:
+            raise Conflict('transport_timeout', 'transport')
         while self._cache and (len(self._cache) >= 64 or self._cache_size + len(value) > self.CACHE_LIMIT):
             _, previous = self._cache.popitem(last=False)
             self._cache_size -= len(previous)

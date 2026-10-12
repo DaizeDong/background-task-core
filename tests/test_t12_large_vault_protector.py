@@ -7,6 +7,7 @@ import json
 import os
 from pathlib import Path
 import sys
+from types import SimpleNamespace
 
 import pytest
 
@@ -49,6 +50,11 @@ try {
 '''
 
 native = pytest.mark.skipif(os.name != 'nt', reason='Windows CurrentUser DPAPI')
+
+
+def native_reply(monkeypatch, decrypt):
+    monkeypatch.setattr(win, 'os', SimpleNamespace(name='nt'))
+    monkeypatch.setitem(sys.modules, 'win32crypt', SimpleNamespace(CryptUnprotectData=decrypt))
 
 
 def same_bytes(actual, expected):
@@ -97,10 +103,10 @@ def test_interrupted_vault_read_keeps_transport_diagnosis(monkeypatch, code):
 def test_decryption_reuses_exact_ciphertext_only_in_the_same_operation(monkeypatch):
     from llmcall.process import execution_scope
     calls = []
-    def convert(script, request):
-        calls.append(request['text'])
-        return {'text': request['text']}
-    monkeypatch.setattr(win, 'powershell', convert)
+    def convert(data, *args):
+        calls.append(data)
+        return '', data.hex().encode('utf-16-le')
+    native_reply(monkeypatch, convert)
     protector = win.DPAPIProtector()
     first, changed = (bytes([i]).hex().encode('ascii') for i in range(2))
     with execution_scope(timeout=30):
@@ -117,10 +123,10 @@ def test_decryption_cache_preserves_cancellation_and_memory_bound(monkeypatch):
     import threading
     from llmcall.process import execution_scope
     calls = []
-    def convert(script, request):
-        calls.append(request['text'])
-        return {'text': request['text']}
-    monkeypatch.setattr(win, 'powershell', convert)
+    def convert(data, *args):
+        calls.append(data)
+        return '', data.hex().encode('utf-16-le')
+    native_reply(monkeypatch, convert)
     protector = win.DPAPIProtector()
     protector.CACHE_LIMIT = 2
     cancel = threading.Event()
@@ -142,13 +148,17 @@ def test_wrong_input_type_or_encoding_refuses_before_transport(monkeypatch, valu
     def forbidden(*args, **kwargs):
         pytest.fail('invalid input reached transport', pytrace=False)
     monkeypatch.setattr(win, 'powershell', forbidden)
+    native_reply(monkeypatch, forbidden)
     with pytest.raises(Conflict, match='protector_invalid'):
         getattr(win.DPAPIProtector(), method)(value)
 
 
 @pytest.mark.parametrize('value', [b'', b'0', b'zz', b'00 00', b'00\n'])
 def test_invalid_hex_refuses_before_transport(monkeypatch, value):
-    monkeypatch.setattr(win, 'powershell', lambda *a, **k: pytest.fail('transport called'))
+    def forbidden(*args, **kwargs):
+        pytest.fail('transport called')
+    monkeypatch.setattr(win, 'powershell', forbidden)
+    native_reply(monkeypatch, forbidden)
     with pytest.raises(Conflict, match='protector_invalid'):
         win.DPAPIProtector().unprotect(value)
 
@@ -172,7 +182,10 @@ def test_scoped_expansion_limit_prevents_publication(monkeypatch):
 
 
 def test_ciphertext_transport_framing_limit(monkeypatch):
-    monkeypatch.setattr(win, 'powershell', lambda *a, **k: pytest.fail('transport called'))
+    def forbidden(*args, **kwargs):
+        pytest.fail('transport called')
+    monkeypatch.setattr(win, 'powershell', forbidden)
+    native_reply(monkeypatch, forbidden)
     with pytest.raises(Conflict, match='protector_limit'):
         win.DPAPIProtector().unprotect(b'00' * (win.LIMIT // 2))
 
@@ -185,22 +198,21 @@ def test_oversized_cipher_reply_prevents_publication(monkeypatch):
     assert not objects
 
 
-def test_protector_keeps_shared_transport_defaults(monkeypatch):
+def test_protect_keeps_shared_transport_defaults(monkeypatch):
     calls = []
     def capture(script, request, **kwargs):
         calls.append((script, request, kwargs))
-        return {'text': '00' if request['operation'] == 'protect' else 'synthetic'}
+        return {'text': '00'}
     monkeypatch.setattr(win, 'powershell', capture)
     protector = win.DPAPIProtector()
     protector.protect(b'synthetic')
-    protector.unprotect(b'00')
-    assert [c[1]['operation'] for c in calls] == ['protect', 'unprotect']
+    assert [c[1]['operation'] for c in calls] == ['protect']
     assert all(c[0] == win._PROTECT and not c[2] for c in calls)
 
 
-@pytest.mark.parametrize('reply', [{}, {'text': None}, {'text': 1}, {'text': '\u96ea'}])
-def test_unprotect_validates_reply(monkeypatch, reply):
-    monkeypatch.setattr(win, 'powershell', lambda *a, **k: reply)
+@pytest.mark.parametrize('reply', [None, 1, [], '\u96ea'.encode('utf-16-le')])
+def test_unprotect_validates_native_reply(monkeypatch, reply):
+    native_reply(monkeypatch, lambda *args: ('', reply))
     with pytest.raises(Conflict, match='protector_invalid'):
         win.DPAPIProtector().unprotect(b'00')
 
