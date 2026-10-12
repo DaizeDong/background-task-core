@@ -18,10 +18,26 @@ drift. All tasks' current definitions remain bound to the plan, so any concurren
 definition change invalidates approval. Task execution state can change without altering that
 definition, so a running task does not need to stop for this operation.
 
+When effective declarations have removed an initially adopted task, the optional
+`historical_task_ids` list must name exactly the ownership proofs left without a
+declaration. These IDs must be unselected and their current Scheduler objects must
+be absent. Supply an independently reviewed `historical_receipt_chain` in current
+to initial-adoption order, with each generation's `generation`, `receipt_digest`
+and `journal_fingerprint`. The sequence must match exactly. Its records, protected
+inputs and predecessor before-images must agree, and each historical proof must
+match its original adoption identity and name, except for the authority epoch.
+The original adoption approval and protected publication images provide separate
+evidence for that origin. Duplicate names, missing history and declarations
+without ownership proofs are refused. The supplied sequence is an explicit review
+input; the tool cannot prove that editable predecessor links enumerate every past
+transaction. This review preserves the original proofs and creates no retirement
+record.
+
 Run `reconcile-plan --request <private-review.json>` with the four explicit runtime
 arguments. It only reads and returns a plan whose `approval_revision` binds the
 review, existing receipt and pointer, parsed and raw runtime configuration,
 desired file, effective inputs, managed files and Scheduler observations.
+Historical review also binds the ancestry files and original protected inputs.
 Review the complete result, then pass it to
 `reconcile-apply --request <private-plan.json> --approval-revision <digest>`.
 The CLI does not infer approval from the review's reasons.
