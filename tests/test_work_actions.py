@@ -94,3 +94,28 @@ api=async()=>{throw Object.assign(Error('synthetic refusal'),{status:403,request
     assert 'synthetic refusal' in result['messages'][0]
     assert '未收到确认' not in result['messages'][0]
     assert result['intents'] == result['stored'] == 0
+
+
+def test_the_page_polls_only_recent_moving_work_never_human_wait_states():
+    """reconcile, task_requested and review_unavailable wait for a person: polling them never ends."""
+    def moving(state, minutes_ago):
+        item = work_action_case()
+        item['actions']['current'] = {'id': 'acme-request', 'kind': 'agent', 'state': state}
+        return run('workActionMoving(item)', 'const item=' + json.dumps(item) + ';'
+                   f"item.actions.current.updated_at=new Date(Date.now()-{minutes_ago}*60000).toISOString();")
+    for state in ('preparing', 'queued', 'running'):
+        assert moving(state, 1) is True, state
+        # Age cap: something that has not changed in half an hour is not worth a feed every 8 s.
+        assert moving(state, 45) is False, state
+    for state in ('reconcile', 'task_requested', 'review_unavailable', 'dispatching', 'done', 'failed'):
+        assert moving(state, 1) is False, state
+    assert run('workActionMoving(item)', 'const item=' + json.dumps(work_action_case()) + ';') is False
+
+
+def test_no_session_context_control_remains():
+    item = work_action_case()
+    item['actions']['links'] = [{'kind': 'session', 'id': '11111111-2222-4333-8444-555555555555', 'label': '原对话'}]
+    html = render(item)
+    assert 'data-work-context' not in html and '原对话' not in html
+    source = module_source('work-actions.js')
+    assert '/api/work/context' not in source and 'openWorkContext' not in source

@@ -784,7 +784,7 @@ def test_registered_read_routes_require_auth_before_calling_provider(srv, path):
 
 def test_registered_read_dispatch_auth_negative_control():
     src, _ = _api_route_literals()
-    block = src.split('if path in integrations.ROUTES:', 1)[1].split("if path == '/api/work/context':", 1)[0]
+    block = src.split('if path in integrations.ROUTES:', 1)[1].split('if path == "/api/task/repairs":', 1)[0]
     assert 'if not self._authed():' in block
     poisoned = block.replace('if not self._authed():', 'if False:', 1)
     assert poisoned != block
@@ -1024,7 +1024,7 @@ def test_convo_post_body_just_under_the_cap_is_parsed(srv, _no_fs):
 
 
 def test_convo_export_is_a_read_that_works_in_read_only_preview(srv, monkeypatch, tmp_path):
-    """导出不写任何东西。做成 POST 时只读预览导不了,每次导出还让读缓存全部失效。
+    """导出不写任何东西。做成 POST 时只读预览导不了。
     负对照:同一个只读预览里分叉(真的写文件)照样 403。"""
     d = tmp_path / "proj-a"
     d.mkdir()
@@ -1033,11 +1033,8 @@ def test_convo_export_is_a_read_that_works_in_read_only_preview(srv, monkeypatch
          "message": {"role": "user", "content": "hello"}}) + "\n", encoding="utf-8")
     monkeypatch.setenv("TASK_CONSOLE_SESSIONS", str(tmp_path))
     monkeypatch.setenv("TASK_CONSOLE_READ_ONLY", "1")
-    invalidated = []
-    monkeypatch.setattr(S.source_reads.boundary, "invalidate", lambda: invalidated.append(1))
     st, data = call(srv, "GET", f"/api/convo/export?id={_CV_SID}&to={_CV_U}", token=TOKEN)
     assert st == 200 and "hello" in json.loads(data)["text"]
-    assert invalidated == []
     st, _ = call(srv, "POST", "/api/convo/fork", token=TOKEN, body={"id": _CV_SID, "at": _CV_U})
     assert st == 403
     st, _ = call(srv, "POST", "/api/convo/export", token=TOKEN, body={"id": _CV_SID, "to": _CV_U})

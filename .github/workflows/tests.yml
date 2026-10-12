@@ -43,7 +43,7 @@ jobs:
       #
       # The libraries the console imports are installed for real, pinned to commits, never stubbed,
       # so CI exercises the import path production uses:
-      #   convo-chain   0.3.0, public (server.py, convos.py, work_context.py).
+      #   convo-chain   0.3.0, public (server.py, convos.py).
       #   fleet-guards  0.2.1, public; the importable fleet_guards package and canonical
       #                 companion discovery used by source and installed packages.
       #   llmcall       0.3.1, PRIVATE; process containment for controller, runtime_windows,

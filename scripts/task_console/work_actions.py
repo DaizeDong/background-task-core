@@ -1,13 +1,21 @@
-"""Broker owner-issued work through the existing reminder CLI and Controller."""
+"""Broker owner-issued work through the existing reminder CLI.
+
+A linked task runs through the Controller. An agent action only asks the scheduler to run the
+agent queue tick sooner; the tick owns execution.
+"""
 import json
 import os
 from pathlib import Path
 import re
 import subprocess
 import sys
+import threading
 
 import work_status
 from task_console import controller
+
+# The scheduled task that drains the agent queue (schedule-reminder's agent_tick).
+AGENT_TICK = 'AgentCenterWorkTick'
 
 
 class ActionError(ValueError):
@@ -26,7 +34,6 @@ MESSAGES = {
     'work_binding_invalid': '执行接口尚未连接',
     'queue_not_configured': '执行服务尚未连接',
     'runtime_not_configured': '任务控制器尚未连接',
-    'session_context_unavailable': '暂时读不到关联的原对话，请恢复来源后重试',
     'owner_reply_unknown': '未收到提交确认，再次点击会核对原请求',
     'read_only': '只读预览，无法执行操作',
 }
@@ -74,36 +81,20 @@ def _run_task(task_id, runtime):
     return controller.Controller(runtime).action(selected['name'], 'run')
 
 
-def _context(item_id, env, revision=None):
-    # The page's buttons come from the feed this process last read. At the clicked revision the
-    # session link is the same one a fresh read would return (the revision covers the item fields
-    # the link derives from), and work-action re-checks the revision anyway. Only a miss pays for
-    # another full work-feed subprocess.
-    item = work_status.last_item(item_id, env, revision)
-    if item is None:
-        feed = work_status.read_configured(env)
-        if not feed.get('available'):
-            raise ActionError('work_binding_invalid')
-        item = next((row for row in feed['items'] if row['id'] == item_id), None)
-    if not item:
-        raise ActionError('item_not_found')
-    links = item.get('actions', {}).get('links', [])
-    session = next((link['id'] for link in links if link.get('kind') == 'session'), None)
-    if not session:
-        return ''
-    from work_context import read_session_context
-    try:
-        return read_session_context(session, env.get('TASK_CONSOLE_SESSIONS'))
-    except (OSError, ValueError) as exc:
-        raise ActionError('session_context_unavailable') from exc
+def _wake_agent_tick():
+    """Ask the scheduler to run the agent queue tick now, off the request thread.
 
-
-def context_view(item_id, env=None):
-    try:
-        value = _context(item_id, os.environ if env is None else env)
-        return {'available': bool(value), 'text': value, 'reason': '' if value else '没有记录准确的原对话关联'}
-    except ActionError as exc:
-        return {'available': False, 'reason': MESSAGES.get(exc.code, '原对话暂时不可用')}
+    Best effort only: the tick's own trigger picks the queued action up anyway, so a failed or
+    slow wakeup costs latency, never the action. Nothing waits on it and nothing reports it.
+    """
+    def run():
+        try:
+            subprocess.run(['schtasks', '/run', '/tn', AGENT_TICK], stdin=subprocess.DEVNULL,
+                           capture_output=True, timeout=60,
+                           creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
+        except (OSError, subprocess.SubprocessError):
+            pass
+    threading.Thread(target=run, name='agent-tick-wakeup', daemon=True).start()
 
 
 def submit(request, *, stop=False, env=None):
@@ -116,12 +107,16 @@ def submit(request, *, stop=False, env=None):
             return invoke('work-action-stop', request, env)
         if request['action_id'] == 'complete':
             return invoke('work-action', {'request': request, 'context': ''}, env)
-        # Validate the configured executor before reserving a new action.
+        if request['action_id'] == 'agent':
+            if not env.get('TASK_CONSOLE_AGENT_TASK_ID'):
+                raise ActionError('queue_not_configured')
+            reply = invoke('work-action', {'request': request, 'context': ''}, env)
+            if reply.pop('wakeup', False):
+                _wake_agent_tick()
+            return reply
+        # A linked task runs through the controller; validate it before reserving the action.
         runtime = controller.load_runtime(environ=env)
-        if request['action_id'] == 'agent' and not env.get('TASK_CONSOLE_AGENT_TASK_ID'):
-            raise ActionError('queue_not_configured')
-        context = _context(request['item_id'], env, request['revision']) if request['action_id'] == 'agent' else ''
-        reply = invoke('work-action', {'request': request, 'context': context}, env)
+        reply = invoke('work-action', {'request': request, 'context': ''}, env)
         dispatch = reply.pop('dispatch', None)
         if dispatch:
             try:
@@ -130,12 +125,6 @@ def submit(request, *, stop=False, env=None):
                 # A controller error may happen after scheduler acceptance. Never replay it.
                 result = {'ok': False, 'status': 'cleanup_uncertain', 'message': '任务是否启动尚未确认'}
             reply = invoke('work-action-result', {'action_id': dispatch['action_id'], 'result': result}, env)
-        elif reply.get('wakeup'):
-            try:
-                result = _run_task(env['TASK_CONSOLE_AGENT_TASK_ID'], runtime)
-                reply['wakeup'] = result.get('ok') is True
-            except Exception:
-                reply['wakeup'] = False
         return reply
     except (ActionError, controller.ContractError) as exc:
         code = exc.code

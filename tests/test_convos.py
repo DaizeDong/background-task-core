@@ -454,16 +454,11 @@ def test_a_failed_replace_preserves_the_complete_staging_file(tmp_path, monkeypa
 
 
 def test_the_typed_by_a_person_rule_has_one_home():
-    """「哪一条是人打的字」只有 convo-chain 里那一份。会话列表和工作上下文都从库里导入,
-    不许再各自带一份:以前这里自带一份、对话链从这里借,规则就有了两个家。"""
+    """「哪一条是人打的字」只有 convo-chain 里那一份。会话列表从库里导入,
+    不许再自带一份:以前这里自带一份、对话链从这里借,规则就有了两个家。"""
     import convo_chain
-    import work_context
     assert C.typed_text is convo_chain.typed_text
     assert C.looks_injected is convo_chain.looks_injected
-    assert work_context.looks_injected is convo_chain.looks_injected
-    assert work_context.typed_text is convo_chain.typed_text
-    assert work_context.locate is convo_chain.locate and work_context.shape is convo_chain.shape
-    assert not hasattr(work_context, "re"), "work_context must not carry its own session id regex"
     assert not hasattr(C, "_typed_text") and not hasattr(C, "_looks_injected")
 
 

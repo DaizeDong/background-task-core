@@ -39,6 +39,8 @@ function setBadge(key,n,warn,title){
 }
 function badgeState(key){
   const paths=BADGE_SOURCES[key] || [], name=BADGE_NAMES[key] || key;
+  // 还没人请求过的来源(不在补读名单里、那一屏也没打开过)不画任何东西:「…」会说成正在读。
+  if(paths.some(path=>!API_READS.has(path))) return {state:'unread',title:`${name}尚未读取，打开那一屏时读取`};
   const settled=paths.map(path=>API_READS.get(path)).filter(read=>read && !read.pending && read.error);
   const failed=settled.filter(read=>!read.unchecked), unchecked=settled.filter(read=>read.unchecked);
   if(failed.length) return {state:'broken',title:`${name}读取失败：${failed.map(read=>read.error).join('；')}`};
@@ -54,7 +56,8 @@ function badgeState(key){
 // 一个还在读就是「…」。都读到了才相加,颜色按最严重的那一个。
 // 没在查的标签不算缺口:它没有数,也没有坏,合计只加查了的那些;整组都没在查才是「—」。
 function groupBadge(group){
-  const states=Object.keys(VIEW_GROUPS[group]?.views || {}).filter(view=>BADGE_SOURCES[view]).map(view=>badgeState(view));
+  const states=Object.keys(VIEW_GROUPS[group]?.views || {}).filter(view=>BADGE_SOURCES[view]).map(view=>badgeState(view))
+    .filter(state=>state.state!=='unread');
   if(!states.length) return null;
   const broken=states.filter(state=>state.state==='broken');
   if(broken.length) return {state:'broken',title:broken.map(state=>state.title).join('\n')};
@@ -70,7 +73,7 @@ function badgeText(badge){
 }
 function paintBadge(el,badge){
   if(!el) return;
-  if(!badge){ el.hidden=true; return; }
+  if(!badge || badge.state==='unread'){ el.hidden=true; return; }
   // 用 hidden 而不是一个「零」类来藏:侧栏收起时徽章绝对定位到图标角上,
   // 一个宽高为零但仍在文档流里的徽章会在那里留下一个看不见的偏移。
   el.hidden=badge.state==='count' && !badge.n;
@@ -89,10 +92,10 @@ function noteRead(path,state){
   if(!state.pending) BADGE_SETTLED.add(path);
   renderBadges();
 }
-// 徽章要在人点进去之前就有数,所以当前这一屏读完以后,把各徽章还没读过的来源补读一遍。
-// 等当前屏读完再读,是为了不跟它抢:扫一遍仓库要十几秒。读过的(哪怕失败了)不再重复读,刷新归刷新按钮。
-const BADGE_LOADERS={'/api/tasks':()=>load(),'/api/repos':()=>loadRepos(),'/api/sys':()=>loadSys(),
-  '/api/mem':()=>loadMem(),'/api/llmcall':()=>loadLLM()};
+// 当前这一屏读完以后,把便宜的徽章来源补读一遍,让侧栏在人点进去之前就有数。
+// 仓库扫描(/api/repos)和计划任务(/api/tasks)不在这里:前者要对每个仓库跑一串 git,后者要起 PowerShell,
+// 它们的徽章等人打开那一屏时随那一屏的读取填上。读过的(哪怕失败了)不再重复读,刷新归刷新按钮。
+const BADGE_LOADERS={'/api/sys':()=>loadSys(),'/api/mem':()=>loadMem(),'/api/llmcall':()=>loadLLM()};
 function prefetchBadgeSources(){
   return Promise.allSettled(Object.entries(BADGE_LOADERS).filter(([path])=>!API_READS.has(path)).map(([,loader])=>loader()));
 }

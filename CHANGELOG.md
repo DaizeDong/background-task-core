@@ -4,6 +4,15 @@ All notable changes to this project are documented here (Keep a Changelog style)
 
 ## [Unreleased]
 
+### Work path slimmed
+- An agent work action no longer runs through the task Controller. After the owner accepts it, the console asks the scheduler to run `AgentCenterWorkTick` once (`schtasks /run`, on a background thread, no window, failures ignored); the tick's own trigger picks the work up anyway. This removes about seven PowerShell launches from every agent click and every repair submit. Linked task offers still run through the Controller.
+- The agent offer needs only `TASK_CONSOLE_AGENT_TASK_ID`; the Controller runtime settings now gate only linked task offers.
+- Remove the conversation-context feature: `work_context.py`, `GET /api/work/context`, the 原对话 row button and its detail section. No producer ever wrote the session link it read, so every agent click paid for a full `work-feed` to submit an empty context. Agent work is submitted with no context. The per-process feed cache added for it is gone too.
+- The page polls the work feed only while an action is preparing, queued or running and changed within 30 minutes. States that wait for a person (reconcile, task_requested, review_unavailable) are never polled. The repairs view no longer polls at all.
+- A repair submit reads the work feed once and passes it to the dispatch; a new order costs one more read after `ensure`. The repairs map and the repair preview use the shared `work` read.
+- Shared reads only join an in-flight read. POSTs no longer invalidate reads (twice per POST), and a read is no longer discarded and retried up to three times.
+- The badge prefetch no longer reads `/api/repos` (a git scan of every repository) or `/api/tasks`; a badge whose source was never requested is hidden instead of showing a permanent 「…」.
+
 ### Conversations
 - Rename a session in place. Each list row has a pencil after its title, and the title of an open conversation chain is itself the rename control. The inline box takes Enter to save and Esc to cancel; a click outside closes it only when the name is unchanged. Saving reuses the existing rename request and updates the row and chain header immediately.
 - AI 起名 in the inline box and in the rename dialog asks the new read only route `POST /api/convo/suggest-title` for one short Chinese name. The route digests only what the person typed (the transcript is streamed once, and only the first and last six typed messages are kept), asks `llmcall` in judge mode, validates and normalises the answer, and writes nothing. The suggestion fills the box for the owner to confirm.
@@ -12,7 +21,6 @@ All notable changes to this project are documented here (Keep a Changelog style)
 ### Storage: runtime PRIVATE proof removed
 - Delete the runtime storage proof. `console_store.authorize_write` (Guards `authorize_artifact_write`, which ran the PRIVATE visibility proof with dozens of Git and GitHub subprocesses before every database open, event export, conversation cache write, task archive write and settings template) is gone with all its callers, and the tools' `private_data_root` proof (`prove_private_companion`, called up to four times per scheduled backup) is now `data_root`, a pure path check. The category-map and llmcall chain writes added with direct companion storage (`authorize_private_write`, which also called `prove_private_companion`) use `console_store.check_write_path` instead: Guards lexical and link checks plus the source-tree refusal, with no Git. Resolution keeps the companion discovery order, the NO_COMPANION state and the refusal of any destination inside this payload's own source tree. Keeping DATA out of public repositories stays with the commit and push hooks and CI.
 - The wheel no longer bundles `storage.contract.json`; nothing reads it at runtime. The contract file and its CI checks are unchanged.
-- An agent work action looks its item up in the feed this server last read at the clicked revision instead of running a second full `work-feed` subprocess; only a miss reads fresh. The original-conversation view does the same.
 
 ### Configuration and storage admission
 - Keep generated PowerShell settings examples byte-identical on Windows checkouts, account for native configuration overrides in self-check, and align scheduled-backup unit fixtures with the current authorization boundary.

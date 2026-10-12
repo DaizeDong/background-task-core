@@ -157,8 +157,8 @@
 顶栏的刷新会把 `PAGE_READS[当前屏]` 全部重跑一遍,所以卡片上不要再加一个同样的刷新图标;
 新面板的读取挂进 `PAGE_READS` 就有了刷新。只有比整页刷新便宜得多、而且只读一小块的,才单独给一个带字的按钮
 (会话库的「重新扫描」是唯一的例子)。徽章用 `setBadge(视图, 数, 是否只是警告, 说明)`,
-来源路径登记在 `BADGE_SOURCES`,补读的函数登记在 `BADGE_LOADERS`:「…」和「?」是靠这两张表和 `api()` 报上来的读取记录判断的,
-漏登记的徽章会一直是「…」。
+来源路径登记在 `BADGE_SOURCES`,页面读完后补读的便宜来源登记在 `BADGE_LOADERS`:「…」和「?」是靠这两张表和 `api()` 报上来的读取记录判断的。
+从没请求过的来源不画徽章;贵的来源(仓库扫描、计划任务)不进 `BADGE_LOADERS`,它们的徽章等那一屏打开时才有。
 
 刷新按屏记(`PAGE_REFRESHING_VIEWS`):一屏在读,别的屏照样能刷新。读完的清点由 `readPage` 做,第一次进屏和点刷新是同一份:它只数这一屏的读取函数**同步**发出的那几路 `api()`(`API_READ_COLLECTORS`),所以新的读取函数要在第一个 `await` 之前调 `api()`,否则它读坏了顶栏看不见。后端对没配的来源回 200 加 `available:false` 的,把路径登记进 `api.js` 的 `API_UNCHECKED_WHEN_UNAVAILABLE`,徽章和顶栏就会把它算成「未检查」(淡色虚线框里的一横)而不是「?」;没登记的 `available:false`(比如工作记录的 `work_reader_failed`)照旧算读取失败。徽章记在能处理那件事的那一屏上:记忆索引在「客户端技能与记忆」,所以它的来源登记在 `BADGE_SOURCES.resources`,不在存储清理上。
 
@@ -342,7 +342,7 @@
    work-feed、SMITH 目录)只走它们的 CLI 或快照。判据是控制台借的是对方的**规则**(库),
    还是读的是对方的**产物**(生产者)。库不读 `TASK_CONSOLE_*`,根目录之类由路由显式传进去;
    它在 `integrations.py` 的 `ADAPTERS` 里是一行 `library` 层、没有 endpoint 的登记。
-   那一行**不是健康检查**:`convo-chain` 在 server、convos、work_context 顶层导入,缺了控制台
+   那一行**不是健康检查**:`convo-chain` 在 server、convos 顶层导入,缺了控制台
    直接起不来,不会退化成一块面板不可用。所以真正的前置条件在安装阶段:运行时锁里没有它的
    wheel 行,就不能装由这个版本构建的 generation(它不在 PyPI 上,别的安装路径都解析不到)。
 2. `server.py`:`import`、GET 路由、必要时 POST 路由与它的 `Refused` 处理

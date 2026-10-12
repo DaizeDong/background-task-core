@@ -347,7 +347,6 @@ async function openRepairOrder(id){
 // 而不是让每一行看起来都像没有工单。
 let REPAIRS=null, REPAIRS_ERROR=null, REPAIRS_PENDING=null, REPAIRS_DRAWN='';
 const REPAIR_ACTIVE_TODOS=['pending','doing','blocked','snoozed'];
-const REPAIR_IN_FLIGHT=['preparing','queued','dispatching','task_requested','running','reconcile'];
 // 芯片说的是工单走到哪了,不是任务好没好:Agent 做完也只是交出了诊断和方案,所以没有「已修好」这个说法。
 const REPAIR_ACTION_STATES={
   preparing:['修复排队中','pending','准备执行环境'],queued:['修复排队中','pending','排队等待 Agent'],
@@ -356,7 +355,6 @@ const REPAIR_ACTION_STATES={
   done:['修复方案已出','ok','Agent 已交出诊断和修复方案（见工单里的 report.md）；任务本身没有被改动'],
   failed:['修复失败','bad','Agent 这次没有完成'],stopped:['修复已停止','muted','这次处理已停止'],stalled:['修复停滞','warn','这次处理停滞了']
 };
-const REPAIR_POLL_MS=15000;
 function taskRepairStatus(order){
   const action=order?.action, active=REPAIR_ACTIVE_TODOS.includes(order?.state);
   if(['done','cancelled'].includes(order?.state)) return {label:'修复已关闭',tone:'muted',title:'上一张修复工单已关闭'};
@@ -420,10 +418,6 @@ function renderRepairReadState(){
     if(el.setAttribute) el.setAttribute('role','status');
   });
 }
-function repairsInFlight(){
-  return !!REPAIRS?.available && Object.values(REPAIRS.orders || {}).some(order=>
-    REPAIR_ACTIVE_TODOS.includes(order.state) && REPAIR_IN_FLIGHT.includes(order.action?.state));
-}
 function loadRepairs(){
   if(REPAIRS_PENDING) return REPAIRS_PENDING;
   REPAIRS_PENDING=(async()=>{
@@ -433,7 +427,7 @@ function loadRepairs(){
     catch(error){REPAIRS=null;REPAIRS_ERROR=error.message || '读取失败';}
     finally{REPAIRS_PENDING=null;}
     renderRepairReadState();
-    // 只有工单真的变了才重画任务列表。整块重画会把正在用的控件换掉,每 15 秒一次的轮询不该打断人。
+    // 只有工单真的变了才重画任务列表。整块重画会把正在用的控件换掉,一次没变化的重读不该打断人。
     const drawn=JSON.stringify([REPAIRS,REPAIRS_ERROR]);
     if(drawn!==REPAIRS_DRAWN){
       REPAIRS_DRAWN=drawn;
@@ -460,13 +454,5 @@ function startTaskOperations(){
   $('repair-note').addEventListener('input',syncTaskRepairSubmit);
   $('repair-cancel').addEventListener('click',()=>{if(!TASK_REPAIR.busy) $('repair-dialog').close();});
   $('repair-dialog').addEventListener('cancel',event=>{if(TASK_REPAIR.busy) event.preventDefault();});
-  let timer;
-  const tick=async()=>{
-    const visible=viewGroup(CURVIEW)==='automations';
-    if(!document.hidden && visible && repairsInFlight()) await loadRepairs();
-    timer=setTimeout(tick,REPAIR_POLL_MS);
-  };
-  timer=setTimeout(tick,REPAIR_POLL_MS);
-  window.addEventListener('pagehide',()=>clearTimeout(timer),{once:true});
   renderRepairReadState();
 }

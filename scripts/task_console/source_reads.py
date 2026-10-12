@@ -10,12 +10,6 @@ class ReadBoundary:
         self._condition = threading.Condition()
         self._active = {}
         self._observations = {}
-        self._revision = 0
-
-    def invalidate(self):
-        """A completed mutation makes every earlier in-flight snapshot obsolete."""
-        with self._condition:
-            self._revision += 1
 
     def snapshot(self):
         with self._condition:
@@ -24,49 +18,43 @@ class ReadBoundary:
     def read(self, source, reader, *, timeout=210):
         """Coalesce overlapping calls only; each caller gets its own result object.
 
-        Readers own I/O deadlines. Waiting HTTP callers have a separate deadline
-        and admission limit; a stuck reader cannot accumulate workers here.
+        A caller that arrives while a read of the same source is running joins it. Readers own
+        I/O deadlines. Waiting HTTP callers have a separate deadline and admission limit; a stuck
+        reader cannot accumulate workers here.
         """
-        for attempt in range(3):
+        with self._condition:
+            slot = self._active.get(source)
+            leader = slot is None
+            if leader:
+                if len(self._observations) >= 64 and source not in self._observations:
+                    raise RuntimeError('source limit reached')
+                slot = {'future': Future(), 'callers': 0}
+                self._active[source] = slot
+            if slot['callers'] >= 8:
+                raise RuntimeError('source busy; retry after the current read')
+            slot['callers'] += 1
+            self._condition.notify_all()
+        try:
+            if leader:
+                started = time.monotonic()
+                try:
+                    payload = reader()
+                    if not isinstance(payload, dict):
+                        raise ValueError('reader must return an object')
+                    with self._condition:
+                        self._observe(source, payload, time.monotonic() - started)
+                    slot['future'].set_result(payload)
+                except BaseException as error:
+                    with self._condition:
+                        self._observe(source, {'available': False, 'reason': type(error).__name__}, time.monotonic() - started)
+                    slot['future'].set_exception(error)
+                finally:
+                    with self._condition:
+                        self._active.pop(source, None)
+            return deepcopy(slot['future'].result(timeout=timeout))
+        finally:
             with self._condition:
-                slot = self._active.get(source)
-                leader = slot is None
-                if leader:
-                    if len(self._observations) >= 64 and source not in self._observations:
-                        raise RuntimeError('source limit reached')
-                    slot = {'future': Future(), 'revision': self._revision, 'callers': 0}
-                    self._active[source] = slot
-                if slot['callers'] >= 8:
-                    raise RuntimeError('source busy; retry after the current read')
-                slot['callers'] += 1
-                self._condition.notify_all()
-            try:
-                if leader:
-                    started = time.monotonic()
-                    try:
-                        payload = reader()
-                        if not isinstance(payload, dict):
-                            raise ValueError('reader must return an object')
-                        with self._condition:
-                            if slot['revision'] == self._revision:
-                                self._observe(source, payload, time.monotonic() - started)
-                        slot['future'].set_result(payload)
-                    except BaseException as error:
-                        with self._condition:
-                            if slot['revision'] == self._revision:
-                                self._observe(source, {'available': False, 'reason': type(error).__name__}, time.monotonic() - started)
-                        slot['future'].set_exception(error)
-                    finally:
-                        with self._condition:
-                            self._active.pop(source, None)
-                payload = slot['future'].result(timeout=timeout)
-                with self._condition:
-                    if slot['revision'] == self._revision:
-                        return deepcopy(payload)
-            finally:
-                with self._condition:
-                    slot['callers'] -= 1
-        raise RuntimeError('source changed during read; refresh again')
+                slot['callers'] -= 1
 
     def _observe(self, source, payload, duration):
         previous = self._observations.get(source, {})

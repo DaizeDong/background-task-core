@@ -6,6 +6,9 @@
   2. 工作记录(work_status.read_configured)给出这条待办的 agent 处理选项和它的 revision;
   3. work_actions.submit 提交 agent 处理并唤醒队列。
 
+一次提交只读一次工作记录:查重用的那份直接传给补交;只有新建的工单不在那份里,建好后才再读一次。
+工单列表和预览走 source_reads 的合并读,和 /api/work 同时到的读取共用一次子进程。
+
 所以这台控制台在这件事上只做三样:把它已经知道的事实整理成参考数据,写明限制,
 再按主人的接口提交。执行、去重、队列、唤醒全是主人的事。
 
@@ -31,6 +34,7 @@ import threading
 
 import freshness
 import maint
+import source_reads
 import work_actions
 import work_status
 from rcnorm import norm_rc
@@ -197,9 +201,14 @@ def _orders_from(feed) -> dict:
     return out
 
 
+def _shared_feed(env):
+    """只读的工作记录:和同时到达的 /api/work 读取合并成一次子进程。"""
+    return source_reads.read('work', lambda: work_status.read_configured(env))
+
+
 def orders(env=None) -> dict:
     env = os.environ if env is None else env
-    feed = work_status.read_configured(env)
+    feed = _shared_feed(env)
     if not feed.get("available"):
         # 读不到和「没有工单」是两回事。前者 available=false,后者是一张空表。
         return {"schemaVersion": 1, "available": False, "reason": feed.get("reason"), "orders": {}}
@@ -216,7 +225,7 @@ def preview(name, *, facts, env=None) -> dict:
     env = os.environ if env is None else env
     name = _validate_name(name)
     known = facts(name)
-    feed = work_status.read_configured(env)
+    feed = _shared_feed(env)
     return {"ok": True, "name": name, "facts": known,
             "existing": _active(feed, name) if feed.get("available") else None,
             "work": {"available": bool(feed.get("available")), "reason": feed.get("reason")},
@@ -291,9 +300,10 @@ def _ensure(fields: dict, env) -> dict:
     return result
 
 
-def _dispatch(item_id, name, request_id, env) -> dict:
-    """从工作记录取 agent 选项和 revision,再按主人的接口提交。选项不在或被禁用就明说,不装作提交了。"""
-    feed = work_status.read_configured(env)
+def _dispatch(item_id, name, request_id, env, feed) -> dict:
+    """从工作记录取 agent 选项和 revision,再按主人的接口提交。选项不在或被禁用就明说,不装作提交了。
+
+    feed 是调用方已经读到的那份工作记录;这里不再自己读。revision 过期由主人的 work-action 拒绝。"""
     if not feed.get("available"):
         raise RepairError("work_binding_invalid")
     item = next((row for row in feed.get("items") or [] if isinstance(row, dict) and row.get("id") == item_id), None)
@@ -354,7 +364,7 @@ def submit(name, note, request_id, *, facts, env=None) -> dict:
                     return {"schemaVersion": 1, "ok": True, "existing": True, "item_id": existing["item_id"],
                             "order": existing, "receipt": None, "message": "这个任务已有修复工单，没有重复建立"}
                 item_id = existing["item_id"]
-                receipt = _dispatch(item_id, name, request_id, env)
+                receipt = _dispatch(item_id, name, request_id, env, feed)
                 return {"schemaVersion": 1, "ok": receipt.get("ok") is True, "existing": True,
                         "item_id": existing["item_id"], "order": existing, "receipt": receipt,
                         "code": receipt.get("code"), "uncertain": _receipt_uncertain(receipt),
@@ -370,7 +380,8 @@ def submit(name, note, request_id, *, facts, env=None) -> dict:
                 "distinct_reason": f"控制台为计划任务「{name}」发起的修复工单；不同任务的修复工单彼此独立",
             }, env)
             item_id = created["item"]["id"]
-            receipt = _dispatch(item_id, name, request_id, env)
+            # 新工单不在查重那份里,它的 agent 选项和 revision 只能建好后再读一次。
+            receipt = _dispatch(item_id, name, request_id, env, work_status.read_configured(env))
             return {"schemaVersion": 1, "ok": receipt.get("ok") is True, "existing": False, "item_id": item_id,
                     "decision": created["decision"], "receipt": receipt, "code": receipt.get("code"),
                     "uncertain": _receipt_uncertain(receipt),

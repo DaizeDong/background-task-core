@@ -1,10 +1,9 @@
 // Offers and targets belong to the reminder owner. This module only presents them.
 const WORK_ACTION_PENDING=new Map(), WORK_ACTION_INTENTS=new Map();
-const WORK_SOURCE_CONTEXT=new Map();
 const WORK_ACTION_STATES={preparing:['准备中','pending'],queued:['排队中','pending'],running:['正在处理','active'],
   done:['已完成','ok'],failed:['未完成','bad'],stalled:['已暂停','warn'],review_unavailable:['待复核','warn'],
   stopped:['已请求停止','muted'],reconcile:['结果待核实','warn'],dispatching:['正在提交','pending'],task_requested:['已提交任务','pending']};
-// 行上的每个动作都写出字来:以前一排图标里,▷ 是交给 Agent、圆圈勾是标记完成、气泡是原对话,
+// 行上的每个动作都写出字来:以前一排图标里,▷ 是交给 Agent、圆圈勾是标记完成,
 // 而同一只眼睛图标在四个地方各指一件事。图标留着帮人扫,意思靠字说。
 const workIcon=icon=>icon?`<svg class="ic" aria-hidden="true"><use href="#${icon}"/></svg>`:'';
 function workActionButtons(item,compact=false){
@@ -27,7 +26,6 @@ function workActionButtons(item,compact=false){
     if(current.kind==='agent' && ['preparing','queued','running','reconcile'].includes(current.state)) controls.push(`<button type="button" class="mini work-action stop" data-work-item="${esc(item.id)}" data-work-stop="${esc(current.id)}" ${readOnly || pending?'disabled':''} title="${esc(readOnly?disabledTitle('停止',ConsoleActions.reason):pending?disabledTitle('停止','正在提交'):'停止这次处理，保留待办')}" aria-label="停止">${workIcon('i-stop')}<span>停止</span></button>`);
   }
   for(const link of actions.links || []){
-    if(link.kind==='session') controls.push(`<button type="button" class="mini work-link" data-work-context="${esc(item.id)}" title="在详情里读这件事的原对话摘录">${workIcon('i-chat')}<span>原对话</span></button>`);
     if(link.kind==='task'){
       const task=COMPONENTS?.tasks?.find(row=>row.task_id===link.id);
       if(task?.name) controls.push(`<button type="button" class="mini work-link" data-task="${esc(task.name)}" title="${esc('打开关联的计划任务 '+task.name)}">${workIcon('i-link')}<span>关联任务</span></button>`);
@@ -35,6 +33,16 @@ function workActionButtons(item,compact=false){
   }
   const note=current?.summary || (current?.state==='task_requested'?'运行请求已提交，完成结果尚未确认':'');
   return controls.length || note?`<div class="work-actions${compact?' compact':''}"><div class="work-action-controls">${controls.join('')}</div>${note?`<small class="work-action-note" title="${esc(note)}">${esc(note)}</small>`:''}</div>`:'';
+}
+// 页面只在有工作真的在动时自己重读:准备、排队、运行,而且最近 30 分钟内有过更新。
+// reconcile、task_requested、review_unavailable 等的是人,轮询它们只会一直读下去;
+// 别的情况靠操作后的重读和刷新按钮。
+const WORK_POLL_MS=8000, WORK_POLL_STATES=['preparing','queued','running'], WORK_POLL_MAX_AGE_MS=30*60*1000;
+function workActionMoving(item){
+  const current=item.actions?.current;
+  if(!current || !WORK_POLL_STATES.includes(current.state)) return false;
+  const changed=Date.parse(current.updated_at || current.created_at || '');
+  return Number.isFinite(changed) && Date.now()-changed<WORK_POLL_MAX_AGE_MS;
 }
 function workActionIntent(item,actionId,verb){
   const key=JSON.stringify([item.id,actionId,verb]);
@@ -65,7 +73,6 @@ async function sendWorkAction(itemId,actionId,verb){
     const reply=await api('/api/work/'+verb,{method:'POST',body:JSON.stringify(intent)});
     if(reply.ok){forget();toast(verb==='stop'?'已请求停止':actionId==='complete' && reply.status==='done'?'待办已标记完成':reply.status==='queued'?'已加入队列':reply.status==='task_requested'?'已提交任务，结果待确认':'已找到这次处理记录',actionId==='complete' && reply.status==='done'?'ok':'info');}
     else{if(reply.uncertain===false) forget();toast(reply.message || '未能提交，请刷新后重试','bad');}
-    if(reply.wakeup===false && reply.status==='queued') toast('已排队，等待执行服务接手','bad');
   }catch(error){
     if(error.requestRejected || error.payload?.uncertain===false){forget();toast(error.message,'bad');}
     else toast(`${error.message}。未收到确认。再次点击会核对原请求，不会重复创建工作。`,'bad');
@@ -79,32 +86,15 @@ function startWorkActions(){
     const start=event.target.closest('[data-work-action]'), stop=event.target.closest('[data-work-stop]');
     if(start && !start.disabled) submitWorkAction(start.dataset.workItem,start.dataset.workAction);
     if(stop && !stop.disabled) stopWorkAction(stop.dataset.workItem,stop.dataset.workStop);
-    const source=event.target.closest('[data-work-context]');
-    if(source) openWorkContext(source.dataset.workContext);
   });
   let timer;
   const refresh=async()=>{
     const visible=['overview','work'].includes(CURVIEW) || $('work-detail').open;
-    if(!document.hidden && visible && (WORK?.items || []).some(item=>['preparing','queued','running','dispatching','reconcile','task_requested'].includes(item.actions?.current?.state))){
+    if(!document.hidden && visible && (WORK?.items || []).some(workActionMoving)){
       await loadWork();if($('work-detail').open && WORK_DETAIL_ID) openWorkRecord(WORK_DETAIL_ID,true);
     }
-    timer=setTimeout(refresh,8000);
+    timer=setTimeout(refresh,WORK_POLL_MS);
   };
-  timer=setTimeout(refresh,8000);
+  timer=setTimeout(refresh,WORK_POLL_MS);
   window.addEventListener('pagehide',()=>clearTimeout(timer),{once:true});
-}
-async function openWorkContext(itemId){
-  openWorkRecord(itemId);
-  try{
-    const result=await api('/api/work/context?item_id='+encodeURIComponent(itemId));
-    if(WORK_DETAIL_ID!==itemId || !$('work-detail').open) return;
-    if(!result.available){toast(result.reason || '原对话暂时不可用','bad');return;}
-    WORK_SOURCE_CONTEXT.set(itemId,result.text);
-    openWorkRecord(itemId,true);
-    $('work-source-context').scrollIntoView({block:'nearest'});
-  }catch(error){toast('读取原对话失败，请稍后重试','bad');}
-}
-function workSourceContext(itemId){
-  const text=WORK_SOURCE_CONTEXT.get(itemId);
-  return text?'<section id="work-source-context"><h3>原对话摘录</h3><pre class="record-summary">'+esc(text)+'</pre></section>':'';
 }

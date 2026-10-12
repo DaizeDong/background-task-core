@@ -73,18 +73,6 @@ def test_integration_inventory_is_authenticated(synthetic_server, monkeypatch):
     assert json.loads(get(port, '/api/integrations', token='synthetic-browser-token')[2])['available']
 
 
-def test_unauthorized_posts_cannot_restart_inflight_reads(synthetic_server, monkeypatch):
-    import source_reads
-    invalidations = []
-    monkeypatch.setattr(source_reads.boundary, 'invalidate', lambda: invalidations.append(1))
-    client = http.client.HTTPConnection('127.0.0.1', synthetic_server[0], timeout=5)
-    client.request('POST', '/api/work/action', body='{}', headers={'Content-Type': 'application/json'})
-    response = client.getresponse()
-    assert response.status == 403
-    response.read();client.close()
-    assert invalidations == []
-
-
 def test_convo_chain_is_an_informational_library_row(monkeypatch):
     """convo-chain 是钉版本的库依赖,不是被观测的生产者:登记成 library 层,没有端点,
     不进 ROUTES(对话链的路由都带参数,是显式的受保护路由),状态只答能否导入、哪一版。"""
@@ -135,7 +123,7 @@ def test_convo_chain_is_a_hard_dependency_and_the_row_says_so(monkeypatch):
     import work_status
     import component_status
     here = Path(integrations.__file__).resolve().parent
-    for name in ('server.py', 'convos.py', 'work_context.py'):
+    for name in ('server.py', 'convos.py'):
         tree = ast.parse((here / name).read_text(encoding='utf-8'))
         top = [n for n in tree.body if isinstance(n, (ast.Import, ast.ImportFrom))]
         assert any((isinstance(n, ast.Import) and any(a.name == 'convo_chain' for a in n.names))

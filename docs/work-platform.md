@@ -58,7 +58,8 @@ and propose only, change code only in a clone inside the work folder, never touc
 its registration, XML, launcher, backup or any working copy, never delete, push, send or publish,
 and write `report.md`). It then reads the owner's work feed for that item, requires an enabled
 `agent` offer, and submits it through `work_actions.submit` with the feed's revision, which wakes
-the existing drainer. A missing or disabled offer is reported as `agent_offer_unavailable`, not as
+the existing drainer. One submit reads the feed once under the per-task lock and passes it down;
+only a newly created order, which that read cannot contain, costs one more read after `ensure`. A missing or disabled offer is reported as `agent_offer_unavailable`, not as
 success. The source is deliberately not one of the owner's signal sources, which receive no agent
 offer. The target task is marked on the description's first line
 (`task-console-repair/v1 {"task": "<name>"}`) and in `ext.x_task_console_repair`; the reviewed
@@ -69,7 +70,8 @@ lookup, `ensure` and dispatch for one task name run under one per-task lock in t
 so two concurrent submits cannot both see "no order" and file two. `POST
 /api/task/repair/preview {name}` shows the facts, limits and any active order without writing, and
 `GET /api/task/repairs` maps task names to their orders for the task rows; an unreadable feed is
-reported as unavailable, not as an empty map.
+reported as unavailable, not as an empty map. Both reads go through the shared `work` read, so a
+repairs read that overlaps `/api/work` costs no second feed.
 
 The reply's top-level `uncertain` carries the dispatch receipt's own flag on both the new-order and
 the existing-order path, because the page reads only the top level: a receipt that may already be
@@ -132,8 +134,7 @@ unconfigured, empty, failed and recovery states. Parameterized reads and writes
 remain explicit guarded routes. A library dependency gets an informational row
 with layer `library` and no endpoint: it is listed with the installed version, and
 is never discovered or routed. The row is not a health check. `convo-chain` is
-imported at module level by the server, the session list and the work-context
-reader, so without it the console does not start at all; the precondition lives
+imported at module level by the server and the session list, so without it the console does not start at all; the precondition lives
 at install time (the runtime lock must carry its wheel), not in this row.
 
 `source_reads.py` shares concurrent reads per adapter, with at most eight
@@ -141,8 +142,8 @@ callers, and retains observation metadata only. Independent sources in an
 aggregate use up to four request-scoped workers, released when the request
 finishes. Groups accept leaf readers to avoid nested worker pools. Successful
 payloads are not cached by time. Readers still own their I/O deadlines.
-Mutations invalidate earlier in-flight reads, including uncertain
-write responses. Aggregated resource sections isolate failures independently;
+A caller that arrives while a read is running joins it and gets that result;
+the page re-reads after its own writes. Aggregated resource sections isolate failures independently;
 catalog failures do not replace task evidence.
 
 The integration inventory's connection status describes a read, not business

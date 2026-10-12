@@ -71,7 +71,7 @@ SOURCES = (
 # 现在 tests/test_selfcheck.py 按 SOURCES ∪ OVERRIDES 与实际扫描结果**双向**对账,
 # 任何一边多一个少一个都会红。
 OVERRIDES = (
-    ("TASK_CONSOLE_AGENT_TASK_ID", "待办执行队列对应的已登记任务 ID，由控制器检查后唤醒。"),
+    ("TASK_CONSOLE_AGENT_TASK_ID", "待办执行队列对应的已登记任务 ID；设了才有「交给 Agent」，提交后直接请计划程序运行 AgentCenterWorkTick。"),
     ("TASK_CONSOLE_READ_ONLY", "只读预览的服务器写入限制，不是数据来源；动作接口在写入前拒绝预览请求。"),
     ("TASK_CONSOLE_RUNTIME_CONFIG", "控制器执行配置，不作为只读面板来源；动作接口在执行前校验完整绑定与权限。"),
     ("TASK_CONSOLE_PRIVATE_ROOT", "控制器私有根目录，不作为面板数据读取入口；由控制器校验归属和数据边界。"),

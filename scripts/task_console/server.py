@@ -50,7 +50,6 @@ import component_status
 import work_status
 import work_actions
 import integrations
-import source_reads
 import console_store
 import convos
 import convo_chain
@@ -1102,8 +1101,6 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def _json(self, code: int, obj):
-        if self.command == 'POST' and self._host_ok() and self._authed():
-            source_reads.boundary.invalidate()
         self._send(code, json.dumps(obj, ensure_ascii=False).encode("utf-8"),
                    "application/json; charset=utf-8")
 
@@ -1562,16 +1559,11 @@ class Handler(BaseHTTPRequestHandler):
         return self._guard(self._do_GET, "GET " + self.path.split("?", 1)[0])
 
     def do_POST(self):
-        try:
-            route = self.path.split("?", 1)[0]
-            if route.startswith("/api/convo/") and route not in CONVO_UNLOCKED_POSTS and self._authed():
-                with _CONVO_ACCESS:
-                    return self._guard(self._do_POST, "POST " + self.path.split("?", 1)[0])
-            return self._guard(self._do_POST, "POST " + self.path.split("?", 1)[0])
-        finally:
-            # Includes uncertain writes: a lost response is not proof of no change.
-            if self._host_ok() and self._authed():
-                source_reads.boundary.invalidate()
+        route = self.path.split("?", 1)[0]
+        if route.startswith("/api/convo/") and route not in CONVO_UNLOCKED_POSTS and self._authed():
+            with _CONVO_ACCESS:
+                return self._guard(self._do_POST, "POST " + route)
+        return self._guard(self._do_POST, "POST " + route)
 
     def _do_GET(self):
         if not self._host_ok():
@@ -1608,14 +1600,6 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(200, integrations.ROUTES[path].read(globals()))
             except Exception as error:
                 return self._json(500, {'error': f'{type(error).__name__}: {error}'})
-        if path == '/api/work/context':
-            if not self._authed():
-                return self._json(403, {'error': 'bad token'})
-            query = parse_qs(urlparse(self.path).query)
-            item_id = query.get('item_id', [''])[0]
-            if set(query) != {'item_id'} or len(query['item_id']) != 1 or not 0 < len(item_id) <= 300:
-                return self._json(400, {'error': 'invalid context request'})
-            return self._json(200, work_actions.context_view(item_id))
         if path == "/api/task/repairs":
             if not self._authed():
                 return self._json(403, {"error": "bad token"})

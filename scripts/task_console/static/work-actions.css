@@ -9,5 +9,4 @@
 .work-action-note{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}
 #work-detail-body>.work-actions{padding:10px 0 14px;border-bottom:1px solid var(--line2);margin-bottom:14px}
 #work-detail-body .work-action-note{-webkit-line-clamp:unset;white-space:pre-wrap}
-#work-source-context pre{white-space:pre-wrap;overflow-wrap:anywhere;font:inherit;color:var(--dim)}
 @media(max-width:620px){.work-actions{grid-column:1/-1}.work-action-controls .mini{min-height:34px}.work-aside .work-actions{grid-column:1/-1}}

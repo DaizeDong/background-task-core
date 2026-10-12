@@ -27,7 +27,7 @@
 #overview .work-when time,#work .work-when time{font-variant-numeric:tabular-nums}
 /* 排队受阻那句话后面的「查看阻塞的任务」是一个文字链接,不是一只眼睛。 */
 .work-queue-note .link-button{font-size:inherit}
-/* 行上的「查看进度」「查看原待办」「原对话」是去看东西的,青色字,和真正改东西的动作分开。 */
+/* 行上的「查看进度」「查看原待办」是去看东西的,青色字,和真正改东西的动作分开。 */
 .work-action-controls .work-link:not(:disabled),.work-actions>.work-link:not(:disabled){color:var(--cyan)}
 /* 工作台的紧凑行原来给操作留 90px,只放得下图标;动作写成字以后按内容宽度,最多 13rem。 */
 @media(min-width:768px){

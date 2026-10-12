@@ -6,10 +6,9 @@ from types import SimpleNamespace
 import pytest
 
 from test_panel_parity import synthetic_server, get
-from tools.make_fixtures import work_action_case, work_feed_case, action_session_fixture
+from tools.make_fixtures import work_action_case, work_feed_case
 import work_actions
 import work_status
-from work_context import read_session_context
 
 
 def request():
@@ -84,78 +83,57 @@ def test_dispatch_uses_owner_target_and_persists_unconfirmed_result(monkeypatch)
     assert calls[1][0]=='work-action-result' and calls[1][1]['result']['ok']
 
 
-def test_failed_wakeup_preserves_queued_action(monkeypatch):
-    monkeypatch.setattr(work_actions.controller,'load_runtime',lambda **kwargs:object())
-    monkeypatch.setattr(work_actions,'_context',lambda *args:'')
-    monkeypatch.setattr(work_actions,'invoke',lambda *args:{'ok':True,'status':'queued','action':{'id':'receipt'},'wakeup':True})
-    monkeypatch.setattr(work_actions,'_run_task',lambda *args:{'ok':False})
+def _capture_wakeups(monkeypatch, outcome=None):
+    """Run the wakeup thread inline and record the scheduler argv it would have used."""
+    seen = []
+    class Inline:
+        def __init__(self, target, **kwargs):
+            self.target = target
+        def start(self):
+            self.target()
+    def run(argv, **kwargs):
+        seen.append((argv, kwargs))
+        if outcome is not None:
+            raise outcome
+        return SimpleNamespace(returncode=0)
+    monkeypatch.setattr(work_actions.threading, 'Thread', Inline)
+    monkeypatch.setattr(work_actions.subprocess, 'run', run)
+    return seen
+
+
+def test_agent_action_wakes_the_tick_directly_without_the_controller(monkeypatch):
+    monkeypatch.setattr(work_actions.controller,'load_runtime',lambda **kw:pytest.fail('an agent action must not load the controller'))
+    monkeypatch.setattr(work_actions,'_run_task',lambda *args:pytest.fail('an agent action must not run through the controller'))
+    payloads=[]
+    monkeypatch.setattr(work_actions,'invoke',lambda verb,payload,env:payloads.append((verb,payload)) or {'ok':True,'status':'queued','action':{'id':'receipt'},'wakeup':True})
+    seen=_capture_wakeups(monkeypatch)
     reply=work_actions.submit(request(),env={'TASK_CONSOLE_AGENT_TASK_ID':'synthetic/tick'})
-    assert reply['ok'] and reply['wakeup'] is False and reply['action']['id']=='receipt'
+    assert reply['ok'] and reply['action']['id']=='receipt' and 'wakeup' not in reply
+    # The owner gets no conversation context: no producer writes a session link.
+    assert payloads==[('work-action',{'request':request(),'context':''})]
+    (argv,kwargs),=seen
+    assert argv==['schtasks','/run','/tn',work_actions.AGENT_TICK] and not kwargs.get('shell')
+    assert kwargs['creationflags']==getattr(subprocess,'CREATE_NO_WINDOW',0)
 
 
-def test_context_uses_exact_session_identity_and_refuses_missing_or_ambiguous(tmp_path):
-    session,path=action_session_fixture(tmp_path)
-    text=read_session_context(session,str(tmp_path))
-    assert 'Acme report' in text and 'UNRELATED_CANARY' not in text
-    with pytest.raises(ValueError):
-        read_session_context('../session',str(tmp_path))
-    duplicate=tmp_path/'another-project'/path.name
-    duplicate.parent.mkdir();duplicate.write_bytes(path.read_bytes())
-    with pytest.raises(ValueError,match='ambiguous'):
-        read_session_context(session,str(tmp_path))
+def test_failed_wakeup_preserves_queued_action(monkeypatch):
+    monkeypatch.setattr(work_actions,'invoke',lambda *args:{'ok':True,'status':'queued','action':{'id':'receipt'},'wakeup':True})
+    seen=_capture_wakeups(monkeypatch,OSError('synthetic scheduler failure'))
+    reply=work_actions.submit(request(),env={'TASK_CONSOLE_AGENT_TASK_ID':'synthetic/tick'})
+    assert len(seen)==1 and reply['ok'] and reply['status']=='queued' and reply['action']['id']=='receipt'
 
 
-def test_context_counts_only_typed_user_lines_as_user_messages(tmp_path):
-    """A user line is a person's words only if its content is a plain string (convo-chain's
-    typed_text). A skill body or an injected block arrives as a list of content blocks; the old
-    reader joined those text blocks and handed them to the agent as `user:` messages."""
-    session = '11111111-2222-4333-8444-666666666666'
-    path = tmp_path / 'acme-project' / (session + '.jsonl')
-    path.parent.mkdir(parents=True)
-    rows = [
-        {'sessionId': session, 'type': 'user', 'uuid': 'u1',
-         'message': {'content': 'Prepare the Acme summary from synthetic inputs.'}},
-        {'sessionId': session, 'type': 'user', 'uuid': 'u2',
-         'message': {'content': [{'type': 'text', 'text': 'SYNTHETIC_SKILL_BODY_CANARY'}]}},
-        {'sessionId': session, 'type': 'user', 'uuid': 'u3',
-         'message': {'content': '<system-reminder>SYNTHETIC_REMINDER_CANARY</system-reminder>'}},
-        {'sessionId': session, 'type': 'assistant', 'uuid': 'a1',
-         'message': {'content': [{'type': 'text', 'text': 'Synthetic summary drafted.'}]}},
-    ]
-    path.write_text(chr(10).join(json.dumps(r) for r in rows), encoding='utf-8')
-    text = read_session_context(session, str(tmp_path))
-    assert 'user: Prepare the Acme summary' in text
-    assert 'assistant: Synthetic summary drafted.' in text
-    assert 'SYNTHETIC_SKILL_BODY_CANARY' not in text
-    assert 'SYNTHETIC_REMINDER_CANARY' not in text
+def test_no_wakeup_when_the_owner_did_not_ask_for_one(monkeypatch):
+    monkeypatch.setattr(work_actions,'invoke',lambda *args:{'ok':True,'status':'queued','action':{'id':'receipt'},'wakeup':False})
+    seen=_capture_wakeups(monkeypatch)
+    assert work_actions.submit(request(),env={'TASK_CONSOLE_AGENT_TASK_ID':'synthetic/tick'})['ok']
+    assert seen==[]
 
 
-def test_context_refusals_carry_the_library_gate(tmp_path):
-    session, _path = action_session_fixture(tmp_path)
-    with pytest.raises(ValueError, match='bad_id'):
-        read_session_context('../session', str(tmp_path))
-    with pytest.raises(ValueError, match='not_found'):
-        read_session_context('11111111-2222-4333-8444-777777777777', str(tmp_path))
-    with pytest.raises(ValueError, match='root missing'):
-        read_session_context(session, None)
-    with pytest.raises(ValueError, match='root missing'):
-        read_session_context(session, 'relative/sessions')
-
-
-def test_no_title_matching_or_inferred_session_context(monkeypatch):
-    feed=work_feed_case();feed['items']=[work_action_case()]
-    monkeypatch.setattr(work_status,'read_configured',lambda env:feed)
-    assert work_actions._context(feed['items'][0]['id'],{})==''
-
-
-def test_context_view_is_authenticated_and_uses_owner_item_id(synthetic_server,monkeypatch):
-    seen=[]
-    monkeypatch.setattr(work_actions,'context_view',lambda item_id:seen.append(item_id) or {'available':True,'text':'synthetic context'})
-    port=synthetic_server[0]
-    assert get(port,'/api/work/context?item_id=acme')[0]==403
-    assert get(port,'/api/work/context?item_id=acme',token='synthetic-browser-token')[0]==200
-    assert seen==['acme']
-    assert get(port,'/api/work/context?item_id=acme&path=anything',token='synthetic-browser-token')[0]==400
+def test_agent_action_without_a_queue_is_refused_before_the_owner(monkeypatch):
+    monkeypatch.setattr(work_actions,'invoke',lambda *args:pytest.fail('nothing may be reserved without a queue'))
+    reply=work_actions.submit(request(),env={})
+    assert not reply['ok'] and reply['code']=='queue_not_configured'
 
 
 def test_exact_task_mapping_rejects_unregistered_ids(monkeypatch):
@@ -168,9 +146,8 @@ def test_exact_task_mapping_rejects_unregistered_ids(monkeypatch):
     assert calls==[('AcmeTask','run')]
 
 
-def test_manual_completion_does_not_require_executor_or_read_session_context(monkeypatch):
+def test_manual_completion_does_not_require_executor(monkeypatch):
     monkeypatch.setattr(work_actions.controller, 'load_runtime', lambda **kw: pytest.fail('completion must not require a scheduler'))
-    monkeypatch.setattr(work_actions, '_context', lambda *args: pytest.fail('completion must not read conversations'))
     seen = []
     monkeypatch.setattr(work_actions, 'invoke', lambda verb, payload, env: seen.append((verb, payload)) or {'ok': True, 'status': 'done', 'action': {}})
     payload = dict(request(), action_id='complete')
@@ -197,28 +174,16 @@ def test_manual_completion_offer_survives_missing_executor(tmp_path, monkeypatch
     assert actions['available'] and not actions['offers'][0]['enabled'] and actions['offers'][1]['enabled']
 
 
-def _read_feed(tmp_path, monkeypatch):
+def test_agent_offer_needs_only_the_queue_and_a_task_offer_needs_the_controller(tmp_path, monkeypatch):
     cli = tmp_path / 'owner.py'
     cli.touch()
-    env = {'TASK_CONSOLE_REMINDER_CLI': str(cli), 'TASK_CONSOLE_REMINDER_DB': str(tmp_path / 'db')}
     feed = work_feed_case()
-    feed['items'] = [work_action_case()]
-    calls = []
-    monkeypatch.setattr(subprocess, 'run', lambda *a, **kw: calls.append(a) or SimpleNamespace(returncode=0, stdout=json.dumps(feed)))
-    assert work_status.read_configured(env)['available']
-    return env, feed['items'][0], calls
-
-
-def test_agent_context_reuses_the_last_feed_at_the_clicked_revision(tmp_path, monkeypatch):
-    env, item, calls = _read_feed(tmp_path, monkeypatch)
-    monkeypatch.setattr(work_status, 'read_configured', lambda env: pytest.fail('a matching revision must not re-run work-feed'))
-    assert work_actions._context(item['id'], env, item['actions']['revision']) == ''
-    assert len(calls) == 1
-
-
-def test_agent_context_reads_fresh_when_the_revision_moved(tmp_path, monkeypatch):
-    env, item, _ = _read_feed(tmp_path, monkeypatch)
-    fresh = []
-    monkeypatch.setattr(work_status, 'read_configured', lambda env: fresh.append(env) or {'available': True, 'items': [item]})
-    assert work_actions._context(item['id'], env, 'synthetic-newer-revision') == ''
-    assert fresh == [env]
+    item = work_action_case()
+    item['actions']['offers'].append({'id': 'task', 'kind': 'task', 'label': 'run', 'enabled': True, 'target_id': 'synthetic/exact'})
+    feed['items'] = [item]
+    monkeypatch.setattr(subprocess, 'run', lambda *a, **kw: SimpleNamespace(returncode=0, stdout=json.dumps(feed)))
+    reply = work_status.read_configured({'TASK_CONSOLE_REMINDER_CLI': str(cli), 'TASK_CONSOLE_REMINDER_DB': str(tmp_path / 'db'),
+                                         'TASK_CONSOLE_AGENT_TASK_ID': 'synthetic/tick'})
+    agent, task = reply['items'][0]['actions']['offers']
+    assert agent['kind'] == 'agent' and agent['enabled'] is True
+    assert task['kind'] == 'task' and task['enabled'] is False

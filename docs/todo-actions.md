@@ -16,9 +16,8 @@ data root and run directory. The following are explicit deployment bindings:
 | `TASK_CONSOLE_REMINDER_CLI` | Absolute path to the compatible owner CLI |
 | `TASK_CONSOLE_REMINDER_DB` | Existing owner database |
 | `TASK_CONSOLE_ACTION_WORKSPACE` | Dedicated output directory inside the owner's private companion |
-| `TASK_CONSOLE_AGENT_TASK_ID` | Exact registered ID of the existing Agent queue drainer |
-| `TASK_CONSOLE_SESSIONS` | Trusted Claude project transcript root for exact session context |
-| Controller runtime settings | Existing runtime configuration, private, state and vault roots |
+| `TASK_CONSOLE_AGENT_TASK_ID` | Registered ID of the existing Agent queue drainer; enables the agent offer |
+| Controller runtime settings | Existing runtime configuration, private, state and vault roots; needed only for linked task offers |
 
 The child CLI receives the database as `--db` and the workspace as `SCHEDULE_ACTION_WORKSPACE`.
 Its private companion resolver and `AGENT_CENTER_RUNS` must agree with the scheduled drainer's
@@ -42,9 +41,11 @@ route takes a task name, re-checks it against the live task list, and then uses 
 see `work-platform.md`.) GET requests do not enqueue
 work, invoke a model or upgrade a database. `TASK_CONSOLE_READ_ONLY=1` disables action submission.
 
-The owner reserves and deduplicates requests transactionally. The console only dispatches the
-owner-selected exact task ID through the existing Controller. A failed queue wake preserves the
-queued work. Uncertain task dispatch stays unconfirmed and is never automatically replayed.
+The owner reserves and deduplicates requests transactionally. For a linked task offer the console
+dispatches the owner-selected exact task ID through the existing Controller. For an agent action
+the console only asks the scheduler to run the drainer (`schtasks /run /tn AgentCenterWorkTick`)
+on a background thread after the owner accepts; it does not wait for it, and a failed wake costs
+only latency because the drainer's own trigger picks the queued work up. Uncertain task dispatch stays unconfirmed and is never automatically replayed.
 Agent or task execution leaves the original todo open until its owner records completion.
 For active human todos, the owner also offers `complete` (标记完成). This records the user's
 manual completion, sets progress to 100 and ends reminders without creating Agent work or
@@ -54,9 +55,12 @@ checks. An active execution disables completion until it ends or is stopped. Sig
 and terminal todos do not offer completion. Duplicate request IDs return the original receipt;
 stale revisions are rejected. The browser refreshes the work feed after acknowledgement.
 
-Old conversations supply bounded reference context only when an exact UUID is recorded. This does
-not resume a provider-native session. Existing todos without exact links can still use their own
-content for Agent work. Similar titles never authorize a task or session association.
+Agent work uses the todo's own content; the console sends no conversation context. Similar titles
+never authorize a task association.
+
+The page re-reads the work feed by itself only while an action is preparing, queued or running and
+changed within the last 30 minutes. States that wait for a person (reconcile, task_requested,
+review_unavailable) are never polled; the page re-reads after every action and on refresh.
 
 ## Validation
 

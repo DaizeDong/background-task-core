@@ -80,24 +80,6 @@ def test_shared_read_has_no_persistent_payload_cache():
     assert len(calls) == 2
 
 
-def test_write_invalidates_an_inflight_snapshot():
-    from source_reads import ReadBoundary
-    boundary = ReadBoundary()
-    entered, finish = threading.Event(), threading.Event()
-    state = {'revision': 1}
-    def reader():
-        value = dict(state)
-        entered.set(); assert finish.wait(3)
-        return value
-    with ThreadPoolExecutor(1) as pool:
-        pending = pool.submit(boundary.read, 'work', reader)
-        assert entered.wait(3)
-        state['revision'] = 2
-        boundary.invalidate()
-        finish.set()
-        assert pending.result()['revision'] == 2
-
-
 def test_failure_keeps_last_success_but_does_not_return_stale_payload():
     from source_reads import ReadBoundary
     boundary = ReadBoundary()

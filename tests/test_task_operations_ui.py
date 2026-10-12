@@ -349,9 +349,9 @@ def test_not_read_unreadable_failed_and_empty_are_four_different_displays():
       const out={};
       out.never=[taskRepairReadState().text,taskRepairChip('AcmeSync')];
       replies['/api/task/repairs']={available:true,orders:{AcmeSync:order}};await loadRepairs();
-      out.loaded=[taskRepairReadState().text,taskRepairChip('AcmeSync'),repairsInFlight()];
+      out.loaded=[taskRepairReadState().text,taskRepairChip('AcmeSync')];
       replies['/api/task/repairs']=()=>{throw new Error('合成网络错误');};await loadRepairs();
-      out.failed=[taskRepairReadState().text,taskRepairChip('AcmeSync'),repairsInFlight()];
+      out.failed=[taskRepairReadState().text,taskRepairChip('AcmeSync')];
       replies['/api/task/repairs']={available:false,reason:'work_reader_not_configured',orders:{}};await loadRepairs();
       out.unavailable=[taskRepairReadState().text,taskRepairChip('AcmeSync'),taskRepairReadState().title];
       replies['/api/task/repairs']={available:true,orders:{}};await loadRepairs();
@@ -363,22 +363,17 @@ def test_not_read_unreadable_failed_and_empty_are_four_different_displays():
     # 原因码不摆在正文里:正文说人话,原码进悬停。
     assert "work_reader_not_configured" not in result["unavailable"][0] and "工作记录服务" in result["unavailable"][0]
     assert "work_reader_not_configured" in result["unavailable"][2] and result["empty"][0] == "没有修复工单"
-    assert "修复中" in result["loaded"][1] and result["loaded"][2] is True
+    assert "修复中" in result["loaded"][1]
     # 读失败就不留上一次的芯片:一张停在旧值上的「修复中」看起来和正在修一模一样。
-    assert result["failed"][1] == "" and result["failed"][2] is False
+    assert result["failed"][1] == ""
     assert result["never"][1] == result["unavailable"][1] == result["empty"][1] == ""
 
 
-def test_polling_continues_only_while_an_order_is_in_flight():
-    states = {"queued": True, "running": True, "reconcile": True, "done": False, "failed": False, None: False}
-    for action, expected in states.items():
-        order = task_repair_order_case(action)
-        assert run("REPAIRS={available:true,orders:{A:order}};repairsInFlight()", "const order=" + json.dumps(order) + ";") is expected
-    closed = task_repair_order_case("running", "done")
-    assert run("REPAIRS={available:true,orders:{A:order}};repairsInFlight()", "const order=" + json.dumps(closed) + ";") is False
+def test_the_repairs_view_does_not_poll():
+    """工单的进度跟着工作记录走:操作后的重读和刷新按钮负责更新。修复页自己不再定时重读,
+    以前它在 reconcile 这种等人的状态上会一直读下去。"""
     source = module_source("task-operations.js")
-    assert "REPAIR_POLL_MS=15000" in source
-    assert "!document.hidden && visible && repairsInFlight()" in source
+    assert "setTimeout(tick" not in source and "REPAIR_POLL_MS" not in source and "repairsInFlight" not in source
     assert "if(group==='automations') loadRepairs();" in module_source("navigation.js")
 
 

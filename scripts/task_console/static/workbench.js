@@ -319,7 +319,7 @@ function openWorkRecord(id,keepOrder=false){
   $('work-detail-title').textContent=item.title;
   $('work-detail-body').innerHTML=`<dl class="record-fields"><dt>类别</dt><dd>${esc(ROLE_LABELS[item.role])}</dd><dt>来源</dt><dd>${esc(workSourceLabel(item.source))}</dd><dt>记录状态</dt><dd>${esc(workLabel(item))}</dd><dt>更新时间</dt><dd>${when(item.updated_at)}</dd>${item.due_at?`<dt>截止时间</dt><dd>${when(item.due_at)}</dd>`:''}${item.project?`<dt>项目</dt><dd>${esc(item.project)}</dd>`:''}</dl>
     ${item.group_parent_id?`<p>已归入 <button type="button" class="link-button" data-work-id="${esc(item.group_parent_id)}">查看当前事项</button></p>`:''}${workActionButtons(item)}<h3>${workResult(item)?'完成摘要':'摘要'}</h3><p class="record-summary">${esc(item.summary || '没有摘要')}</p>${item.latest_mail_summary?`<p>最新邮件：${esc(item.latest_mail_summary)}</p>`:''}
-    ${workQueueNote(item)}${workSourceContext(item.id)}
+    ${workQueueNote(item)}
     <h3>最近活动</h3><ul class="record-events">${events.map(event=>`<li>${workTimeTag(event.ts)} · ${esc(workEventLabel(event))}${event.actor?' · '+esc(event.actor):''}</li>`).join('') || '<li>本次读取的活动中没有这条记录</li>'}</ul>
     <h3>技术信息</h3><dl class="record-fields"><dt>记录 ID</dt><dd><code>${esc(item.id)}</code></dd><dt>来源代码</dt><dd><code>${esc(item.source || '未记录')}</code></dd></dl>`;
   const index=WORK_DETAIL_IDS.indexOf(id);

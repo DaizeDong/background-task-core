@@ -31,6 +31,7 @@ def badge(selector="bg-automations"):
 def test_a_badge_is_pending_until_its_source_settles_then_counts_then_shows_a_broken_read():
     result = run(f"""(()=>{{
       const out=[];
+      API_READS.set('/api/tasks',{{sequence:0,pending:true}});
       setBadge('tasks',3,false,'运行详情：3 个任务上次运行失败');out.push({badge()});
       API_READS.set('/api/tasks',{{sequence:1,pending:false,error:null}});noteRead('/api/tasks',{{pending:false}});out.push({badge()});
       setBadge('tasks',0,false);out.push({badge()});
@@ -52,6 +53,7 @@ def test_a_group_badge_sums_its_tabs_and_takes_the_worst_state():
     result = run(f"""(()=>{{
       const settle=path=>{{API_READS.set(path,{{sequence:1,pending:false,error:null}});noteRead(path,{{pending:false}});}};
       settle('/api/repos');setBadge('repos',4,true);
+      API_READS.set('/api/sys',{{sequence:0,pending:true}});API_READS.set('/api/mem',{{sequence:0,pending:true}});renderBadges();
       const waiting={badge('bg-resources')};
       settle('/api/sys');settle('/api/mem');setBadge('storage',1,false);setBadge('resources',0,true);
       const summed={badge('bg-resources')};
@@ -108,12 +110,25 @@ def test_badge_sources_are_read_once_after_the_page_and_never_twice():
       const calls=[];
       load=()=>calls.push('tasks');loadRepos=()=>calls.push('repos');loadSys=()=>calls.push('sys');
       loadMem=()=>calls.push('mem');loadLLM=()=>calls.push('llm');
-      API_READS.set('/api/tasks',{sequence:1,pending:false,error:null});
       API_READS.set('/api/mem',{sequence:2,pending:false,error:'synthetic failure'});
       await prefetchBadgeSources();
       return calls;
     })()""")
-    assert result == ["repos", "sys", "llm"]
+    # 仓库扫描和计划任务不预读:一个对每个仓库跑一串 git,一个起 PowerShell,只随自己那一屏读取。
+    assert result == ["sys", "llm"]
+
+
+def test_a_badge_whose_source_was_never_requested_is_hidden_not_pending():
+    result = run(f"""(()=>{{
+      setBadge('repos',4,true);
+      const unread=[badgeState('repos').state,{badge('bg-resources')}];
+      API_READS.set('/api/repos',{{sequence:1,pending:true}});noteRead('/api/repos',{{pending:true}});
+      return [unread,{badge('bg-resources')}];
+    }})()""")
+    (state, unread), requested = result
+    assert state == "unread" and unread["hidden"] is True
+    # 负对照:一旦真的发起了读取,照旧是「…」。
+    assert requested["text"] == "…" and not requested["hidden"]
 
 
 def test_title_names_the_tab_and_tabs_carry_their_own_badge():

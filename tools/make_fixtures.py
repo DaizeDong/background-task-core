@@ -812,18 +812,6 @@ def legacy_health_snapshot() -> dict:
         "artifact_observations": {"synthetic-output": {"mtime": now - 60}}}
 
 
-def action_session_fixture(root):
-    """Exact synthetic conversation identity for action-context tests."""
-    session = '11111111-2222-4333-8444-555555555555'
-    path = Path(root) / 'acme-project' / (session + '.jsonl')
-    path.parent.mkdir(parents=True, exist_ok=True)
-    rows = [{'sessionId': session, 'type': 'user', 'uuid': 'synthetic-message',
-             'message': {'content': 'Prepare the Acme report using synthetic inputs.'}},
-            {'sessionId': 'unrelated-session', 'type': 'user', 'message': {'content': 'UNRELATED_CANARY'}}]
-    path.write_text('\n'.join(json.dumps(row) for row in rows), encoding='utf-8')
-    return session, path
-
-
 def console_page_fixture() -> dict:
     """Synthetic task page fields for local browser checks, without scheduler access."""
     row = {"name": "AcmeSync", "state": "Ready", "sk": "ok", "sl": "Completed",
