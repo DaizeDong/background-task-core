@@ -28,13 +28,27 @@ def _authority(runtime):
 
 
 def _review(value, paths, task_ids):
-    if (not isinstance(value, dict) or set(value) != {'schemaVersion', 'reason', 'files', 'task_ids'}
+    required = {'schemaVersion', 'reason', 'files', 'task_ids'}
+    if (not isinstance(value, dict) or not required <= set(value)
+            or set(value) - required - {'historical_task_ids', 'historical_receipt_chain'}
             or value['schemaVersion'] != 1 or not isinstance(value['reason'], str)
             or not value['reason'].strip() or not isinstance(value['files'], list) or not value['files']
             or not isinstance(value['task_ids'], list) or not value['task_ids']
             or any(not isinstance(item, str) or item not in task_ids for item in value['task_ids'])
             or len(set(value['task_ids'])) != len(value['task_ids'])):
         _fail('explicit_file_review_required')
+    historical = value.get('historical_task_ids', [])
+    if (not isinstance(historical, list)
+            or any(not isinstance(task_id, str) or task_id not in task_ids for task_id in historical)
+            or len(historical) != len(set(historical)) or set(historical) & set(value['task_ids'])):
+        _fail('historical_task_review_required')
+    chain = value.get('historical_receipt_chain', [])
+    if (not isinstance(chain, list) or bool(chain) != bool(historical)
+            or any(not isinstance(item, dict) or set(item) != {
+                'generation', 'receipt_digest', 'journal_fingerprint'}
+                or any(not isinstance(field, str) or not field for field in item.values()) for item in chain)
+            or len({item['generation'] for item in chain}) != len(chain)):
+        _fail('historical_task_review_required')
     selected = {}
     fields = {'path', 'expected_receipt_fingerprint', 'reviewed_fingerprint', 'reason'}
     for item in value['files']:
@@ -73,9 +87,17 @@ def _collect(runtime, review, *, receipt=None):
     if inputs['request']['machine'].get('migrated_tasks') != receipt['authority']['migrated_tasks']:
         _fail('input_authority_mismatch')
     specs = {spec['task_id']: spec for spec in reg._compile({'request': inputs['request']})['task_specs']}
-    if set(specs) != set(receipt['ownership']):
+    historical = set(review.get('historical_task_ids', []))
+    if (set(specs) - set(receipt['ownership'])
+            or set(receipt['ownership']) - set(specs) != historical):
         _fail('task_ownership_scope_changed')
+    history = None
+    if historical:
+        from .authority_history import validate
+        history = validate(runtime, receipt, historical, review['historical_receipt_chain'])
     for task_id, proof in receipt['ownership'].items():
+        if task_id in historical:
+            continue  # Its bootstrap proof matches the explicitly reviewed receipt chain.
         if (proof['name'] != specs[task_id]['name']
                 or proof.get('epoch') != receipt['authority']['authority_epoch']
                 or proof.get('writer') != ('declarations' if task_id in receipt['authority']['migrated_tasks'] else 'legacy')):
@@ -102,6 +124,8 @@ def _collect(runtime, review, *, receipt=None):
     for task_id, proof in sorted(receipt['ownership'].items()):
         snapshot = reg._read(runtime.scheduler, proof['name'])
         stable = reg._scheduler_config(snapshot)
+        if task_id in historical and snapshot['state'] != 'absent':
+            _fail('historical_task_present')
         if task_id in review['task_ids'] and snapshot.get('identity') != proof['identity']:
             _fail('scheduler_ownership_changed')
         tasks[task_id] = {'name': proof['name'], 'snapshot': stable}
@@ -118,6 +142,8 @@ def _collect(runtime, review, *, receipt=None):
         'unselected_scheduler_drift': [key for key, item in tasks.items()
                                        if item['snapshot'].get('identity') != receipt['ownership'][key]['identity']],
     }
+    if history is not None:
+        baseline['historical_tasks'] = history
     # Observe the authority again after potentially slow Scheduler reads.
     if reg.revision(authority.receipt()) != reg.revision(receipt):
         # A resumed completion may have already published its new pointer. Its
@@ -278,6 +304,11 @@ def _verify_terminal(runtime, journal):
         _fail('reconciliation_evidence_changed')
     prior = decode(stored['value'])
     _review(plan['review'], baseline['files'], prior['ownership'])
+    historical = plan['review'].get('historical_task_ids', [])
+    if historical:
+        from .authority_history import validate
+        if validate(runtime, prior, historical, plan['review']['historical_receipt_chain']) != baseline.get('historical_tasks'):
+            _fail('reconciliation_evidence_changed')
     inputs = runtime.authority._inputs(prior['input_reference'])
     if (reg.revision(prior) != baseline['receipt_revision']
             or reg.revision(inputs) != baseline['inputs_revision']

@@ -329,6 +329,64 @@ def add_creation_candidate(request):
     return original, duplicate
 
 
+def reconciliation_history_case(root):
+    """Two independently named tasks, then only the active declaration remains."""
+    from task_console.runtime_storage import digest, encode
+
+    request = example_request()
+    active_id = 'acme-maintenance/sync'
+    historical_id = 'acme-maintenance/legacy'
+    declaration = deepcopy(request['components'][0]['tasks'][0])
+    declaration.update(id='legacy', entrypoint='acme-legacy', concurrency_key='acme-legacy-destination')
+    request['components'][0]['tasks'].append(declaration)
+    binding = deepcopy(request['bindings']['tasks'][active_id])
+    binding.update(name='AcmeLegacySync', argv=['C:/Acme/runtime/python.exe', 'C:/Acme/source/legacy.py'])
+    request['bindings']['tasks'][historical_id] = binding
+    baseline = deepcopy(request['baseline']['tasks'][0])
+    baseline.update(name=binding['name'], argv=binding['argv'])
+    request['baseline']['tasks'].append(baseline)
+    request['baseline']['task_names'] = "$TaskNames = @( 'AcmeSync', 'AcmeLegacySync' )\n"
+    request['baseline']['task_health']['tasks'].extend(
+        dict(deepcopy(check['legacy']), name=binding['name']) for check in binding['checks'])
+    request['baseline']['categories']['categories'][0]['tasks'].append(binding['name'])
+    desired = example_request()
+    desired['bindings']['tasks'][active_id]['argv'].append('--refresh')
+    paths = {'bindings': 'bindings.json', 'machine': 'machine.json', 'task-health.json': 'health.json',
+             'TaskNames.ps1': 'names.ps1', 'categories.json': 'categories.json', 'tombstones': 'tombstones.json'}
+    config = {'schemaVersion': 1, 'domain': '1' * 32, 'desired': 'desired.json', 'adoption': 'adoption.json',
+              'paths': paths, 'active_xml': {active_id: None, historical_id: None},
+              'launchers': {active_id: 'hidden.vbs', historical_id: 'legacy-hidden.vbs'}}
+    source = Path(root) / 'private/source-binding.json'
+    maintained = Path(root) / 'private/maintained.py'
+    maintained_bytes = b'# Synthetic maintained source.\n'
+    source_binding = {'schemaVersion': 1, 'input_revision': None,
+                      'installed_generation': 'synthetic-generation', 'prerequisites': [],
+                      'tasks': {task_id: {'status': 'reviewed', 'reason_codes': []}
+                                for task_id in (active_id, historical_id)},
+                      'sources': {str(Path(root) / 'private/desired.json'): digest(encode(request)),
+                                  str(maintained): digest(maintained_bytes)}}
+    return {'request': request, 'desired': desired, 'config': config, 'active_id': active_id,
+            'historical_id': historical_id, 'source': source, 'source_binding': source_binding,
+            'maintained': maintained, 'maintained_bytes': maintained_bytes,
+            'unknown_id': 'acme-maintenance/unknown', 'wrong_name': 'AcmeUnrelatedSync',
+            'wrong_identity': 'task-definition:' + 'f' * 64, 'missing_generation': 'f' * 32}
+
+
+def reconciliation_receipt_chain(runtime, generations):
+    """Pin the supplied complete synthetic sequence without following receipt links."""
+    from task_console import registration as reg
+    from task_console.runtime_storage import FileResources, digest, encode, read_json
+
+    chain = []
+    for generation in reversed(generations):
+        receipt = read_json(runtime.authority.config.state_root / 'receipts' / (generation + '.json'))
+        journal_path = runtime.journal.root / (generation + '.json')
+        resources = FileResources([journal_path], runtime.authority.config.state_root / 'stages')
+        chain.append({'generation': generation, 'receipt_digest': digest(encode(receipt)),
+                      'journal_fingerprint': reg.fingerprint(resources.read(str(journal_path)))})
+    return chain
+
+
 def legacy_creation_xml(user_id='AcmeService'):
     """A pre-registration task has no embedded declaration in its XML."""
     from xml.sax.saxutils import escape
