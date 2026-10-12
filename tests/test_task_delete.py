@@ -79,6 +79,11 @@ def world(tmp_path, monkeypatch):
             raise ValueError("synthetic PRIVATE archive selection refused")
     # Deletion mechanics use a synthetic archive; real admission has separate Git tests.
     monkeypatch.setattr(D.console_store, "authorize_write", authorize)
+    def authorize_categories(path):
+        path = Path(path)
+        path.relative_to(tmp_path)
+        return path
+    monkeypatch.setattr(D.console_store, "authorize_private_write", authorize_categories)
     categories = tmp_path / "categories.json"
     write_categories(categories, default_categories())
     env = {D.ARCHIVE_ENV: str(archive)}

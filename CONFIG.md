@@ -18,8 +18,9 @@ Without that override, the companion root is selected in this order:
 2. `TASK_CONSOLE_CONFIG_DIR`.
 3. `TASK_CONSOLE_DATA_DIR`; a final `data` component denotes the child of the companion root.
 4. The pinned Guards sibling `task-console-config` convention.
-5. `~/.task-console-config`.
-6. `~/.task-console-data`.
+
+Use these direct companion locations for setup and recovery. Older pinned Guards versions may
+still recognize legacy home-directory candidates; verify the pinned resolver when restoring.
 
 Explicit roots remain selected even when absent. The database always occupies the canonical
 `<root>/data/task-console/console.sqlite3`; this avoids changing layout based on whether `data/`
@@ -41,11 +42,15 @@ agent actions need `TASK_CONSOLE_ACTION_WORKSPACE`. Task control uses the review
 configuration, declaration root, state root and vault. Each capability reports its own unavailable
 state; the basic doctor's success is not authorization or proof for these optional actions.
 
-Explicitly set `TASK_CONSOLE_CATEGORIES` to a category file in the PRIVATE versioned companion.
-The legacy `~/.task-console/categories.json` default remains readable for compatibility; it is
-not the recommended setup. The llmcall ledger and chain retain their documented `~/.llmcall`
-defaults, and selected executables can use PATH. They are separate resources, so switching the
-console companion does not silently relocate them.
+`TASK_CONSOLE_CATEGORIES` selects an explicit category file; otherwise the console uses
+`categories.json` in its resolved PRIVATE companion. Missing selection or files are reported as
+unconfigured. Category writes require private Git admission.
+
+The llmcall ledger and chain are separate producer resources. Their explicit console overrides
+and producer settings are listed in the environment table. There is no native home-directory
+fallback for these resources; missing selection is reported instead of creating a new tree.
+Chain writes require private Git admission. Switching the console companion does not relocate
+llmcall files, and selected executables can still use PATH.
 
 ## Initialize and switch
 

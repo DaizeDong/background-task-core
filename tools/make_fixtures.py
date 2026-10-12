@@ -19,6 +19,16 @@ def observation_binding_case(root):
     return path
 
 
+def external_categories_case(root):
+    """An editable synthetic classifier for PRIVATE write-admission tests."""
+    root = Path(root)
+    root.mkdir(parents=True, exist_ok=True)
+    path = root / "categories.json"
+    path.write_text(json.dumps({"categories": [{"name": "Acme", "tasks": ["AcmeSync"]}]},
+                               indent=2) + "\n", encoding="utf-8")
+    return path
+
+
 def registration_recovery_case(root, *, pending=False):
     """Generate synthetic authority documents and opaque ciphertext placeholders."""
     import hashlib
