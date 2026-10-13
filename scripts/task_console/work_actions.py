@@ -14,10 +14,6 @@ import threading
 import work_status
 from task_console import controller
 
-# The scheduled task that drains the agent queue (schedule-reminder's agent_tick).
-AGENT_TICK = 'AgentCenterWorkTick'
-
-
 class ActionError(ValueError):
     def __init__(self, code, *, uncertain=False):
         self.code, self.uncertain = code, uncertain
@@ -81,15 +77,17 @@ def _run_task(task_id, runtime):
     return controller.Controller(runtime).action(selected['name'], 'run')
 
 
-def _wake_agent_tick():
+def _wake_agent_tick(task_id):
     """Ask the scheduler to run the agent queue tick now, off the request thread.
+
+    task_id is the configured owner/name ID; its name part is the scheduler task name.
 
     Best effort only: the tick's own trigger picks the queued action up anyway, so a failed or
     slow wakeup costs latency, never the action. Nothing waits on it and nothing reports it.
     """
     def run():
         try:
-            subprocess.run(['schtasks', '/run', '/tn', AGENT_TICK], stdin=subprocess.DEVNULL,
+            subprocess.run(['schtasks', '/run', '/tn', task_id.rsplit('/', 1)[-1]], stdin=subprocess.DEVNULL,
                            capture_output=True, timeout=60,
                            creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
         except (OSError, subprocess.SubprocessError):
@@ -105,19 +103,15 @@ def submit(request, *, stop=False, env=None):
             raise ActionError('read_only')
         if stop:
             return invoke('work-action-stop', request, env)
-        if request['action_id'] == 'complete':
-            return invoke('work-action', {'request': request, 'context': ''}, env)
-        if request['action_id'] == 'agent':
-            if not env.get('TASK_CONSOLE_AGENT_TASK_ID'):
-                raise ActionError('queue_not_configured')
-            reply = invoke('work-action', {'request': request, 'context': ''}, env)
-            if reply.pop('wakeup', False):
-                _wake_agent_tick()
-            return reply
+        action = request['action_id']
+        if action == 'agent' and not env.get('TASK_CONSOLE_AGENT_TASK_ID'):
+            raise ActionError('queue_not_configured')
         # A linked task runs through the controller; validate it before reserving the action.
-        runtime = controller.load_runtime(environ=env)
+        runtime = None if action in ('complete', 'agent') else controller.load_runtime(environ=env)
         reply = invoke('work-action', {'request': request, 'context': ''}, env)
-        dispatch = reply.pop('dispatch', None)
+        if action == 'agent' and reply.pop('wakeup', False):
+            _wake_agent_tick(env['TASK_CONSOLE_AGENT_TASK_ID'])
+        dispatch = reply.pop('dispatch', None) if runtime is not None else None
         if dispatch:
             try:
                 result = _run_task(dispatch['task_id'], runtime)

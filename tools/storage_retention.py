@@ -7,8 +7,11 @@ import json
 import os
 from pathlib import Path, PurePosixPath, PureWindowsPath
 import stat
+import sys
 
 REPO = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(REPO / "scripts/task_console"))
+import console_store  # noqa: E402
 PROTECTED = ("launcher-binding.json", "task-console", "profile-rollback", "maintenance", "storage", "storage-retention.json")
 MAX_RECORD_BYTES = 262144
 MAX_RETIREMENTS = 64
@@ -75,9 +78,9 @@ def snapshot(path):
     return {"files": count, "bytes": size, "fingerprint": digest.hexdigest()}
 
 
-def plan(data_root, record):
-    root = ordinary_path(data_root)
-    if not root.is_dir() or root == REPO or REPO in root.parents:
+def plan(value, record):
+    root = data_root(value)
+    if not root.is_dir():
         raise RetentionError("Use an existing data directory outside the tool")
     if not isinstance(record, dict) or record.get("schema_version") != 1:
         raise RetentionError("Unsupported retirement record")
@@ -123,10 +126,7 @@ def plan(data_root, record):
 
 def data_root(value):
     """Select a DATA root outside this source tree. Pure path check; no Git or network calls."""
-    root = ordinary_path(value)
-    if root == REPO or REPO in root.parents:
-        raise RetentionError("DATA root must be outside this source tree")
-    return root
+    return console_store.outside_source(ordinary_path(value))
 
 
 def main():

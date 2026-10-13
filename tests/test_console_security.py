@@ -97,6 +97,19 @@ def test_missing_task_name_is_400(srv):
     assert st == 400
 
 
+def test_every_authenticated_post_starts_later_reads_fresh(srv):
+    # The re-read after any write must not join a read that began before it, whatever the route
+    # or outcome; an unauthenticated POST changes nothing and leaves the generation alone.
+    before = S.source_reads.boundary._generation
+    call(srv, "POST", "/api/act", body={"verb": "run", "name": "X"})
+    assert S.source_reads.boundary._generation == before
+    call(srv, "POST", "/api/act", token=TOKEN, body={"verb": "delete", "name": "X"})
+    deadline = time.monotonic() + 5  # the bump runs after the reply is written
+    while S.source_reads.boundary._generation == before and time.monotonic() < deadline:
+        time.sleep(0.01)
+    assert S.source_reads.boundary._generation == before + 1
+
+
 def test_act_without_token_is_403_before_any_verb_check(srv):
     # 顺序很重要:一个先校验动词再校验令牌的端点,会把「这个动词存在吗」告诉未鉴权的调用方。
     st, _ = call(srv, "POST", "/api/act", body={"verb": "delete", "name": "X"})

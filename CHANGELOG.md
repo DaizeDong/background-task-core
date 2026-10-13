@@ -5,13 +5,16 @@ All notable changes to this project are documented here (Keep a Changelog style)
 ## [Unreleased]
 
 ### Work path slimmed
-- An agent work action no longer runs through the task Controller. After the owner accepts it, the console asks the scheduler to run `AgentCenterWorkTick` once (`schtasks /run`, on a background thread, no window, failures ignored); the tick's own trigger picks the work up anyway. This removes about seven PowerShell launches from every agent click and every repair submit. Linked task offers still run through the Controller.
+- An agent work action no longer runs through the task Controller. After the owner accepts it, the console asks the scheduler to run the drainer named by `TASK_CONSOLE_AGENT_TASK_ID` (its name part, for example `agentcenterworktick`) once (`schtasks /run`, on a background thread, no window, failures ignored); the tick's own trigger picks the work up anyway. This removes about seven PowerShell launches from every agent click and every repair submit. Linked task offers still run through the Controller.
 - The agent offer needs only `TASK_CONSOLE_AGENT_TASK_ID`; the Controller runtime settings now gate only linked task offers.
 - Remove the conversation-context feature: `work_context.py`, `GET /api/work/context`, the 原对话 row button and its detail section. No producer ever wrote the session link it read, so every agent click paid for a full `work-feed` to submit an empty context. Agent work is submitted with no context. The per-process feed cache added for it is gone too.
 - The page polls the work feed only while something is moving (a todo action preparing, queued or running, or Agent work queued or running), and stops once the page has seen no change in its state or progress for 30 minutes; the cap is measured client-side from the last observed change, not from the action receipt's timestamp. States that wait for a person (reconcile, task_requested, review_unavailable) are never polled. The repairs view no longer polls at all.
 - A repair submit reads the work feed once and passes it to the dispatch; a new order costs one more read after `ensure`. The repairs map and the repair preview use the shared `work` read.
-- Shared reads only join an in-flight read of the same generation. A work action or repair submit bumps the generation once, so the re-read after it never joins a read that started before it; the page's own `loadWork` / `loadRepairs` follow the same rule. A read is no longer discarded and retried up to three times.
+- Shared reads only join an in-flight read of the same generation. Every authenticated POST bumps the generation once when it finishes, whatever its outcome, so the re-read after any write (task, skill, plugin, memory, conversation, repository, work action or repair) never joins a read that started before it; the page's own `loadWork` / `loadRepairs` follow the same rule. A read is no longer discarded and retried up to three times.
 - The badge prefetch no longer reads `/api/repos` (a git scan of every repository) or `/api/tasks`; a badge whose source was never requested is hidden instead of showing a permanent 「…」.
+
+### Fixed
+- `storage_retention.py` checks its DATA root through the console's one own-repo check (`console_store.outside_source`, which resolves junctions) instead of two inline copies.
 
 ### Conversations
 - Rename a session in place. Each list row has a pencil after its title, and the title of an open conversation chain is itself the rename control. The inline box takes Enter to save and Esc to cancel; a click outside closes it only when the name is unchanged. Saving reuses the existing rename request and updates the row and chain header immediately.

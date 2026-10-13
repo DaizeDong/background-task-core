@@ -112,7 +112,7 @@ def test_agent_action_wakes_the_tick_directly_without_the_controller(monkeypatch
     # The owner gets no conversation context: no producer writes a session link.
     assert payloads==[('work-action',{'request':request(),'context':''})]
     (argv,kwargs),=seen
-    assert argv==['schtasks','/run','/tn',work_actions.AGENT_TICK] and not kwargs.get('shell')
+    assert argv==['schtasks','/run','/tn','tick'] and not kwargs.get('shell')
     assert kwargs['creationflags']==getattr(subprocess,'CREATE_NO_WINDOW',0)
 
 

@@ -1476,12 +1476,8 @@ class Handler(BaseHTTPRequestHandler):
         try:
             if preview:
                 return self._json(200, task_repair.preview(body.get("name"), facts=task_facts))
-            try:
-                reply = task_repair.submit(body.get("name"), body.get("note"),
-                                           body.get("request_id"), facts=task_facts)
-            finally:
-                source_reads.mutated()
-            return self._json(200, reply)
+            return self._json(200, task_repair.submit(body.get("name"), body.get("note"),
+                                                      body.get("request_id"), facts=task_facts))
         except maint.Refused as e:
             return self._json(500 if e.code == "enumeration_failed" else 400,
                               {"ok": False, "error": str(e), "code": e.code})
@@ -1565,10 +1561,15 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         route = self.path.split("?", 1)[0]
-        if route.startswith("/api/convo/") and route not in CONVO_UNLOCKED_POSTS and self._authed():
-            with _CONVO_ACCESS:
-                return self._guard(self._do_POST, "POST " + route)
-        return self._guard(self._do_POST, "POST " + route)
+        try:
+            if route.startswith("/api/convo/") and route not in CONVO_UNLOCKED_POSTS and self._authed():
+                with _CONVO_ACCESS:
+                    return self._guard(self._do_POST, "POST " + route)
+            return self._guard(self._do_POST, "POST " + route)
+        finally:
+            # Every authenticated POST, whatever its outcome: a lost response is not proof of no change.
+            if self._host_ok() and self._authed():
+                source_reads.mutated()
 
     def _do_GET(self):
         if not self._host_ok():
@@ -1802,11 +1803,7 @@ class Handler(BaseHTTPRequestHandler):
                 request = json.loads(self.rfile.read(n))
             except (ValueError, UnicodeError):
                 return self._json(400, {'error': 'invalid JSON request'})
-            try:
-                reply = work_actions.submit(request, stop=self.path.split('?', 1)[0].endswith('/stop'))
-            finally:
-                source_reads.mutated()
-            return self._json(200, reply)
+            return self._json(200, work_actions.submit(request, stop=self.path.split('?', 1)[0].endswith('/stop')))
         if self.path.split("?", 1)[0] == "/api/retire/plan":
             return self._retire_plan()
         # 四条分开写:路由通扫的正则对 `in (...)` 只认得第一个字面量,写成一组会让后面几条逃过扫描。

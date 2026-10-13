@@ -95,8 +95,8 @@ function startWorkActions(){
   let timer;
   const refresh=async()=>{
     const visible=['overview','work'].includes(CURVIEW) || $('work-detail').open;
-    // 用 filter 不用 some:some 停在第一条命中处,后面几条这一轮的变化就没被记下。
-    if(!document.hidden && visible && (WORK?.items || []).filter(item=>workActionMoving(item)).length){
+    // workActionMoving 会记下每条的最后变化,所以每条都要过一遍,再看有没有在动的。
+    if(!document.hidden && visible && (WORK?.items || []).map(item=>workActionMoving(item)).includes(true)){
       await loadWork();if($('work-detail').open && WORK_DETAIL_ID) openWorkRecord(WORK_DETAIL_ID,true);
     }
     timer=setTimeout(refresh,WORK_POLL_MS);

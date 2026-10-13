@@ -304,7 +304,7 @@ the generator by the fixture boundary gate. Regenerate it from the repository ro
 | `TASK_CONSOLE_REMINDER_CLI` | absolute path to the reminder owner's `reminder.py` supporting `work-feed` | no default; work records report unconnected; invoked with the console Python interpreter |
 | `TASK_CONSOLE_REMINDER_DB` | absolute path to the existing reminder database | no default; work records and reviewed task links report unavailable; work-feed reads never initialize or migrate it |
 | `TASK_CONSOLE_ACTION_WORKSPACE` | absolute private directory for agent workspaces | no default; automatic todo actions remain unavailable |
-| `TASK_CONSOLE_AGENT_TASK_ID` | registered owner/task identifier for the agent queue tick; when set, an accepted agent action asks the scheduler to run `AgentCenterWorkTick` at once (`schtasks /run`, in the background, failures ignored) | no default; the agent offer is disabled |
+| `TASK_CONSOLE_AGENT_TASK_ID` | registered owner/task identifier for the agent queue tick (for example `schedule-reminder/agentcenterworktick`); when set, an accepted agent action asks the scheduler to run the task named by its name part at once (`schtasks /run`, in the background, failures ignored) | no default; the agent offer is disabled |
 | `TASK_CONSOLE_READ_ONLY` | set to `1` to disable mutations | unset leaves configured guarded actions available |
 | `TASK_CONSOLE_RUNTIME_CONFIG` | absolute reviewed Controller configuration path | no default; task controls require configuration |
 | `TASK_CONSOLE_PRIVATE_ROOT` | absolute private declaration directory | no default; task controls require configuration |
