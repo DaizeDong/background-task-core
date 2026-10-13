@@ -1,6 +1,8 @@
 // Compose existing owner observations; no execution engine or health policy here.
-function loadWork(){
-  if(WORK_PENDING) return WORK_PENDING;
+// fresh:提交之后的那次重读。正在进行的那次读取可能是提交之前开始的,并进去拿到的是提交前的样子,
+// 所以等它读完再另读一次;服务端的合并读也按同样的规矩分代(source_reads.mutated)。
+function loadWork({fresh=false}={}){
+  if(WORK_PENDING) return fresh?WORK_PENDING.then(()=>loadWork()):WORK_PENDING;
   WORK_LOADING=true;
   renderWorkPlatform();
   WORK_PENDING=(async()=>{

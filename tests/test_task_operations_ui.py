@@ -257,7 +257,7 @@ def test_an_existing_order_is_linked_instead_of_filing_another():
     unavailable["work"] = {"available": False, "reason": "work_reader_not_configured"}
     # 上一次没交出去的工单(执行服务没连上):不是「已有工单不再新建」,而是可以再提交一次,后端会为它补交。
     undispatched = {"schemaVersion": 1, "ok": True, "existing": True, "item_id": "acme-repair-1",
-                    "receipt": {"ok": True, "status": "queued", "wakeup": True}, "message": "已为现有工单提交 Agent 处理"}
+                    "receipt": {"ok": True, "status": "queued"}, "message": "已为现有工单提交 Agent 处理"}
     result = run("""(async()=>{await openTaskRepair('Acme Report Sync');
       const before={html:$('repair-body').innerHTML,submit:$('repair-submit').disabled,label:$('repair-submit').textContent};
       await submitTaskRepair();return {...before,state:$('repair-state').innerHTML,calls};})()""",
@@ -274,7 +274,7 @@ def test_an_existing_order_is_linked_instead_of_filing_another():
 
 def test_repair_submits_once_per_request_id_and_reuses_it_only_until_answered():
     accepted = {"schemaVersion": 1, "ok": True, "existing": False, "item_id": "acme-repair-1", "decision": "created",
-                "receipt": {"ok": True, "status": "queued", "wakeup": True}, "message": "修复工单已建立并提交 Agent 处理"}
+                "receipt": {"ok": True, "status": "queued"}, "message": "修复工单已建立并提交 Agent 处理"}
     uncertain = {"schemaVersion": 1, "ok": False, "code": "owner_reply_unknown", "uncertain": True,
                  "message": "未收到提交确认，再次点击会核对原请求"}
     result = run("""(async()=>{

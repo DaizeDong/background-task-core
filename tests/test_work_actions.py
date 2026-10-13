@@ -75,7 +75,7 @@ WORK={available:true,items:[sample]};let refreshes=0,messages=[];renderWorkPlatf
 loadWork=async()=>{refreshes++;};toast=message=>messages.push(message);
 globalThis.crypto={randomUUID:()=> 'synthetic-complete-request'};
 const stored={};globalThis.sessionStorage={getItem:key=>stored[key],setItem:(key,value)=>stored[key]=value,removeItem:key=>delete stored[key]};
-let sent=[];api=async(path,options)=>{sent.push(JSON.parse(options.body));return {ok:true,status:'done',wakeup:false};};
+let sent=[];api=async(path,options)=>{sent.push(JSON.parse(options.body));return {ok:true,status:'done'};};
 '''
     result = run("(async()=>{await submitWorkAction(sample.id,'complete');return {sent,messages,refreshes,pending:WORK_ACTION_PENDING.size};})()", setup)
     assert result['sent'][0]['action_id'] == 'complete'
@@ -96,20 +96,52 @@ api=async()=>{throw Object.assign(Error('synthetic refusal'),{status:403,request
     assert result['intents'] == result['stored'] == 0
 
 
-def test_the_page_polls_only_recent_moving_work_never_human_wait_states():
-    """reconcile, task_requested and review_unavailable wait for a person: polling them never ends."""
-    def moving(state, minutes_ago):
+def test_the_page_polls_moving_work_until_it_stops_changing_never_human_wait_states():
+    """reconcile, task_requested and review_unavailable wait for a person: polling them never ends.
+
+    The quiet cap counts from the last change this page observed, not from the receipt timestamp:
+    a receipt written an hour ago on work that is still progressing keeps the page polling.
+    """
+    def moving(state, receipt_minutes_ago=60):
         item = work_action_case()
         item['actions']['current'] = {'id': 'acme-request', 'kind': 'agent', 'state': state}
-        return run('workActionMoving(item)', 'const item=' + json.dumps(item) + ';'
-                   f"item.actions.current.updated_at=new Date(Date.now()-{minutes_ago}*60000).toISOString();")
+        return run('''let now=Date.now();Date.now=()=>now;
+const first=workActionMoving(item);now+=29*60000;const unchanged=workActionMoving(item);
+now+=2*60000;const quiet=workActionMoving(item);
+item.updated_at='2030-01-02T01:00:00Z';const progressed=workActionMoving(item);
+[first,unchanged,quiet,progressed]''', 'const item=' + json.dumps(item) + ';'
+                   f"item.actions.current.updated_at=new Date(Date.now()-{receipt_minutes_ago}*60000).toISOString();")
     for state in ('preparing', 'queued', 'running'):
-        assert moving(state, 1) is True, state
-        # Age cap: something that has not changed in half an hour is not worth a feed every 8 s.
-        assert moving(state, 45) is False, state
+        # Old receipt, still polled; 31 quiet minutes stop it; any observed change resumes it.
+        assert moving(state) == [True, True, False, True], state
     for state in ('reconcile', 'task_requested', 'review_unavailable', 'dispatching', 'done', 'failed'):
-        assert moving(state, 1) is False, state
+        assert moving(state, 1) == [False, False, False, False], state
     assert run('workActionMoving(item)', 'const item=' + json.dumps(work_action_case()) + ';') is False
+    # Agent work rows move by their own execution state, with no todo receipt at all.
+    agent = {'id': 'acme-agent-work', 'role': 'agent_work', 'state': 'running', 'execution': {'state': 'running'}}
+    assert run('workActionMoving(item)', 'const item=' + json.dumps(agent) + ';') is True
+    agent['execution']['state'] = 'done'
+    assert run('workActionMoving(item)', 'const item=' + json.dumps(agent) + ';') is False
+
+
+def test_the_reread_after_an_action_does_not_join_a_read_started_before_it():
+    setup = 'const sample=' + json.dumps(work_action_case()) + ';' + '''
+WORK={available:true,items:[sample]};renderWorkPlatform=()=>{};toast=()=>{};
+globalThis.crypto={randomUUID:()=> 'synthetic-fresh-request'};
+const stored={};globalThis.sessionStorage={getItem:key=>stored[key],setItem:(key,value)=>stored[key]=value,removeItem:key=>delete stored[key]};
+let posted=false, release, reads=[];
+api=async(path)=>{
+  if(path==='/api/work'){
+    const sawPost=posted;reads.push(sawPost);
+    if(!sawPost) await new Promise(resolve=>{release=resolve;});
+    return {available:true,items:[sample],sawPost};
+  }
+  posted=true;return {ok:true,status:'queued'};
+};
+'''
+    result = run('''(async()=>{const poll=loadWork();const action=submitWorkAction(sample.id,'agent');
+await new Promise(resolve=>setTimeout(resolve,0));release();await Promise.all([poll,action]);return {reads,last:WORK.sawPost};})()''', setup)
+    assert result == {'reads': [False, True], 'last': True}
 
 
 def test_no_session_context_control_remains():

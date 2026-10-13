@@ -67,6 +67,7 @@ import controller as task_control
 import task_delete
 import task_repair
 import selfcheck
+import source_reads
 import sysinfo
 import timeline
 import title_suggest
@@ -1475,8 +1476,12 @@ class Handler(BaseHTTPRequestHandler):
         try:
             if preview:
                 return self._json(200, task_repair.preview(body.get("name"), facts=task_facts))
-            return self._json(200, task_repair.submit(body.get("name"), body.get("note"),
-                                                      body.get("request_id"), facts=task_facts))
+            try:
+                reply = task_repair.submit(body.get("name"), body.get("note"),
+                                           body.get("request_id"), facts=task_facts)
+            finally:
+                source_reads.mutated()
+            return self._json(200, reply)
         except maint.Refused as e:
             return self._json(500 if e.code == "enumeration_failed" else 400,
                               {"ok": False, "error": str(e), "code": e.code})
@@ -1797,7 +1802,10 @@ class Handler(BaseHTTPRequestHandler):
                 request = json.loads(self.rfile.read(n))
             except (ValueError, UnicodeError):
                 return self._json(400, {'error': 'invalid JSON request'})
-            reply = work_actions.submit(request, stop=self.path.split('?', 1)[0].endswith('/stop'))
+            try:
+                reply = work_actions.submit(request, stop=self.path.split('?', 1)[0].endswith('/stop'))
+            finally:
+                source_reads.mutated()
             return self._json(200, reply)
         if self.path.split("?", 1)[0] == "/api/retire/plan":
             return self._retire_plan()

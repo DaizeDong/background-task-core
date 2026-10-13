@@ -10,6 +10,15 @@ class ReadBoundary:
         self._condition = threading.Condition()
         self._active = {}
         self._observations = {}
+        # Bumped after every mutating POST. A read joins an in-flight read only when both
+        # began in the same generation, so the reread that follows a mutation never gets the
+        # snapshot of a read that started before it.
+        self._generation = 0
+        self._observed_generation = {}
+
+    def mutated(self):
+        with self._condition:
+            self._generation += 1
 
     def snapshot(self):
         with self._condition:
@@ -18,18 +27,20 @@ class ReadBoundary:
     def read(self, source, reader, *, timeout=210):
         """Coalesce overlapping calls only; each caller gets its own result object.
 
-        A caller that arrives while a read of the same source is running joins it. Readers own
+        A caller that arrives while a read of the same source and generation is running joins it.
+        Readers own
         I/O deadlines. Waiting HTTP callers have a separate deadline and admission limit; a stuck
         reader cannot accumulate workers here.
         """
         with self._condition:
-            slot = self._active.get(source)
+            key = (source, self._generation)
+            slot = self._active.get(key)
             leader = slot is None
             if leader:
                 if len(self._observations) >= 64 and source not in self._observations:
                     raise RuntimeError('source limit reached')
-                slot = {'future': Future(), 'callers': 0}
-                self._active[source] = slot
+                slot = {'future': Future(), 'callers': 0, 'generation': key[1]}
+                self._active[key] = slot
             if slot['callers'] >= 8:
                 raise RuntimeError('source busy; retry after the current read')
             slot['callers'] += 1
@@ -42,21 +53,26 @@ class ReadBoundary:
                     if not isinstance(payload, dict):
                         raise ValueError('reader must return an object')
                     with self._condition:
-                        self._observe(source, payload, time.monotonic() - started)
+                        self._observe(source, slot, payload, time.monotonic() - started)
                     slot['future'].set_result(payload)
                 except BaseException as error:
                     with self._condition:
-                        self._observe(source, {'available': False, 'reason': type(error).__name__}, time.monotonic() - started)
+                        self._observe(source, slot, {'available': False, 'reason': type(error).__name__},
+                                      time.monotonic() - started)
                     slot['future'].set_exception(error)
                 finally:
                     with self._condition:
-                        self._active.pop(source, None)
+                        self._active.pop(key, None)
             return deepcopy(slot['future'].result(timeout=timeout))
         finally:
             with self._condition:
                 slot['callers'] -= 1
 
-    def _observe(self, source, payload, duration):
+    def _observe(self, source, slot, payload, duration):
+        # An older read that finishes after a newer one must not overwrite the newer observation.
+        if slot['generation'] < self._observed_generation.get(source, 0):
+            return
+        self._observed_generation[source] = slot['generation']
         previous = self._observations.get(source, {})
         failed = payload.get('available') is False or bool(payload.get('error'))
         reason = payload.get('reason') or payload.get('error')
@@ -75,6 +91,11 @@ boundary = ReadBoundary()
 
 def read(source, reader):
     return boundary.read(source, reader)
+
+
+def mutated():
+    """Call after a mutating request, whatever its outcome; later reads start fresh."""
+    boundary.mutated()
 
 
 def isolated(source, reader):

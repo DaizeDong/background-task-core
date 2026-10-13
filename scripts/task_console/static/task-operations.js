@@ -303,8 +303,7 @@ function taskRepairReplyText(reply){
   if(reply.ok){
     const accepted='已受理：结果会出现在工作记录页和 Discord，任务本身没有被改动，也还没有修好。';
     if(reply.existing && !reply.receipt) return {tone:'warn',text:'这个任务已有修复工单，没有重复建立。'};
-    const queued=reply.receipt?.status==='queued' && reply.receipt?.wakeup===false?'已排队，等待执行服务接手。':'';
-    return {tone:'warn',text:(reply.existing?'已为现有修复工单提交 Agent 处理。':'修复工单已建立并交给 Agent 处理。')+queued+accepted};
+    return {tone:'warn',text:(reply.existing?'已为现有修复工单提交 Agent 处理。':'修复工单已建立并交给 Agent 处理。')+accepted};
   }
   if(reply.uncertain) return {tone:'warn',text:`${reply.message || '未收到确认'}。未收到确认，再次点击会核对原请求，不会重复建立工单。`};
   return {tone:'bad',text:apiError(reply,500)};
@@ -331,7 +330,7 @@ async function submitTaskRepair(){
   }finally{
     TASK_REPAIR.busy=false;syncTaskRepairSubmit();
     // 工单号要能点开:工作记录里没有它的话,「查看工单」只会弹一句未载入。
-    await Promise.allSettled([loadRepairs(),loadWork()]);
+    await Promise.allSettled([loadRepairs({fresh:true}),loadWork({fresh:true})]);
   }
 }
 async function openRepairOrder(id){
@@ -418,8 +417,9 @@ function renderRepairReadState(){
     if(el.setAttribute) el.setAttribute('role','status');
   });
 }
-function loadRepairs(){
-  if(REPAIRS_PENDING) return REPAIRS_PENDING;
+function loadRepairs({fresh=false}={}){
+  // fresh 的意思同 loadWork:提交之后不并进提交之前开始的那次读取。
+  if(REPAIRS_PENDING) return fresh?REPAIRS_PENDING.then(()=>loadRepairs()):REPAIRS_PENDING;
   REPAIRS_PENDING=(async()=>{
     renderRepairReadState();
     try{REPAIRS=await api('/api/task/repairs');REPAIRS_ERROR=null;}

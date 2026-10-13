@@ -197,7 +197,9 @@ const ATTENTION_SOURCES={
   outputs:{path:"/api/tasks",loaded:TASKS_LOADED,
     unchecked:()=>!DATA.freshness?"这份数据没带产物检查":(DATA.freshness.reason || null)},
   ingest:{path:"/api/tasks",loaded:TASKS_LOADED},
-  repos:{path:"/api/repos",loaded:()=>!!REPOS,
+  // onDemand:工作台不补读这一路(仓库扫描要对每个仓库跑一串 git,见 navigation.js 的 BADGE_LOADERS),
+  // 只在人打开代码仓库或技术问题那一屏时读。没人请求过时它不是「读取中」,而是 unread。
+  repos:{path:"/api/repos",onDemand:true,loaded:()=>!!REPOS,
     unchecked:()=>REPOS.available?null:(REPOS.reason || "仓库没在查")},
   disk:{path:"/api/sys",loaded:()=>!!(SYS && !SYS.error),
     unchecked:()=>SYS.disk && SYS.disk.usedPct != null?null:((SYS.disk && SYS.disk.reason) || "磁盘没量到")},
@@ -209,8 +211,11 @@ const ATTENTION_SOURCES={
 // ⚠ 「没在查」要先于「读取失败」判:后端对没配的来源回 available:false,api() 会把它的 reason
 // 记成这次读取的 error。只看 error 的话,一个根本没配仓库根目录的机器会被画成「仓库读取失败」,
 // 而那里没有任何东西坏了,只是没在查。
+// unread:这一页从没请求过的按需来源(onDemand)。它不是读取中,也不是失败,和徽章的 unread 一样什么都不画:
+// 写成「读取中」的话,工作台摘要会永远挂着一枚等不来的芯片。
 function readState(source){
   const read = API_READS.get(source.path), loaded = source.loaded();
+  if(!read && !loaded && source.onDemand) return {state:"unread"};
   const unchecked = loaded && source.unchecked ? source.unchecked() : null;
   if(read && !read.pending && read.error && !unchecked) return {state:"failed", reason:read.error};
   if(!loaded) return {state:"pending"};
@@ -221,7 +226,7 @@ function attentionSummary(){
   for(const [key, source] of Object.entries(ATTENTION_SOURCES)){
     const read = readState(source);
     if(read.state === "failed"){ out[key] = {state:"failed", count:0, reason:read.reason}; continue; }
-    if(read.state === "pending"){ out[key] = {state:"pending", count:0}; continue; }
+    if(read.state === "pending" || read.state === "unread"){ out[key] = {state:read.state, count:0}; continue; }
     // 数对象不数检查,对象怎么认由清单那边的 attentionObject(review.js)定,芯片上的数才等于点开后的行数。
     out[key] = {state:"ok", count:new Set(rows.filter(row=>row.key===key).map(attentionObject)).size};
     if(read.unchecked) out[key].unchecked = read.unchecked;
@@ -245,7 +250,8 @@ function renderTiles(){
   const out = [];
   const add = (rank, html) => out.push({rank:rank in TILE_RANK ? rank : "ok", html, at:out.length});
   const waiting = (filter, key, read) =>
-    add(read.state === "failed" ? "failed" : read.state === "pending" ? "pending" : "unchecked", waitingTile(filter, key, read));
+    add(read.state === "failed" ? "failed" : read.state === "pending" ? "pending" : "unchecked",
+        waitingTile(filter, key, read.state === "unread" ? {state:"unchecked", unchecked:"尚未读取，打开那一屏时读取"} : read));
 
   const tasks = readState(ATTENTION_SOURCES.tasks);
   if(tasks.state === "ok" && DATA.summary){

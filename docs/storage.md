@@ -97,7 +97,7 @@ excludes every `.cred` file cannot restore that authority. The existing configur
 can export the required closure with `tools/export_registration_recovery.py --private-root
 <declaration-root> --state-root <registration-root> --vault-root <configured-vault> --output
 <absolute-temporary-zip>`. Obtain all three roots from the same authoritative launcher-binding parser,
-including any complete runtime overrides. The exporter proves the private declaration repository,
+including any complete runtime overrides. The exporter checks that the roots exist and are disjoint (no Git or network calls),
 uses the existing authority lock, validates the current pointer/receipt digest, and includes every
 protected reference required by that receipt and pending or uncleaned journals. Cleaned terminal
 journals do not pull historical before-images into this current snapshot. Missing state or references
@@ -130,7 +130,7 @@ its writers have stopped. Record exact paths in `<private-data>/storage-retentio
 Extra `protected_paths` can only add protection. Keep the record under 256 KiB and 64 entries.
 
 Preview with `tools/cleanup_storage.ps1 -DataRoot <private-data>`. After reviewing the exact plan,
-use the same command with `-Apply`. The planner proves PRIVATE repository visibility, protects core
+use the same command with `-Apply`. The planner refuses a data root inside this source tree (a pure path check), protects core
 paths, rejects links and changed final results, and fingerprints the candidates twice. The PowerShell
 remover checks absolute containment and reparse points before every `Remove-Item -LiteralPath`.
 Unlisted work is retained. A running process referring to a candidate blocks cleanup.

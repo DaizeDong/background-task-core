@@ -70,7 +70,7 @@ def test_shared_read_has_no_persistent_payload_cache():
         second = pool.submit(boundary.read, 'work', reader)
         # Wait for the joining caller, not a guessed sleep.
         with boundary._condition:
-            assert boundary._condition.wait_for(lambda: boundary._active['work']['callers'] == 2, timeout=2)
+            assert boundary._condition.wait_for(lambda: boundary._active[('work', 0)]['callers'] == 2, timeout=2)
         finish.set()
         a, b = first.result(), second.result()
     a['items'].append('synthetic')
@@ -78,6 +78,33 @@ def test_shared_read_has_no_persistent_payload_cache():
     assert len(calls) == 1
     boundary.read('work', reader)
     assert len(calls) == 2
+
+
+def test_a_read_after_a_mutation_does_not_join_one_that_started_before_it():
+    from source_reads import ReadBoundary
+    boundary = ReadBoundary()
+    entered, finish = threading.Event(), threading.Event()
+    state = {'revision': 1}
+    def slow_reader():
+        value = dict(state)
+        entered.set(); assert finish.wait(3)
+        return value
+    with ThreadPoolExecutor(2) as pool:
+        before = pool.submit(boundary.read, 'work', slow_reader)
+        try:
+            assert entered.wait(3)
+            state['revision'] = 2
+            boundary.mutated()
+            # The follow-up read starts its own read instead of waiting on the pre-mutation one;
+            # joining it would block until the timeout below.
+            after = pool.submit(boundary.read, 'work', lambda: dict(state))
+            assert after.result(timeout=3)['revision'] == 2
+        finally:
+            finish.set()
+        assert before.result()['revision'] == 1
+    # The older read finished last but must not overwrite the newer observation.
+    assert boundary._observed_generation['work'] == 1
+    assert not boundary._active
 
 
 def test_failure_keeps_last_success_but_does_not_return_stale_payload():

@@ -58,8 +58,11 @@ stale revisions are rejected. The browser refreshes the work feed after acknowle
 Agent work uses the todo's own content; the console sends no conversation context. Similar titles
 never authorize a task association.
 
-The page re-reads the work feed by itself only while an action is preparing, queued or running and
-changed within the last 30 minutes. States that wait for a person (reconcile, task_requested,
+The page re-reads the work feed by itself only while something is moving: a todo's action is
+preparing, queued or running, or an Agent work item is queued or running. The 30-minute cap counts
+from the last time the page itself saw that item's state or progress change, not from the action
+receipt's timestamp, so long work that keeps progressing keeps being polled and work that has shown
+no change for 30 minutes stops. States that wait for a person (reconcile, task_requested,
 review_unavailable) are never polled; the page re-reads after every action and on refresh.
 
 ## Validation

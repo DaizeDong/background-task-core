@@ -117,7 +117,7 @@ def test_repair_submit_says_why_it_waits_and_a_locked_note_says_so():
     preview = task_repair_preview_case()
     unavailable = dict(preview, work={"available": False, "reason": "work_reader_not_configured"})
     accepted = {"schemaVersion": 1, "ok": True, "existing": False, "item_id": "acme-repair-1",
-                "receipt": {"ok": True, "status": "queued", "wakeup": True}, "message": "synthetic accepted"}
+                "receipt": {"ok": True, "status": "queued"}, "message": "synthetic accepted"}
     result = run("""(async()=>{
       const out={};
       const opening=openTaskRepair('Acme Report Sync');

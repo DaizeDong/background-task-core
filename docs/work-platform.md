@@ -142,8 +142,10 @@ callers, and retains observation metadata only. Independent sources in an
 aggregate use up to four request-scoped workers, released when the request
 finishes. Groups accept leaf readers to avoid nested worker pools. Successful
 payloads are not cached by time. Readers still own their I/O deadlines.
-A caller that arrives while a read is running joins it and gets that result;
-the page re-reads after its own writes. Aggregated resource sections isolate failures independently;
+A caller that arrives while a read of the same generation is running joins it
+and gets that result. A work action or repair submit bumps the generation when
+it returns, whatever the outcome, so the page's re-read after its own write
+starts a fresh read instead of joining one that began before the write. Aggregated resource sections isolate failures independently;
 catalog failures do not replace task evidence.
 
 The integration inventory's connection status describes a read, not business

@@ -191,7 +191,7 @@ def normalize_title(text):
 def _llm_caller(prompt: str, extract, timeout: float):
     """真的调模型。只在这里 import llmcall:测试注入假的 caller,这一行永远不会跑到。"""
     from llmcall import call
-    return call(prompt, mode="judge", timeout=timeout, extract=extract, mcp_isolation=True)
+    return call(prompt, mode="judge", timeout=timeout, extract=extract)
 
 
 def suggest(digest: dict, current_title: str | None = None, *, caller=None,

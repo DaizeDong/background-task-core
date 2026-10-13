@@ -109,7 +109,10 @@ def test_attention_summary_says_pending_until_tasks_arrive_then_counts_failed_ta
     assert summary["tasks"] == {"state": "ok", "count": 2}
     # 没有产物清单:读到了,但这一类没在查,不能当成零。
     assert summary["outputs"]["state"] == "ok" and summary["outputs"]["unchecked"]
-    assert summary["repos"]["state"] == "pending"
+    # 仓库扫描工作台不补读:没人请求过就是 unread(什么都不画),开始读了才是 pending。
+    assert summary["repos"]["state"] == "unread"
+    started = run("API_READS.set('/api/repos',{sequence:2,pending:true});attentionSummary().repos", "DATA=" + json.dumps(data) + ";")
+    assert started == {"state": "pending", "count": 0}
     failed = run("API_READS.set('/api/sys',{sequence:3,pending:false,error:'synthetic failure'});attentionSummary().disk")
     assert failed == {"state": "failed", "count": 0, "reason": "synthetic failure"}
     disk = run("API_READS.set('/api/sys',{sequence:4,pending:false,error:null});attentionSummary().disk",

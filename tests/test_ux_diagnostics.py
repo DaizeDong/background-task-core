@@ -64,7 +64,8 @@ def test_a_slow_task_read_is_shown_as_loading_never_as_a_failure():
 
 def test_tiles_say_loading_failed_or_unchecked_and_never_mix_them_up():
     pending = run("renderTiles();$('tiles').innerHTML",
-                  DOM + "DATA=null;API_READS.set('/api/tasks',{sequence:1,pending:true});")
+                  DOM + "DATA=null;API_READS.set('/api/tasks',{sequence:1,pending:true});"
+                  "API_READS.set('/api/repos',{sequence:2,pending:true});")
     tiles = re.findall(r'<button type="button" class="tile".*?</button>', pending, re.S)
     assert len(tiles) == 5 and all("读取中" in t and "未检查" not in t for t in tiles)
     # 仓库读失败是「读取失败」;仓库根本没配(后端回 available:false,api() 也把 reason 记成 error)是「未检查」。
@@ -92,6 +93,24 @@ def test_an_unconfigured_source_is_unchecked_in_the_summary_not_failed():
                   "API_READS.set('/api/repos',{sequence:1,pending:false,error:'synthetic root missing'});"
                   "REPOS={available:false,reason:'synthetic root missing'};"))
     assert summary == {"state": "ok", "count": 0, "unchecked": "synthetic root missing"}
+
+
+def test_a_never_requested_repo_scan_is_not_shown_as_loading_on_the_overview():
+    """工作台不补读 /api/repos。没人打开过仓库那一屏时,摘要不许挂一枚永远等不来的「读取中：仓库」。"""
+    settled = loaded(tasks_data([], freshness={"summary": {"total": 0, "bad": 0}}),
+                     "API_READS.set('/api/sys',{sequence:1,pending:false,error:null});SYS={disk:{usedPct:40}};"
+                     "API_READS.set('/api/mem',{sequence:2,pending:false,error:null});"
+                     "MEM={available:true,linePct:10,bytePct:10};")
+    expr = "renderAttentionStrip();[$('attention-strip').hidden,$('attention-strip').innerHTML,attentionSummary().repos]"
+    hidden, html, repos = run(expr, settled)
+    assert repos == {"state": "unread", "count": 0}
+    assert hidden is True and "读取中" not in html
+    # 诊断清单的说明也不把它算成「仍在读取」。
+    caption = run("renderTodo();$('review-count').innerHTML", settled)
+    assert "仍在读取" not in caption
+    # 真开始读了,才是读取中。
+    hidden, html, repos = run(expr, settled + "API_READS.set('/api/repos',{sequence:3,pending:true});")
+    assert repos["state"] == "pending" and hidden is False and "读取中：代码仓库" in html
 
 
 # ---------- 行用主人认得的名字和说法 ----------
@@ -160,6 +179,7 @@ def test_tiles_lead_with_the_problem_count_filter_in_place_and_drop_conversation
     rows = [{"name": "AcmeSync", "sk": "bad"}, {"name": "AcmeFine", "sk": "ok"}]
     html = run("renderTiles();$('tiles').innerHTML", loaded(tasks_data(rows),
                "API_READS.set('/api/sys',{sequence:1,pending:false,error:null});"
+               "API_READS.set('/api/repos',{sequence:2,pending:true});"
                "SYS={disk:{usedPct:40,free:1073741824*50,verdict:{attention:false,tone:'ok'}}};"
                "CONVOS={available:true,summary:{files:9,humanish:3,groups:2}};"))
     tiles = re.findall(r'<button type="button" class="tile".*?</button>', html, re.S)

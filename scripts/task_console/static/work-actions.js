@@ -34,15 +34,20 @@ function workActionButtons(item,compact=false){
   const note=current?.summary || (current?.state==='task_requested'?'运行请求已提交，完成结果尚未确认':'');
   return controls.length || note?`<div class="work-actions${compact?' compact':''}"><div class="work-action-controls">${controls.join('')}</div>${note?`<small class="work-action-note" title="${esc(note)}">${esc(note)}</small>`:''}</div>`:'';
 }
-// 页面只在有工作真的在动时自己重读:准备、排队、运行,而且最近 30 分钟内有过更新。
+// 页面只在有工作真的在动时自己重读:待办上的处理在准备、排队、运行,或者这条 Agent 工作本身在排队、执行。
 // reconcile、task_requested、review_unavailable 等的是人,轮询它们只会一直读下去;
 // 别的情况靠操作后的重读和刷新按钮。
-const WORK_POLL_MS=8000, WORK_POLL_STATES=['preparing','queued','running'], WORK_POLL_MAX_AGE_MS=30*60*1000;
+// 上限按「这一页上次看到它变化」算,不按回执的 updated_at:回执只在提交时写一次,
+// 拿它算会把一个跑得好好的长任务在半小时后停掉轮询。状态、进度和更新时间都 30 分钟没变才停。
+const WORK_POLL_MS=8000, WORK_POLL_STATES=['preparing','queued','running'], WORK_POLL_QUIET_MS=30*60*1000;
+const WORK_SEEN=new Map();
 function workActionMoving(item){
   const current=item.actions?.current;
-  if(!current || !WORK_POLL_STATES.includes(current.state)) return false;
-  const changed=Date.parse(current.updated_at || current.created_at || '');
-  return Number.isFinite(changed) && Date.now()-changed<WORK_POLL_MAX_AGE_MS;
+  if(!(current && WORK_POLL_STATES.includes(current.state)) && !workActive(item)){WORK_SEEN.delete(item.id);return false;}
+  const sig=JSON.stringify([workState(item),item.updated_at,item.execution,current?.state,current?.updated_at,current?.summary]);
+  const seen=WORK_SEEN.get(item.id), now=Date.now();
+  if(!seen || seen.sig!==sig){WORK_SEEN.set(item.id,{sig,at:now});return true;}
+  return now-seen.at<WORK_POLL_QUIET_MS;
 }
 function workActionIntent(item,actionId,verb){
   const key=JSON.stringify([item.id,actionId,verb]);
@@ -77,7 +82,7 @@ async function sendWorkAction(itemId,actionId,verb){
     if(error.requestRejected || error.payload?.uncertain===false){forget();toast(error.message,'bad');}
     else toast(`${error.message}。未收到确认。再次点击会核对原请求，不会重复创建工作。`,'bad');
   }
-  finally{WORK_ACTION_PENDING.delete(itemId);await loadWork();if($('work-detail').open && WORK_DETAIL_ID===itemId) openWorkRecord(itemId,true);}
+  finally{WORK_ACTION_PENDING.delete(itemId);await loadWork({fresh:true});if($('work-detail').open && WORK_DETAIL_ID===itemId) openWorkRecord(itemId,true);}
 }
 const submitWorkAction=(itemId,actionId)=>sendWorkAction(itemId,actionId,'action');
 const stopWorkAction=(itemId,actionId)=>sendWorkAction(itemId,actionId,'stop');
@@ -90,7 +95,8 @@ function startWorkActions(){
   let timer;
   const refresh=async()=>{
     const visible=['overview','work'].includes(CURVIEW) || $('work-detail').open;
-    if(!document.hidden && visible && (WORK?.items || []).some(workActionMoving)){
+    // 用 filter 不用 some:some 停在第一条命中处,后面几条这一轮的变化就没被记下。
+    if(!document.hidden && visible && (WORK?.items || []).filter(item=>workActionMoving(item)).length){
       await loadWork();if($('work-detail').open && WORK_DETAIL_ID) openWorkRecord(WORK_DETAIL_ID,true);
     }
     timer=setTimeout(refresh,WORK_POLL_MS);
