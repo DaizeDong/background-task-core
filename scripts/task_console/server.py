@@ -714,8 +714,7 @@ def build_freshness(tasks: dict, health: dict, health_reason: str | None = None)
 
 
 # 导出给页面的字段,以及**刻意不导出**的那些。两个集合加起来必须覆盖 hist / runs 里
-# 写下的每一个键 : tests/test_console_security.py 直接对着这两个常量和生产者的字面量比对,
-# 所以新增一个字段而忘了归类,会让测试变红,而不是让那个字段安静地到不了页面。
+# 写下的每一个键;新增一个字段时要归到其中一个集合,否则那个字段会安静地到不了页面。
 HISTORY_OUT = ("available", "reason", "days", "caveat", "matched", "source", "lastIngest",
                "ingest")
 HISTORY_DROP = ("tasks", "skipped")          # tasks 很大且已并进每一行;skipped 页面用不到

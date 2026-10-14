@@ -107,7 +107,7 @@ def _validate_name(name) -> str:
 # --------------------------------------------------------------------------- scheduler bridge
 # 三条 PowerShell 都只认根路径,名字只经环境变量 TC_NAME 进去,从不拼进命令字符串。
 # 枚举根路径再按名字筛,而不是 `Get-ScheduledTask -TaskName X -ErrorAction SilentlyContinue`:
-# 后者在任务不存在时 rc=1(见 tests/test_retire.py 里那条实测),「确认不存在」和「查不到」
+# 后者在任务不存在时 rc=1,「确认不存在」和「查不到」
 # 会变成同一个结果,而删除恰恰要靠前者来证明自己做完了。
 _HASH_PS = ("$sha = [Security.Cryptography.SHA256]::Create();"
             "function Get-XmlHash($text) { ([BitConverter]::ToString($sha.ComputeHash("

@@ -391,7 +391,7 @@ def _identity_counts(rows: list[dict]) -> dict:
 def _group_counts(rows: list[dict]) -> dict:
     """每个组标题下实际显示多少个仓。伴生仓归到它宿主所在的组。
 
-    不变量:各组之和 == 仓总数。tests/test_repos.py 钉住了这一条。
+    不变量:各组之和 == 仓总数。
     """
     host_kind = {r.get("name"): r.get("kind") for r in rows}
     counts = {k: 0 for k in KIND_ORDER}

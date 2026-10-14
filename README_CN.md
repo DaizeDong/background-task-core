@@ -51,11 +51,11 @@ Windows，Python 3.12 或更新。
 ```bash
 git clone --recursive https://github.com/DaizeDong/task-console
 cd task-console
-pip install pytest pywin32 PyYAML
+pip install pywin32 PyYAML
 git config core.hooksPath .githooks    # 装上闸门；本地配置，提交不进去
 ```
 
-控制台还在模块顶层导入三个钉了版本的库：`convo-chain`、`fleet-guards` 和 `llmcall`（见 `pyproject.toml`）。`llmcall` 是私有仓，公开 clone 装不上它；CI 具体装哪个版本、怎么读这个私有仓，只在 `.github/workflows/tests.yml` 里写一份。
+控制台还在模块顶层导入三个钉了版本的库：`convo-chain`、`fleet-guards` 和 `llmcall`（见 `pyproject.toml`）。
 
 `--recursive` 是要紧的。闸门住在 submodule 里，普通 clone 会留下存在但为空的目录，那是一个没有防护的仓，不是一个干净的仓。已经 clone 过了就跑 `git submodule update --init --recursive`。
 
@@ -96,14 +96,6 @@ python scripts/task_console/server.py --port 8787
 控制台数据库和持久导出保存在私有伴生仓，运行时由 `guards/tools/datadir.py` 解析。解析不到伴生仓时报告 UNINITIALISED 并提供初始化指引；禁止写回工具仓。
 
 [存储说明](docs/storage.md)和[来源契约](storage.contract.json)区分当前运行状态、恢复证据与已完成的开发产物。预算用于触发审核，不允许为达标而截断核心历史。
-
-## 测试
-
-```bash
-python -m pytest tests/ -q
-```
-
-测试针对 Windows 平台。CI 在 `windows-latest` 上运行同一套测试，收集数量低于已通过运行中观察到的下限时会失败。
 
 ## 局限
 

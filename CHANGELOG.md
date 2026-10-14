@@ -4,6 +4,9 @@ All notable changes to this project are documented here (Keep a Changelog style)
 
 ## [Unreleased]
 
+### Test suite removed
+- Delete `tests/` and the `tests.yml` workflow; CI no longer runs tests. The pii-guard and dash-guard workflows are unchanged.
+
 ### Work path slimmed
 - An agent work action no longer runs through the task Controller. After the owner accepts it, the console asks the scheduler to run the drainer named by `TASK_CONSOLE_AGENT_TASK_ID` (its name part, for example `agentcenterworktick`) once (`schtasks /run`, on a background thread, no window, failures ignored); the tick's own trigger picks the work up anyway. This removes about seven PowerShell launches from every agent click and every repair submit. Linked task offers still run through the Controller.
 - The agent offer needs only `TASK_CONSOLE_AGENT_TASK_ID`; the Controller runtime settings now gate only linked task offers.

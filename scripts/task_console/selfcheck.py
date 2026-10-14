@@ -68,8 +68,7 @@ SOURCES = (
 # 只能证明「这 8 个还在」,**永远证明不了「没有第九个被漏掉」**。
 # 实测:生产代码读 17 个 TASK_CONSOLE_*,SOURCES 只有 14 条,漏了下面这三个,
 # 而把 SOURCES 里两条真实来源整条删掉,那个测试文件 18 条照样全过。
-# 现在 tests/test_selfcheck.py 按 SOURCES ∪ OVERRIDES 与实际扫描结果**双向**对账,
-# 任何一边多一个少一个都会红。
+# 新增一个 TASK_CONSOLE_* 读取时,要同时在 SOURCES 或 OVERRIDES 里登记。
 OVERRIDES = (
     ("TASK_CONSOLE_AGENT_TASK_ID", "待办执行队列对应的已登记任务 ID；设了才有「交给 Agent」，提交后直接请计划程序运行 ID 中斜杠后的那个任务。"),
     ("TASK_CONSOLE_READ_ONLY", "只读预览的服务器写入限制，不是数据来源；动作接口在写入前拒绝预览请求。"),

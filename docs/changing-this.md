@@ -138,7 +138,7 @@
 焦点在能打字的框里时先清空再离开,其余按当前分区查 `ESC_STEPS`。新加一种「展开着、可以收起」的状态时,
 在那张表里给它所在的分区加一步,并让那一步只在状态真的开着时返回 true;
 不在表里的分区什么都不做,这样 Esc 不会去改一屏看不见的东西。逻辑放在 `navigation.js` 而不是 `events.js`,
-是为了让 node:vm 台架能测到它(`tests/test_keyboard_conventions.py`)。
+是为了让按键约定集中在一处。
 页面自己的那一层也可以由页面在启动函数里登记,不必改 `navigation.js`:任务开关的就地明细由
 `tasks.js` 的 `registerAutomationKeys()` 往 `ESC_STEPS.automations` 和 `SEARCH_ENTER['automation-search']` 里登记,
 原来那一项(如果有)接在后面照旧执行。
@@ -146,7 +146,7 @@
 这一屏没有可退的层时,Esc 的最后一步是 `returnToOrigin()`:只有下钻来的屏才有来源,回去一次就用掉。
 「下钻」由 `navigation.js` 的 `DRILL_TARGETS` 认(`data-task`、`data-goto` 等),`events.js` 在点击的捕获阶段调 `markDrill()`。
 新加一种「跳到别的屏去看细节」的按钮,把它的属性加进 `DRILL_TARGETS`,否则目的屏不会有「← 返回」。
-从侧栏进来要传 `showView(key, true, {reset:true})`,那样到达的屏没有来源。测试在 `tests/test_shell.py`。
+从侧栏进来要传 `showView(key, true, {reset:true})`,那样到达的屏没有来源。
 
 地址里 `/` 后面那段只放行给会话屏和仓库屏。仓库屏由 `repositories.js` 的 `repoRoute(arg)` 接:选中的仓写进 `#repos/<仓名>`,
 人点的选中用 `pushState` 加一条历史(浏览器后退回到上一个仓),自动选中和「原来那个仓不见了」用 `replaceState`;
@@ -173,8 +173,7 @@
 再调原来的函数,函数开头照样核一遍条件。✕ 写 `data-dismiss="<取消按钮 id>"`,点它就是点那个取消。
 
 要问一句「确定吗」用 `askConfirm({title, body, items, more, confirmLabel, danger})`,它返回 Promise<boolean>,
-取消、Esc、点遮罩都是 false;危险的确认把焦点放在取消上。不要再用浏览器自带的 `confirm()` / `alert()`,
-`tests/test_overlays.py` 会扫。结果要留给人核对的,写进页面上的状态行。
+取消、Esc、点遮罩都是 false;危险的确认把焦点放在取消上。不要再用浏览器自带的 `confirm()` / `alert()`。结果要留给人核对的,写进页面上的状态行。
 
 行内的「更多」菜单用 popover:按钮写 `popovertarget`,菜单写 `popover` 和 `.pop-menu`,位置由 CSS 的
 `position-area` 贴在按钮下方。菜单的开合用 toggle 事件(捕获阶段)记下来,列表重画之后再 `showPopover()`;
@@ -184,7 +183,7 @@
 
 按钮灰掉的样式只有 `styles.css` 末尾那一条 `button:disabled`,带 `!important`:变体规则(主按钮、危险按钮、
 行内操作列、对话框提交)个个比它具体,以前就是它们把灰掉的按钮染回能点的样子。新写带颜色的变体或悬停规则时,
-加上 `:not(:disabled)`;`tests/test_disabled_state.py` 会扫所有作用在按钮上的 `:hover` 规则。
+加上 `:not(:disabled)`。
 
 灰掉一个按钮走 `api.js` 的 `setDisabled(button, reason)`(页面自己的原因走 `ConsoleActions.gate`,只读预览会压过它),
 拼 HTML 时用 `disabledTitle(label, reason)` 或 `ibtn(sym, label, extra, cls, reason, hint)`。
@@ -199,11 +198,10 @@
 `errorBlock(what, error, retryAttr)` 和 `countCell(state, n, reason)`(state 取 loading / unchecked / broken / ok),
 筛选计数用 `matchCount(n, m, unit)`。`errorBlock` 只把人话放进正文,`work_reader_failed` 这种代号和「说明 (代号)」里的括号只进 title。
 时间用 `fmtTime(ts,{relative, now, soon})`,要悬停全称就用 `timeTag(ts)`;数字用 `fmtNum(n)`,字节用 `kb(n)`。
-`tests/test_display_helpers.py` 钉着这些输出。
 
 `toast(message, tone)` 的 tone 是 ok / info / warn / bad,不写就是 info。成功(读回来确认过的)写 'ok',
 只是受理、还没确认的写 'info' 或 'warn',出错写 'bad'(它会一直留着)。操作面板的收起和 ✕ 在 `ConsoleActions`
-(`collapseDelay`、`dismiss()`、`expand()`),测试见 `tests/test_operations_ui.py` 里用假定时器的那三条。
+(`collapseDelay`、`dismiss()`、`expand()`)。
 
 字号只有 `--fs-title` / `--fs-lead` / `--fs-body` / `--fs-meta` 四档(20/14/13/12),`--fs-chip` 只是 `--fs-meta` 的别名,
 别再写死 px。新表头、新芯片加进 `workbench.css` 末尾那两条共用规则的选择器里,只在自己的规则里写颜色和描边。

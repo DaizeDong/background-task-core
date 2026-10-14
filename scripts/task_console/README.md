@@ -236,7 +236,7 @@ because they call for different fixes:
   An empty or whitespace-only `verdict` counts as not written: 未评估, no warning.
 - A `taskInfo` key that matches no Scheduler task is named in a page warning. Otherwise a misspelt task name would leave the real task quietly 未评估 while a misspelt field name is reported.
 
-The page keeps its own copy of the verdict list. `tests/test_task_info.py` checks it against the server's, and a value only the server knows still shows 建议无法识别 rather than 未评估.
+The page keeps its own copy of the verdict list; a value only the server knows still shows 建议无法识别 rather than 未评估.
 
 Strings are kept verbatim, including empty strings; dates are not parsed. Each task row
 exposes the cleaned object as `info`, or `{}` when absent or ignored. If a task has metadata

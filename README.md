@@ -51,11 +51,11 @@ Windows, Python 3.12 or newer.
 ```bash
 git clone --recursive https://github.com/DaizeDong/task-console
 cd task-console
-pip install pytest pywin32 PyYAML
+pip install pywin32 PyYAML
 git config core.hooksPath .githooks    # arms the guards; local config, so it cannot be committed
 ```
 
-The console also imports three pinned libraries at module top: `convo-chain`, `fleet-guards` and `llmcall` (see `pyproject.toml`). `llmcall` is a private repository, so a public clone cannot install it; `.github/workflows/tests.yml` is the one place that spells out the exact revisions CI installs and how it reads the private one.
+The console also imports three pinned libraries at module top: `convo-chain`, `fleet-guards` and `llmcall` (see `pyproject.toml`).
 
 `--recursive` matters. The gates live in submodules, and a plain clone leaves those directories present and empty, which is an unguarded repository rather than a clean one. If you already cloned without it, run `git submodule update --init --recursive`.
 
@@ -109,14 +109,6 @@ The database and durable export live in a private companion resolved by `guards/
 <a id="storage-retention"></a>
 
 [Storage contract and cleanup](docs/storage.md) distinguish protected runtime and recovery state from completed development artifacts. `storage.contract.json` sets review budgets; cleanup never truncates core history to meet them.
-
-## Tests
-
-```bash
-python -m pytest tests/ -q
-```
-
-The tests target Windows. CI runs the same suite on `windows-latest` and fails if the collected count falls below the floor observed in a passing run.
 
 ## Limitations
 
