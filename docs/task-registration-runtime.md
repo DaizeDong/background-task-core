@@ -51,7 +51,9 @@ launcher as that reference plus its relative path and run
 `wscript.exe //B //Nologo <launcher>`, so the registered task names no machine path.
 The Scheduler expands the reference when the task starts; `//B` makes a reference
 that names nothing exit 1 at once instead of opening a modal "cannot find script
-file" box that holds the run until its time limit. The reference is not checked
+file" box that holds the run until its time limit. `//B` also hides runtime errors
+inside the launcher, so the launcher reports its own (see the renderer below).
+The reference is not checked
 against the private root at registration; a wrong one fails the first run.
 `active_xml` must include an export path or explicit null for every retired task.
 
@@ -212,9 +214,15 @@ reference in `argv`, `cwd` or `source_root` names a path through an environment
 variable: `argv[0]`, `cwd` and `source_root` may start with one instead of an
 absolute path, an argument holding one is quoted whole, and a `cwd` holding one is
 set through `ExpandEnvironmentStrings`. Any other percent sign refuses, as do
-newline/NUL arguments. An unset variable stays literal, so the run fails on a
-path that does not exist; nothing substitutes a default. Registration never
-executes a launcher or payload.
+newline/NUL arguments. An unset variable stays literal and nothing substitutes a
+default. A reference that expands to nothing usable makes the statement raise a
+runtime error ("file not found" when Run cannot start the program, for example),
+and `wscript //B` swallows such an error and exits 0, which the Scheduler records
+as success. A launcher whose `cwd` holds a reference therefore sets the directory
+under `On Error Resume Next` and quits 1 when it fails, and one whose `argv` holds
+a reference runs `rc = shell.Run(...)` the same way, quits 1 when Run raised and
+otherwise quits with the payload's exit code. Launchers without references render
+byte for byte as before. Registration never executes a launcher or payload.
 
 ## Integration evidence and remaining release work
 
