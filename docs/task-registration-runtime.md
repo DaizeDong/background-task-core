@@ -45,6 +45,14 @@ supplied private root:
 Submitted desired input is the T11 request envelope, distinct from generated files
 and immutable during compensation. All six main output files must already exist.
 Launcher/export inventory is explicit; existing unmanaged launchers conflict.
+An optional `launcher_root_reference` such as `"%EXAMPLE_ROOT%\\private"` spells the
+private root through an environment variable. Scheduled actions then name each
+launcher as that reference plus its relative path and run
+`wscript.exe //B //Nologo <launcher>`, so the registered task names no machine path.
+The Scheduler expands the reference when the task starts; `//B` makes a reference
+that names nothing exit 1 at once instead of opening a modal "cannot find script
+file" box that holds the run until its time limit. The reference is not checked
+against the private root at registration; a wrong one fails the first run.
 `active_xml` must include an export path or explicit null for every retired task.
 
 Adoption is reviewed ownership evidence, never inferred from matching names. Its
@@ -199,9 +207,14 @@ The pure launcher renderer reuses the helper's UTF-16LE BOM, hidden Run(...,0,Tr
 and WScript.Quit exit propagation, plus working directory. It handles disabled
 tasks and never invokes the old helper. Launcher paths participate in locking,
 staging, readback and compensation; retirement removes them only after idle and
-disabled validation. Percent-sign arguments refuse because WScript.Shell.Run
-expands environment tokens; newline/NUL arguments also refuse. Tests and
-registration never execute a launcher or payload.
+disabled validation. WScript.Shell.Run expands `%NAME%` tokens, so a well-formed
+reference in `argv`, `cwd` or `source_root` names a path through an environment
+variable: `argv[0]`, `cwd` and `source_root` may start with one instead of an
+absolute path, an argument holding one is quoted whole, and a `cwd` holding one is
+set through `ExpandEnvironmentStrings`. Any other percent sign refuses, as do
+newline/NUL arguments. An unset variable stays literal, so the run fails on a
+path that does not exist; nothing substitutes a default. Registration never
+executes a launcher or payload.
 
 ## Integration evidence and remaining release work
 

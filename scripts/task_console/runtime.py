@@ -6,6 +6,7 @@ import re
 
 from fleet_guards import filesystem as fs
 from . import registration as reg
+from .contracts import VARIABLE_REFERENCE, anchored_path, stray_percent
 from .runtime_storage import (FileResources, JournalStore, ProtectedVault, ResourceLocks,
                               digest, encode, identifier, read_json)
 from .scheduler_windows import WindowsScheduler
@@ -40,6 +41,15 @@ class RuntimeConfig:
     active_xml: dict
     launchers: dict
     source_path: Path | None = None
+    # What a scheduled action names to reach each launcher: its absolute path, or, when the config
+    # gives launcher_root_reference, that %NAME%-anchored spelling of the private root plus the
+    # launcher's relative path, so the registered task names no machine path.
+    launcher_arguments: dict | None = None
+
+    def launcher_argument(self, task_id):
+        if self.launcher_arguments is None:
+            return self.launchers.get(task_id)
+        return self.launcher_arguments.get(task_id)
 
     @classmethod
     def read(cls, path, *, private_root, state_root, vault_root):
@@ -49,8 +59,15 @@ class RuntimeConfig:
         vault = fs.validate_path(vault_root)
         source_path = fs.validate_path(path, root=private)
         document = read_json(source_path)
-        if set(document) != {'schemaVersion', 'domain', 'desired', 'adoption', 'paths', 'active_xml', 'launchers'} or document['schemaVersion'] != 1:
+        required = {'schemaVersion', 'domain', 'desired', 'adoption', 'paths', 'active_xml', 'launchers'}
+        if (not required <= set(document) <= required | {'launcher_root_reference'}
+                or document['schemaVersion'] != 1):
             raise reg.Conflict('invalid_runtime_config', 'runtime')
+        reference = document.get('launcher_root_reference')
+        if reference is not None and (not isinstance(reference, str) or not VARIABLE_REFERENCE.match(reference)
+                                      or not anchored_path(reference) or stray_percent(reference)
+                                      or any(c in reference for c in '\r\n\x00"')):
+            raise reg.Conflict('invalid_launcher_root_reference', 'runtime')
         def resolve(value):
             if not isinstance(value, str) or not value:
                 raise reg.Conflict('invalid_resource_path', 'runtime')
@@ -68,7 +85,13 @@ class RuntimeConfig:
                 or state.is_relative_to(vault) or vault.is_relative_to(state)
                 or desired == adoption):
             raise reg.Conflict('aliased_runtime_paths', 'runtime')
-        return cls(private, state, vault, identifier(document['domain']), desired, adoption, paths, exports, launchers, source_path)
+        arguments = None
+        if reference is not None:
+            # The same relative paths that resolve() placed under the private root, in Windows form.
+            arguments = {k: reference.rstrip('\\/') + '\\' + v.replace('/', '\\').strip('\\')
+                         for k, v in document['launchers'].items()}
+        return cls(private, state, vault, identifier(document['domain']), desired, adoption, paths, exports, launchers,
+                   source_path, arguments)
 
 
 class GenerationAuthority:
@@ -259,7 +282,7 @@ def create_runtime(config, *, transport=None, protector=None, checkpoint=lambda 
     authority = GenerationAuthority(config, files, scheduler, journal, vault)
     runtime = reg.Runtime(authority.load, files, scheduler, journal, vault,
                           ResourceLocks(config.state_root / 'locks'),
-                          lambda spec, old, enabled: render(spec, old, enabled, config.launchers.get(spec['task_id'])),
+                          lambda spec, old, enabled: render(spec, old, enabled, config.launcher_argument(spec['task_id'])),
                           checkpoint)
     runtime.finish = lambda record, status: authority.finish(runtime, record, status)
     runtime.authority = authority

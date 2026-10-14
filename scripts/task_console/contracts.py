@@ -2,8 +2,13 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
+from pathlib import PurePosixPath, PureWindowsPath
+import re
 
 SCHEMA_VERSION = 1
+# %NAME% names an environment variable that the hidden launcher's WScript.Shell.Run expands when
+# the task runs, so a declaration can say where things are without naming one machine's paths.
+VARIABLE_REFERENCE = re.compile(r"%([A-Za-z_][A-Za-z0-9_]*)%")
 SCHEDULER_FIELDS = ("name", "enabled", "argv", "cwd", "timezone", "trigger", "principal",
                     "power", "timeout_seconds", "concurrency", "xml_passthrough")
 
@@ -36,6 +41,19 @@ def versioned(data, field: str) -> dict:
     if type(data.get("schemaVersion")) is not int or data["schemaVersion"] != SCHEMA_VERSION:
         raise ContractError("unsupported_schema", field)
     return data
+
+
+def stray_percent(text: str) -> bool:
+    """True when a '%' is not part of a %NAME% reference (Run would still expand it)."""
+    return "%" in VARIABLE_REFERENCE.sub("", text)
+
+
+def anchored_path(text: str) -> bool:
+    """An absolute path, or one that starts with a %NAME% reference followed by a separator or nothing."""
+    if PureWindowsPath(text).is_absolute() or PurePosixPath(text).is_absolute():
+        return True
+    match = VARIABLE_REFERENCE.match(text)
+    return match is not None and text[match.end():match.end() + 1] in ("", "\\", "/")
 
 
 def fields(data: dict, allowed: set[str], field: str) -> None:

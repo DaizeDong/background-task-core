@@ -209,7 +209,7 @@ def _collect(runtime, review, *, receipt=None):
             _fail('historical_task_present')
         if task_id in scheduler_reviews:
             _validate_scheduler_snapshot(scheduler_reviews[task_id], proof, snapshot,
-                                         current_specs.get(task_id), launcher=config.launchers.get(task_id))
+                                         current_specs.get(task_id), launcher=config.launcher_argument(task_id))
         elif task_id in review['task_ids'] and snapshot.get('identity') != proof['identity']:
             _fail('scheduler_ownership_changed')
         tasks[task_id] = {'name': proof['name'], 'snapshot': stable}
@@ -231,7 +231,7 @@ def _collect(runtime, review, *, receipt=None):
     }
     if scheduler_reviews:
         baseline['reviewed_scheduler'] = {
-            task_id: {'spec': deepcopy(current_specs[task_id]), 'launcher': config.launchers.get(task_id)}
+            task_id: {'spec': deepcopy(current_specs[task_id]), 'launcher': config.launcher_argument(task_id)}
             for task_id in scheduler_reviews}
     if history is not None:
         baseline['historical_tasks'] = history

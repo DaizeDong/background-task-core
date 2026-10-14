@@ -3,11 +3,10 @@ from __future__ import annotations
 
 from copy import deepcopy
 import json
-from pathlib import PurePosixPath, PureWindowsPath
 import re
 from xml.etree import ElementTree
 
-from .contracts import ContractError, TaskSpec, fields, require, versioned
+from .contracts import ContractError, TaskSpec, anchored_path, fields, require, stray_percent, versioned
 from .freshness import OK_CODE_KEYS
 
 _ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]*\Z")
@@ -116,7 +115,9 @@ def _binding(binding: dict) -> None:
     for key in ("name", "cwd", "source_root", "timezone", "category"):
         require(binding, key, str)
     for key in ("cwd", "source_root"):
-        if not (PureWindowsPath(binding[key]).is_absolute() or PurePosixPath(binding[key]).is_absolute()):
+        if stray_percent(binding[key]):
+            raise ContractError("invalid_variable_reference", key)
+        if not anchored_path(binding[key]):
             raise ContractError("absolute_path_required", key)
     for key in ("enabled", "backup"):
         require(binding, key, bool)
@@ -130,7 +131,9 @@ def _binding(binding: dict) -> None:
     if (not isinstance(argv, list) or not argv or not isinstance(argv[0], str) or not argv[0]
             or any(not isinstance(arg, str) or "\0" in arg for arg in argv)):
         raise ContractError("invalid_argv", "argv")
-    if not (PureWindowsPath(argv[0]).is_absolute() or PurePosixPath(argv[0]).is_absolute()):
+    if any(stray_percent(arg) for arg in argv):
+        raise ContractError("invalid_variable_reference", "argv")
+    if not anchored_path(argv[0]):
         raise ContractError("absolute_path_required", "argv.0")
     if "trigger" not in binding:
         raise ContractError("missing_field", "trigger")
