@@ -13,13 +13,11 @@
     "discovery_document": "CONFIG.md",
     "environment": "TASK_CONSOLE_CONFIG",
     "aliases": [
-      "TASK_CONSOLE_CONFIG_DIR",
       "TASK_CONSOLE_DATA_DIR"
     ],
     "precedence": [
       "TASK_CONSOLE_DB selects an exact declared database path",
       "TASK_CONSOLE_CONFIG",
-      "TASK_CONSOLE_CONFIG_DIR",
       "TASK_CONSOLE_DATA_DIR",
       "sibling task-console-config"
     ],

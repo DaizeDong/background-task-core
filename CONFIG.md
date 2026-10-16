@@ -15,9 +15,8 @@ public repositories is enforced at commit and push time by the fleet-guards hook
 Without that override, the companion root is selected in this order:
 
 1. `TASK_CONSOLE_CONFIG`.
-2. `TASK_CONSOLE_CONFIG_DIR`.
-3. `TASK_CONSOLE_DATA_DIR`; a final `data` component denotes the child of the companion root.
-4. The fleet_guards sibling `task-console-config` convention.
+2. `TASK_CONSOLE_DATA_DIR`; a final `data` component denotes the child of the companion root.
+3. The fleet_guards sibling `task-console-config` convention.
 
 Use these direct companion locations for setup and recovery.
 

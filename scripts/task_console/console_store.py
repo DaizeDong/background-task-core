@@ -54,9 +54,8 @@ def _load_datadir():
 def companion_root():
     """Select configuration once; an explicit missing root never falls through."""
     resolver = _load_datadir()
-    for key in ("TASK_CONSOLE_CONFIG", "TASK_CONSOLE_CONFIG_DIR"):
-        if os.environ.get(key):
-            return Path(os.environ[key]).expanduser().absolute()
+    if os.environ.get("TASK_CONSOLE_CONFIG"):
+        return Path(os.environ["TASK_CONSOLE_CONFIG"]).expanduser().absolute()
     if os.environ.get("TASK_CONSOLE_DATA_DIR"):
         selected = Path(os.environ["TASK_CONSOLE_DATA_DIR"]).expanduser().absolute()
         return selected.parent if selected.name == "data" else selected

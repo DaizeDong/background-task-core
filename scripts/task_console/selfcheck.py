@@ -82,8 +82,6 @@ OVERRIDES = (
      "库本身可不可用由 load_from_db 的 reason 单独报。"),
     ("TASK_CONSOLE_CONFIG",
      "私有伴生仓根目录的首选覆盖项，不是独立面板来源；数据库的可用性由 load_from_db 的 reason 单独报告。"),
-    ("TASK_CONSOLE_CONFIG_DIR",
-     "私有伴生仓根目录的兼容覆盖项，优先级低于 TASK_CONSOLE_CONFIG；它选择存储位置，不增加独立面板来源。"),
     ("TASK_CONSOLE_DATA_DIR",
      "旧数据目录覆盖项，可指向伴生仓或其 data 子目录；仅用于位置选择，数据库状态由读取结果单独报告。"),
     ("TASK_CONSOLE_POWERSHELL",
