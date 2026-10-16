@@ -631,7 +631,7 @@ function repoReview(items){
     const body=make("div", {className:"dialog-body"});
     const detail=make("pre", {textContent:items.map(({name, plan})=>repoPlanText(name, plan)).join("\n\n────────\n\n")});
     const label=make("label", {textContent:"提交信息"});
-    const initial=items.every(x=>x.plan.retry) ? "重试推送" : "例行数据同步";
+    const initial=items.every(x=>x.plan.retry) ? "Retry push" : "Sync routine data changes";
     const input=make("input", {type:"text", value:initial, maxLength:200});
     label.appendChild(input);
     const error=make("p");error.setAttribute("role", "alert");
