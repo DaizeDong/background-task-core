@@ -173,7 +173,7 @@
    具体清单一律不放,只放指针。现在 12-21 行那两段实现细节搬走。
 2. **`scripts/task_console/README.md`** 收到约 140 行,只回答"怎么在一台机器上配起来并用起来"。
    环境变量表**补三行**(有三个真实生效的变量不在表里,而对账测试按设计看不见它们,
-   它只扫 `scripts/task_console/*.py`,那三个派生自 `guards/tools/datadir.py`)。
+   它只扫 `scripts/task_console/*.py`,那三个由 `fleet_guards.runtime.companion_resolver` 解析)。
    加一小节《先把 ingester 跑起来》:首次 backfill 命令、必须每小时调一次、
    因为事件日志是约五天的环形缓冲。不贴计划任务 XML,那属于机器侧。
 3. **新增 `scripts/task_console/INTERFACE.md`** 约 80 行,两张表:18 条路由、19 个模块。
