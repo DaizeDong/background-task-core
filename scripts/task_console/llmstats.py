@@ -34,6 +34,7 @@ chain 里的那些调用,今天在任何地方都读不出来,而它就是「为
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import os
 import re
@@ -86,10 +87,9 @@ ENV_LEDGER = "TASK_CONSOLE_LLMCALL_LEDGER"
 ENV_CHAIN_FILE = "TASK_CONSOLE_LLMCALL_CHAIN"
 # 这一个不是控制台的,是 llmcall 自己的:它压过配置文件,所以控制台必须认它。
 ENV_CHAIN = "LLMCALL_CHAIN"
-# 正文目录。控制台的显式覆盖优先,其余几步复刻 llmcall 那边的伴生仓解析顺序。
+# 正文目录的显式覆盖。其余位置由 llmcall 自己用的那个 fleet_guards 解析器给出。
 ENV_BODIES = "TASK_CONSOLE_LLMCALL_BODIES"
-ENV_LLMCALL_DATA = "LLMCALL_DATA_DIR"
-ENV_LLMCALL_CONFIG = "LLMCALL_CONFIG"
+RESOLVER_SOURCE = "fleet_guards resolver (llmcall)"
 
 # 一条链最多几级。没有上限时,一个手滑粘进来的几千项列表会被原样写进配置文件。
 MAX_CHAIN = 16
@@ -116,16 +116,29 @@ class Refused(Exception):
 # 路径
 # --------------------------------------------------------------------------
 
+def _llmcall_data() -> tuple[Path | None, str]:
+    """llmcall 的伴生 data 目录,返回 `(目录或 None, 解析不到的原因)`。
+
+    绑定方式和 llmcall/core.py 的 `_datadir()` 相同:已安装 llmcall 的源根交给
+    `fleet_guards.runtime.companion_resolver`,所以控制台和 llmcall 找的是同一个目录,
+    没有第二份发现顺序。llmcall 只用 find_spec 定位,不执行。读可降级:解析不了不抛。
+    """
+    try:
+        spec = importlib.util.find_spec("llmcall")
+        if spec is None or spec.origin is None:
+            return None, "llmcall is not installed"
+        from fleet_guards.runtime import companion_resolver
+        source_root = Path(spec.origin).resolve().parents[1]
+        base = companion_resolver(source_root=source_root).resolve_data_dir("llmcall")
+    except (ImportError, OSError, ValueError, RuntimeError) as exc:
+        return None, str(exc)
+    return base, "" if base is not None else "no llmcall companion resolved"
+
+
 def _runtime_dir() -> Path | None:
-    """Use the selected producer data root; never invent a home directory."""
-    value = os.environ.get(ENV_LLMCALL_DATA)
-    if value:
-        return Path(os.path.expanduser(value)) / "runtime"
-    value = os.environ.get(ENV_LLMCALL_CONFIG)
-    if value:
-        root = Path(os.path.expanduser(value))
-        return (root if root.name == "data" else root / "data") / "runtime"
-    return None
+    """llmcall 的 runtime 目录(`<伴生 data>/runtime`),解析不到就是 None。"""
+    base, _ = _llmcall_data()
+    return base / "runtime" if base is not None else None
 
 
 def ledger_path() -> Path | None:
@@ -163,33 +176,10 @@ def _resolve_bodies() -> dict:
 
     解析不出来时 `dir` 是 None,**不抛**。
 
-    正文落在 llmcall 的**私有伴生仓**里(`<name>-config` 仓,数据在 `<config>/data/` 下),
-    不是 `~/.llmcall/` 下的散目录 —— 散目录没有版本历史也没有备份,是这个 fleet
-    明确禁止的形态。
-
-    顺序,**全部来自环境变量**:
-
     1. `TASK_CONSOLE_LLMCALL_BODIES` 显式覆盖,**设了就用,存不存在都用**
        (设错了要能看见那个路径,悄悄滑到下一级会让人对着一份没配好的环境查保留策略)
-    2. `LLMCALL_DATA_DIR` 下的 `bodies/`
-    3. `LLMCALL_CONFIG` 下的 `data/bodies/`(它本身以 data 结尾时,就是它下面的 `bodies/`)
-    4. 都落空 → `dir` 为 None,页面显示「未初始化」并打出上面每一级找过哪里
-
-    **这里刻意不去猜家目录下的约定路径。** 原先还有两级 `~/.<工具名>-config/data/bodies/`
-    和 `~/.<工具名>-data/bodies/`,是照着那个基元的发现顺序复刻的。删掉它们有两个理由,
-    第二个才是真正决定性的:
-
-    一是**两份顺序必然漂**。权威在基元那边,这里每多写一级,就多一处会跟源头对不上的地方,
-    而对不上的时候两边都照常运行,只是找的不是同一个目录。
-
-    二是**这是一个公开仓,而那两级路径里嵌着机主私有伴生仓的名字**。写进来等于在公开代码里
-    宣告「存在这么一个私有仓,里面装着什么」—— 跨仓链接正是 PII 闸门认的一类,它在这一行上
-    真的拦住过一次提交。值得注意的是那段文字**在建仓之前是干净的**:同一份源码,在那个私有仓
-    被创建并登记之后才变成泄漏。所以判据不是「这段字符串看起来像不像敏感」,而是「它现在
-    指不指得到一个真实存在的私有东西」,而那是会变的。
-
-    代价是一台没设任何环境变量的机器解析不到正文目录。那个代价是对的:公开仓应当**被指向**,
-    不应当去猜机主的目录布局。解析不到时页面会说该设哪个变量。
+    2. llmcall 伴生 data 目录下的 `bodies/`,由 `_llmcall_data()` 用 llmcall 自己的解析器给出
+    3. 都落空 → `dir` 为 None,页面显示「未初始化」并打出上面每一级找过哪里
 
     **读可降级,不抛。** 写方找不到伴生仓必须硬失败(否则真实观察会被丢掉或退回仓内),
     读方找不到只是「还没初始化」,照实说出来就行 —— 在这里抛会让一台没装 llmcall
@@ -206,28 +196,15 @@ def _resolve_bodies() -> dict:
         tried.append({"source": ENV_BODIES, "path": str(p), "is_dir": p.is_dir()})
         return {"dir": p, "source": ENV_BODIES, "tried": tried}
 
-    cands = []
-
-    v = os.environ.get(ENV_LLMCALL_DATA)
-    if v:
-        cands.append((ENV_LLMCALL_DATA, Path(os.path.expanduser(v)) / "bodies"))
-
-    v = os.environ.get(ENV_LLMCALL_CONFIG)
-    if v:
-        cfg = Path(os.path.expanduser(v))
-        # 已经指到 data 了就不要再套一层 data,否则这一级永远解析不出东西
-        base = cfg if cfg.name == "data" else cfg / "data"
-        cands.append((ENV_LLMCALL_CONFIG, base / "bodies"))
-
-    # 到此为止:没有任何一级是猜出来的家目录路径。理由见函数 docstring 第二段,
-    # 那两级里嵌着机主私有伴生仓的名字,而这是一个公开仓。
-
-    for src, p in cands:
-        ok = p.is_dir()
-        tried.append({"source": src, "path": str(p), "is_dir": ok})
-        if ok:
-            return {"dir": p, "source": src, "tried": tried}
-
+    base, why = _llmcall_data()
+    if base is None:
+        tried.append({"source": RESOLVER_SOURCE, "path": why, "is_dir": False})
+        return {"dir": None, "source": None, "tried": tried}
+    p = base / "bodies"
+    ok = p.is_dir()
+    tried.append({"source": RESOLVER_SOURCE, "path": str(p), "is_dir": ok})
+    if ok:
+        return {"dir": p, "source": RESOLVER_SOURCE, "tried": tried}
     return {"dir": None, "source": None, "tried": tried}
 
 

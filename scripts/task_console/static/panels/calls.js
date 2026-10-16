@@ -464,7 +464,7 @@ function detailHTML(r){
     s += '<p class="faint" style="margin:6px 0 0">' + esc((b && b.reason) || "正文未记录。") + "</p>";
     // 「找不到」不说自己找过哪里,人只能靠猜。把走过的每一级和结论都摊开。
     // 「找不到」还要说「怎么办」。这个 fleet 的伴生仓约定是兄弟目录,
-    // 而解析链只认家目录下那两个位置,所以一个建在别处的伴生仓必须靠一个环境变量被指到。
+    // 不在兄弟位置的伴生仓必须靠一个环境变量被指到。
     // 不写这句的话,人会去重建一个已经建好的仓。
     if(b && b.reason_code === "uninitialised")
       s += '<p class="faint" style="margin:4px 0 0">伴生仓若建在别处,设 '

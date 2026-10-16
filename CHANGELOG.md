@@ -5,6 +5,7 @@ All notable changes to this project are documented here (Keep a Changelog style)
 ## [Unreleased]
 
 - Removed the `TASK_CONSOLE_CONFIG_DIR` alias; `TASK_CONSOLE_CONFIG` alone names the companion root.
+- The call view resolves llmcall's runtime and bodies directories through the `fleet_guards` companion resolver bound to the installed llmcall, the same one llmcall uses. Its own `LLMCALL_DATA_DIR` / `LLMCALL_CONFIG` ladders are gone; `TASK_CONSOLE_LLMCALL_BODIES` stays as the explicit override.
 
 ### Guards from the local checkout
 - Privacy hooks run from the local fleet-guards checkout named by `git config fleet.guards`, the dash check from `fleet.style`; the `guards/` and `style/` submodules and the pii-guard, dash-guard and fleet-sync workflows are removed. `console_store.py` loads the installed `fleet_guards.runtime` resolver for source checkouts and wheels alike, with no path load from `guards/fleet_guards`.
