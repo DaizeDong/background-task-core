@@ -52,14 +52,8 @@ def _load_datadir():
 
 
 def companion_root():
-    """Select configuration once; an explicit missing root never falls through."""
-    resolver = _load_datadir()
-    if os.environ.get("TASK_CONSOLE_CONFIG"):
-        return Path(os.environ["TASK_CONSOLE_CONFIG"]).expanduser().absolute()
-    if os.environ.get("TASK_CONSOLE_DATA_DIR"):
-        selected = Path(os.environ["TASK_CONSOLE_DATA_DIR"]).expanduser().absolute()
-        return selected.parent if selected.name == "data" else selected
-    root = resolver.resolve_companion_root(SKILL)
+    """The companion root from the fleet_guards resolver, or None when uninitialized."""
+    root = _load_datadir().resolve_companion_root(SKILL)
     return Path(root).absolute() if root else None
 
 

@@ -12,15 +12,16 @@ to report usable history.
 this payload's own source tree is refused. Point it into the PRIVATE companion; keeping DATA out of
 public repositories is enforced at commit and push time by the fleet-guards hooks, not at runtime.
 
-Without that override, the companion root is selected in this order:
+Without that override, the fleet_guards companion resolver selects the companion root in this
+order, skipping any directory that does not exist:
 
-1. `TASK_CONSOLE_CONFIG`.
-2. `TASK_CONSOLE_DATA_DIR`; a final `data` component denotes the child of the companion root.
-3. The fleet_guards sibling `task-console-config` convention.
+1. `TASK_CONSOLE_DATA_DIR`; a final `data` component denotes the child of the companion root.
+2. `TASK_CONSOLE_CONFIG`.
+3. The sibling `task-console-config` convention.
 
 Use these direct companion locations for setup and recovery.
 
-Explicit roots remain selected even when absent. The database always occupies the canonical
+The database always occupies the canonical
 `<root>/data/task-console/console.sqlite3`; this avoids changing layout based on whether `data/`
 already exists. Overrides do not copy, initialize or migrate databases. Source checkouts and
 installed wheels both use the installed `fleet_guards.runtime` package API.
