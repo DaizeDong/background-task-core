@@ -49,15 +49,16 @@ Outgoing actions retain a two-step review flow.
 Windows, Python 3.12 or newer.
 
 ```bash
-git clone --recursive https://github.com/DaizeDong/task-console
+git clone https://github.com/DaizeDong/task-console
 cd task-console
 pip install pywin32 PyYAML
+pip install -e "$(git config --get fleet.guards)"
 git config core.hooksPath .githooks    # arms the guards; local config, so it cannot be committed
 ```
 
 The console also imports three pinned libraries at module top: `convo-chain`, `fleet-guards` and `llmcall` (see `pyproject.toml`).
 
-`--recursive` matters. The gates live in submodules, and a plain clone leaves those directories present and empty, which is an unguarded repository rather than a clean one. If you already cloned without it, run `git submodule update --init --recursive`.
+The hooks run the privacy checks from the local fleet-guards checkout named by `git config --global fleet.guards`, and the dash check from `fleet.style`. A commit is blocked while either key is unset or points at a missing checkout.
 
 ## Quick start
 
@@ -104,7 +105,7 @@ Regenerate the public examples with `python tools/make_fixtures.py`.
 
 ## Where the data lives
 
-The database and durable export live in a private companion resolved by `guards/tools/datadir.py`. If no companion resolves, the console reports UNINITIALISED with setup instructions. Writes never fall back to this tool repository.
+The database and durable export live in a private companion resolved by `fleet_guards.runtime`. If no companion resolves, the console reports UNINITIALISED with setup instructions. Writes never fall back to this tool repository.
 
 <a id="storage-retention"></a>
 

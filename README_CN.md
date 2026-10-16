@@ -49,15 +49,16 @@
 Windows，Python 3.12 或更新。
 
 ```bash
-git clone --recursive https://github.com/DaizeDong/task-console
+git clone https://github.com/DaizeDong/task-console
 cd task-console
 pip install pywin32 PyYAML
+pip install -e "$(git config --get fleet.guards)"
 git config core.hooksPath .githooks    # 装上闸门；本地配置，提交不进去
 ```
 
 控制台还在模块顶层导入三个钉了版本的库：`convo-chain`、`fleet-guards` 和 `llmcall`（见 `pyproject.toml`）。
 
-`--recursive` 是要紧的。闸门住在 submodule 里，普通 clone 会留下存在但为空的目录，那是一个没有防护的仓，不是一个干净的仓。已经 clone 过了就跑 `git submodule update --init --recursive`。
+钩子从全局 `git config fleet.guards` 指向的本机 fleet-guards checkout 跑隐私检查，从 `fleet.style` 跑破折号检查。任一项没设或指向的 checkout 不在，提交就会被拦下。
 
 ## 快速开始
 
@@ -93,7 +94,7 @@ python scripts/task_console/server.py --port 8787
 
 ## 真实数据住在哪
 
-控制台数据库和持久导出保存在私有伴生仓，运行时由 `guards/tools/datadir.py` 解析。解析不到伴生仓时报告 UNINITIALISED 并提供初始化指引；禁止写回工具仓。
+控制台数据库和持久导出保存在私有伴生仓，运行时由 `fleet_guards.runtime` 解析。解析不到伴生仓时报告 UNINITIALISED 并提供初始化指引；禁止写回工具仓。
 
 [存储说明](docs/storage.md)和[来源契约](storage.contract.json)区分当前运行状态、恢复证据与已完成的开发产物。预算用于触发审核，不允许为达标而截断核心历史。
 

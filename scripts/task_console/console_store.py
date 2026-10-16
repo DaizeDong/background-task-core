@@ -14,7 +14,7 @@ through it. Resolution order:
 
 Resolution is a path decision only: no Git or GitHub calls happen at runtime. The one check kept
 is a pure path comparison that refuses a destination inside this payload's own source tree. Keeping
-DATA out of public repositories is enforced at commit and push time by the hooks and CI.
+DATA out of public repositories is enforced at commit and push time by the fleet-guards hooks.
 
 READS DEGRADE, WRITES DO NOT. Readers open the file read-only through a URI and, when it is absent
 or unreadable, return a state object carrying a Chinese sentence explaining which of the six
@@ -37,46 +37,18 @@ _checkout = HERE.parents[1]
 SOURCE_ROOT = (_checkout if (_checkout / ".git").exists()
                and (_checkout / "pyproject.toml").is_file() else HERE)
 _datadir = None
-_storage = None
-_storage_root = None
-
-
-def _pinned_module(filename, name):
-    import importlib.util
-    source = SOURCE_ROOT / "guards" / "fleet_guards" / filename
-    if not source.is_file():
-        raise ValueError("Initialize this payload's pinned Guards submodule: missing " + filename)
-    spec = importlib.util.spec_from_file_location(name, source)
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[name] = module
-    spec.loader.exec_module(module)
-    return module
 
 
 def _load_datadir():
     global _datadir
     if _datadir is None:
-        _datadir = _load_storage().companion_resolver(source_root=SOURCE_ROOT)
-    if not callable(getattr(_datadir, "resolve_companion_root", None)):
-        raise ValueError("This payload lacks a usable pinned Guards resolver")
+        try:
+            from fleet_guards.runtime import companion_resolver
+        except ImportError as error:
+            raise ValueError('fleet_guards is not installed; install it: '
+                             'pip install -e "$(git config --get fleet.guards)"') from error
+        _datadir = companion_resolver(source_root=SOURCE_ROOT)
     return _datadir
-
-
-def _load_storage():
-    global _storage, _storage_root
-    if _storage is None or _storage_root != SOURCE_ROOT:
-        if SOURCE_ROOT == HERE:
-            try:
-                from fleet_guards import runtime
-            except ImportError as error:
-                raise ValueError("Install the pinned Guards runtime package (fleet-guards>=0.2.1)") from error
-            _storage = runtime
-        else:
-            _storage = _pinned_module("runtime.py", "task_console_guard_runtime")
-        _storage_root = SOURCE_ROOT
-    if not callable(getattr(_storage, "companion_resolver", None)):
-        raise ValueError("This payload's pinned Guards lacks the companion resolver")
-    return _storage
 
 
 def companion_root():
@@ -137,7 +109,7 @@ def resolve_db(create_parent: bool = False):
             p.parent.mkdir(parents=True, exist_ok=True)
         return p, None
     except (OSError, ValueError, RuntimeError, ImportError) as error:
-        code = "NO_RESOLVER" if "pinned Guards" in str(error) else "STORAGE_REFUSED"
+        code = "NO_RESOLVER" if "fleet_guards is not installed" in str(error) else "STORAGE_REFUSED"
         return None, DbState(code, "存储位置无效: " + str(error))
 
 

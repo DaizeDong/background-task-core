@@ -10,22 +10,21 @@ to report usable history.
 
 `TASK_CONSOLE_DB` selects the exact database leaf. It is used as given, except that a path inside
 this payload's own source tree is refused. Point it into the PRIVATE companion; keeping DATA out of
-public repositories is enforced at commit and push time by the hooks and CI, not at runtime.
+public repositories is enforced at commit and push time by the fleet-guards hooks, not at runtime.
 
 Without that override, the companion root is selected in this order:
 
 1. `TASK_CONSOLE_CONFIG`.
 2. `TASK_CONSOLE_CONFIG_DIR`.
 3. `TASK_CONSOLE_DATA_DIR`; a final `data` component denotes the child of the companion root.
-4. The pinned Guards sibling `task-console-config` convention.
+4. The fleet_guards sibling `task-console-config` convention.
 
-Use these direct companion locations for setup and recovery. Older pinned Guards versions may
-still recognize legacy home-directory candidates; verify the pinned resolver when restoring.
+Use these direct companion locations for setup and recovery.
 
 Explicit roots remain selected even when absent. The database always occupies the canonical
 `<root>/data/task-console/console.sqlite3`; this avoids changing layout based on whether `data/`
-already exists. Overrides do not copy, initialize or migrate databases. Source checkouts use
-their pinned Guards kit; installed wheels use the accepted `fleet_guards.runtime` package API.
+already exists. Overrides do not copy, initialize or migrate databases. Source checkouts and
+installed wheels both use the installed `fleet_guards.runtime` package API.
 Missing dependencies report unavailable and block writers. There is no ancestor or vendored
 resolver search. Resolution makes no Git or network calls: it is a path decision plus the
 own-source-tree refusal.
@@ -55,8 +54,8 @@ companion does not relocate llmcall files, and selected executables can still us
 
 ## Initialize and switch
 
-Create or clone the PRIVATE companion. Source checkouts use the pinned Guards submodule. Built
-wheels require the supported `fleet-guards>=0.2.1` runtime API for companion discovery. A missing
+Create or clone the PRIVATE companion. Companion discovery requires the `fleet-guards>=0.2.1`
+runtime API, installed with `pip install -e "$(git config --get fleet.guards)"`. A missing
 runtime API fails visibly; installed packages do not search checkout ancestors.
 From this source root:
 

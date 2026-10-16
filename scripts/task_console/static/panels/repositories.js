@@ -139,7 +139,7 @@ function renderRepos(){
 const RP_KIND_LAB = {skill:"skill", shared:"共享组件", other:"其它", companion:"伴生配置"};
 const RP_KIND_WHY = {
   skill: "有 SKILL.md。伴生的配置仓跟在自己那一行下面。",
-  shared: "被别的仓当 submodule 用(闸门、样式这类)。改一处,所有引用它的仓跟着走。",
+  shared: "被别的仓当 submodule 用。改一处,所有引用它的仓跟着走。",
   other: "工具、库、独立的配置仓。名字像伴生仓但在这次扫描里配不上宿主的,也在这里。",
 };
 const RP_ID_LAB = {ok:"匹配", mismatch:"不匹配", foreign:"第三方", unchecked:"未检查"};

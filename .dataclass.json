@@ -4,10 +4,10 @@
     "TOOL    = code, docs, and metrics ABOUT THE TOOL. Public.",
     "FIXTURE = LIFELIKE test data, produced by a generator so a pasted real record fails at commit.",
     "DATA    = anything a REAL RUN produced. Versioned in the private companion, never the public tool,",
-    "          resolved at runtime by the shared resolver in guards/tools/datadir.py.",
+    "          resolved at runtime by the shared resolver in fleet_guards.runtime.",
     "data_sealed = a path that HELD real data, was purged, and must stay dead.",
     "",
-    "Enforced by guards/tools/data_boundary.py in .githooks and in CI."
+    "Enforced by fleet-guards tools/data_boundary.py through the .githooks shims (git config fleet.guards)."
   ],
   "_audited": "The runtime database, durable event export, registration state and launcher configuration live in the PRIVATE companion. The current database is protected: its historical task configurations, ingest attempts and raw event fields cannot all be recovered by --backfill. The JSONL preserves normalized events beyond the rotating OS log window but is not a complete database restore. storage.contract.json uses private-companion repository-root paths with a data/ prefix for runtime state. It defines review budgets and protects current state and the exact current recovery archive/receipt, while legacy copies and private helper source require separate reconciliation. This manifest still names source-relative forbidden runtime DATA paths; only explicit reviewed retirement permits artifact removal.",
   "_armed": "The empty lists below are a claim re-tested on every commit, not a note taken on faith. data_boundary check 4 runs off the TRACKED FILE LIST rather than off this manifest, so a file wearing the shape of real-run output fails whether or not it is declared here. That distinction is load-bearing: TASK_CONSOLE_DB is an explicit selection, but current runtime admission still requires the canonical source-owned leaf in PRIVATE versioned storage. Discovery alone is not write authorization.",
@@ -41,7 +41,7 @@
     "task-console/run-events.jsonl.example",
     "settings.ps1.example"
   ],
-  "_data_home": "A PRIVATE companion outside this repo, resolved at runtime through guards/tools/datadir.py by the convention that file documents. Deliberately not named here: a public repo that spells out which private repo it pairs with has published the link between them, and the resolver derives the name anyway, so writing it down buys nothing. If this tool ever needs to record real-run output, it goes THERE -- never back into this repo.",
+  "_data_home": "A PRIVATE companion outside this repo, resolved at runtime through fleet_guards.runtime (fleet-guards tools/datadir.py) by the convention that file documents. Deliberately not named here: a public repo that spells out which private repo it pairs with has published the link between them, and the resolver derives the name anyway, so writing it down buys nothing. If this tool ever needs to record real-run output, it goes THERE -- never back into this repo.",
   "_run_shape_probes": [
     "task-console/console.sqlite3"
   ]

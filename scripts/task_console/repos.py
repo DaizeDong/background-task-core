@@ -68,7 +68,7 @@ def _repo_name_from_url(url: str | None) -> str | None:
     """从 remote URL 取出裸仓名。
 
     形式有两种:`https://host/owner/name.git` 和 `git@alias:owner/name.git`。
-    这段归一化和 guards/tools/datadir.py 的 `_proves_companion` 是同一套 ——
+    这段归一化和 fleet-guards tools/datadir.py 的 `_proves_companion` 是同一套 ——
     伴生关系的**权威判据在那里**(origin 名等于 `<skill>-config`,或有 .companion 标记),
     这里只是照它的形状去认。
     ⚠ 不要在这里发明第二套判据。这个面板回答的是「这次扫描里看得见什么关系」,

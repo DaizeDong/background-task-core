@@ -4,6 +4,9 @@ All notable changes to this project are documented here (Keep a Changelog style)
 
 ## [Unreleased]
 
+### Guards from the local checkout
+- Privacy hooks run from the local fleet-guards checkout named by `git config fleet.guards`, the dash check from `fleet.style`; the `guards/` and `style/` submodules and the pii-guard, dash-guard and fleet-sync workflows are removed. `console_store.py` loads the installed `fleet_guards.runtime` resolver for source checkouts and wheels alike, with no path load from `guards/fleet_guards`.
+
 ### Variable references in task declarations
 - `argv`, `cwd` and `source_root` may name paths through `%NAME%` environment references; `argv[0]`, `cwd` and `source_root` may start with one instead of an absolute path. The hidden launcher quotes every argument holding a reference and sets a referencing `cwd` through `ExpandEnvironmentStrings`; WScript.Shell.Run expands the command line. A `%` outside a well-formed reference still refuses.
 - The runtime configuration accepts an optional `launcher_root_reference`, the private root spelled through an environment variable. Scheduled actions then call `wscript.exe //B //Nologo <reference>\<launcher>`, so neither the action nor the launcher names a machine path, and a reference that resolves to nothing exits 1 instead of opening a modal box. Configurations without it render exactly as before.
