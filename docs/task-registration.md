@@ -158,9 +158,6 @@ the transaction for migrated tasks. Malformed declarations raise before legacy
 dispatch. The callback must not swallow errors or map them to legacy fallback.
 The HTTP server does not yet install this callback. Its act route remains legacy
 until the controller wires equivalent dispatch around the entire legacy action.
-`act.ps1 -AuthorityBundle ...` refuses direct execution because that standalone
-script cannot validate the schema or hold the transaction lock. An authorized
-legacy callback invokes it without that opt-in refusal flag while holding the lock.
 
 ## Controller followups before release
 

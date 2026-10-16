@@ -78,10 +78,10 @@ def _task_state(name: str) -> str | None:
     """
     r = subprocess.run(
         [_powershell(), "-NoProfile", "-Command",
-         # ⚠ 必须钉 -TaskPath '\\'。act.ps1 三个动词全都钉了,并且在动手前重新枚举一次
+         # ⚠ 必须钉 -TaskPath '\\'。控制器的三个动词全都钉了,并且在动手前重新枚举一次
          # collect.ps1 要求名字在册(而 collect 只枚举根路径、再剔掉厂商任务);
          # **退役这条路一道都没有**, 它能够到 \\Microsoft\\Windows\\** 底下的任务,
-         # 而 act.ps1 的注释写得很清楚:一个能够到那里的控制台,可以靠打一个名字
+         # 一个能够到那里的控制台,可以靠打一个名字
          # 停掉 Windows Update 或 Defender 的维护任务。
          # 退役比停用更重:它还会改两处登记文件。范围闸只多不少。
          "$t = Get-ScheduledTask -TaskPath '\\' -TaskName $env:TC_NAME "
@@ -213,7 +213,7 @@ def _disable(name: str, reason: str) -> tuple[bool, str]:
     在「命令跑了但什么都没改」时和成功长得一模一样。
     """
     ps = ("$ErrorActionPreference='Stop';"
-          # 根路径,和 act.ps1 一致。见 _task_state 里那段注释。
+          # 只认根路径。见 _task_state 里那段注释。
           "$t = Get-ScheduledTask -TaskPath '\\' -TaskName $env:TC_NAME;"
           "$d = [string]$t.Description;"
           "$note = $env:TC_NOTE;"

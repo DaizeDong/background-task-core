@@ -120,7 +120,6 @@ OVERRIDES = (
 # 随包发布的文件。它们没有环境变量:缺了就是安装坏了,而不是没配。
 BUNDLED = (
     ("collect", "采集脚本", "collect.ps1"),
-    ("act", "动作脚本", "act.ps1"),
     ("runlog", "运行日志脚本", "runlog.ps1"),
     ("page", "页面", "console.html"),
     ("icon", "图标", "icon.svg"),

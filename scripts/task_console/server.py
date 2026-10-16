@@ -88,7 +88,6 @@ _NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
 HERE = Path(__file__).resolve().parent
 COLLECT = HERE / "collect.ps1"
-ACT = HERE / "act.ps1"
 RUNLOG = HERE / "runlog.ps1"
 PAGE = HERE / "console.html"
 ICON = HERE / "icon.svg"
@@ -1882,7 +1881,7 @@ def main() -> int:
     if os.name != "nt":
         print("task-console 只在 Windows 上有意义:它读的是 Windows 任务计划。", file=sys.stderr)
         return 2
-    for f in (COLLECT, ACT, PAGE):
+    for f in (COLLECT, PAGE):
         if not f.exists():
             print(f"缺文件: {f}", file=sys.stderr)
             return 2

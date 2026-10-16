@@ -1,6 +1,6 @@
 # Task controller integration
 
-The source HTTP actions, standalone CLI, and `act.ps1` compatibility shell share
+The source HTTP actions and standalone CLI share
 `controller.load_runtime` and `runtime.dispatch_adapter`. This is source
 integration with synthetic tests, not a deployment or live Scheduler acceptance.
 
@@ -50,9 +50,7 @@ token authentication and fresh live-name membership check before dispatch.
 All control results include `schemaVersion`, `ok`, `name`, `verb`, `message`,
 `before` and `after`. Errors contain a safe `error.code`/`error.field`; transport
 output, XML and exception text are not exposed. CLI exits: 0 acknowledged/applied,
-2 refused, 3 incomplete or uncertain. `act.ps1` preserves its old binary 0/1 exit
-contract and `TASKCONSOLE_NAME`/`TASKCONSOLE_VERB` inputs. It forwards JSON on stdin
-so PowerShell's native argv quoting cannot discard literal quotes or Unicode.
+2 refused, 3 incomplete or uncertain.
 `TASK_CONSOLE_PYTHON` selects the caller-installed interpreter, outside runtime JSON.
 
 | Operation | Meaning of success |

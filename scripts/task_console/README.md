@@ -453,7 +453,7 @@ normal user session. The console says so instead of reporting a bare access-deni
 | `server.py` | the HTTP layer: routing, auth, host allowlist, the two write endpoints |
 | `console.html` | page shell loading separate static CSS and JavaScript; no build step |
 | `vendor/tabler/` | Tabler v1.5.0 (MIT), the dashboard shell. Vendored, not a CDN link |
-| `collect.ps1` / `act.ps1` / `runlog.ps1` | the Windows side |
+| `collect.ps1` / `runlog.ps1` | the Windows side |
 | `evtlog.py` | the fast event log reader (EvtQuery), with the PowerShell path as fallback |
 | `freshness.py` | five-state artifact freshness, a pure function of timestamps |
 | `selfcheck.py` | every configured source, probed and reported one by one |
