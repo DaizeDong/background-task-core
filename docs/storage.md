@@ -92,7 +92,7 @@ Calling scheduled mode without a bound source can only report `status: skipped, 
 when the shared resolver finds no companion and there is no console configuration in the environment;
 it never infers an existing default database for publication.
 
-Current registration also depends on protected input files in its configured vault. A backup that
+Current registration also depends on protected input files in its configured vault. The vault is `<companion>/data/task-console/vault/` (artifact `registration-vault`), selected by `runtime.VaultRoot` in `data/launcher-binding.json`; it holds only `task-console-<domain>-<object>.cred` files, tracked in the PRIVATE companion. A backup that
 excludes every `.cred` file cannot restore that authority. The existing configuration-backup caller
 can export the required closure with `tools/export_registration_recovery.py --private-root
 <declaration-root> --state-root <registration-root> --vault-root <configured-vault> --output

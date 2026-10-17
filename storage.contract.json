@@ -18,7 +18,8 @@
     "data/task-console/console.sqlite3-shm",
     "data/task-console/console.sqlite3-journal",
     "data/user-state/deleted-tasks/*-????????T??????Z.xml",
-    "data/user-state/deleted-tasks/*-????????T??????Z.json"
+    "data/user-state/deleted-tasks/*-????????T??????Z.json",
+    "data/task-console/vault/task-console-*-*.cred"
   ],
   "artifacts": [
     {
@@ -146,11 +147,24 @@
       "schema": "Current pointer, transaction journals, receipts, stages and locks",
       "producer": "registration and runtime_storage",
       "consumer_or_final_deliverable": "Registration recovery and launcher authority",
-      "rebuild_or_restore": "Restore the pointer with its referenced receipt and journal; preserve pending, conflict and uncleaned transactions. Pair current authority with the current protected-input archive declared by the private configuration backup owner's storage contract; see docs/storage.md for the manifest and DPAPI limits.",
+      "rebuild_or_restore": "Restore the pointer with its referenced receipt and journal; preserve pending, conflict and uncleaned transactions. The protected inputs they reference are the registration-vault artifact in the same companion; see docs/storage.md for the DPAPI limits.",
       "max_bytes": 8388608,
       "retention_rule": {
         "class": "core",
         "rule": "Artifact cleanup never touches registration; review completed transactions separately above 8 MiB."
+      }
+    },
+    {
+      "artifact_id": "registration-vault",
+      "path_pattern": "data/task-console/vault/task-console-*-*.cred",
+      "purpose": "Protected registration inputs (the configured VaultRoot): DPAPI ciphertext snapshots named task-console-<domain>-<object>.cred",
+      "schema": "runtime_storage.ProtectedVault",
+      "producer": "registration, adoption and runtime_storage through ProtectedVault.put",
+      "consumer_or_final_deliverable": "ProtectedVault.get for the current receipt, pending journals and explicitly reviewed history",
+      "rebuild_or_restore": "Clone the companion; the files are machine-bound DPAPI ciphertext readable only by the original Windows account on the original machine.",
+      "retention_rule": {
+        "class": "core",
+        "rule": "Keep every file the current receipt and unresolved journals reference (tools/export_registration_recovery.py collect). Files no current or pending document references may be retired after that check; explicit historical reconciliation needs the files of the reviewed chain."
       }
     },
     {
