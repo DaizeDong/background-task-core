@@ -52,16 +52,6 @@ function restoreWorkFilters(){
   WORK_FILTERS_RESTORED=activeFilterCount('work')>0;
   return WORK_FILTERS_RESTORED;
 }
-// 「已应用上次的筛选」贴在清除筛选按钮旁边。页面里没有这个位置,第一次用到时插一个。
-function workRestoredHint(){
-  let hint=document.getElementById('work-filter-restored');
-  const reset=$('work-reset');
-  if(!hint?.id && reset?.insertAdjacentElement){
-    hint=document.createElement('span');hint.id='work-filter-restored';hint.className='work-filter-restored';hint.textContent='已应用上次的筛选';
-    reset.insertAdjacentElement('afterend',hint);
-  }
-  return hint;
-}
 
 // remember:false 给从别的屏跳过来的那一下:筛选这一趟生效,不写进本机浏览器。
 function setWorkFilters({role='work',state=role==='all'?'':'unfinished',source='',query='',remember=true}={}){
@@ -143,15 +133,6 @@ function workCoverageText(coverage,stale){
   if(coverage.omitted) parts.push(`${fmtNum(coverage.omitted)} 条未加载`);
   return parts.length?parts.join('，')+'。':'';
 }
-// 工作台上放「读取中 / 读取失败」那一块的位置。页面里没有现成的格子,第一次用到时插在技术问题摘要后面。
-function overviewFeedSlot(){
-  let slot=document.getElementById('overview-work-state');
-  const anchor=$('attention-strip');
-  if(!slot?.id && anchor?.insertAdjacentElement){
-    slot=document.createElement('div');slot.id='overview-work-state';anchor.insertAdjacentElement('afterend',slot);
-  }
-  return slot;
-}
 function renderWorkPlatform(){
   const phase=workPhase(), present=phase==='ok', p=workProjection(WORK), coverage=WORK?.coverage || {};
   const stale=WORK_ERROR && present;
@@ -159,8 +140,7 @@ function renderWorkPlatform(){
   // 以前同一句「暂时读不到工作记录」在一屏里出现四次,原因却一次也没说。
   const feedState=phase==='loading'?loadingBlock('工作记录'):phase==='broken'?errorBlock('工作记录',WORK?.reason,'data-work-retry'):'';
   $('work-source-state').textContent=present?`${stale?'刷新失败，以下为上次读取的记录。':''}${WORK_LOADING?'正在刷新 · ':''}读取于 ${workTime(WORK.observed_at)}${coverage.omitted || coverage.invalid?' · 部分记录未读到':''}`:'';
-  const slot=overviewFeedSlot();
-  if(slot){slot.innerHTML=feedState;slot.hidden=present;}
+  $('overview-work-state').innerHTML=feedState;$('overview-work-state').hidden=present;
   $('work').dataset.feed=phase;
   $('overview').dataset.feed=phase;
   // Agent 没做完或出错的工作单独一张卡,红色边条;一条都没有就整张藏起来。
@@ -197,8 +177,8 @@ function renderWorkPlatform(){
   if($('work-source').innerHTML!==options) $('work-source').innerHTML=options;
   $('work-source').value=WORK_SOURCE;
   syncResetFilters();
-  const hint=workRestoredHint();
-  if(hint) hint.hidden=!(WORK_FILTERS_RESTORED && activeFilterCount('work')>0);
+  // 「已应用上次的筛选」贴在清除筛选按钮旁边。
+  $('work-filter-restored').hidden=!(WORK_FILTERS_RESTORED && activeFilterCount('work')>0);
   const counts=new Map();(WORK?.sources || []).forEach(row=>counts.set(row.source,(counts.get(row.source)||0)+row.count));
   $('source-volume').innerHTML=!present?'':[...counts].sort((a,b)=>b[1]-a[1]).map(([source,count])=>`<button data-work-source="${esc(source)}" title="只看此来源，清除其他筛选" aria-pressed="${source===WORK_SOURCE}">${esc(workSourceLabel(source))} <b>${fmtNum(count)}</b></button>`).join('') || emptyBlock('没有来源记录');
   const events=WORK?.events || [];

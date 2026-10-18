@@ -511,7 +511,7 @@ function jumpToCalls(startOffset){
   return lmJumpOffset(startOffset).then(offset=>{ LMQ.offset = offset; return loadCalls(); }, e=>{
     // 问不到总数就退回正序翻过去,不让跳转静默地落在一个算错的位置上。
     LMQ.order = "asc"; LMQ.offset = Math.max(0, startOffset);
-    if($("lmorder")) $("lmorder").value = "asc";
+    $("lmorder").value = "asc";
     toast("读不到调用总数，已改为最早在前显示这一段：" + e.message, "warn");
     return loadCalls();
   }).then(()=>{
@@ -560,8 +560,6 @@ function startCalls(){
   $("lcsave").addEventListener("click", lcSave);
   $("lcreset").addEventListener("click", ()=>{ LCDRAFT = null; renderChain(); });
   // 顺序不是筛选:清除筛选不动它,所以它不进 RESET_FILTER_COUNTS,挂在筛选前面。
-  $("lmprov").insertAdjacentHTML("beforebegin", '<select id="lmorder" class="l-sel" title="调用记录的排列顺序" aria-label="调用记录的排列顺序">'
-    + '<option value="desc">最新在前</option><option value="asc">最早在前</option></select>');
   $("lmorder").value = LMQ.order;
   $("lmorder").addEventListener("change", e=>{ LMQ.order = e.target.value === "asc" ? "asc" : "desc"; LMQ.offset = 0; LMOPEN = null; LMJUMP = null; loadCalls(); });
   $("lmok").value = LMQ.ok;

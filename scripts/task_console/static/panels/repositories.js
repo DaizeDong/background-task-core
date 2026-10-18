@@ -727,8 +727,6 @@ function startRepositories(){
   if(typeof saved.state==="string" && Object.hasOwn(RP_LAB, saved.state)) RP_STATE = saved.state;
   if(typeof saved.sel==="string" && saved.sel) RP_SEL = saved.sel;
   RP_PENDING = {acc:typeof saved.acc==="string" ? saved.acc : "", kind:typeof saved.kind==="string" ? saved.kind : ""};
-  // 搜索框现在也搜路径和远程地址,提示语跟着说清楚。
-  $("rpq").placeholder = "搜索名称、账号、路径或远程地址";
   // 过滤只改看得见什么,不重新扫描 —— 扫一遍所有仓要一秒多,而每敲一个字符重扫一次
   // 既慢又会让选中的那个仓在脚下换位置。
   $("rpq").addEventListener("input", renderRepoList);

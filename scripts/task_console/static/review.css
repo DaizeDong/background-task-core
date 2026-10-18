@@ -64,7 +64,7 @@ section[data-view]>.card,section[data-view]>.module-section{margin-bottom:0}
 #overview-pipelines>button+button{border-left:1px solid var(--line2)}
 #overview-pipelines strong{font-size:var(--fs-body)}
 #sck{margin-bottom:8px;padding:8px 12px;border-radius:4px;flex-wrap:wrap;gap:8px}
-#sck .dots{display:none}#sck .lab{font-weight:600}#sck .sum{font-size:var(--fs-meta)}
+#sck .lab{font-weight:600}#sck .sum{font-size:var(--fs-meta)}
 #sckd{font-size:var(--fs-meta);max-height:180px;overflow:auto;margin-bottom:12px}
 .task-summary{display:flex;gap:var(--space-2);flex-wrap:wrap;margin:0 0 var(--section-gap);color:var(--dim)}
 .task-summary b{margin-left:4px;color:var(--ink);font-variant-numeric:tabular-nums}

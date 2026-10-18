@@ -279,8 +279,7 @@ function chRenderHead(){
     title.title=CH_ID || "";
     if(editing && typeof cvInlineAfterPaint==="function") cvInlineAfterPaint();
   }
-  const find=$("chfind");
-  if(find) find.hidden=!(CH && CH.available);
+  $("chfind").hidden=!(CH && CH.available);
   // 面包屑这一行只在子代理里出现(返回主会话)。子代理选择器很少用,收进「更多操作与详情」菜单里,
   // 不再占着会话的第一行。
   cr.innerHTML=CH_SUB
@@ -652,9 +651,7 @@ function chFindApply(value){
   chRenderList(); chFindCount();
 }
 function chFindCount(){
-  const n=$("chfindn");
-  if(!n) return;
-  n.textContent=!CH_FIND ? "" : CH_FIND_HITS.length ? `${CH_FIND_CUR+1} / ${CH_FIND_HITS.length} 轮` : "没有匹配的轮";
+  $("chfindn").textContent=!CH_FIND ? "" : CH_FIND_HITS.length ? `${CH_FIND_CUR+1} / ${CH_FIND_HITS.length} 轮` : "没有匹配的轮";
 }
 function chFindNext(){
   if(!CH_FIND_HITS.length) return;
@@ -665,16 +662,8 @@ function chFindNext(){
 }
 function chFindReset(){
   CH_FIND=""; CH_FIND_HITS=[]; CH_FIND_CUR=0;
-  const q=$("chfindq");
-  if(q) q.value="";
+  $("chfindq").value="";
   chFindCount();
-}
-// 搜索框是页面上原来没有的一块,在挂点里插到读取提示下面、链表上面。
-function chMountFind(){
-  if($("chfind") || !$("chwarn")) return;
-  $("chwarn").insertAdjacentHTML("afterend", `<div class="ch-find" id="chfind" hidden>`
-    +`<input type="search" id="chfindq" placeholder="在本会话中搜索提问或回复" aria-label="在本会话中搜索提问或回复" autocomplete="off">`
-    +`<span class="faint" id="chfindn" role="status" aria-live="polite"></span></div>`);
 }
 
 function chToggle(){
@@ -874,7 +863,6 @@ function chClick(e){
 function startConvoChain(){
   const box=$("chbox");
   if(!box) return;
-  chMountFind();
   box.addEventListener("click", e=>{
     try{ chClick(e); }catch(err){ $("chnote").textContent="操作失败:"+err.message; }
   });

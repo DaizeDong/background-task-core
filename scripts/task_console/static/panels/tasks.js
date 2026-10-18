@@ -51,10 +51,9 @@ function taskRowsInOrder(groups){
 }
 // 排序状态写在任务列表的卡片标题旁:默认那一档不在任何列标题上,不写出来就没人知道表是按什么排的。
 function syncTaskSortState(){
-  const state=$('task-sort-state'), back=$('task-sort-severity');
   const column=C.find(c=>c[0]===sortKey);
-  if(state) state.textContent=sortKey===TASK_SORT_DEFAULT?'按严重程度：失败在前':`按「${column?column[1]:sortKey}」${asc?'升序':'降序'}`;
-  if(back) setDisabled(back,sortKey===TASK_SORT_DEFAULT?'已经按严重程度排序':'');
+  $('task-sort-state').textContent=sortKey===TASK_SORT_DEFAULT?'按严重程度：失败在前':`按「${column?column[1]:sortKey}」${asc?'升序':'降序'}`;
+  setDisabled($('task-sort-severity'),sortKey===TASK_SORT_DEFAULT?'已经按严重程度排序':'');
 }
 function sortTasksBySeverity(){
   sortKey=TASK_SORT_DEFAULT;asc=true;
@@ -969,15 +968,6 @@ function startTimeline(){
   $("tlout").addEventListener("click",()=>tlZoom(1.4,0.5));
   $("tlreset").addEventListener("click",tlReset);
 }
-// 排序状态和「改回按严重程度」放进任务列表的卡片标题行。console.html 不归这一页改,所以由这里补上。
-function mountTaskSortState(){
-  const header=document.querySelector('#dtbox .card-header');
-  if(!header || $('task-sort-state')) return;
-  header.insertAdjacentHTML('beforeend','<div class="card-actions task-sort"><span id="task-sort-state" class="faint" role="status"></span>'+
-    '<button type="button" class="mini" id="task-sort-severity" title="改回按严重程度排序：失败在前">按严重程度</button></div>');
-  $('task-sort-severity').addEventListener('click',()=>{ if(!$('task-sort-severity').disabled) sortTasksBySeverity(); });
-  syncTaskSortState();
-}
 function startTasksPage(){
   $('tasks').querySelector('.task-summary').addEventListener('click',event=>{
     const button=event.target.closest('[data-task-status]');
@@ -988,7 +978,9 @@ function startTasksPage(){
     renderTaskCountsPending();
     $('tbl').innerHTML=`<tbody><tr><td>${loadingBlock('计划任务')}</td></tr></tbody>`;
   }
-  mountTaskSortState();
+  // 排序状态和「改回按严重程度」在任务列表的卡片标题行。
+  $('task-sort-severity').addEventListener('click',()=>{ if(!$('task-sort-severity').disabled) sortTasksBySeverity(); });
+  syncTaskSortState();
   // 任务开关上的「详情」和明细里的「收起」:就地开合,不跳分区。
   $('automation-list').addEventListener('click',event=>{
     const peek=event.target.closest('[data-task-peek]');
