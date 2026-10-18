@@ -1,8 +1,8 @@
 """Read and edit literal PowerShell TaskNames arrays without evaluating a script.
 
-The legacy parse_names returns (None, reason) for absent, malformed and empty
-arrays. The strict reader distinguishes an empty array from a failed read so
-retirement remains idempotent after removing the last name.
+parse_names returns a set, or (None, reason) for absent, malformed and empty
+arrays. literal_names is strict: it distinguishes an empty array from a failed
+read so retirement remains idempotent after removing the last name.
 """
 from __future__ import annotations
 
@@ -222,20 +222,6 @@ def render_names(names: list[str]) -> str:
     return text
 
 
-def find_block(text: str) -> re.Match | None:
-    """Compatibility match with groups (assignment, body, closing parenthesis)."""
-    try:
-        start, body, close, end, _, _ = _parse(text)
-    except AllowlistError:
-        return None
-    return re.compile(r"(.{%d})(.{%d})(.)" % (body - start, close - body), re.S).match(text, start, end)
-
-
-class _BlockPattern:
-    def search(self, text: str) -> re.Match | None:
-        return find_block(text)
-
-
-# Compatibility names for legacy callers. Production readers use literal_names.
-BLOCK = INLINE = _BlockPattern()
-_NAME = re.compile(r"'([^']+)'")
+def closing_paren(text: str) -> int:
+    """Position of the closing parenthesis of the TaskNames array."""
+    return _parse(text)[2]

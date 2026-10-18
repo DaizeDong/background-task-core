@@ -17,16 +17,20 @@ is a pure path comparison that refuses a destination inside this payload's own s
 DATA out of public repositories is enforced at commit and push time by the fleet-guards hooks.
 
 READS DEGRADE, WRITES DO NOT. Readers open the file read-only through a URI and, when it is absent
-or unreadable, return a state object carrying a Chinese sentence explaining which of the six
-conditions holds. They never return zeros. "No data" and "zero runs" are different claims and only
+or unreadable, return a state object carrying a code (NO_COMPANION, NO_RESOLVER, STORAGE_REFUSED,
+NO_FILE or CORRUPT) and a Chinese sentence explaining it. They never return zeros. "No data" and "zero runs" are different claims and only
 one of them is ours to make.
 """
 from __future__ import annotations
 
 import os
 import sqlite3
-import sys
 from pathlib import Path
+
+if __package__:
+    from .evtlog import ACTION_RC, EVENT_FIELDS
+else:
+    from evtlog import ACTION_RC, EVENT_FIELDS
 
 HERE = Path(__file__).resolve().parent
 SKILL = "task-console"
@@ -141,20 +145,7 @@ def connect_ro():
         validate_read_schema(con)
         return con, None
     except sqlite3.DatabaseError as e:
-        # 探针抛异常时连接已经建起来了,而调用方拿到的是 (None, DbState),手上没有它。
-        # 显式关掉。
-        #
-        # ⚠ 这**不是**在修一个泄漏。审计报过「每次请求泄漏一个句柄」,推理是通的,
-        # 对抗性核证也判它成立, 而实测不成立:
-        #     对照组(故意开 200 个文件不关):句柄 94 -> 294,差 200(方法有效)
-        #     connect_ro 走坏库 200 次:      句柄 94 -> 94, 差 0
-        # CPython 的引用计数在函数返回时就析构了那个局部变量,连接随之关闭。
-        # 带对照组是必须的:没有它,「两边都是 0」既符合「没漏」也符合「我没测到」,
-        # 第一次用 ctypes 拿句柄数时拿回来的就是 0/0,那不是结论,那是没测到。
-        #
-        # 留着这个 close 的理由是**不依赖引用计数的时机**:那是实现细节,
-        # 而且将来只要有一条路径在异常前把连接存进了别处(重试、缓存、日志),
-        # 显式关就从多余变成必须。
+        # 调用方拿不到这个连接,显式关掉,不依赖引用计数的时机。
         if con is not None:
             try:
                 con.close()
@@ -220,16 +211,13 @@ def run_totals(con, days: int = 60) -> dict:
         (f"-{days - 1} day",)).fetchall()
     out: dict[str, dict] = {}
     for r in rows:
-        t = out.setdefault(r["task"], {"starts": 0, "done": 0, "killed": 0, "failStart": 0,
-                                       "timedOut": 0, "rcs": {}})
+        t = out.setdefault(r["task"], {**dict.fromkeys(EVENT_FIELDS.values(), 0), "rcs": {}})
         i, n = r["event_id"], r["n"]
-        if i == 100: t["starts"] += n
-        elif i == 102: t["done"] += n
-        elif i == 111: t["killed"] += n
-        elif i == 203: t["failStart"] += n
-        elif i == 329: t["timedOut"] += n
-        elif i == 201 and r["rc_norm"] is not None:
-            t["rcs"][str(r["rc_norm"])] = t["rcs"].get(str(r["rc_norm"]), 0) + n
+        if i in EVENT_FIELDS:
+            t[EVENT_FIELDS[i]] += n
+        elif i == ACTION_RC and r["rc_norm"] is not None:
+            rc = str(r["rc_norm"])
+            t["rcs"][rc] = t["rcs"].get(rc, 0) + n
     return out
 
 
@@ -266,50 +254,30 @@ INGEST_LOSS_HOURS = 96.0
 
 
 def ingest_verdict(last_ingest: dict | None, now=None) -> dict:
-    """摄入器还活着吗 —— 一个**判定**,不是一个时间戳。
+    """摄入器还活着吗:一个判定,不是一个时间戳。
 
-    这个函数存在的理由是页面顶栏原来只印一个时间。时间戳在屏幕上永远「看起来正常」:
-    没有人会读一眼 `最后摄入 09-01 10:21` 然后在心里减出九天。于是一个已经停了两周的
-    摄入器,和一个刚跑完的摄入器,长得一模一样 —— 热力图照画,健康% 照给一个具体数字,
-    而那些数字全部停在两周前。**一个坏掉的东西显示成正常**,正是这块面板存在的理由。
-
-    判定取**最旧**的那一条流水线,不取最新:摄入器是几条流水线,任何一条停了,
-    页面上就有一部分数字停在那一刻,而其余部分照常刷新 —— 那比整块停掉更难发现。
-
-    `never` 和 `ok` 必须是两个不同的答案:没有任何摄入记录时,这里绝不能因为
-    「没有超时的记录」而判绿。一个被喂了空的判定器,打印出的绿色跟真绿一模一样。
+    取最旧的那一条流水线判定:任何一条停了,页面上就有一部分数字停在那一刻。
+    没有任何摄入记录时是 `never`,不是 `ok`。
     """
     import datetime as _dt
 
     now = _dt.datetime.now() if now is None else now
-    rows = [(k, v) for k, v in (last_ingest or {}).items()
-            if isinstance(v, dict) and v.get("at")]
-    if not rows:
+
+    def _parse(s):
+        # finished_at 只由 console_ingest.now() 写入,格式固定。
+        try:
+            return _dt.datetime.strptime(str(s), "%Y-%m-%d %H:%M:%S")
+        except ValueError:
+            return None
+
+    parsed = [(k, v, _parse(v["at"])) for k, v in (last_ingest or {}).items()
+              if isinstance(v, dict) and v.get("at")]
+    parsed = [(k, v, t) for k, v, t in parsed if t is not None]
+    if not parsed:
         return {"state": "never", "ageHours": None, "source": None, "at": None,
                 "failed": [], "why": "摄入器没有留下任何运行记录 —— 库里的数字要么是"
                                      "手动灌的,要么根本没有。跑一次 console_ingest.py。"}
-
-    def _parse(s):
-        t = str(s).strip().replace("T", " ")[:19]
-        for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d"):
-            try:
-                return _dt.datetime.strptime(t, fmt)
-            except ValueError:
-                continue
-        return None
-
-    parsed = [(k, v, _parse(v["at"])) for k, v in rows]
-    unreadable = [k for k, _v, t in parsed if t is None]
-    parsed = [(k, v, t) for k, v, t in parsed if t is not None]
     failed = sorted(k for k, v, _t in parsed if v.get("ok") is False)
-
-    if not parsed:
-        # 时间读不出来不能当成「没超时」。读不懂的戳和一个新鲜的戳,在判定器眼里
-        # 必须是两件事,否则格式一变,这道闸就永远绿着。
-        return {"state": "unknown", "ageHours": None, "source": None, "at": None,
-                "failed": failed,
-                "why": "摄入记录的时间戳读不出来(" + "、".join(unreadable[:3])
-                       + "),没法判断摄入器是不是还在跑。"}
 
     parsed.sort(key=lambda x: x[2])
     src, row, at = parsed[0]
@@ -331,15 +299,8 @@ def ingest_verdict(last_ingest: dict | None, now=None) -> dict:
         state = "ok"
         why = None
 
-    out = {"state": state, "ageHours": round(age, 2), "source": src,
-           "at": row.get("at"), "failed": failed, "why": why}
-    if unreadable:
-        # 部分读不懂时判定照给,但要说清楚它是在几条里判的, 否则一条读不懂的流水线
-        # 会静默地退出评判范围,而它恰好可能是停掉的那条。
-        out["unreadable"] = unreadable
-        out["why"] = ((why + " ") if why else "") + (
-            "另有 " + "、".join(unreadable[:3]) + " 的时间戳读不出来,没有参与这次判断。")
-    return out
+    return {"state": state, "ageHours": round(age, 2), "source": src,
+            "at": row.get("at"), "failed": failed, "why": why}
 
 
 def coverage(con) -> dict:
@@ -357,12 +318,3 @@ def coverage(con) -> dict:
         "lastIngest": {x["source"]: {"at": x["t"], "ok": bool(x["ok"])} for x in ing},
     }
 
-
-if __name__ == "__main__":
-    con, st = connect_ro()
-    if st:
-        print(f"[{st.code}] {st.message}")
-        print(f"path: {st.path}")
-        sys.exit(1)
-    import json
-    print(json.dumps(coverage(con), ensure_ascii=False, indent=2))

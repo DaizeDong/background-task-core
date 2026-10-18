@@ -97,14 +97,7 @@ def _dir_entry(p: Path, count_transcripts: bool = False) -> dict:
     out = {"available": True, "exists": True, "bytes": total, "files": files,
            "errors": errors}
     if count_transcripts:
-        # 场数 = 递归数转录文件,一场一份。
-        #
-        # ⚠ 这里第一版写的是「顶层子项数」,理由是「一场会话可能落成多个文件」。
-        # 那个理由是凭空想的,而真实的库是 sessions/YYYY/MM/DD/*.jsonl,
-        # 顶层子项是两个年份目录,于是 3.1G、2380 份转录会被印成「2 场」。
-        # 一个自信的错数字比没有数字更糟,而它之所以能活到这一步,
-        # 是因为我给测试造的 fixture 是平铺的,而生产是三层嵌套的:
-        # **自己造的输入会让测试全绿,而闸门在生产里失效。**
+        # 场数 = 递归数转录文件,一场一份(库是 sessions/YYYY/MM/DD/*.jsonl,顶层只是年份)。
         out["count"] = transcripts
     return out
 
