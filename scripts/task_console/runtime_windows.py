@@ -251,7 +251,7 @@ try {
   }
   if ($r.operation -eq 'query') {
     @{ok=$true; observation=(Reply-Task (Read-Exact))} | ConvertTo-Json -Depth 20 -Compress
-  } elseif ($r.operation -in @('run', 'stop', 'enable', 'disable')) {
+  } elseif ($r.operation -in @('run', 'stop')) {
     $stage = 'operation'
     $task = Read-Exact
     if ($null -eq $task -or $r.expected.state -ne 'present' -or
@@ -269,10 +269,8 @@ try {
         # never call it. The caller must explicitly request run under authority.
         $instance = $task.Run($null)
         if ($null -eq $instance) { throw 'missing run acknowledgement' }
-      } elseif ($r.operation -eq 'stop') {
-        if ($before.running) { $task.Stop(0) }
       } else {
-        $task.Enabled = ($r.operation -eq 'enable')
+        if ($before.running) { $task.Stop(0) }
       }
       $after = Reply-Task (Read-Exact)
       if ($r.operation -eq 'stop') {
@@ -283,12 +281,10 @@ try {
         }
       }
       if ($after.state -ne 'present') { throw 'missing control readback' }
-      if ($r.operation -in @('run', 'stop') -and
-          ([string]$after.xml -cne [string]$before.xml -or $after.enabled -ne $before.enabled)) {
+      if ([string]$after.xml -cne [string]$before.xml -or $after.enabled -ne $before.enabled) {
         throw 'changed control readback'
       }
-      @{ok=$true; acknowledged=$true; running=[bool]$after.running;
-        enabled=[bool]$after.enabled} | ConvertTo-Json -Compress
+      @{ok=$true; acknowledged=$true; running=[bool]$after.running} | ConvertTo-Json -Compress
     }
   } elseif ($r.operation -eq 'prepare') {
     $stage = 'definition'
@@ -333,8 +329,6 @@ try {
 
 class COMTransport:
     """Fixed root-task registration and explicit bounded controls; no enumeration."""
-    concrete = True
-    native_normalization = True
     def __call__(self, operation, request):
         from .runtime_xml import normalize, observation
         if operation == 'cleanup':

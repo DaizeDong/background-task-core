@@ -77,7 +77,7 @@ def evaluate_snapshot(snapshot: dict, now=None) -> dict:
     for item in inputs:
         if not isinstance(item, dict) or not isinstance(item.get("spec"), dict):
             raise ValueError("each task needs a spec and observations/read response")
-        obs = item.get("observations", item.get("report", {}))
+        obs = item["observations"]
         if not isinstance(obs, dict) or obs.get("schemaVersion", 1) != 1:
             raise ValueError("unsupported component read response")
         task = health.evaluate_task(item["spec"], obs, now)

@@ -69,34 +69,25 @@ class WindowsScheduler:
         snapshot = _snapshot(result.get("snapshot"))
         if snapshot["state"] == "present":
             validate_value(snapshot["value"])
-            if getattr(self.transport, 'native_normalization', False):
-                # Reuse COM's typed parser/defaults. This never opens or writes
-                # another task, and verifies that normalization loses no input.
-                prepared = self.prepare(key, snapshot['value'], 'readback')
-                snapshot['candidate_identity'] = prepared['candidate_identity']
-                snapshot.pop('prepared', None)
+            # Reuse COM's typed parser/defaults. This never opens or writes
+            # another task, and verifies that normalization loses no input.
+            prepared = self.prepare(key, snapshot['value'], 'readback')
+            snapshot['candidate_identity'] = prepared['candidate_identity']
         return deepcopy(snapshot)
 
     def prepare(self, key, value, token):
-        if value is not None and getattr(self.transport, 'concrete', False):
-            from .runtime_xml import normalize
-            value = normalize(value)
+        from .runtime_xml import normalize, preserves_xml
         if value is not None:
-            validate_value(value)
+            value = validate_value(normalize(value))
         result = self._call("prepare", key, value=value, token=token)
         snapshot = _snapshot(result.get("snapshot"))
         if snapshot["state"] == "present":
             validate_value(snapshot["value"])
             observed, desired = deepcopy(snapshot['value']), deepcopy(value)
-            if getattr(self.transport, 'concrete', False):
-                from .runtime_xml import preserves_xml
-                if not preserves_xml(desired.pop('xml'), observed.pop('xml')):
-                    raise Conflict('preparation_changed_settings', 'scheduler')
-            if observed != desired:
+            if not preserves_xml(desired.pop('xml'), observed.pop('xml')) or observed != desired:
                 raise Conflict("preparation_changed_settings", "scheduler")
-            if getattr(self.transport, 'native_normalization', False):
-                snapshot['candidate_identity'] = snapshot['identity']
-                snapshot['prepared'] = True
+            snapshot['candidate_identity'] = snapshot['identity']
+            snapshot['prepared'] = True
         elif value is not None:
             raise Conflict("preparation_missing", "scheduler")
         return deepcopy(snapshot)
@@ -124,7 +115,7 @@ class WindowsScheduler:
 
     def control(self, key, verb, expected):
         """Caller holds authority/task locks. Acknowledgement is not payload success."""
-        if verb not in ('enable', 'disable', 'run', 'stop'):
+        if verb not in ('run', 'stop'):
             raise Conflict('invalid_operation', 'operation')
         current = self.read(key)
         if not _same('scheduler', current, expected):
@@ -154,14 +145,10 @@ class WindowsScheduler:
             return {**result, 'ok': False, 'status': 'cleanup_uncertain',
                     'acknowledged': None, 'message': 'Control outcome uncertain; explicit observation required',
                     'failure': exc.code, 'after': None}
-        after = 'Running' if reply['running'] else ('Disabled' if verb == 'disable' or not value['enabled'] and verb != 'enable' else 'Ready')
+        after = 'Running' if reply['running'] else ('Ready' if value['enabled'] else 'Disabled')
         result.update(acknowledged=True, after=after)
         if verb == 'run':
             return {**result, 'status': 'run_requested', 'message': 'Scheduler accepted run; payload outcome unknown'}
-        if verb == 'stop':
-            return {**result, 'ok': not reply['running'],
-                    'status': 'cleanup_uncertain' if reply['running'] else 'scheduler_idle',
-                    'message': 'Stop requested; cleanup uncertain' if reply['running'] else 'Scheduler idle; payload cleanup and linked work unverified'}
-        if reply.get('enabled') is not (verb == 'enable'):
-            return {**result, 'ok': False, 'status': 'cleanup_uncertain', 'message': 'Enabled state readback failed'}
-        return {**result, 'status': 'applied', 'message': verb + ' applied'}
+        return {**result, 'ok': not reply['running'],
+                'status': 'cleanup_uncertain' if reply['running'] else 'scheduler_idle',
+                'message': 'Stop requested; cleanup uncertain' if reply['running'] else 'Scheduler idle; payload cleanup and linked work unverified'}

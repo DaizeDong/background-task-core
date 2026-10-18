@@ -149,7 +149,7 @@ def main(argv: list[str] | None = None, *, runtime=None) -> int:
                 print(json.dumps(result, ensure_ascii=True, sort_keys=True, allow_nan=False))
                 return controller.exit_code(result) if args.command == 'control' else 0
             if args.command == 'runtime-status':
-                selected = registration._use(runtime)
+                selected = runtime
                 # Enumerate the journal owner first: before the initial receipt
                 # exists the ordinary reader has nothing to read, and the pending
                 # bootstrap transaction is the only public recovery handle.
@@ -160,7 +160,6 @@ def main(argv: list[str] | None = None, *, runtime=None) -> int:
                 reconciliation = [record['transaction_id'] for record in selected.journal.list()
                                   if isinstance(record.get('reconcile'), dict)
                                   and record['transaction_id'] in pending]
-                authority = getattr(selected, 'authority', None)
                 result = {'schemaVersion': 1, 'pending': pending, 'pending_bootstrap': bootstrap,
                           'pending_reconciliation': reconciliation,
                           'action_required': ('adoption-resume' if bootstrap else
@@ -169,8 +168,7 @@ def main(argv: list[str] | None = None, *, runtime=None) -> int:
                     bundle = selected.load()
                     registration._compile(bundle)
                 except ContractError as exc:
-                    published = authority is not None and (authority.config.adoption.exists()
-                                                           or authority.pointer.exists())
+                    published = selected.authority.config.adoption.exists() or selected.authority.pointer.exists()
                     result.update(authority_epoch=None, generation=None, authority=exc.code,
                                   initialized=published)
                 else:

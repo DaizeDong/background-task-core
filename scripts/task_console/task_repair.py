@@ -32,6 +32,7 @@ import subprocess
 import sys
 import threading
 
+import controller as task_control
 import freshness
 import maint
 import source_reads
@@ -83,9 +84,10 @@ class RepairError(ValueError):
 
 
 def _validate_name(name) -> str:
-    if not isinstance(name, str) or not name.strip() or re.search(r"[\\/\x00-\x1f*?\[\]]", name):
-        raise maint.Refused("任务名不合法", "bad_name")
-    return name
+    try:
+        return task_control.task_name(name)
+    except task_control.ContractError:
+        raise maint.Refused("任务名不合法", "bad_name") from None
 
 
 # --------------------------------------------------------------------------- facts

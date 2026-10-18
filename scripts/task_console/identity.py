@@ -15,11 +15,8 @@ point of the panel is that an unchecked thing and a passing thing look different
     foreign    the owner is not in the table, which is normal for a fork or someone else's project
     unchecked  no table configured, or the table could not be read
 
-MIRROR THE HOOK, DO NOT INVENT. The pre-commit hook is the authority on what "expected" means, and
-it honours a per-repo override: a repository that deliberately commits under something other than
-its owner's identity declares `guard.expectedEmail` / `guard.expectedName` in its own config. A
-judgement that ignored that override would mark every such repo as a mismatch, and a panel that
-cries wolf on repositories that are correctly configured is one nobody reads.
+MIRROR THE HOOK, DO NOT INVENT. The pre-commit hook is the authority on what "expected" means: the
+table row for the repository's owner, with no per-repo override.
 
 The table lives outside every repository on purpose. It states that two GitHub accounts belong to
 one person, and vendoring it into a public repo would publish exactly that. So this module reads it
@@ -101,22 +98,9 @@ def actual(repo: Path) -> dict:
             "scope": "local" if (rc_l == 0 and local_email) else "inherited"}
 
 
-def expected(repo: Path, owner: str | None, table: dict) -> tuple[dict | None, str]:
-    """What this repo SHOULD commit as, and where that expectation came from.
-
-    The per-repo override comes first and is not a loophole: it is how a fork or an organisation
-    repo declares that its owner's identity is deliberately not the right one here. The hook honours
-    it, so this must too, or every correctly configured exception shows up as a defect.
-    """
-    rc_e, exp_email = _git(repo, "config", "--local", "guard.expectedEmail")
-    rc_n, exp_name = _git(repo, "config", "--local", "guard.expectedName")
-    if rc_e == 0 and exp_email:
-        return {"login": None, "name": (exp_name if rc_n == 0 else None), "email": exp_email}, "repo"
-    if owner and table:
-        row = table.get(owner.lower())
-        if row:
-            return row, "table"
-    return None, "none"
+def expected(owner: str | None, table: dict) -> dict | None:
+    """What this repo SHOULD commit as: its owner's table row, or None."""
+    return table.get(owner.lower()) if owner else None
 
 
 def judge(repo: Path, owner: str | None, table: dict, table_reason: str | None) -> dict:
@@ -133,7 +117,7 @@ def judge(repo: Path, owner: str | None, table: dict, table_reason: str | None) 
                 "why": "没有设 TASK_CONSOLE_IDENTITIES,账号匹配是「未检查」,不是「匹配」。"}
 
     got = actual(repo)
-    exp, source = expected(repo, owner, table)
+    exp = expected(owner, table)
     if exp is None:
         return {"state": FOREIGN, "owner": owner, "expect": None, "scope": got["scope"],
                 "why": (f"owner「{owner}」不在身份表里。第三方仓(fork、别人的项目)本来就不该在,"
@@ -142,11 +126,7 @@ def judge(repo: Path, owner: str | None, table: dict, table_reason: str | None) 
     same_email = bool(got["email"]) and got["email"].lower() == exp["email"].lower()
     # 名字不一致但邮箱一致仍算匹配:GitHub 按邮箱归属提交,名字只是显示。
     if same_email:
-        return {"state": OK, "owner": owner, "expect": exp.get("login"), "scope": got["scope"],
-                "source": source, "why": None}
-    return {"state": MISMATCH, "owner": owner, "expect": exp.get("login"), "scope": got["scope"],
-            "source": source,
+        return {"state": OK, "owner": owner, "expect": exp["login"], "scope": got["scope"], "why": None}
+    return {"state": MISMATCH, "owner": owner, "expect": exp["login"], "scope": got["scope"],
             "why": ("这个仓会用一个和它 owner 不对应的身份提交。提交一旦推上去,作者行就永远是那个名字,"
-                    "而任何文件扫描都看不见作者行。"
-                    + (f"期望的是「{exp['login']}」。" if exp.get("login") else
-                       "期望值来自这个仓自己的 guard.expected* 声明。"))}
+                    f"而任何文件扫描都看不见作者行。期望的是「{exp['login']}」。")}

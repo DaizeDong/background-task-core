@@ -7,7 +7,6 @@ health. There is no timer, task registration, DB, or notification here.
 from __future__ import annotations
 
 import argparse
-from contextlib import nullcontext
 from copy import deepcopy
 import hashlib
 import json
@@ -97,23 +96,19 @@ def absolute(value):
 
 def load_binding(path):
     binding = read_json(absolute(str(path)))
-    allowed = {"schemaVersion", "request", "private_dir", "snapshot", "home",
-               "catalog_request", "catalog_snapshot", "tasks", "local_listeners",
-               "max_age_seconds", "catalog_max_age_seconds", "runtime", "catalog_pins"}
+    allowed = {"schemaVersion", "private_dir", "snapshot", "home", "catalog_request", "tasks",
+               "local_listeners", "max_age_seconds", "catalog_max_age_seconds", "runtime", "catalog_pins"}
     if (not isinstance(binding, dict) or type(binding.get("schemaVersion")) is not int
             or binding["schemaVersion"] != 1 or set(binding) - allowed):
         raise ValueError("invalid_collection_binding")
-    if ("request" in binding) == ("runtime" in binding):
-        raise ValueError("choose_one_authority_source")
-    if "runtime" in binding:
-        runtime = binding["runtime"]
-        if not isinstance(runtime, dict) or set(runtime) != {
-                "runtime_config", "private_root", "state_root", "vault_root"}:
-            raise ValueError("invalid_observation_runtime")
-        for value in runtime.values():
-            absolute(value)
-    else:
-        absolute(binding["request"])
+    if "runtime" not in binding:
+        raise CollectionFailure("runtime_binding_required")
+    runtime = binding["runtime"]
+    if not isinstance(runtime, dict) or set(runtime) != {
+            "runtime_config", "private_root", "state_root", "vault_root"}:
+        raise ValueError("invalid_observation_runtime")
+    for value in runtime.values():
+        absolute(value)
     for key in ("private_dir", "snapshot"):
         absolute(binding.get(key))
     private = absolute(binding["private_dir"])
@@ -123,19 +118,14 @@ def load_binding(path):
     console_store._load_datadir().assert_outside_own_repo(output, "task-console")
     if output == absolute(str(path)):
         raise ValueError("snapshot_overwrites_binding")
-    if output == private or ("request" in binding and output == absolute(binding["request"])):
+    if output == private:
         raise ValueError("invalid_snapshot_destination")
-    if "runtime" in binding and any(output.is_relative_to(absolute(value))
-                                   for value in binding["runtime"].values()):
+    if any(output.is_relative_to(absolute(value)) for value in runtime.values()):
         raise ValueError("snapshot_overwrites_runtime")
     if "home" in binding:
         absolute(binding["home"])
-    if "catalog_request" in binding and "catalog_snapshot" in binding:
-        raise ValueError("choose_one_catalog_source")
-    for key in ("catalog_request", "catalog_snapshot"):
-        if key in binding:
-            if absolute(binding[key]) == output:
-                raise ValueError("snapshot_overwrites_input")
+    if "catalog_request" in binding and absolute(binding["catalog_request"]) == output:
+        raise ValueError("snapshot_overwrites_input")
     age = binding.get("max_age_seconds", 300)
     if type(age) not in (int, float) or not 0 < age <= 86400:
         raise ValueError("invalid_collection_max_age")
@@ -321,16 +311,7 @@ def receipt_fact(rule, task_id):
         return {}, "receipt_missing"
     if not isinstance(report, dict):
         raise ValueError("invalid_receipt")
-    if rule.get("format") == "stdout-report":
-        # A captured reader stdout document, never a command to run that reader.
-        if type(report.get("schemaVersion")) is not int or report["schemaVersion"] != 1:
-            raise ValueError("invalid_receipt_schema")
-        if report.get("task_id") != task_id:
-            raise ValueError("receipt_task_mismatch")
-        keys = {"run_id", "current_run", "execution", "last_success", "last_success_run_id",
-                "last_run", "checks", "health", "observer"}
-        result = {key: deepcopy(report[key]) for key in keys if key in report}
-    elif rule.get("format") == "last-run-v1":
+    if rule.get("format") == "last-run-v1":
         if report.get("schemaVersion", report.get("version")) != 1:
             raise ValueError("invalid_last_run_schema")
         result = {"last_run": deepcopy(report)}
@@ -357,9 +338,7 @@ def freshness_check(spec, obs, check_id, stamp, max_age, reason="observed"):
 def collect(binding, capture, *, now=None, bundle=None):
     now = time.time() if now is None else now
     if bundle is None:
-        if "runtime" in binding:
-            raise CollectionFailure("authority_unavailable")
-        bundle = {"request": read_json(absolute(binding["request"]))}
+        raise CollectionFailure("authority_unavailable")
     plan = registration.compile_effective(bundle)
     specs = plan["task_specs"]
     policies = binding.get("tasks", {})
@@ -473,55 +452,41 @@ def collect(binding, capture, *, now=None, bundle=None):
             from skill_smith.catalog import discover
             catalog = discover(request)
         check_catalog_pins(binding)
-    elif "catalog_snapshot" in binding:
-        try:
-            catalog = read_json(absolute(binding["catalog_snapshot"]))
-        except FileNotFoundError:
-            pass
     snapshot = {"schemaVersion": 1, "observed_at": now, "expected": len(tasks), "tasks": tasks,
                 "catalog": catalog, "catalog_request_sha256": catalog_hash,
                 "input_revision": plan["input_revision"],
                 "scheduled_task_count": len(specs), "authority": "observation_only"}
-    if "runtime" in binding:
-        identity = authority_identity(bundle)
-        if plan["input_revision"] != identity["input_revision"]:
-            raise CollectionFailure("authority_changed")
-        snapshot.update(identity)
+    identity = authority_identity(bundle)
+    if plan["input_revision"] != identity["input_revision"]:
+        raise CollectionFailure("authority_changed")
+    snapshot.update(identity)
     component_status.evaluate_snapshot(snapshot, now)  # Validate before any publication.
     return snapshot
 
 
-def publish(binding_path, capture, *, now=None, collect_snapshot=collect, require_runtime=False):
+def publish(binding_path, capture, *, now=None, collect_snapshot=collect):
     binding = load_binding(binding_path)
-    if require_runtime and "runtime" not in binding:
-        raise CollectionFailure("runtime_binding_required")
     output = absolute(binding["snapshot"])
-    config_digest = runtime_config_digest(binding) if "runtime" in binding else None
-    runtime = load_runtime(binding) if "runtime" in binding else None
+    config_digest = runtime_config_digest(binding)
+    runtime = load_runtime(binding)
     # The established owner supplies crash-released kernel locks and guarded FS.
     lock_key = "observation:" + str(output).casefold()
     with ResourceLocks(Path(binding["private_dir"]) / ".observation-locks").hold([lock_key]):
-        bundle = None
-        if runtime is not None:
-            with runtime.locks.hold(["authority"]):
-                bundle = load_current(runtime)
+        with runtime.locks.hold(["authority"]):
+            bundle = load_current(runtime)
         check_catalog_pins(binding)
         facts = capture() if callable(capture) else capture
-        kwargs = {"now": now}
-        if bundle is not None:
-            kwargs["bundle"] = bundle
-        snapshot = collect_snapshot(binding, facts, **kwargs)
+        snapshot = collect_snapshot(binding, facts, now=now, bundle=bundle)
         payload = encode_document(snapshot)
         # Release authority during slow discovery, then compare under its lock.
         # A concurrent migration invalidates this pass; never publish mixed epochs.
-        with runtime.locks.hold(["authority"]) if runtime is not None else nullcontext():
-            if runtime is not None:
-                if runtime_config_digest(binding) != config_digest:
-                    raise CollectionFailure("binding_changed")
-                identity = authority_identity(bundle)
-                if (authority_identity(load_current(runtime)) != identity
-                        or any(snapshot.get(k) != v for k, v in identity.items())):
-                    raise CollectionFailure("authority_changed")
+        with runtime.locks.hold(["authority"]):
+            if runtime_config_digest(binding) != config_digest:
+                raise CollectionFailure("binding_changed")
+            identity = authority_identity(bundle)
+            if (authority_identity(load_current(runtime)) != identity
+                    or any(snapshot.get(k) != v for k, v in identity.items())):
+                raise CollectionFailure("authority_changed")
             if load_binding(binding_path) != binding:
                 raise CollectionFailure("binding_changed")
             check_catalog_pins(binding)
@@ -529,9 +494,8 @@ def publish(binding_path, capture, *, now=None, collect_snapshot=collect, requir
                 raise CollectionFailure("worker_timeout")
             fs.atomic_replace(output, payload)
     receipt = {"schemaVersion": 1, "published": True, "tasks": snapshot["scheduled_task_count"],
-               "subjects": snapshot["expected"], "sha256": hashlib.sha256(payload).hexdigest()}
-    if bundle is not None:
-        receipt.update(authority_identity(bundle))
+               "subjects": snapshot["expected"], "sha256": hashlib.sha256(payload).hexdigest(),
+               **authority_identity(bundle)}
     return receipt
 
 
@@ -573,8 +537,7 @@ def main(argv=None):
                 capture = read_json(absolute(str(args.capture)))
             else:
                 capture = read_capture(sys.stdin.buffer)
-            receipt = publish(args.binding, capture, collect_snapshot=collect_supervised,
-                              require_runtime=args.periodic)
+            receipt = publish(args.binding, capture, collect_snapshot=collect_supervised)
         print(json.dumps(receipt))
         return 0
     except Exception as exc:

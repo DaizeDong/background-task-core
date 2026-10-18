@@ -1,9 +1,9 @@
 """Explicit, journaled compensation for task registration.
 
-No default transport or storage path exists. The controller supplies durable
-adapters and a private declaration bundle; importing this module performs no I/O.
-The Scheduler and filesystem do not share an atomic commit. See docs/task-registration.md
-for adapter durability, lock and staging requirements before production wiring.
+runtime.create_runtime supplies the durable adapters and the private declaration
+bundle; importing this module performs no I/O. The Scheduler and filesystem do not
+share an atomic commit. See docs/task-registration.md for adapter durability, lock
+and staging requirements.
 """
 from __future__ import annotations
 
@@ -58,23 +58,29 @@ class Runtime:
     vault: object
     locks: object
     render: Callable
+    authority: object
+    linked_work_items: Callable
     checkpoint: Callable = lambda point: None
 
+    def finish(self, journal, status):
+        self.authority.finish(self, journal, status)
 
-_runtime = None
-
-
-def configure(runtime):
-    """Explicit embedding hook. There is intentionally no auto-discovered adapter."""
-    global _runtime
-    _runtime = runtime
+    def prepare_inputs(self, journal, bundle, selected, outputs):
+        self.authority.prepare_inputs(journal, bundle, selected, outputs)
 
 
 def _use(runtime):
-    runtime = runtime or _runtime
     if runtime is None:
         raise Conflict("runtime_adapter_required", "runtime")
     return runtime
+
+
+def _validate_control(spec, snapshot):
+    """A migrated task's live definition must still match its declaration."""
+    from .contracts import SCHEDULER_FIELDS
+    previous = snapshot['value']['spec']
+    if any(previous.get(key) != spec.get(key) for key in SCHEDULER_FIELDS if key != 'enabled'):
+        raise Conflict('declaration_apply_required', 'scheduler')
 
 
 def _authority(bundle):
@@ -100,20 +106,8 @@ def _compile(bundle):
 
 
 def compile_effective(bundle):
-    """Read TaskSpecs with the supplied request's validated authority and revision.
-
-    The runtime owner supplies the effective request; this API performs no I/O or
-    receipt discovery. Authority describes each task's writer, never permission
-    to apply the returned projections. The private compatibility plan is unchanged.
-    """
+    """TaskSpecs of the supplied effective request plus that request's revision. No I/O."""
     compiled = _compile(bundle)
-    epoch, migrated = _authority(bundle)
-    migrated_ids = set(migrated)
-    task_modes = {spec["task_id"]: "declarations" if spec["task_id"] in migrated_ids else "legacy"
-                  for spec in compiled["task_specs"]}
-    mode = "legacy" if not migrated else "declarations" if len(migrated) == len(task_modes) else "mixed"
-    compiled["authority"] = {"mode": mode, "epoch": epoch, "migrated_tasks": list(migrated),
-                             "task_modes": task_modes}
     compiled["input_revision"] = revision(bundle["request"])
     return compiled
 
@@ -159,16 +153,8 @@ def _verify_files(runtime, expected):
 
 
 def _safely_disabled(runtime, journal):
-    names = set(journal.get("scheduler_before", {}))
+    names = set(journal["scheduler_before"])
     names.update(s["key"] for s in journal["steps"] if s["kind"] == "scheduler")
-    if "scheduler_before" not in journal:
-        # Earlier v1 journals may contain no Scheduler step for an already
-        # disabled task. Their locked IDs still identify the recovery scope.
-        ids = {key.removeprefix("task:") for key in journal["locks"] if key.startswith("task:")}
-        selected = [s for s in _compile(runtime.load())["task_specs"] if s["task_id"] in ids]
-        if not ids or {s["task_id"] for s in selected} != ids:
-            raise Conflict("scheduler_scope_unknown", "journal")
-        names.update(s["name"] for s in selected)
     for name in sorted(names):
         current = _read(runtime.scheduler, name)
         _idle(current)
@@ -177,21 +163,11 @@ def _safely_disabled(runtime, journal):
 
 
 def _restored_files(runtime, journal):
-    expected = {key: runtime.vault.get(ref) for key, ref in journal.get("file_before", {}).items()}
+    expected = {key: runtime.vault.get(ref) for key, ref in journal["file_before"].items()}
     for step in journal["steps"]:
         if step["kind"] == "files":
             ref = step.get("undo", step["before"]) if step["phase"] == "undone" else step["before"]
             expected[step["key"]] = runtime.vault.get(ref)
-    if "file_before" not in journal:
-        # Earlier journals only recorded changed files. The pinned input still
-        # carries approved fingerprints for relevant unchanged resources.
-        bundle = runtime.load()
-        for path in bundle["paths"].values():
-            if path not in expected:
-                current = _read(runtime.files, path)
-                if fingerprint(current) != bundle["file_ownership"].get(path):
-                    raise Conflict("file_ownership_changed", "files")
-                expected[path] = current
     return expected
 
 
@@ -305,8 +281,8 @@ def _assemble(runtime, intent):
                 raise Conflict("incomplete_observation", "scheduler")
             if current["running"]:
                 raise Conflict("busy", "scheduler")
-            if writer != 'legacy' and intent['operation'] in ('enable', 'disable') and hasattr(runtime, 'validate_control'):
-                runtime.validate_control(spec, snapshot)
+            if writer != 'legacy' and intent['operation'] in ('enable', 'disable'):
+                _validate_control(spec, snapshot)
             if spec["enabled"] and not current["enabled"] and not intent["approve_enable"] and intent["operation"] not in ("disable", "retire", "restore"):
                 raise Conflict("explicit_enable_required", "enabled")
         if task_id in old_tombstones and intent["operation"] != "retire":
@@ -486,10 +462,7 @@ def _outputs(bundle, compiled, selected, before, intent, tx, *, linked=None):
     for spec in selected:
         launcher = bundle.get('launchers', {}).get(spec['task_id'])
         if launcher is not None and spec['task_id'] not in legacy_ids:
-            context_name = spec['name'] if spec['name'] in (
-                'ccModelRefresh', 'codexgModelRefresh', 'DemandMiningEOD', 'CcDailyTriage') else None
-            result[launcher] = None if retiring else launcher_bytes(
-                spec['argv'], spec['cwd'], scheduler_name=context_name)
+            result[launcher] = None if retiring else launcher_bytes(spec['argv'], spec['cwd'])
     if retiring:
         for task_id in ids:
             if bundle["active_xml"][task_id] is not None:
@@ -663,12 +636,11 @@ def _rollback(runtime, journal):
         except Exception as exc:
             conflicts.append({"kind": "files", "code": exc.code if isinstance(exc, ContractError) else "recovery_failed"})
     journal["conflicts"] = conflicts
-    journal["status"] = "conflict" if conflicts else ('recovering' if hasattr(runtime, 'finish') else 'rolled_back')
+    journal["status"] = "conflict" if conflicts else 'recovering'
     _save(runtime, journal)
     # Keep staged evidence for conflict resolution; cleanup is resumable separately.
     if not conflicts:
-        if hasattr(runtime, 'finish'):
-            runtime.finish(journal, 'rolled_back')
+        runtime.finish(journal, 'rolled_back')
         _cleanup(runtime, journal)
     return _result(journal)
 
@@ -710,8 +682,7 @@ def apply(plan, expected_revision, *, runtime=None, restore_approval=None):
                 journal[key] = plan[key]
         if plan['intent']['operation'] == 'restore':
             journal['restore'] = {'task_ids': plan['task_ids'], 'approval': plan['plan_revision']}
-        if hasattr(runtime, 'prepare_inputs'):
-            runtime.prepare_inputs(journal, bundle, selected, outputs)
+        runtime.prepare_inputs(journal, bundle, selected, outputs)
         # Publish the journal only after it can prove every original resource.
         # A crash immediately after create must not leave recovery without the
         # before-images needed to verify the unchanged Scheduler definitions.
@@ -793,8 +764,7 @@ def apply(plan, expected_revision, *, runtime=None, restore_approval=None):
                     raise Conflict("final_readback_mismatch", "scheduler")
             if revision(runtime.load()) != expected_revision:
                 raise Conflict("input_changed", "input_revision")
-            if hasattr(runtime, 'finish'):
-                runtime.finish(journal, 'committed')
+            runtime.finish(journal, 'committed')
             journal["status"] = "committed"
             _save(runtime, journal)
             runtime.checkpoint("committed")
@@ -858,7 +828,7 @@ def recover(transaction_id, *, runtime=None):
         if 'reconcile' in journal or 'bootstrap' in journal:
             raise Conflict('journal_operation_changed', 'journal')
         _ordinary_recovery_shape(journal)
-        if journal['status'] == 'committing' and hasattr(runtime, 'finish'):
+        if journal['status'] == 'committing':
             runtime.finish(journal, journal['completion']['status'])
             _cleanup(runtime, journal)
             return _result(journal)
@@ -875,86 +845,49 @@ def retire(task_id, expected_revision, *, reason, runtime=None):
     return apply(plan, expected_revision, runtime=runtime)
 
 
-def control(name, verb, *, reason="", runtime=None):
-    """Legacy bridge: None means positively established nonmigrated authority."""
-    runtime = _use(runtime)
-    bundle = runtime.load()
-    epoch, migrated = _authority(bundle)
-    compiled = _compile(bundle)  # malformed declarations never fall back
-    matches = [s for s in compiled["task_specs"] if s["name"].casefold() == name.casefold()]
-    if not matches:
-        raise Conflict('ownership_required', 'task_id')
-    if matches[0]["task_id"] not in migrated:
-        proof = bundle.get('ownership', {}).get(matches[0]['task_id'])
-        if (not isinstance(proof, dict) or proof.get('name') != matches[0]['name']
-                or proof.get('task_path') != '\\' or proof.get('epoch') != epoch
-                or proof.get('writer') != 'legacy' or 'identity' not in proof):
-            raise Conflict('ownership_required', 'task_id')
-        if _read(runtime.scheduler, proof['name']).get('identity') != proof['identity']:
-            raise Conflict('scheduler_ownership_changed', 'ownership')
-        return None
-    if verb not in ("enable", "disable", "retire"):
-        raise Conflict("migrated_control_required", "operation")
-    plan = build_plan(runtime, [matches[0]["task_id"]], operation=verb,
-                      approve_enable=verb == "enable", reason=reason)
-    return apply(plan, plan["input_revision"], runtime=runtime)
+def dispatch(name, verb, *, reason="", runtime=None):
+    """Run/stop act on the Scheduler under the authority and task locks.
 
-
-def dispatch(name, verb, *, legacy, reason="", runtime=None):
-    """Hold authority lock through a legacy action, preventing cutover races."""
+    Enable, disable and retire are registration transactions; a legacy-writer
+    task goes through the same transaction with its bindings left as reviewed.
+    """
     runtime = _use(runtime)
+    from .scheduler_windows import task_name
+    task_name(name)
+    if verb not in ('enable', 'disable', 'run', 'stop', 'retire'):
+        raise Conflict('invalid_operation', 'operation')
     with runtime.locks.hold(["authority"]):
         if runtime.journal.pending(["authority"]):
             raise Conflict("recovery_required", "journal")
         bundle = runtime.load()
-        _, migrated = _authority(bundle)
-        specs = _compile(bundle)["task_specs"]
-        matches = [s for s in specs if s["name"].casefold() == name.casefold()]
+        epoch, migrated = _authority(bundle)
+        matches = [s for s in _compile(bundle)["task_specs"] if s["name"].casefold() == name.casefold()]
         if not matches:
             raise Conflict('ownership_required', 'task_id')
-        proof = bundle.get('ownership', {}).get(matches[0]['task_id'])
-        epoch, _ = _authority(bundle)
-        if (not isinstance(proof, dict) or proof.get('name') != matches[0]['name']
+        spec = matches[0]
+        declared = spec['task_id'] in migrated
+        proof = bundle.get('ownership', {}).get(spec['task_id'])
+        if (not isinstance(proof, dict) or proof.get('name') != spec['name']
                 or proof.get('task_path') != '\\' or proof.get('epoch') != epoch
-                or proof.get('writer') != ('declarations' if matches[0]['task_id'] in migrated else 'legacy')
+                or proof.get('writer') != ('declarations' if declared else 'legacy')
                 or 'identity' not in proof):
             raise Conflict('ownership_required', 'task_id')
-        from .scheduler_windows import task_name
-        task_name(name)
-        if verb not in ('enable', 'disable', 'run', 'stop', 'retire'):
-            raise Conflict('invalid_operation', 'operation')
-        spec = matches[0]
-        # The authority lock is first for every writer. Task locks cover the
-        # complete callback, including old projection edits and readback.
         with runtime.locks.hold(['task:' + spec['task_id']]):
             snapshot = _read(runtime.scheduler, proof['name'])
             if snapshot.get('identity') != proof['identity']:
                 raise Conflict('scheduler_ownership_changed', 'ownership')
-            if spec['task_id'] not in migrated:
-                if verb in ('enable', 'disable', 'retire'):
-                    # Arbitrary mutating callbacks cannot provide recoverable
-                    # after-images. Explicitly convert built-in controls below.
-                    if legacy is not None:
-                        raise Conflict('legacy_declarative_conversion_required', 'operation')
-                else:
-                    return legacy()
             if verb in ('run', 'stop'):
-                if snapshot['state'] != 'present':
-                    raise Conflict('task_missing', 'scheduler')
-                if hasattr(runtime, 'validate_control'):
-                    runtime.validate_control(spec, snapshot)
-                if verb == 'run' and not spec['enabled']:
-                    raise Conflict('task_disabled', 'scheduler')
+                if declared:
+                    if snapshot['state'] != 'present':
+                        raise Conflict('task_missing', 'scheduler')
+                    _validate_control(spec, snapshot)
+                    if verb == 'run' and not spec['enabled']:
+                        raise Conflict('task_disabled', 'scheduler')
                 return runtime.scheduler.control(proof['name'], verb, snapshot)
-    # apply will acquire the full lock set and revalidate the declaration again.
-    if spec['task_id'] not in migrated:
-        plan = build_plan(runtime, [spec['task_id']], operation=verb,
-                          approve_enable=verb == 'enable', reason=reason, legacy_transaction=True)
-        result = apply(plan, plan['input_revision'], runtime=runtime)
-    else:
-        result = control(name, verb, reason=reason, runtime=runtime)
-    if result is None:
-        raise Conflict("authority_changed", "task_id")
+    # apply acquires the full lock set and revalidates the declaration.
+    plan = build_plan(runtime, [spec['task_id']], operation=verb, approve_enable=verb == 'enable',
+                      reason=reason, legacy_transaction=not declared)
+    result = apply(plan, plan['input_revision'], runtime=runtime)
     if verb in ('enable', 'disable') and result.get('ok'):
         value = snapshot.get('value', {})
         result['before'] = ('Running' if value.get('running') else

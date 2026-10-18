@@ -269,16 +269,6 @@ def _prepare(runtime, record, request):
     snapshot = {'state': 'present', 'identity': 'effective-input-v1',
                 'value': {'submitted': request, 'request': deepcopy(request)}}
     reference = record['bootstrap'].get('input_reference')
-    if reference is None and steps:
-        # Older journals did not retain the input reference separately. Recover
-        # it only from the first stage's durable identity, never a vault scan.
-        first = steps[0]
-        if 'after' in first:
-            reference = reg._document(runtime.vault.get(first['after']))['input_reference']
-        else:
-            proof = resources.prepared_snapshot(paths[0], first['token'])
-            if proof is not None:
-                reference = reg._document(proof)['input_reference']
     if reference is None:
         # put allocates a new object even for the same key. A crash before save
         # may leave an unreferenced blob; retain it and checkpoint the new ref.
