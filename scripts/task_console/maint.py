@@ -18,12 +18,7 @@ import shutil
 import subprocess
 from pathlib import Path
 
-# 在 pythonw(GUI 子系统)下,每个控制台子程序都要新分配一个控制台。那次分配很慢,
-# 而且并发时根本不成立:实测同一条 git 命令,普通 python 下几毫秒,pythonw 下单次
-# 4.5 秒,四个并发全部 15 秒超时。加上这个标志之后单次降到 0.08 秒。
-#
-# 这个坑只在生产形态下出现,而开发期测试都是用普通 python 跑的:探针必须复现真实的
-# 调用形状,否则测的是另一个程序。
+# pythonw 下每个控制台子进程都要新分配控制台,又慢又会在并发时超时;这个标志免掉它。
 _NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
 
@@ -34,27 +29,11 @@ SAFE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._@-]{0,79}$")
 ACTIONS = ("skill.archive", "skill.restore", "plugin.enable", "plugin.disable",
            "repo.fetch", "repo.reveal", "repo.status", "repo.commitpush",
            "clean.tempgit",
-           "memory.archive", "memory.restore",
-           "task.retire")
-
-# MEMORY.md 的硬上限。超了尾部条目会在下次会话静默消失,所以这两个数字是护栏不是建议。
-# ⚠ 这两个数以前在 maint 和 memops 里**各存了一份**,而两个模块都把它们下发给页面。
-# 两份手写的同一个数,没有任何东西对账, 改一处而另一处照旧,页面上就会出现
-# 两个都自称权威的百分比,而它们的分母不同。
-# 现在从 memops 借,那边才是回答记忆池问题的那个模块。
-if __package__:
-    from .memops import INDEX_HARD_BYTES, INDEX_HARD_LINES
-else:
-    from memops import INDEX_HARD_BYTES, INDEX_HARD_LINES  # noqa: E402,F401
+           "memory.archive", "memory.restore")
 
 
 class Refused(Exception):
-    """动作被闸门拒绝。
-
-    带 code 不只是为了好看:多道闸互相兜底时,「抛了 Refused」证明不了是哪一道抛的。
-    实测过:放开名字闸之后子项闸仍然挡住,去掉子项闸之后名字闸仍然挡住,于是两个
-    只断言「抛异常」的测试在各自的投毒下都照样全绿。code 让每条用例钉住它自己那道闸。
-    """
+    """动作被闸门拒绝。code 说明是哪一道闸拒绝的。"""
 
     def __init__(self, msg: str, code: str = "refused"):
         super().__init__(msg)
@@ -69,32 +48,14 @@ def _root(env: str) -> Path | None:
 def _child(root: Path, name: str) -> Path:
     """把一个名字解析成 root 的直接子项,解析不出来就拒绝。
 
-    比对的是**解析后的父目录**,不是字符串前缀 —— 前缀比对挡不住 '..'。
-
-    ⚠ 用 abspath 不用 realpath,而且**刻意不解析最后一段**(理由见下面的行内注释:
-    本机 skill 是 junction 部署的,realpath 会跟到 junction 的目标上,
-    于是每个 linked skill 的归档按钮都会必然失败)。
-    代价要说清楚:**这条路因此挡不住「最后一段本身是一个指向别处的链接」**。
-    这个 docstring 以前写的是「用 realpath 比对…挡得住一个指向别处的符号链接」——
-    那是它正下方的实现按设计**不做**的一件事。一个承诺了实现没做的防护的文档,
-    比没有文档更糟:它会让下一个人不再去加那道防护。
+    比对的是 abspath 之后的父目录,不是字符串前缀,所以挡得住 '..'。
+    刻意不解析最后一段:skill 常以 junction 部署,判的是「名字挂在 root 下」,
+    不是「它指向哪里」。所以这里不挡最后一段本身是链接的情况。
     """
     if not SAFE_NAME.match(name or ""):
         raise Refused(f"名字不合法: {name!r}", "bad_name")
     p = (root / name)
     try:
-        # 用 abspath 而不是 realpath:abspath 会把 ".." 按字面消掉,
-        # 所以 Path(root/"..") 的父目录变成 root 的**上上级**、比对失败 :
-        # 那个洞(Path(root/"..").parent 就是 root 本身)照样堵着,
-        # 而这个洞正是测试在干净版本上抓出来的,不能因为这次改动重新打开。
-        #
-        # ⚠ 但**不能解析最后一段**。本机的 skill 是 junction 部署的
-        # (skills/<name> 指向别处的仓库),realpath 会跟过去,于是解析后的父目录是
-        # junction 目标那边的目录,和 root 对不上。后果是:skill 面板上每个 linked 的
-        # 条目都挂着一个点了必然失败的归档按钮,而失败信息是一句听起来像路径穿越攻击的
-        # 「目标不是配置根目录的直接子项」,把排查方向整个带偏。
-        # 这里要判的是「这个**名字**确实挂在 root 下」,不是「它指向哪里」;
-        # 指向哪里是 junction 的自由,不是越界。
         parent = os.path.dirname(os.path.abspath(p))
         root_abs = os.path.abspath(root)
     except OSError as e:
@@ -127,14 +88,7 @@ def _desc_len(skill_dir: Path) -> int | None:
 
 def read_skills() -> dict:
     root, arch = _root("TASK_CONSOLE_SKILLS"), _root("TASK_CONSOLE_SKILL_ARCHIVE")
-    # 「没设」和「设了但那条路径不在」是两件事。合并之后方向刚好是最误导的那一种:
-    # 目录被移走或改名时,页面言之凿凿地说环境变量没设,而它设了,
-    # **这是把「我让它检查了而它坏了」报成了「我没让它检查」**,人会照着这句去检查一个
-    # 没有问题的地方。memops.py 早就为同一件事拆开过两个分支并写下这段理由,
-    # 这里 2026-09-09 才跟上(下面两个分支就是修好之后的形态)。
-    # ⚠ 上一版注释的末句写的是「而这里**一直是**被推翻的那个旧形态」,
-    # 那是我在同一次改动里、紧贴着已经改好的代码写下的一句现在时描述。
-    # **一段描述自己正下方代码的注释写错时,读的人会先信注释。**
+    # 「没设」和「设了但路径不在」分开报,别把坏了的检查说成没检查。
     if not root:
         return {"available": False,
                 "reason": "没有设 TASK_CONSOLE_SKILLS,skill 这一栏是「未检查」。"}
@@ -146,12 +100,7 @@ def read_skills() -> dict:
         d = root / name
         if not (d / "SKILL.md").is_file():
             continue
-        # _desc_len 返回 None 表示「读不出来」(文件读不了、frontmatter 写坏),
-        # 返回 0 表示「真的没写描述」。`or 0` 把这两件事压成同一个数,
-        # 于是那份 skill 贡献的字符被当成 0,预算条读数偏低、颜色偏绿,
-        # 而真实预算已经更接近上限 : **一个被喂了空的度量打印的绿色,
-        # 和一个真没超标的度量打印的绿色一模一样**,而这条预算条正是用来防
-        # 「超了之后尾部条目的描述会在下一次会话里静默消失」的。
+        # None = 描述读不出来,0 = 真没写描述;读不出的单独计数,预算判定因此不出结论。
         raw = _desc_len(d)
         n = raw or 0
         if raw is None:
@@ -173,48 +122,6 @@ def read_skills() -> dict:
             "verdict": resource_verdict(None if unreadable else budget, warning=15000, critical=18600),
             # 单独报,不并进 0:预算条旁边要能看出「这个数字是不完整的」。
             "descUnreadable": unreadable}
-
-
-def read_memory() -> dict:
-    """记忆池的粗略计数。
-
-    ⚠ 这个函数产出的东西**页面上没有任何读取点**:记忆池那一屏读的是 `/api/mem`
-    (memops.read),而它算的是同一批数字的另一份 —— 口径还不完全一样
-    (这里数 `*.md` 的总字节,那边按热层/冷层分开数)。
-    两份都在下发,谁也不说自己是哪一份。留着它是因为 `/api/maint` 的形状是对外契约,
-    突然少一个键会让别的消费方安静地拿到 undefined;但**新的消费方一律该用 /api/mem**,
-    而这里的数字只作为那一屏不可用时的粗略兜底。
-    """
-    root = _root("TASK_CONSOLE_MEMORY")
-    if not root:
-        return {"available": False,
-                "reason": "没有设 TASK_CONSOLE_MEMORY,记忆池这一栏是「未检查」。"}
-    if not root.is_dir():
-        return {"available": False,
-                "reason": f"记忆池目录不存在或读不了: {root}"}
-    files, total = 0, 0
-    for f in root.glob("*.md"):
-        try:
-            total += f.stat().st_size
-        except OSError:
-            continue
-        files += 1
-    idx = root / "MEMORY.md"
-    lines = ibytes = None
-    if idx.is_file():
-        try:
-            raw = idx.read_bytes()
-            ibytes, lines = len(raw), raw.count(b"\n") + 1
-        except OSError:
-            pass
-    archived = len(list((root / "archive").glob("*.md"))) if (root / "archive").is_dir() else 0
-    return {"available": True, "root": str(root), "files": files, "bytes": total,
-            "archived": archived, "indexLines": lines, "indexBytes": ibytes,
-            "hardLines": INDEX_HARD_LINES, "hardBytes": INDEX_HARD_BYTES,
-            # 说清自己不是权威。一个不标注口径的第二份数字,和一个错的数字
-            # 在读的人那里代价一样:他得先花时间弄明白该信哪个。
-            "authority": "/api/mem",
-            "note": "粗略计数。记忆池的权威口径在 /api/mem(memops),两边算法不同。"}
 
 
 def _claude() -> str | None:
@@ -268,27 +175,14 @@ def read_plugins(timeout: int = 40) -> dict:
 def read_all() -> dict:
     import component_status
     from source_reads import read_many
-    sections = read_many({'skills': read_skills,
-                          'memory_summary': read_memory,
-                          'plugins': read_plugins,
-                          'components': component_status.read_configured})
-    sections['memory'] = sections.pop('memory_summary')
-    return sections
+    return read_many({'skills': read_skills,
+                      'plugins': read_plugins,
+                      'components': component_status.read_configured})
 
 
-def act(action: str, name: str, arg: str | None = None, *, controller=None) -> dict:
+def act(action: str, name: str, arg: str | None = None) -> dict:
     if action not in ACTIONS:
         raise Refused(f"不在动作表里: {action!r}", "bad_action")
-    if action == "task.retire":
-        # 退役是唯一一个会同时改三处登记的动作。它必须带原因:一个没写原因的退役,
-        # 半年后没人敢重启用也没人敢删。参数从这里透传下去,由 retire 自己校验。
-        if __package__:
-            from . import retire
-        else:
-            import retire
-        if controller is not None:
-            return retire.apply(name, arg or "", controller=controller)
-        return retire.apply(name, arg or "")
     if action.startswith("memory."):
         # 归档不在这里实现:它是一个三步的生命周期迁移,而那份逻辑已经存在于一个
         # 专门的脚本里。再写一份的结果一定是两份实现慢慢分叉,然后其中一份在没人
@@ -313,18 +207,9 @@ def act(action: str, name: str, arg: str | None = None, *, controller=None) -> d
         import repos
         return repos.fetch(name)
     if action == "repo.commitpush":
-        # 唯一一个把东西送出这台机器的动作。
-        #
-        # ⚠ 这里原来写着「push 永远不进这张表:它是对外动作,撤不回来,
-        # 而一个能一键推送的按钮迟早会在没人看的时候被点到」。那句判断没有错,
-        # 错的是把它读成「所以永远别做」。要防的是**一次误击就发出去**,
-        # 不是「人明确决定之后还要手工敲六条命令」, 后者的代价是伴生仓
-        # 长期挂着十几条一模一样的「有未提交改动」,而一张长期有一半是同一件琐事的
-        # 清单,人会开始整张不看,连同真正要紧的那几条一起。
-        #
-        # 所以它和 task.retire 一样是**两步**的:先出只读计划(repo.commitpush.plan),
-        # 执行这一步必须带着计划里那份文件清单回来,对不上就整个拒绝。
-        # 一次误击只会打开一份计划。arg 是 JSON: {"message": ..., "expect": [...]}。
+        # 唯一一个把东西送出这台机器的动作,所以是两步:先出只读计划
+        # (repo.commitpush.plan),执行时必须带着计划里那份文件清单回来,对不上就整个拒绝。
+        # arg 是 JSON: {"message": ..., "expect": [...]}。
         import repos
         try:
             payload = json.loads(arg or "{}")
@@ -375,6 +260,3 @@ def act(action: str, name: str, arg: str | None = None, *, controller=None) -> d
     return {"ok": True, "out": (r.stdout or "").strip()[:400],
             "message": ('插件已启用' if enabled else '插件已禁用') + '；现有会话需重新加载插件或开启新会话'}
 
-
-if __name__ == "__main__":
-    print(json.dumps(read_all(), ensure_ascii=False, indent=2))

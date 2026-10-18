@@ -74,7 +74,7 @@ def dir_size(path: Path, cap: int = WALK_CAP) -> dict:
             "partial": partial or errors > 0, "errors": errors}
 
 
-def disk(path: str = ".") -> dict:
+def disk(path: str) -> dict:
     from health import resource_verdict
     try:
         u = shutil.disk_usage(os.path.expanduser(path))
@@ -115,8 +115,7 @@ def temp_git_leftovers(root: Path, now: float, errors: list | None = None) -> li
     return out
 
 
-def read(now: float | None = None) -> dict:
-    now = time.time() if now is None else now
+def read() -> dict:
     res: dict = {"disk": disk(os.path.expanduser("~"))}
 
     cache = os.environ.get("TASK_CONSOLE_PLUGIN_CACHE")
@@ -131,7 +130,7 @@ def read(now: float | None = None) -> dict:
             # 残留数也要能说「我数得不全」。原来扫描失败直接返回空列表,
             # 于是「这里很干净」和「我根本没数成」都渲染成一个确定的 0 个残留。
             lerr: list[str] = []
-            left = temp_git_leftovers(p, now, lerr)
+            left = temp_git_leftovers(p, time.time(), lerr)
             res["pluginCache"] = dict(
                 {"available": True, "path": str(p), "leftovers": left,
                  "leftoverCount": len(left),
@@ -170,10 +169,9 @@ def _force_writable(func, path, exc):
     raise exc
 
 
-def clean_temp_git(now: float | None = None) -> dict:
+def clean_temp_git() -> dict:
     """删掉废弃的克隆暂存目录。三条闸同时成立才动手。"""
     from maint import Refused
-    now = time.time() if now is None else now
     cache = os.environ.get("TASK_CONSOLE_PLUGIN_CACHE")
     if not cache:
         raise Refused("没有配 TASK_CONSOLE_PLUGIN_CACHE,拒绝删除任何东西", "no_config")
@@ -181,7 +179,7 @@ def clean_temp_git(now: float | None = None) -> dict:
     if not root.is_dir():
         raise Refused(f"目录不存在: {root}", "missing_src")
     removed, freed, skipped, failures = [], 0, [], []
-    for item in temp_git_leftovers(root, now, failures):
+    for item in temp_git_leftovers(root, time.time(), failures):
         if not item["deletable"]:
             # 太新的不动:一个正在进行中的克隆看起来和一个废弃的一模一样。
             skipped.append(item["name"])

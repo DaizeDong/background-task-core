@@ -1,14 +1,8 @@
-"""Windows 事件日志的快速读法,产出和 runlog.ps1 完全一样的行。
+"""TaskScheduler 运行日志的读法:EvtQuery + 渲染 XML(pywin32),这是唯一的读取器。
 
-为什么值得单独写一份:同一批 200 条 TaskScheduler 事件,Get-WinEvent 取出来要约 5.5 秒,
-再碰一次 TaskDisplayName 又要 5.1 秒;而 EvtQuery 取出来加渲染 XML 一共 2 毫秒。
-差三个数量级,慢的不是日志本身,是每条事件都去解析一次 provider 的元数据。
-
-这个差距不是优化,是可行性:摄入整段运行日志曾经要十几分钟,于是它被关掉了,
-于是「这个任务到底跑没跑成」这个问题在控制台上一直是空的。
-
-它是可选的:pywin32 不在就返回 available=False 并说明原因,调用方回落到 PowerShell。
-**不装作成功**,因为一条空的运行日志和一段读不到的运行日志在界面上长得一模一样。
+比 Get-WinEvent 快三个数量级:慢的是每条事件都去解析一次 provider 元数据。
+读不到时返回 enabled=False 并说明原因,不装作成功:一条空的运行日志和一段读不到的
+运行日志在界面上不能长得一样。
 """
 
 from __future__ import annotations
@@ -17,52 +11,28 @@ import datetime as _dt
 import re
 import xml.etree.ElementTree as ET
 
-# TaskScheduler 的 Operational 日志。100=开始 102=完成 111=被杀 201=动作返回码
-# 203=启动失败 329=超时。102 是任务级判决,201 是动作级的,两者可以不一致。
+# TaskScheduler 的 Operational 日志。102 是任务级判决,201 是动作级返回码,两者可以不一致。
 CHANNEL = "Microsoft-Windows-TaskScheduler/Operational"
 WANTED = (100, 102, 111, 201, 203, 329)
+# 计数事件 → 汇总字段。201(动作返回码)不计数,按 rc 归一后另收。
+EVENT_FIELDS = {100: "starts", 102: "done", 111: "killed", 203: "failStart", 329: "timedOut"}
+ACTION_RC = 201
 
 _NS = "{http://schemas.microsoft.com/win/2004/08/events/event}"
 
 
-def available() -> tuple[bool, str | None]:
-    try:
-        import win32evtlog  # noqa: F401
-    except Exception as e:      # ImportError 或 DLL 加载失败都算不可用
-        return False, f"pywin32 不可用: {e.__class__.__name__}"
-    return True, None
-
-
 def _is_no_more(e) -> bool:
-    """EvtNext 读完时也会抛(ERROR_NO_MORE_ITEMS = 259),那是正常结束不是失败。
-    不区分的话,每一次正常读完都会被报成「读到一半失败」,而一个天天误报的提示
-    很快就会被无视。
-
-    消息那条分支存在,是因为有些 pywin32 版本不带 `winerror`,只有文本。
-
-    ⚠ 它以前写的是 `"259" in str(e)`,而那是**子串**匹配:一个消息里含
-    `record 12590` 的无关错误会被判成「正常读完」,于是一段读到一半失败的日志
-    被报成读完了 —— `enabled=True`、`dropped=0`、条数是一个偏小但看起来确定的数字。
-    **那正是这个模块存在要防的那一件事**,被它自己的判据造了出来;
-    当时的用例还把这个行为断言成了期望值,理由是「记录一个已知的过宽」。
-    一个防 X 的判据不该把 X 钉成期望:那会让下一个人以为它是设计。
-
-    现在按词边界匹配,`12590` 里的 259 不再命中,`(259)` 仍然命中。"""
+    """EvtNext 读完时抛 ERROR_NO_MORE_ITEMS(259),那是正常结束不是失败。
+    有些 pywin32 版本只有消息文本,所以按词边界匹配 259(`12590` 不算)。"""
     if getattr(e, "winerror", None) == 259:
         return True
     return re.search(r"(?<!\d)259(?!\d)", str(e)) is not None
 
 
 def channel_enabled() -> tuple[bool | None, str | None]:
-    """通道自己说它开没开。None 表示问不出来(和「关着」不是一回事)。
+    """通道配置里的 IsEnabled。None 表示问不出来(和「关着」不是一回事)。
 
-    这个函数存在的理由:read() 返回的 enabled 一直只表示「EvtQuery 打得开」,
-    而 runlog.ps1 里的同名键表示的是**通道配置里的 IsEnabled**,server.py 按后者的语义
-    去解释前者。通道被关掉(Windows 默认就是关的)但通道文件还在时,EvtQuery 打得开、
-    返回零条事件,快路报 enabled=True,于是永远不会回落到 runlog.ps1,
-    那句「日志是关闭的,开启它是开始记录不是恢复记录」永远不出现。
-    页面于是印出「运行日志 0」,而这正是本文件开头写的那句要防的事:
-    **一条空的运行日志和一段读不到的运行日志在界面上长得一模一样。**
+    关着的通道只要文件还在,EvtQuery 照样打得开并返回零条,所以要单独问。
     """
     try:
         import win32evtlog
@@ -147,24 +117,17 @@ def _parse(xml: str) -> dict | None:
             "t": t.strftime("%Y-%m-%d %H:%M:%S"), "rc": rc}
 
 
-def read(days: int = 30, max_events: int = 20000, now: _dt.datetime | None = None) -> dict:
-    ok, why = available()
-    if not ok:
-        return {"enabled": False, "reason": why, "events": []}
+def read(days: int, max_events: int) -> dict:
     import win32evtlog
 
-    now = now or _dt.datetime.now().astimezone()
-    since = now - _dt.timedelta(days=days)
+    since = _dt.datetime.now().astimezone() - _dt.timedelta(days=days)
 
-    # 通道关着就直接说关着,不要靠「EvtQuery 打不打得开」去猜:关着的通道
-    # 只要文件还在就打得开,而那时读到的零条会被上层当成「日志正常、没有记录」。
     on, why = channel_enabled()
     if on is False:
         return {"enabled": False,
                 "reason": "任务运行历史日志是关闭的。开启它是开始记录,不是恢复记录。",
                 "events": []}
-    # on 为 None 表示问不出来。**不能当成开着**:那样就回到了原来那个把「查不成」
-    # 当成「正常」的形态。让它走 PowerShell 那条慢路去拿一个权威答案。
+    # 问不出来不能当成开着。
     if on is None:
         return {"enabled": False, "reason": why or "读不到通道配置", "events": []}
     try:
@@ -181,9 +144,7 @@ def read(days: int = 30, max_events: int = 20000, now: _dt.datetime | None = Non
         try:
             batch = win32evtlog.EvtNext(q, 100)
         except Exception as e:
-            # 读到一半失败和读完了在这里原来是同一个 break,于是 enabled=True、
-            # count 是个偏小的确定数字、dropped=0 : 一个数了一半却报确定数字的结果,
-            # 比不报还糟。现在把它说出来。
+            # 读到一半失败要报出来,不能和读完了混成同一个 break。
             if not _is_no_more(e):
                 broke = e.__class__.__name__
             break
@@ -216,8 +177,6 @@ def read(days: int = 30, max_events: int = 20000, now: _dt.datetime | None = Non
         "dropped": dropped,
         "truncated": len(rows) >= max_events,
         # 下面三个只有摄入器用:去重的水位线、日志被清空的探测器、通道里的记录总数。
-        # 它们和 runlog.ps1 输出里的同名键一一对应, 摄入器两条通路读同一组键,
-        # 缺一个都会让它把「问不出来」当成一个值来用(maxRecordId 缺失会变成 0)。
         "maxRecordId": max((r["rid"] for r in rows if r.get("rid")), default=0),
         "oldestRecordId": oldest_rid,
         "recordCount": record_count,

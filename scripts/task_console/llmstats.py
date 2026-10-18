@@ -71,8 +71,6 @@ CALLER_LEGACY = "(早于此字段)"   # 根本没有 caller 这个键(账本里�
 # 所以它的角色被降到最后一级:**只要账本里有过一条真实记录,就以记录为准**
 # (记录里的 chain 是运行时实际走的那条,是证据不是拷贝)。只有一台从没调用过的
 # 全新机器才会看见这个常量,而在那种机器上它错了也没有任何东西受影响。
-#
-# 对应地,这里**不设**「两个常量必须相等」的对账测试:那种闸本身就是在承认有两份。
 DEFAULT_CHAIN = ("codexg", "codex", "cc", "claude")
 
 # 观测链时从账本尾部回看多少行。只保留原始文本,回看时才逐行解析,
@@ -82,13 +80,12 @@ OBSERVE_TAIL = 200
 # 链路名字的形状闸。小写起头、长度上限 32,和文件名与环境变量的可用字符对齐。
 NAME_RE = re.compile(r"^[a-z][a-z0-9_-]{0,31}$")
 
-# 环境变量名。账本与链配置各有一个显式覆盖,都是为了让测试不碰真机文件。
+# 环境变量名。账本与链配置各有一个显式覆盖,由启动绑定设置。
 ENV_LEDGER = "TASK_CONSOLE_LLMCALL_LEDGER"
 ENV_CHAIN_FILE = "TASK_CONSOLE_LLMCALL_CHAIN"
 # 这一个不是控制台的,是 llmcall 自己的:它压过配置文件,所以控制台必须认它。
 ENV_CHAIN = "LLMCALL_CHAIN"
-# 正文目录的显式覆盖。其余位置由 llmcall 自己用的那个 fleet_guards 解析器给出。
-ENV_BODIES = "TASK_CONSOLE_LLMCALL_BODIES"
+# 正文目录只由 llmcall 自己用的那个 fleet_guards 解析器给出。
 RESOLVER_SOURCE = "fleet_guards resolver (llmcall)"
 
 # 一条链最多几级。没有上限时,一个手滑粘进来的几千项列表会被原样写进配置文件。
@@ -99,17 +96,10 @@ MAX_CHAIN = 16
 BODY_MAX_CHARS = 20000
 
 
-class Refused(Exception):
-    """动作被闸门拒绝。形状与同目录 maint.Refused 一致,服务端按同一套路由。
-
-    带 code 不只是为了好看:write_chain 上有四道闸互相兜底,「抛了 Refused」
-    证明不了是哪一道抛的 —— 放开名字闸之后重复闸仍然挡得住,于是两个只断言
-    「抛异常」的测试在各自的投毒下都照样全绿。code 让每条用例钉住自己那道闸。
-    """
-
-    def __init__(self, msg: str, code: str = "refused"):
-        super().__init__(msg)
-        self.code = code
+if __package__:
+    from .maint import Refused
+else:
+    from maint import Refused  # noqa: E402
 
 
 # --------------------------------------------------------------------------
@@ -160,72 +150,28 @@ def ledger_path() -> Path | None:
 
 
 def chain_file_path() -> Path | None:
-    """Explicit chain, explicit console ledger sibling, then producer runtime root."""
+    """Explicit TASK_CONSOLE_LLMCALL_CHAIN, else the producer runtime root."""
     v = os.environ.get(ENV_CHAIN_FILE)
     if v:
         return Path(os.path.expanduser(v))
-    ledger = os.environ.get(ENV_LEDGER)
-    if ledger:
-        return Path(os.path.expanduser(ledger)).parent / "chain.txt"
     root = _runtime_dir()
     return root / "chain.txt" if root is not None else None
 
 
 def _resolve_bodies() -> dict:
-    """解析正文目录,返回 `{dir, source, tried}`,`dir` 是 `Path`。对外用 bodies_resolution()。
+    """解析正文目录,返回 `{dir, source, tried}`,`dir` 是 `Path` 或 None。
 
-    解析不出来时 `dir` 是 None,**不抛**。
-
-    1. `TASK_CONSOLE_LLMCALL_BODIES` 显式覆盖,**设了就用,存不存在都用**
-       (设错了要能看见那个路径,悄悄滑到下一级会让人对着一份没配好的环境查保留策略)
-    2. llmcall 伴生 data 目录下的 `bodies/`,由 `_llmcall_data()` 用 llmcall 自己的解析器给出
-    3. 都落空 → `dir` 为 None,页面显示「未初始化」并打出上面每一级找过哪里
-
-    **读可降级,不抛。** 写方找不到伴生仓必须硬失败(否则真实观察会被丢掉或退回仓内),
-    读方找不到只是「还没初始化」,照实说出来就行 —— 在这里抛会让一台没装 llmcall
-    的机器打开控制台就是一次 500。
-
-    `tried` 是走过的每一级和它的结论,给页面打出来用:一个「找不到」不说自己找过哪里,
-    人只能去猜。
+    目录是 llmcall 伴生 data 目录下的 `bodies/`。读可降级:解析不出来时 `dir` 为 None,
+    不抛,页面显示「未初始化」。`tried` 记下找过哪里,给页面打出来。
     """
-    tried = []
-
-    v = os.environ.get(ENV_BODIES)
-    if v:
-        p = Path(os.path.expanduser(v))
-        tried.append({"source": ENV_BODIES, "path": str(p), "is_dir": p.is_dir()})
-        return {"dir": p, "source": ENV_BODIES, "tried": tried}
-
     base, why = _llmcall_data()
     if base is None:
-        tried.append({"source": RESOLVER_SOURCE, "path": why, "is_dir": False})
-        return {"dir": None, "source": None, "tried": tried}
+        return {"dir": None, "source": None,
+                "tried": [{"source": RESOLVER_SOURCE, "path": why, "is_dir": False}]}
     p = base / "bodies"
     ok = p.is_dir()
-    tried.append({"source": RESOLVER_SOURCE, "path": str(p), "is_dir": ok})
-    if ok:
-        return {"dir": p, "source": RESOLVER_SOURCE, "tried": tried}
-    return {"dir": None, "source": None, "tried": tried}
-
-
-def bodies_dir():
-    """正文目录(`Path` 或 None),解析不出来就是 None。细节见 bodies_resolution()。"""
-    return _resolve_bodies()["dir"]
-
-
-def bodies_resolution() -> dict:
-    """对外版:和 `_resolve_bodies()` 一样,但 `dir` 是**字符串**不是 `Path`。
-
-    这个模块的每一个返回值最终都要过 `json.dumps` 进 HTTP 响应,而 `Path` 不可序列化。
-    内部版返回 `Path` 是因为 `body()` 要拿它去 `is_dir()` / `iterdir()`;
-    两者分开,是为了让「要路径对象」和「要能上网线」各拿各的,而不是在每个调用点
-    临时记得转一次 —— 那种约定迟早会漏一个,而漏掉的那个直到伴生仓真的被配好、
-    这一档第一次返回非 None 时才会炸。**它在没配的机器上永远是绿的。**
-    """
-    res = _resolve_bodies()
-    d = res["dir"]
-    return {"dir": str(d) if d is not None else None,
-            "source": res["source"], "tried": res["tried"]}
+    tried = [{"source": RESOLVER_SOURCE, "path": str(p), "is_dir": ok}]
+    return {"dir": p if ok else None, "source": RESOLVER_SOURCE if ok else None, "tried": tried}
 
 
 # --------------------------------------------------------------------------
@@ -599,7 +545,7 @@ def verify_rungs(records):
     返回 `{checked, contradictions, unusable, samples}`。`contradictions` 是
     「成功记录里 `chain[attempts-1]` 不等于 `provider`」的条数 —— 判据一旦在
     某批数据上不成立,rungs 的每一个数都是错的,而它照样会打印出一张漂亮的表。
-    所以这个数必须能被单独读出来,也必须能被投毒测出非零。
+    所以这个数必须能被单独读出来。
     """
     checked = contradictions = unusable = 0
     samples = []
@@ -1077,14 +1023,10 @@ def body(i, records=None) -> dict:
 
     res = _resolve_bodies()
     d = res["dir"]
-    if d is None or not d.is_dir():
-        # 显式覆盖设了却指到一个不存在的目录,也走这里, 但要把那个路径说出来,
-        # 否则人会以为是伴生仓没装,而其实是那个环境变量填错了。
-        where = f":{d}" if d is not None else ""
+    if d is None:
         return {"available": False, "reason_code": "uninitialised",
-                "reason": f"正文记录未初始化(找不到 llmcall 的私有伴生仓{where})",
-                "i": i, "dir": str(d) if d else None,
-                "source": res["source"], "tried": res["tried"]}
+                "reason": "正文记录未初始化(找不到 llmcall 的私有伴生仓)",
+                "i": i, "dir": None, "source": res["source"], "tried": res["tried"]}
 
     # 文件名是 YYYY-MM-DD,字典序即时间序;倒着找,近的先命中。
     try:

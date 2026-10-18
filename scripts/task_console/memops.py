@@ -21,12 +21,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-# 在 pythonw(GUI 子系统)下,每个控制台子程序都要新分配一个控制台。那次分配很慢,
-# 而且并发时根本不成立:实测同一条 git 命令,普通 python 下几毫秒,pythonw 下单次
-# 4.5 秒,四个并发全部 15 秒超时。加上这个标志之后单次降到 0.08 秒。
-#
-# 这个坑只在生产形态下出现,而开发期测试都是用普通 python 跑的:探针必须复现真实的
-# 调用形状,否则测的是另一个程序。
+# pythonw 下每个控制台子进程都要新分配控制台,又慢又会在并发时超时;这个标志免掉它。
 _NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
 
