@@ -1,10 +1,8 @@
 # task-console
 
-用于单台 Windows 机器的本地控制台，仅监听环回地址，展示计划任务、指定根目录下的 Git 仓库，以及配置的技能、记忆和对话目录。
+单台 Windows 机器的本地控制台，只监听环回地址，管这台机器的计划任务、它们的运行历史和健康状况，以及这些任务所服务的工作记录（待办和 agent 工作）。
 
-控制台汇总 agent 工作、记录的结果、待办承诺和本机自动化。工作记录由现有 reminder 属主提供；Windows 计划任务提供触发器，task-console 保留声明、登记记录和受控操作。
-
-工作台区分人工决策与技术诊断。每个来源报告检查覆盖范围：来源不可用时不会显示成检查成功的空列表，完成摘要也不能替代执行证据。
+Windows 计划任务负责触发；task-console 保管任务声明、登记权威和受控操作。每个来源都说明自己查了多少：来源读不到不会显示成一张空的成功列表，完成摘要也不能顶替执行证据。
 
 [![本地控制台](https://img.shields.io/badge/%E6%9C%AC%E5%9C%B0-%E6%8E%A7%E5%88%B6%E5%8F%B0-orange?style=flat)](scripts/task_console/server.py)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
@@ -16,93 +14,82 @@
 
 ---
 
-## ⭐ 先读这里，设计理念
+## 设计
 
-控制台帮助识别检查缺失、状态异常和缺乏执行证据的情况。
+**查没查和查出了什么分开说。** 每一屏都区分未检查、读到零和读不到。没配置的来源显示「未检查」，跳过的检查不会被当成通过。
 
-**检查状态与检查结果分别报告。** 每块面板区分未检查、测量值为零和不可用或错误。未配置的来源显示 NOT CHECKED，并计入自检分母，跳过检查不能获得完整通过结论。
+**每个控制只有一个权威。** 任务开关、删除和登记都经 `lifecycle.py` 与 `registry.py` 里的登记权威，页面上没有直通计划程序的捷径。
 
-**每项控制有明确权威。** `maint.py` 的封闭动作表定义页面可执行的维护操作。`scripts/task_console/README.md` 列出环境变量，仓外启动器依赖这份契约。
+## 模块
 
-## 它是什么（不是什么）
+`scripts/task_console/` 一共八个模块：
 
-`scripts/task_console/server.py` 在 `127.0.0.1` 提供单页服务，每次启动生成新令牌，令牌从不落盘。`console_ingest.py` 独立读取 Windows Operational 事件日志，页面加载不执行摄取。
+| 模块 | 负责 |
+| --- | --- |
+| `registry.py` | 声明契约、备份白名单解析、组件编译、计划编译、登记事务、创建前检查 |
+| `scheduler.py` | 任务名规则、计划程序适配、任务 XML 的生成与规范化、COM 与 DPAPI 传输 |
+| `store.py` | 权威存储：文件资源、日志、受保护保管库、权威历史、运行时 |
+| `lifecycle.py` | 控制动作、接管、对账、导出与恢复、删除任务、修复工单、被动观测 |
+| `runs.py` | 退出码归一、健康判定、新鲜度、健康日志、事件日志读取、控制台数据库与摄入、组件状态读取 |
+| `integrations.py` | 读取隔离、共享工作服务（schedule-reminder）及其动作、关联工作项、接入登记表 |
+| `server.py` + `console.html` + `static/` | HTTP 服务和页面 |
+| `__main__.py` | 命令行 |
 
-主体是本地服务端，附带用于声明、审核和登记的 [automation-management skill](skills/automation-management/SKILL.md)。服务通过 PowerShell 和 `pywin32` 读取 Windows 计划任务，在其他平台上拒绝启动。采集时效与历史覆盖限制见下文“局限”。
+## 页面
 
-## 页面能做什么
-
-页面的维护动作定义在 `maint.py`。会话操作使用独立的鉴权路由，并由 [convo-chain](https://github.com/DaizeDong/convo-chain) 提供转录解析、导出、分叉、重命名、移动和确认删除。控制台负责路由、请求检查与界面，库负责转录规则和文件事务。会话的中文名称建议由 `llmcall` 生成，只填进改名框，保存仍是一次普通的改名。操作范围与限制见[控制台 README](scripts/task_console/README.md)。
-
-任务的创建和迁移走[任务登记](docs/task-registration.md)里描述的声明、审核与登记接口。网页动作表不提供一条不受约束的计划任务捷径。登记在改动任务定义之前先记下授权与恢复证据；对外动作仍保留原有的审核步骤。
-
-导航把信息分成工作、自动化和资源三组。工作、结果和活动视图复用同一批属主记录。流水线和执行细节归在自动化下面；对话和模型调用为工作记录提供佐证。技术异常留在诊断里，不会变成需要人批准的事项。数据归属和接入边界见[工作平台设计](docs/work-platform.md)。
-
-流水线证据只说它能说的：一张零差异的同步回执不能证明能力对齐，一份新鲜的备份产物也不能证明每一步都跑了。界面不新增调度器、状态存储、通知通道或 agent 执行器。已有的任务控制授权和对外动作审核照常生效。
-
-对外动作保留两步审核流程。
+五个分区：工作台、工作记录、自动化（任务开关、同步与备份、运行详情）、接入（控制台读的来源）、诊断（失败的任务、过期的输出、摄入状态和文件更新灯板）。任务行可以启用、停用、运行、停止、开修复工单和删除；删除先出预览，受控制器管理的任务经权威退役。见[任务控制](docs/task-control.md)和[工作平台](docs/work-platform.md)。
 
 ## 安装
 
-Windows，Python 3.12 或更新。
+Windows，Python 3.11 或更新。
 
 ```bash
 git clone https://github.com/DaizeDong/task-console
 cd task-console
-pip install pywin32 PyYAML
-pip install -e "$(git config --get fleet.guards)"
-git config core.hooksPath .githooks    # 装上闸门；本地配置，提交不进去
+pip install -e . -e "$(git config --get fleet.guards)"
+git config core.hooksPath .githooks
 ```
 
-控制台还在模块顶层导入三个钉了版本的库：`convo-chain`、`fleet-guards` 和 `llmcall`（见 `pyproject.toml`）。
+依赖见 `pyproject.toml`：`fleet-guards`、`llmcall`、`pywin32`。
 
-钩子从全局 `git config fleet.guards` 指向的本机 fleet-guards checkout 跑隐私检查，从 `fleet.style` 跑破折号检查。任一项没设或指向的 checkout 不在，提交就会被拦下。
-
-## 快速开始
+## 运行
 
 ```bash
-python scripts/task_console/server.py --port 8787
+python -m task_console.server --port 8787            # 页面,只绑 127.0.0.1
+python -m task_console ingest [--skip-runlog]       # 写控制台数据库
+python -m task_console status --configured          # 组件状态读取
+python -m task_console observations --periodic ...  # 一次被动健康观测
+python -m task_console <权威命令> ...                # plan、registration-plan、creation-check、apply、retire、control 等
 ```
 
-资源路径由环境变量选择，默认值和未配置状态见[环境变量表](scripts/task_console/README.md)。llmcall 资源和可执行文件保留各自已有的默认位置。未配置的来源会明确显示为未检查。
+服务每次启动生成新令牌，从不落盘。摄入在页面之外跑，打开页面不会去读 Windows 事件日志。
 
 ## 配置
 
-将 `TASK_CONSOLE_CONFIG` 指向 PRIVATE 伴生仓。启动器按伴生仓里的 `data/launcher-binding.json` 设置控制台的环境变量；切换配置时，让启动器读另一个伴生仓的绑定文件，并重新核对显式资源覆盖值。[CONFIG.md](CONFIG.md) 说明完整发现顺序、环境变量和只读检查。`tools/verify_config.py --json` 检查本地服务端和历史数据库的前提条件，不启动摄取，也不替可选动作作就绪证明。数据库覆盖路径按原样使用，只拒绝落在本仓源码目录里的路径。
+全部是环境变量，由机主的启动器从私有伴生仓的 `data/launcher-binding.json`（[合成示例](launcher-binding.json.example)）设置。[CONFIG.md](CONFIG.md) 列出每个变量以及不设时的表现。
 
-## 细节各自住在哪
+## 只读的声明生成
 
-运行接口、配置和维护约束由以下参考文档定义。
+`task_console.registry.plan(request)` 和 `python -m task_console plan` 把组件 `.console.json` 声明、私有绑定、机器覆盖和旧快照编译成字段对照和生成内容，不写文件，也不碰计划程序。
 
-| 读这个 | 当你要问 |
-| --- | --- |
-| [scripts/task_console/README.md](scripts/task_console/README.md) | 页面上有什么，以及它读的每一个环境变量 |
-| `scripts/task_console/maint.py` | 页面能对这台机器执行哪些动作 |
-| `scripts/task_console/server.py` | 有哪些路由，以及让写入端点得以存在的那些控制 |
-| [docs/changing-this.md](docs/changing-this.md) | 一次改动不能破什么，以及这个仓已经踩过的坑 |
+```text
+python -m task_console plan --component examples/console/.console.json --bindings examples/console/bindings.example.json --machine examples/console/machine.console.example.json --baseline examples/console/baseline.example.json
+```
 
-## 只读声明生成
+真实请求和返回的计划含机器数据，只能放私有存储。公开示例用 `python tools/make_fixtures.py` 重新生成。
 
-`task_console.compiler.plan(request)` 和 `task-console plan` 根据组件 `.console.json` 声明、显式私有绑定、机器覆盖项及调用方提供的旧版快照生成字段差异和文件内容，不写文件、不查询或启动计划任务。现有任务定义在审核通过的接管或迁移事务转移责任之前仍有权威，生成方案本身不会转移权威。
+## 数据在哪
 
-安装到独立运行环境后，入口为 `python -m task_console plan`；源码入口为 `python -m scripts.task_console plan`。原有 `python scripts/task_console/server.py` 入口保留。完整合成示例、输入契约和一致性限制见[控制台说明](scripts/task_console/README.md)。真实请求和方案保存在私有仓；公开示例由 `python tools/make_fixtures.py` 生成。
-
-## 真实数据住在哪
-
-控制台数据库和持久导出保存在私有伴生仓，运行时由 `fleet_guards.runtime` 解析。解析不到伴生仓时报告 UNINITIALISED 并提供初始化指引；禁止写回工具仓。
-
-[存储说明](docs/storage.md)和[来源契约](storage.contract.json)区分当前运行状态、恢复证据与已完成的开发产物。预算用于触发审核，不允许为达标而截断核心历史。
+数据库和运行事件导出放在 `fleet_guards.runtime` 解析出的私有伴生仓。数据库 `data/task-console/console.sqlite3` 是那里的本地状态，不进版本管理；进版本管理的历史是按月的文本导出 `data/task-console/run-events/YYYY-MM.jsonl`。解析不到伴生仓时控制台报「未初始化」，写入永远不会落回本仓。
 
 ## 局限
 
-控制台只报告所在 Windows 机器的状态，不轮询，也不发送告警。运行历史来自环形事件日志，其保留窗口取决于配置容量和事件量。窗口内未被摄取的事件无法在之后补回；窗口外的历史仅限于摄取开始后已保存在持久导出中的记录。页面报告来源与摄取时效，不能据此假定历史完整。
+只报告运行它的这台 Windows 机器，不发告警。运行历史来自循环事件日志，摄入之前滚掉的事件就没了。按月导出不含原始返回码、任务设置历史和摄入记录，不能当完整的数据库恢复。
 
 ## 语言
 
 English (`README.md`) · 中文 (`README_CN.md`)
 
-## Roadmap · 贡献 · 许可
+## 路线图 · 贡献 · 许可
 
-见 [ROADMAP.md](ROADMAP.md) · [CHANGELOG.md](CHANGELOG.md) · [LICENSE](LICENSE)（MIT）。
-
-与仓库统一规范的每一处偏离及其理由，记在 [docs/2026-09-22-spec-adaptation.md](docs/2026-09-22-spec-adaptation.md)。
+见 [ROADMAP.md](ROADMAP.md) · [CHANGELOG.md](CHANGELOG.md) · [LICENSE](LICENSE)（MIT）。改动之前先读 [docs/changing-this.md](docs/changing-this.md)。与仓库规范的偏离及理由记在 [docs/2026-09-22-spec-adaptation.md](docs/2026-09-22-spec-adaptation.md)。

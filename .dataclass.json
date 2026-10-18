@@ -9,19 +9,13 @@
     "",
     "Enforced by fleet-guards tools/data_boundary.py through the .githooks shims (git config fleet.guards)."
   ],
-  "_audited": "The runtime database, durable event export, registration state and launcher configuration live in the PRIVATE companion. The current database is protected: its historical task configurations, ingest attempts and raw event fields cannot all be recovered by --backfill. The JSONL preserves normalized events beyond the rotating OS log window but is not a complete database restore. storage.contract.json uses private-companion repository-root paths with a data/ prefix for runtime state. It defines review budgets and protects current state, while legacy copies and private helper source require separate reconciliation. This manifest still names source-relative forbidden runtime DATA paths; only explicit reviewed retirement permits artifact removal.",
+  "_audited": "The runtime database, durable monthly event export, registration state and launcher configuration live in the PRIVATE companion. The database is local state there and is not versioned; the monthly run-events/YYYY-MM.jsonl text export is the versioned history. It preserves normalized events beyond the rotating OS log window but is not a complete database restore. This manifest names source-relative forbidden runtime DATA paths.",
   "data": [
     "task-console/console.sqlite3",
-    "task-console/run-events.jsonl",
+    "task-console/run-events/",
     "task-console/registration/",
-    "task-console/recovery/",
     "launcher-binding.json",
     "declarations-*/",
-    "work/",
-    "storage/",
-    "storage-retention.json",
-    "memory-pressure-monitor/",
-    "maintenance/",
     "user-state/"
   ],
   "data_sealed": [
@@ -35,8 +29,7 @@
     "examples/console/installations.request.example.json",
     "scripts/task_console/categories.example.json",
     "launcher-binding.json.example",
-    "storage-retention.json.example",
-    "task-console/run-events.jsonl.example"
+    "task-console/run-events-2030-01.jsonl.example"
   ],
   "_data_home": "A PRIVATE companion outside this repo, resolved at runtime through fleet_guards.runtime (fleet-guards tools/datadir.py) by the convention that file documents. Deliberately not named here: a public repo that spells out which private repo it pairs with has published the link between them, and the resolver derives the name anyway, so writing it down buys nothing. If this tool ever needs to record real-run output, it goes THERE -- never back into this repo.",
   "_run_shape_probes": [

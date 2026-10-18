@@ -1,86 +1,40 @@
 # Task Console configuration
 
-Task Console is configured through environment variables. The auxiliary
-[automation-management skill](skills/automation-management/SKILL.md) describes safe use of its
-declaration and registration interfaces. [config.contract.json](config.contract.json) records
-settings applicability; an unconfigured server can render unavailable sources but is not ready
-to report usable history.
+Task Console is configured only through environment variables. The owner launcher sets them from the private companion's `data/launcher-binding.json` ([synthetic example](launcher-binding.json.example)): its `runtime` map holds the registration roots and its `environment` map holds the `TASK_CONSOLE_*` values. The auxiliary [automation-management skill](skills/automation-management/SKILL.md) describes safe use of the declaration and registration interfaces.
 
 ## Storage selection
 
-`TASK_CONSOLE_DB` selects the exact database leaf. It is used as given, except that a path inside
-this payload's own source tree is refused. Point it into the PRIVATE companion; keeping DATA out of
-public repositories is enforced at commit and push time by the fleet-guards hooks, not at runtime.
+`TASK_CONSOLE_DB` selects the exact database file. It is used as given, except that a path inside this source tree is refused. Without it, the `fleet_guards` companion resolver selects the companion root (first existing of `TASK_CONSOLE_DATA_DIR`, `TASK_CONSOLE_CONFIG`, the sibling `task-console-config`) and the database is `<root>/data/task-console/console.sqlite3`. Nothing is copied, initialized or migrated by an override, and resolution makes no Git or network calls.
 
-Without that override, the fleet_guards companion resolver selects the companion root in this
-order, skipping any directory that does not exist:
+The ingester appends the normalized run-event export to `run-events/YYYY-MM.jsonl` beside the database, one file per month of the event time. The database itself is local state and is not versioned; the monthly files are.
 
-1. `TASK_CONSOLE_DATA_DIR`; a final `data` component denotes the child of the companion root.
-2. `TASK_CONSOLE_CONFIG`.
-3. The sibling `task-console-config` convention.
+## Variables
 
-Use these direct companion locations for setup and recovery.
+| Variable | Meaning | When unset |
+| --- | --- | --- |
+| `TASK_CONSOLE_DB` | the SQLite file the ingester writes and the page reads | the companion's `data/task-console/console.sqlite3`; no companion reports UNINITIALISED |
+| `TASK_CONSOLE_DATA_DIR`, `TASK_CONSOLE_CONFIG` | companion root (or its `data` child) for the resolver | the sibling `task-console-config` convention |
+| `TASK_CONSOLE_RUNTIME_CONFIG`, `TASK_CONSOLE_PRIVATE_ROOT`, `TASK_CONSOLE_STATE_ROOT`, `TASK_CONSOLE_VAULT_ROOT` | the reviewed Controller configuration, declaration root, journal/receipt root and encrypted snapshot root | task controls, registration and deletion of managed tasks are unavailable |
+| `TASK_CONSOLE_CATEGORIES` | the private category map | `categories.json` in the resolved companion; missing files are reported as unconfigured |
+| `TASK_CONSOLE_HEALTH` | the health watch list (`task-health.json` shape) | the health-coverage column reads NOT CHECKED |
+| `TASK_CONSOLE_ALLOWLIST` | a PowerShell file with a `$TaskNames = @(...)` backup allow-list | the backup-coverage check reads NOT CHECKED |
+| `TASK_CONSOLE_HISTORY` | the health monitor's poll-observation log | observation columns read NOT CHECKED; `ingest` reports the health half as skipped |
+| `TASK_CONSOLE_STATUS_SNAPSHOT` | captured component observations | component health is unchecked |
+| `TASK_CONSOLE_CATALOG_SNAPSHOT` | captured component catalog | catalog inventory is unchecked |
+| `TASK_CONSOLE_REMINDER_CLI`, `TASK_CONSOLE_REMINDER_DB` | the reminder owner's `reminder.py` and its existing database | work records report unconnected |
+| `TASK_CONSOLE_ACTION_WORKSPACE` | private directory for agent workspaces | automatic todo actions are unavailable |
+| `TASK_CONSOLE_AGENT_TASK_ID` | registered `owner/task` id of the agent tick; an accepted agent action asks the Scheduler to run it at once | the agent offer is disabled |
+| `TASK_CONSOLE_DELETE_FOLLOWUP` | the private follow-up hook a task delete runs after the Scheduler step ([protocol](docs/task-control.md)) | deletion still happens, the result is `partial` and says what was not cleaned |
+| `TASK_CONSOLE_DELETED_ARCHIVE` | private directory that keeps an unmanaged task's XML and receipt before deletion | deleting an unmanaged task is blocked in its preview |
+| `TASK_CONSOLE_DELETE_WITHOUT_AUTHORITY` | `1` lets a process without Controller settings delete tasks as unmanaged | such a process refuses every delete |
+| `TASK_CONSOLE_READ_ONLY` | `1` disables every write route | guarded writes are available |
 
-The database always occupies the canonical
-`<root>/data/task-console/console.sqlite3`; this avoids changing layout based on whether `data/`
-already exists. Overrides do not copy, initialize or migrate databases. Source checkouts and
-installed wheels both use the installed `fleet_guards.runtime` package API.
-Missing dependencies report unavailable and block writers. There is no ancestor or vendored
-resolver search. Resolution makes no Git or network calls: it is a path decision plus the
-own-source-tree refusal.
-
-## Settings and resources
-
-The complete environment schema and each optional panel's absent-source behavior live in the
-[environment table](scripts/task_console/README.md#configure-it). Core server requirements are
-Windows, a supported Python interpreter and the imports declared by `pyproject.toml`. Usable
-history also requires the resolved database with the expected schema and separately operated
-ingestion. The doctor tests those local prerequisites without launching the server or ingester.
-
-Work records additionally need both `TASK_CONSOLE_REMINDER_CLI` and `TASK_CONSOLE_REMINDER_DB`;
-agent actions need `TASK_CONSOLE_ACTION_WORKSPACE`. Task control uses the reviewed Controller
-configuration, declaration root, state root and vault. Each capability reports its own unavailable
-state; the basic doctor's success is not authorization or proof for these optional actions.
-
-`TASK_CONSOLE_CATEGORIES` selects an explicit category file; otherwise the console uses
-`categories.json` in its resolved PRIVATE companion. Missing selection or files are reported as
-unconfigured. Category writes refuse a path inside this source tree; no Git check runs.
-
-The llmcall ledger and chain are separate producer resources. Their explicit console overrides
-and producer settings are listed in the environment table. There is no native home-directory
-fallback for these resources; missing selection is reported instead of creating a new tree.
-Chain writes refuse a path inside this source tree; no Git check runs. Switching the console
-companion does not relocate llmcall files, and selected executables can still use PATH.
+Each optional capability reports its own unavailable state. Category writes refuse a path inside this source tree.
 
 ## Initialize and switch
 
-Create or clone the PRIVATE companion. Companion discovery requires the `fleet-guards>=0.2.1`
-runtime API, installed with `pip install -e "$(git config --get fleet.guards)"`. A missing
-runtime API fails visibly; installed packages do not search checkout ancestors.
+Create or clone the private companion and install `fleet-guards>=0.2.1` (`pip install -e "$(git config --get fleet.guards)"`). Switch by pointing the launcher at the other companion's binding. Run `python -m task_console runtime-status` with the four runtime arguments to check the authority, and `python -m task_console ingest` to create or update the database.
 
-The console's settings live in the companion's `data/launcher-binding.json`
-([synthetic example](launcher-binding.json.example)). Its `environment` map holds the
-`TASK_CONSOLE_*` values and `runtime` holds the registration roots; the owner launcher reads the
-file and sets those values in the console process before starting it. To check a configuration
-from this source root, set the same variables in a shell and run:
+## Recovery
 
-```powershell
-python tools/verify_config.py --json
-```
-
-Switch by pointing the launcher at the other companion's binding and rechecking the optional
-explicit overrides. Doctor output identifies its scope as `local-server-and-history`; it does not
-prove recent ingestion, task execution, work-owner connectivity or external delivery. It uses an
-immutable read-only database probe and refuses active WAL/journal state instead of creating SQLite
-sidecars. An empty or missing database keeps the doctor NOT READY.
-
-## Recovery and retention
-
-Keep the main database versionable, while taking consistent recovery snapshots through the
-documented [storage workflow](docs/storage.md). SQLite owns the WAL, SHM and journal lifecycle;
-their exact transient declarations preserve pending transaction recovery obligations. A backup
-must use the online API or a cold consistent snapshot. Backfill cannot reconstruct all historical
-settings and events. Restore only after preserving current state and stopping the writer.
-
-The [storage contract](storage.contract.json) owns retention and budgets. A failed capacity or
-nested-boundary check requires review; it never permits truncating core history to meet a budget.
+The registration journals, receipts, pointer and vault under the companion's `data/task-console/registration/` and `vault/` are protected together. The database can be rebuilt from the retained health log and the current event-log window with `python -m task_console ingest --backfill`; events older than that window survive only in the monthly export, which omits raw return codes, task settings history and ingest attempts.

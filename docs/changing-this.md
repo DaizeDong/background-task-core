@@ -5,8 +5,7 @@
 **不能破的不变量**,和**这个仓已经踩过的坑**。前者是设计决定,后者是事故记录,
 两样都不会因为有人加了一个面板就过期。
 
-要找清单:环境变量在 `scripts/task_console/README.md`,
-动作表在 `maint.py`(它自己就是权威),路由在 `server.py` 里按 path 顺序读。
+要找清单:环境变量在 `CONFIG.md`,模块分工在 `README.md`,路由在 `server.py` 里按 path 顺序读。
 
 ---
 
@@ -266,35 +265,29 @@ Tabler 的布局类不要用在 `<table>/<tr>/<td>/<th>` 上。
 
 按顺序。标星的是**漏了不会报错**的。
 
-1. 后端读侧模块 `scripts/task_console/<name>.py`,纯读、不 import 被观察的那个仓。
-   **库依赖不算被观察的仓**:`convo-chain`(对话链)、`llmcall`、`fleet_guards` 是
-   `pyproject.toml` 里钉了版本的依赖,按固定名在进程内导入;被观察的生产者(reminder 的
-   work-feed、SMITH 目录)只走它们的 CLI 或快照。判据是控制台借的是对方的**规则**(库),
-   还是读的是对方的**产物**(生产者)。库不读 `TASK_CONSOLE_*`,根目录之类由路由显式传进去;
-   它在 `integrations.py` 的 `ADAPTERS` 里是一行 `library` 层、没有 endpoint 的登记。
-   那一行**不是健康检查**:`convo-chain` 在 server、convos 顶层导入,缺了控制台
-   直接起不来,不会退化成一块面板不可用。所以真正的前置条件在安装阶段:运行时锁里没有它的
-   wheel 行,就不能装由这个版本构建的 generation(它不在 PyPI 上,别的安装路径都解析不到)。
-2. `server.py`:`import`、GET 路由、必要时 POST 路由与它的 `Refused` 处理
-   (逻辑在库里的,接库自己带 `code` 的错误类型,比如对话链的 `ConvoChainError`)。
+0. 先问这一屏是不是控制台核心要的。2026-10 把模型调用、会话、仓库、记忆、Codex 存储、
+   系统资源、技能与插件、配置自检这些面板整块删了:控制台只管计划任务、运行历史与健康、
+   工作记录。和这些无关的面板不要加回来。
+1. 后端读侧放进八个模块里归属的那一个(见 `README.md` 的模块表),纯读、不 import 被观察的那个仓。
+   **库依赖不算被观察的仓**:`llmcall`、`fleet_guards` 是 `pyproject.toml` 里钉了版本的依赖,
+   按固定名在进程内导入;被观察的生产者(reminder 的 work-feed、SMITH 目录)只走它们的 CLI 或快照。
+   判据是控制台借的是对方的**规则**(库),还是读的是对方的**产物**(生产者)。
+2. `server.py`:GET 路由、必要时 POST 路由与它的 `Refused` 处理。
    **每条 `/api/` 分支都要 `_authed()`**。
 3. 前端是模块化的,不再是一个 `console.html` 里的大脚本:
    `static/panels/<name>.js` 一个文件,登记进 `static/app.js` 的 `CONSOLE_MODULES`
    (顺序即依赖顺序,`events.js` 永远最后),新样式表单开一个 `static/<name>.css`
    并在 `console.html` 里 `<link>`。服务端下发的静态文件集合由 `static/` 目录本身得出,不用另外登记。
    已有页面区的样式不再往共用表里加:每个页面区有自己的 `static/page-<区>.css`
-   (automation / diagnostics / work / llm / resources),选择器限定在本区的 section 里,
+   (automation / diagnostics / work),选择器限定在本区的 section 里,
    覆盖共用规则也在那里写。某一屏自己的元素挂点同理,放在它的面板文件里的 `start<Name>()`
-   (如 `startTasksPage`、`startStorage`、`startCalls`),`events.js` 只在原位置调用它,
+   (如 `startTasksPage`、`startDiagnostics`),`events.js` 只在原位置调用它,
    自己只留下两个 document 级点击监听里依赖先后顺序的分支。分区的名字在
    `static/navigation.js` 的 `VIEW_GROUPS`,首次读取挂在 `static/operations.js` 的 `PAGE_READS`。
    要标成 `OPTIONAL_PANELS` 的面板有三条硬要求:载入时不碰 DOM(只定义全局,挂点放进
    一个 `start<Name>()`,由 `events.js` 用 `typeof` 守卫调用);它的容器写死在静态 HTML 里,
    载入失败时 `app.js` 才有地方写「加载失败」;所有异步路径自己 catch,
-   漏出去的 rejection 会点亮整页的「Console module failed」。别的模块调用它时一律 `typeof` 守卫,
-   它没载入时调用方要退回原来的行为(会话行退回「复制路径」就是这么做的)。
-   一个分区里的下钻用 `#<分区>/<参数>` 的地址:`showView` 只按第一个 `/` 切,
-   参数交给面板自己的路由函数(`convoChainRoute` 是现成的例子)。
+   漏出去的 rejection 会点亮整页的「Console module failed」。别的模块调用它时一律 `typeof` 守卫。
 4. ★ 侧栏徽章:`setBadge()`,外加 `BADGE_SOURCES` / `BADGE_LOADERS` 两张表(见上面「外框」那一节)。
    不加的话这一屏「有事」时没人知道,而页面看起来很正常。
 5. ★ 总清单 `attentionRows()`(在 `panels/overview.js`)里的对应项,如果这一屏会产出「要人管的事」。
@@ -303,8 +296,7 @@ Tabler 的布局类不要用在 `<table>/<tr>/<td>/<th>` 上。
    再在 `workbench.js` 的 `ATTENTION_KINDS` 里给它一行(名字、诊断筛选值、芯片文字),
    否则工作台顶上那条「要处理」不会出现这一类,而且不报错。
    「读取中 / 读取失败 / 没在查」由 `readState()` 一处判定,三处都调它,别在调用方再各判一次。
-6. ★ 新读的环境变量要进 `scripts/task_console/README.md` 的表;它若指向面板要读的来源,
-   再登记进 `selfcheck.py` 的 `SOURCES`。README 那张表里每一行都必须写明「不设会怎样」。
+6. ★ 新读的环境变量要进 `CONFIG.md` 的表,每一行都必须写明「不设会怎样」。
 7. ★ 真浏览器跑一遍:量 `scrollHeight`、量关键元素的 `getComputedStyle`、
    窄窗口(约 400px)量有没有横向溢出。
 
@@ -327,7 +319,7 @@ Tabler 的布局类不要用在 `<table>/<tr>/<td>/<th>` 上。
 - **动作表的路径闸里,`abspath` 不是 `realpath` 的笔误,末尾那一段也是刻意不解析的。**
   这台机器用目录联接部署,解析掉会让合法路径被判成越界。代价写在那段代码的 docstring 里,
   要改先读它。
-- **`Refused`(以及 convo-chain 的 `ConvoChainError`)带 `code` 不是为了好看。** 一个动作上有好几道闸互相兜底,
+- **`Refused` 带 `code` 不是为了好看。** 一个动作上有好几道闸互相兜底,
   只说「拒绝了」分不出是哪一道拦的, 放开其中一道,另一道仍然会挡。
   `code` 让调用方和页面知道是哪一道。
 - **「有两份实现」不一定是错的,先读注释。** 这个仓里有几处刻意的重复,

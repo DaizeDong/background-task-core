@@ -42,7 +42,7 @@ The raw XML CAS inside the fixed COM publish operation remains in force. When a
 prepared predecessor matches, the adapter supplies the exact freshly observed
 bytes to that CAS; it never supplies an unchecked post-write hash.
 
-The journal must use `runtime_xml.same_candidate` in addition to its exact
+The journal must use `scheduler.same_candidate` in addition to its exact
 Scheduler comparison. That covers a crash after native publication but before
 readback or a receipt: the durable prepared candidate can recognize only the
 equivalent object. An engine, action, trigger, principal, unknown-field or data

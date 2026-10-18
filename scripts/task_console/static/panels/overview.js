@@ -12,29 +12,12 @@ function updateBadges(){
   // 于是侧栏写着 3、点进去列着 7,**同一件事的两个数,而没有任何一处对账**。
   // 现在徽章直接用清单算出来的条数:清单是这一屏唯一在回答「有哪些事」的东西,
   // 徽章只是它的一个投影。**同一个事实只留一个来源,比让两个来源互相解释便宜得多。**
-  // 自检读不到的来源是「这张清单本身可不可信」那一层,不在清单里,所以不加进数字(加了就对不上行数),
-  // 而是写进徽章的说明并把它标红。
-  const sckBroken = SCK && !SCK.ok ? ((SCK.broken || []).length || 1) : 0;
-  setBadge("diagnostics", todoN, !(REVIEW_TOTALS.bad || sckBroken),
-    `技术问题：${todoN} 个对象要处理` + (sckBroken ? `；另有 ${sckBroken} 个数据来源读不到，清单可能不全` : ""));
+  setBadge("diagnostics", todoN, !REVIEW_TOTALS.bad, `技术问题：${todoN} 个对象要处理`);
   renderPlatformSignals(); renderAutomations();
 
   if(DATA && DATA.summary)
     setBadge("tasks", DATA.summary.bad || 0, false, `运行详情：${DATA.summary.bad || 0} 个任务上次运行失败`);
 
-  if(REPOS && REPOS.available && REPOS.summary){
-    // 有改动、没推送是要人处理但还没坏,琥珀色;扫不动的仓才是红的。
-    const attention = REPOS.summary.attention || 0, broken = (REPOS.summary.counts || {}).error || 0;
-    setBadge("repos", attention, !broken, `代码仓库：${attention} 个有未提交、未推送的改动或读不出来`);
-  }
-
-  // 磁盘吃紧记在存储清理上,记忆索引逼近硬上限记在「客户端技能与记忆」上:各自记在能处理它的那一屏。
-  // 还没坏但快了是琥珀色;判成坏的(比如磁盘已满)才是红的。
-  const disk = SYS && SYS.disk && SYS.disk.verdict && SYS.disk.verdict.attention ? SYS.disk.verdict : null;
-  setBadge("storage", disk ? 1 : 0, !disk || toneOf(disk) !== "bad", disk ? "存储清理：磁盘接近上限" : "存储清理：磁盘没有接近上限");
-  const memory = MEM && MEM.available && MEM.verdict && MEM.verdict.attention ? MEM.verdict : null;
-  setBadge("resources", memory ? 1 : 0, !memory || toneOf(memory) !== "bad",
-    memory ? "客户端技能与记忆：记忆索引接近上限" : "客户端技能与记忆：记忆索引没有接近上限");
 }
 
 // 一格瓷砖。filter 是点它时「技术问题」清单切到的范围:点格子只在这一屏里筛清单,不再跳去别的页。
@@ -77,10 +60,6 @@ function FR_ATT(){
   const S = (DATA && DATA.freshness && DATA.freshness.summary) || {};
   return S.attentionStates || ["down","never","unknown"];
 }
-function RP_ATT(){
-  const S = (REPOS && REPOS.summary) || {};
-  return S.attentionStates || ["unpushed","dirty","error"];
-}
 
 // 摄入新鲜度的判定同样只从后端读。阈值(24h 注意 / 96h 进丢失窗口)写在
 // console_store.ingest_verdict 里,连同它为什么是这两个数 —— 在这里再写一遍就是
@@ -103,7 +82,7 @@ function INGEST_SEV(state){
        : 0;
 }
 
-// 「这一条能不能一键处理」由下面各行的 fix 字段说(run / commitpush / 没有);按钮由清单那边的
+// 「这一条能不能一键处理」由下面各行的 fix 字段说(run / 没有);按钮由清单那边的
 // fixBtn(review.js)画,这里只判有没有通路。
 // 要人管的那些行。诊断屏的清单(renderTodo)和工作台顶上的摘要(attentionSummary)读的是这同一份,
 // 一处判定、两处显示,两边的数字对得上。key 说明一行来自哪一类,摘要按它分组。
@@ -130,14 +109,6 @@ function attentionRows(){
            (r.state==="never" ? "从未运行过" : r.state==="unknown" ? "查不成" : "产物过期"),
        sev:r.state==="down" ? 3 : 2}));
 
-  if(REPOS && REPOS.available && Array.isArray(REPOS.repos))
-    REPOS.repos.filter(r=>RP_ATT().indexOf(r.state) >= 0).forEach(r=>rows.push(
-      // fix 是「这一条能不能一键处理」。只有 dirty / unpushed 能:它们的处理方式
-      // 逐字相同,而且已经有一条带计划的两步通路。error(扫不动)不给 fix ——
-      // 那是要人去看的,给它一个按钮等于假装这里有个办法。
-      {key:"repos", v:"repos", src:"仓库", nm:r.name, why:REPO_WHY[r.state] || r.state, sev:2,
-       fix:(r.state==="dirty"||r.state==="unpushed") ? "commitpush" : null}));
-
   // 摄入器停摆。这一条要出现在清单上,而不是只在顶栏当一个灰色时间串:
   // 顶栏那行是给已经在看的人的,清单才是「今天有什么要管」的那份答案,
   // 而摄入器停了的后果比清单上任何一条都大 —— 页面上每一个运行与健康数字都停在那一刻,
@@ -148,40 +119,17 @@ function attentionRows(){
                        why:V.why || ("摄入状态 " + V.state), sev:sev});
   }
 
-  if(SYS && SYS.disk && SYS.disk.verdict && SYS.disk.verdict.attention)
-    rows.push({key:"disk", v:"storage", src:"存储", nm:"系统盘",
-               why:"已用 "+SYS.disk.usedPct+"%", sev:3});
-
-  // available 只说「目录读到了」,不说 MEMORY.md 读到了。MEMORY.md 被改名或删掉时
-  // linePct/bytePct 是 null,而 `||0` 把它折成 0,于是板子显示绿色的「0%」,
-  // 副标题字面印出「null/200 行」。两条硬上限此刻完全没在量任何东西,
-  // 而屏幕上说它离上限还有 100%。
-  if(MEM && MEM.available && (MEM.linePct != null || MEM.bytePct != null)){
-    const p = Math.max(MEM.linePct||0, MEM.bytePct||0);
-    if(MEM.verdict && MEM.verdict.attention) rows.push({key:"memory", v:"resources", src:"存储", nm:"MEMORY.md",
-      why:"索引 "+p+"%,逼近硬上限", sev:toneOf(MEM.verdict)==="bad"?3:2});
-  }
-
   return rows;
 }
 
 // 清单是三种样子之一:任务还在读(pending)、任务读不到(failed)、读到了(loaded)。
 // 以前只问「DATA 有没有」,而第一次读取没回来之前 DATA 也是空的:正常的慢读取被画成了
 // 「清单不完整 / 任务读取失败」,同时上面的说明写着「正在读取检查结论」,两句话互相打架。
-// 仓库、磁盘、记忆索引这几路晚到或者读不到时,清单照样画,但要说出缺了哪几路,
-// 否则一张还缺两路的清单看起来就是完整的,数字过一会儿又自己变了。
-const REVIEW_SOURCE_NAMES = {repos:"仓库", disk:"磁盘", memory:"记忆索引"};
 function renderTodo(){
   const box = $("todod"); if(!box) return;
   const tasks = readState(ATTENTION_SOURCES.tasks);
   if(tasks.state !== "ok") return renderReviewQueue([], tasks);
-  const pending = [], failed = [];
-  for(const [key, name] of Object.entries(REVIEW_SOURCE_NAMES)){
-    const read = readState(ATTENTION_SOURCES[key]);
-    if(read.state === "pending") pending.push(name);
-    if(read.state === "failed") failed.push(name);
-  }
-  return renderReviewQueue(attentionRows(), {state:"loaded", pending, failed});
+  return renderReviewQueue(attentionRows(), {state:"loaded"});
 }
 
 // 工作台顶上那条摘要要的数:每一类要人管的事有几条,以及这个数此刻能不能信。
@@ -197,15 +145,6 @@ const ATTENTION_SOURCES={
   outputs:{path:"/api/tasks",loaded:TASKS_LOADED,
     unchecked:()=>!DATA.freshness?"这份数据没带产物检查":(DATA.freshness.reason || null)},
   ingest:{path:"/api/tasks",loaded:TASKS_LOADED},
-  // onDemand:工作台不补读这一路(仓库扫描要对每个仓库跑一串 git,见 navigation.js 的 BADGE_LOADERS),
-  // 只在人打开代码仓库或技术问题那一屏时读。没人请求过时它不是「读取中」,而是 unread。
-  repos:{path:"/api/repos",onDemand:true,loaded:()=>!!REPOS,
-    unchecked:()=>REPOS.available?null:(REPOS.reason || "仓库没在查")},
-  disk:{path:"/api/sys",loaded:()=>!!(SYS && !SYS.error),
-    unchecked:()=>SYS.disk && SYS.disk.usedPct != null?null:((SYS.disk && SYS.disk.reason) || "磁盘没量到")},
-  memory:{path:"/api/mem",loaded:()=>!!(MEM && !MEM.error),
-    unchecked:()=>!MEM.available?(MEM.reason || "记忆池没在查")
-      :(MEM.linePct == null && MEM.bytePct == null)?"索引大小没读到":null}
 };
 // 一路来源此刻是哪种状态。瓷砖、清单和工作台摘要都从这里读,三处的「读取中 / 读不到 / 没在查」是同一个判断。
 // ⚠ 「没在查」要先于「读取失败」判:后端对没配的来源回 available:false,api() 会把它的 reason
@@ -231,14 +170,8 @@ function attentionSummary(){
     out[key] = {state:"ok", count:new Set(rows.filter(row=>row.key===key).map(attentionObject)).size};
     if(read.unchecked) out[key].unchecked = read.unchecked;
   }
-  // 磁盘和记忆索引的数是「有没有逼近上限」,摘要里要的是那个百分比本身。
-  if(out.disk.state==="ok" && !out.disk.unchecked) out.disk.usedPct = SYS.disk.usedPct;
-  if(out.memory.state==="ok" && !out.memory.unchecked) out.memory.pct = Math.max(MEM.linePct||0, MEM.bytePct||0);
   return out;
 }
-
-const REPO_WHY = {dirty:"有未提交改动", unpushed:"有未推送提交",
-                  detached:"游离 HEAD", error:"读不出来"};
 
 // 瓷砖先说问题:大字是要人管的条数,总数退到副标题里当背景。以前大字是总数(「任务 43」还涂成红色),
 // 真正的问题「失败 13」缩在灰色小字里,扫一眼看到的是一个说明不了任何事的数。
@@ -274,46 +207,6 @@ function renderTiles(){
       sub:`异常 / ${F.total} 项`, tip:`${fa} 项输出文件过期或查不成，共 ${F.total} 项，覆盖 ${Math.round((F.coverage||0)*100)}%`,
       pct:F.total?100*fa/F.total:null, pctWhat:F.total?`异常或无法检查 ${fa}/${F.total}`:null}));
   } else waiting("tasks", "输出文件", outputs);
-
-  const repos = readState(ATTENTION_SOURCES.repos);
-  if(repos.state === "ok" && !repos.unchecked && REPOS.summary){
-    const R = REPOS.summary;
-    // unknownUpstream 在「这个根目录下没有 git 仓」那条分支上不存在。一个 undefined 印在屏幕上,
-    // 比一个说不出来的空更糟,因为它看起来像一个值。
-    const up = (R.unknownUpstream == null) ? "?" : R.unknownUpstream;
-    add(R.attention ? "bad" : "ok", tile({filter:"repos", key:"仓库", val:R.attention, cls:R.attention?"bad":"ok",
-      sub:`待处理 / ${R.total} 个仓库`, tip:`${R.attention} 个仓库有改动、没推送或读不出来，共 ${R.total} 个，无上游 ${up}`,
-      pct:R.total?100*R.attention/R.total:null, pctWhat:R.total?`存在改动或读取问题 ${R.attention}/${R.total}`:null}));
-  } else waiting("repos", "仓库", repos);
-
-  const disk = readState(ATTENTION_SOURCES.disk);
-  if(disk.state === "ok" && !disk.unchecked){
-    const d = SYS.disk, tone = toneOf(d.verdict);
-    add(d.verdict && d.verdict.attention ? tone : "ok", tile({filter:"storage", key:"磁盘已用", val:d.usedPct+"%",
-      sub:`剩 ${(d.free/1073741824).toFixed(0)}G`, cls:tone, pct:d.usedPct, pctWhat:"磁盘已用空间占比"}));
-  } else waiting("storage", "磁盘", disk);
-
-  // ⚠ available 只表示**记忆池目录**读到了。MEMORY.md 不在或读不了时,
-  // linePct / bytePct / indexLines / indexBytes 全是 null,而 available 仍然是 true。
-  // 这里原来是 `MEM.linePct||0`,于是一个「索引读不到」的机器上印出的是
-  // **绿色的 0%** 和字面量「null/200 行」—— 一个查不成的东西被画成了最健康的样子。
-  const memory = readState(ATTENTION_SOURCES.memory);
-  if(memory.state === "ok" && !memory.unchecked){
-    const p = Math.max(MEM.linePct||0, MEM.bytePct||0), tone = toneOf(MEM.verdict);
-    // 取大的那个:两条上限哪条先撞都是撞。副标题要说出取的是哪一条,
-    // 否则这个百分比对不上配置屏那两条独立的条,看起来像两处在打架。
-    const pWhich = (MEM.linePct||0) >= (MEM.bytePct||0) ? "行数" : "字节";
-    // 副标题必须跟着 pWhich 走。取字节口径时却印「150/200 行」,读的人按 150/200 心算
-    // 是 75%,而大字写着 96.9% : 两个数字算不出彼此。
-    const pFrac = (pWhich === "字节" && MEM.indexBytes != null)
-      ? `${kb(MEM.indexBytes)}/${kb(MEM.hardBytes)}`
-      : `${MEM.indexLines}/${MEM.hardLines} 行`;
-    add(MEM.verdict && MEM.verdict.attention ? tone : "ok", tile({filter:"storage", key:"记忆索引", val:p+"%",
-      sub:`${pWhich} ${pFrac} · 已归档 ${MEM.cold}`, cls:tone, pct:p, pctWhat:"索引额度使用率，超过 100% 时显示斜纹"}));
-  } else if(memory.state === "ok" && MEM.available){
-    // 目录读到了、索引没读到 —— 这不是「未检查」,是「查了但查不成」。
-    add("warn", tile({filter:"storage", key:"记忆索引", val:"?", sub:MEM.indexReason || "MEMORY.md 读不到", cls:"warn"}));
-  } else waiting("storage", "记忆索引", memory);
 
   el.innerHTML = out.sort((a,b)=>TILE_RANK[a.rank]-TILE_RANK[b.rank] || a.at-b.at).map(t=>t.html).join("");
 }

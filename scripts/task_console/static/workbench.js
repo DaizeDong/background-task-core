@@ -206,10 +206,7 @@ function renderPlatformSignals(){
 const ATTENTION_KINDS=[
   {key:'tasks',filter:'failed',name:'计划任务',tone:'bad',text:s=>`${fmtNum(s.count)} 个任务失败`},
   {key:'outputs',filter:'outputs',name:'输出文件检查',tone:'warn',text:s=>`${fmtNum(s.count)} 个任务输出过期`},
-  {key:'ingest',filter:'ingest',name:'运行日志摄入',tone:'warn',text:()=>'运行日志摄入异常'},
-  {key:'repos',filter:'repos',name:'代码仓库',tone:'warn',text:s=>`${fmtNum(s.count)} 个仓库要处理`},
-  {key:'disk',filter:'storage',name:'系统盘',tone:'bad',text:s=>s.usedPct!=null?`磁盘 ${s.usedPct}%`:'系统盘空间不足'},
-  {key:'memory',filter:'storage',name:'记忆索引',tone:'warn',text:s=>s.pct!=null?`记忆索引 ${s.pct}%`:'记忆索引逼近上限'}
+  {key:'ingest',filter:'ingest',name:'运行日志摄入',tone:'warn',text:()=>'运行日志摄入异常'}
 ];
 let ATTENTION_TIMER=null, ATTENTION_HTML=null;
 function attentionChips(summary){

@@ -113,7 +113,7 @@ locks. See the controller outcome contract.
 
 ## Storage and recovery guarantees
 
-runtime_storage reuses GUARDS bounded reads, path validation, no-replace creation,
+`store.py` reuses GUARDS bounded reads, path validation, no-replace creation,
 conditional Windows detach, hard-link publication, atomic replacement and sync.
 File identities are actual device/inode pairs. Updates detach the observed file
 to a retained entry, then fill the vacancy with no-replace publication. Recovery

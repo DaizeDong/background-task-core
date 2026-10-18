@@ -1,23 +1,799 @@
-"""Explicit, journaled compensation for task registration.
-
-runtime.create_runtime supplies the durable adapters and the private declaration
-bundle; importing this module performs no I/O. The Scheduler and filesystem do not
-share an atomic commit. See docs/task-registration.md for adapter durability, lock
-and staging requirements.
+"""Task declarations and the registration authority: contracts, the backup allowlist parser,
+component compilation, the plan compiler, registration transactions and the creation check.
 """
 from __future__ import annotations
 
-from copy import deepcopy
-from dataclasses import dataclass
 import hashlib
 import json
 import re
-from typing import Callable
 import uuid
+from collections import Counter
+from copy import deepcopy
+from dataclasses import asdict, dataclass
+from pathlib import PurePosixPath, PureWindowsPath
+from typing import Callable
+from xml.etree import ElementTree
 
-from . import allowlist
-from .compiler import plan as compile_plan
-from .contracts import ContractError, require, versioned
+from .runs import OK_CODE_KEYS, declared_ok_codes
+
+# ---- contracts ---------------------------------------------------------------------------------
+# Version-one contracts for the read-only declaration producer.
+
+
+SCHEMA_VERSION = 1
+# %NAME% names an environment variable that the hidden launcher's WScript.Shell.Run expands when
+# the task runs, so a declaration can say where things are without naming one machine's paths.
+VARIABLE_REFERENCE = re.compile(r"%([A-Za-z_][A-Za-z0-9_]*)%")
+SCHEDULER_FIELDS = ("name", "enabled", "argv", "cwd", "timezone", "trigger", "principal",
+                    "power", "timeout_seconds", "concurrency", "xml_passthrough")
+
+
+class ContractError(ValueError):
+    """A safe diagnostic describing the field, never echoing its supplied value."""
+
+    def __init__(self, code: str, field: str):
+        self.code, self.field = code, field
+        super().__init__(f"{code}: {field}")
+
+    def to_dict(self) -> dict:
+        return {"code": self.code, "field": self.field}
+
+
+def require(data: dict, field: str, kind: type):
+    if field not in data:
+        raise ContractError("missing_field", field)
+    value = data[field]
+    if type(value) is not kind:
+        raise ContractError("invalid_type", field)
+    if kind is str and (not value.strip() or any(ord(c) < 32 for c in value)):
+        raise ContractError("invalid_value", field)
+    return value
+
+
+def versioned(data, field: str) -> dict:
+    if not isinstance(data, dict):
+        raise ContractError("invalid_type", field)
+    if type(data.get("schemaVersion")) is not int or data["schemaVersion"] != SCHEMA_VERSION:
+        raise ContractError("unsupported_schema", field)
+    return data
+
+
+def stray_percent(text: str) -> bool:
+    """True when a '%' is not part of a %NAME% reference (Run would still expand it)."""
+    return "%" in VARIABLE_REFERENCE.sub("", text)
+
+
+def anchored_path(text: str) -> bool:
+    """An absolute path, or one that starts with a %NAME% reference followed by a separator or nothing."""
+    if PureWindowsPath(text).is_absolute() or PurePosixPath(text).is_absolute():
+        return True
+    match = VARIABLE_REFERENCE.match(text)
+    return match is not None and text[match.end():match.end() + 1] in ("", "\\", "/")
+
+
+def fields(data: dict, allowed: set[str], field: str) -> None:
+    if data.keys() - allowed:
+        raise ContractError("unknown_field", field)
+
+
+@dataclass(frozen=True)
+class TaskSpec:
+    component: str
+    task_id: str
+    kind: str
+    entrypoint: str
+    read: str
+    schedule_hint: dict | None
+    concurrency_key: str
+    name: str
+    enabled: bool
+    argv: list[str]
+    cwd: str
+    source_root: str
+    timezone: str
+    trigger: dict | list[dict]
+    principal: dict
+    power: dict
+    timeout_seconds: int
+    recommended_timeout_seconds: int
+    concurrency: dict
+    backup: bool
+    category: str
+    checks: list[dict]
+    xml_passthrough: dict | None = None
+    credential_ref: str | None = None
+    installation_namespace: str | None = None
+    installation_identity: dict | None = None
+    description: str | None = None
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+
+# ---- allowlist ---------------------------------------------------------------------------------
+# Read and edit literal PowerShell TaskNames arrays without evaluating a script.
+#
+# parse_names returns a set, or (None, reason) for absent, malformed and empty
+# arrays. literal_names is strict: it distinguishes an empty array from a failed
+# read so retirement remains idempotent after removing the last name.
+
+
+class AllowlistError(ValueError):
+    """The script has no unambiguous literal TaskNames assignment."""
+
+
+@dataclass(frozen=True)
+class _Literal:
+    value: str
+    start: int
+    end: int
+
+
+def _comment_end(text: str, pos: int) -> int:
+    if text.startswith("<#", pos):
+        depth, pos = 1, pos + 2
+        while pos < len(text) and depth:
+            if text.startswith("<#", pos):
+                depth += 1
+                pos += 2
+            elif text.startswith("#>", pos):
+                depth -= 1
+                pos += 2
+            else:
+                pos += 1
+        if depth:
+            raise AllowlistError("Unterminated block comment")
+        return pos
+    end = text.find("\n", pos)
+    return len(text) if end < 0 else end
+
+
+def _string(text: str, pos: int, *, literal: bool) -> _Literal:
+    start, quote, value = pos, text[pos], []
+    pos += 1
+    escapes = {"0": "\0", "a": "\a", "b": "\b", "f": "\f", "n": "\n",
+               "r": "\r", "t": "\t", "v": "\v"}
+    while pos < len(text):
+        char = text[pos]
+        if char == quote:
+            if pos + 1 < len(text) and text[pos + 1] == quote:
+                value.append(quote)
+                pos += 2
+                continue
+            return _Literal("".join(value), start, pos + 1)
+        if quote == '"' and char == "`":
+            pos += 1
+            if pos >= len(text):
+                break
+            char = escapes.get(text[pos], text[pos])
+        elif quote == '"' and char == "$" and literal:
+            raise AllowlistError("Interpolation is not a literal task name")
+        value.append(char)
+        pos += 1
+    raise AllowlistError("Unterminated string")
+
+
+def _trivia(text: str, pos: int) -> int:
+    while pos < len(text):
+        if text[pos].isspace() or text[pos] == "\ufeff":
+            pos += 1
+        elif text.startswith("`\r\n", pos):
+            pos += 3
+        elif text.startswith("`\n", pos):
+            pos += 2
+        elif text[pos] == "#" or text.startswith("<#", pos):
+            pos = _comment_end(text, pos)
+        else:
+            break
+    return pos
+
+
+_TASK_VARIABLE = re.compile(
+    r"\$(?:\{(?:(?:script|global|local|private):)?TaskNames\}|"
+    r"(?:(?:script|global|local|private):)?TaskNames\b)", re.I)
+
+
+def _mutates_task_names(text: str, pos: int) -> bool:
+    prefix = text[pos:pos + 2] in ("++", "--")
+    start = _trivia(text, pos + 2) if prefix else pos
+    variable = _TASK_VARIABLE.match(text, start)
+    if variable is None:
+        return False
+    if prefix:
+        return True
+    end = _trivia(text, variable.end())
+    # Follow index expressions without interpreting them. Strings and comments
+    # may themselves contain brackets, so a flat bracket regex is insufficient.
+    while end < len(text) and text[end] == "[":
+        depth, end = 1, end + 1
+        while end < len(text) and depth:
+            end = _trivia(text, end)
+            if end >= len(text):
+                break
+            if text[end] in "\"'":
+                end = _string(text, end, literal=False).end
+                continue
+            if text[end] == "[":
+                depth += 1
+            elif text[end] == "]":
+                depth -= 1
+            end += 1
+        if depth:
+            raise AllowlistError("Unterminated TaskNames index")
+        end = _trivia(text, end)
+    return re.match(r"(?:[+*/%\-]?=|\+\+|--)", text[end:]) is not None
+
+
+def _parse(text: str):
+    assignment = re.compile(r"\$TaskNames\b\s*=\s*@\(", re.I)
+    found = None
+    pos = 0
+    while pos < len(text):
+        if text[pos:pos + 2] in ("@'", '@"'):
+            quote = text[pos + 1]
+            end = re.search(r"(?m)^" + re.escape(quote + "@"), text[pos + 2:])
+            if not end:
+                raise AllowlistError("Unterminated here-string")
+            pos += 2 + end.end()
+            continue
+        if text[pos] == "#" or text.startswith("<#", pos):
+            pos = _comment_end(text, pos)
+            continue
+        if text[pos] in "\"'":
+            pos = _string(text, pos, literal=False).end
+            continue
+        match = assignment.match(text, pos)
+        if not match:
+            if _mutates_task_names(text, pos):
+                raise AllowlistError("Nonliteral TaskNames assignment or mutation")
+            pos += 1
+            continue
+        if found is not None:
+            raise AllowlistError("Multiple TaskNames assignments")
+        start, body_start = pos, match.end()
+        pos, names, commas = body_start, [], []
+        need_value = True
+        while True:
+            previous = pos
+            pos = _trivia(text, pos)
+            if pos >= len(text):
+                raise AllowlistError("Unterminated TaskNames array")
+            if text[pos] == ")":
+                if need_value and names:
+                    raise AllowlistError("Trailing comma in TaskNames")
+                break
+            if not need_value:
+                if text[pos] == ",":
+                    commas.append((len(names) - 1, pos))
+                    pos += 1
+                    need_value = True
+                    continue
+                if "\n" not in text[previous:pos]:
+                    raise AllowlistError("Expected a comma or newline between names")
+            if text[pos] not in "\"'":
+                raise AllowlistError("TaskNames accepts quoted literals only")
+            name = _string(text, pos, literal=True)
+            if not name.value or any(ord(c) < 32 for c in name.value):
+                raise AllowlistError("Empty or control-character task name")
+            names.append(name)
+            pos = name.end
+            need_value = False
+        end = pos + 1
+        tail = _trivia(text, end)
+        if tail < len(text) and "\n" not in text[end:tail] and text[tail] != ";":
+            raise AllowlistError("Executable expression after TaskNames array")
+        found = start, body_start, pos, end, names, commas
+        pos = end
+    if found is None:
+        raise AllowlistError("找不到 $TaskNames = @( ... ) 这个块")
+    return found
+
+
+def literal_names(text: str) -> list[str]:
+    """Strict reader: preserve order/duplicates; raise on an unchecked source."""
+    return [name.value for name in _parse(text)[4]]
+
+
+def parse_names(text: str) -> tuple[set[str] | None, str | None]:
+    try:
+        names = set(literal_names(text))
+    except AllowlistError as exc:
+        return None, str(exc)
+    if not names:
+        return None, "$TaskNames 里解析出 0 个名字,判为未检查而不是全部缺失"
+    return names, None
+
+
+def remove_name(text: str, name: str) -> tuple[str, bool]:
+    """Remove exact literals and their separators, preserving comments."""
+    try:
+        _, _, _, _, names, commas = _parse(text)
+    except AllowlistError:
+        return text, False
+    removed = {i for i, token in enumerate(names) if token.value == name}
+    if not removed:
+        return text, False
+    kept = set(range(len(names))) - removed
+    spans = [(token.start, token.end) for i, token in enumerate(names) if i in removed]
+    spans.extend((pos, pos + 1) for i, pos in commas
+                 if i not in kept or not any(j > i for j in kept))
+    for start, end in sorted(spans, reverse=True):
+        text = text[:start] + text[end:]
+    return text, True
+
+
+def render_names(names: list[str]) -> str:
+    """Render data as single-quoted literals; never interpolate PowerShell."""
+    text = "$TaskNames = @(\n" + ",\n".join(
+        "    '" + name.replace("'", "''") + "'" for name in names) + "\n)\n"
+    literal_names(text)
+    return text
+
+
+def closing_paren(text: str) -> int:
+    """Position of the closing parenthesis of the TaskNames array."""
+    return _parse(text)[2]
+
+
+# ---- components --------------------------------------------------------------------------------
+# Compile explicit component declarations and private bindings, without I/O.
+
+
+_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]*\Z")
+_BINDING_FIELDS = {"name", "enabled", "argv", "cwd", "source_root", "timezone", "trigger", "principal",
+                   "power", "timeout_seconds", "concurrency", "backup", "category", "checks",
+                   "xml_passthrough", "credential_ref", "description"}
+
+
+def _identifier(data: dict, field: str) -> str:
+    value = require(data, field, str)
+    if not _ID.fullmatch(value):
+        raise ContractError("invalid_id", field)
+    return value
+
+
+def _nonnegative(value: int, field: str) -> None:
+    if value < 0:
+        raise ContractError("invalid_value", field)
+
+
+def _xml(data: dict) -> None:
+    if "xml" not in data:
+        raise ContractError("missing_field", "xml")
+    xml = data["xml"]
+    if not isinstance(xml, str) or not xml.strip():
+        raise ContractError("invalid_type", "xml")
+    require(data, "owner", str)
+    require(data, "reason", str)
+    if "<!DOCTYPE" in xml.upper() or "<!ENTITY" in xml.upper():
+        raise ContractError("invalid_xml", "xml")
+    try:
+        ElementTree.fromstring(xml)
+    except ElementTree.ParseError as exc:
+        raise ContractError("invalid_xml", "xml") from exc
+
+
+def _trigger(trigger) -> None:
+    if isinstance(trigger, list):
+        for item in trigger:
+            if not isinstance(item, dict):
+                raise ContractError("invalid_type", "trigger")
+            _trigger(item)
+        return
+    if not isinstance(trigger, dict):
+        raise ContractError("invalid_type", "trigger")
+    kind = require(trigger, "type", str)
+    if kind == "xml":
+        _xml(trigger)
+    elif kind == "interval":
+        units = [key for key in ("seconds", "minutes") if key in trigger]
+        if len(units) != 1 or require(trigger, units[0], int) <= 0:
+            raise ContractError("invalid_value", "trigger.interval")
+    elif kind in ("daily", "weekly"):
+        at = require(trigger, "at", str)
+        if not re.fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?", at):
+            raise ContractError("invalid_value", "trigger.at")
+        if kind == "weekly":
+            days = require(trigger, "days", list)
+            if not days or any(d not in ("mon", "tue", "wed", "thu", "fri", "sat", "sun") for d in days):
+                raise ContractError("invalid_value", "trigger.days")
+    elif kind != "logon":
+        raise ContractError("unsupported_trigger", "trigger.type")
+
+
+def _checks(declarations: list, bindings: list) -> list[dict]:
+    declared = {}
+    for check in declarations:
+        if not isinstance(check, dict):
+            raise ContractError("invalid_type", "checks")
+        fields(check, {"id", "required"}, "checks")
+        check_id = _identifier(check, "id")
+        require(check, "required", bool)
+        if check_id in declared:
+            raise ContractError("duplicate_check", "checks.id")
+        declared[check_id] = check
+    bound = {}
+    for check in bindings:
+        if not isinstance(check, dict):
+            raise ContractError("invalid_type", "checks")
+        fields(check, {"id", "legacy", "watched_elsewhere"}, "checks")
+        check_id = _identifier(check, "id")
+        if check_id not in declared:
+            raise ContractError("unknown_check", "checks.id")
+        if check_id in bound:
+            raise ContractError("duplicate_check", "checks.id")
+        methods = [key for key in ("legacy", "watched_elsewhere") if key in check]
+        if len(methods) != 1:
+            raise ContractError("invalid_monitor", "checks")
+        method = methods[0]
+        config = require(check, method, dict)
+        if method == "legacy":
+            if not config or {"name", "task_id", "component", "check_id"} & config.keys():
+                raise ContractError("invalid_monitor", "checks.legacy")
+            if any(config.get(key) is not None and not isinstance(config[key], list) for key in OK_CODE_KEYS):
+                raise ContractError("invalid_monitor", "checks.legacy.codes")
+        else:
+            for key in ("component", "check_id", "observation_ref"):
+                require(config, key, str)
+        bound[check_id] = {**check, "binding_state": method}
+    return [{**check, **bound.get(check_id, {"binding_state": "unbound"})}
+            for check_id, check in declared.items()]
+
+
+def _binding(binding: dict) -> None:
+    fields(binding, _BINDING_FIELDS, "binding")
+    for key in ("name", "cwd", "source_root", "timezone", "category"):
+        require(binding, key, str)
+    for key in ("cwd", "source_root"):
+        if stray_percent(binding[key]):
+            raise ContractError("invalid_variable_reference", key)
+        if not anchored_path(binding[key]):
+            raise ContractError("absolute_path_required", key)
+    for key in ("enabled", "backup"):
+        require(binding, key, bool)
+    for key in ("principal", "power", "concurrency"):
+        if not require(binding, key, dict):
+            raise ContractError("invalid_value", key)
+    if binding["concurrency"].get("policy") not in ("IgnoreNew", "Parallel", "Queue", "StopExisting"):
+        raise ContractError("invalid_value", "concurrency.policy")
+    _nonnegative(require(binding, "timeout_seconds", int), "timeout_seconds")
+    argv = binding.get("argv")
+    if (not isinstance(argv, list) or not argv or not isinstance(argv[0], str) or not argv[0]
+            or any(not isinstance(arg, str) or "\0" in arg for arg in argv)):
+        raise ContractError("invalid_argv", "argv")
+    if any(stray_percent(arg) for arg in argv):
+        raise ContractError("invalid_variable_reference", "argv")
+    if not anchored_path(argv[0]):
+        raise ContractError("absolute_path_required", "argv.0")
+    if "trigger" not in binding:
+        raise ContractError("missing_field", "trigger")
+    _trigger(binding["trigger"])
+    require(binding, "checks", list)
+    if "xml_passthrough" in binding:
+        _xml(require(binding, "xml_passthrough", dict))
+    if "credential_ref" in binding:
+        require(binding, "credential_ref", str)
+    if "description" in binding:
+        if not isinstance(binding["description"], str) or "\0" in binding["description"]:
+            raise ContractError("invalid_description", "binding.description")
+
+
+def _installed_manifests(manifests: list, bindings: dict) -> list:
+    """Join explicit private namespaces to caller-supplied catalog descriptors.
+
+    The wrapper belongs to the request, never the public manifest. Catalog
+    discovery and identity normalization remain the caller's responsibility.
+    """
+    installations = require(bindings, "installations", dict) if "installations" in bindings else {}
+    result, used, identities = [], set(), set()
+    for item in deepcopy(manifests):
+        namespace, identity = None, None
+        if isinstance(item, dict) and ("namespace" in item or "manifest" in item):
+            fields(item, {"namespace", "manifest"}, "components.installation")
+            namespace = _identifier(item, "namespace")
+            if namespace in used:
+                raise ContractError("duplicate_namespace", "components.namespace")
+            used.add(namespace)
+            if namespace not in installations:
+                raise ContractError("missing_installation", "bindings.installations")
+            descriptor = installations[namespace]
+            if not isinstance(descriptor, dict):
+                raise ContractError("invalid_type", "bindings.installations")
+            fields(descriptor, {"component", "identity"}, "bindings.installations")
+            manifest = require(item, "manifest", dict)
+            if _identifier(descriptor, "component") != _identifier(manifest, "component"):
+                raise ContractError("installation_component_mismatch", "bindings.installations.component")
+            identity = require(descriptor, "identity", dict)
+            key = tuple(require(identity, field, str) for field in ("marketplace", "scope", "client", "source_id"))
+            try:
+                json.dumps(identity, allow_nan=False)
+            except (TypeError, ValueError) as exc:
+                raise ContractError("invalid_json", "bindings.installations.identity") from exc
+            if key in identities:
+                raise ContractError("duplicate_installation_identity", "bindings.installations.identity")
+            identities.add(key)
+        else:
+            manifest = item
+        result.append((manifest, namespace, identity))
+    if installations.keys() - used:
+        raise ContractError("unused_installation", "bindings.installations")
+    legacy = {manifest.get("component") for manifest, namespace, _ in result
+              if namespace is None and isinstance(manifest, dict) and isinstance(manifest.get("component"), str)}
+    if any(manifest.get("component") in legacy for manifest, namespace, _ in result if namespace is not None):
+        raise ContractError("ambiguous_component", "components")
+    return result
+
+
+def compile_tasks(manifests: list[dict], bindings: dict, machine: dict) -> list[TaskSpec]:
+    """Bind each declared task once; no discovery, scheduling or process startup."""
+    if not isinstance(manifests, list) or not manifests:
+        raise ContractError("missing_components", "components")
+    bindings, machine = deepcopy(bindings), deepcopy(machine)
+    versioned(bindings, "bindings")
+    versioned(machine, "machine")
+    fields(bindings, {"schemaVersion", "tasks", "installations"}, "bindings")
+    fields(machine, {"schemaVersion", "authority_epoch", "migrated_tasks", "overrides", "categories"}, "machine")
+    tasks = require(bindings, "tasks", dict)
+    overrides = require(machine, "overrides", dict)
+    _nonnegative(require(machine, "authority_epoch", int), "authority_epoch")
+    if require(machine, "migrated_tasks", list):
+        raise ContractError("unsupported_authority", "migrated_tasks")
+    categories = set()
+    for category in require(machine, "categories", list):
+        if not isinstance(category, dict):
+            raise ContractError("invalid_type", "categories")
+        fields(category, {"id", "name", "desc"}, "categories")
+        category_id = _identifier(category, "id")
+        require(category, "name", str)
+        if "desc" in category:
+            require(category, "desc", str)
+        if category_id in categories:
+            raise ContractError("duplicate_category", "categories.id")
+        categories.add(category_id)
+    result, seen, names, components = [], set(), set(), set()
+    for manifest, namespace, identity in _installed_manifests(manifests, bindings):
+        versioned(manifest, "component")
+        fields(manifest, {"schemaVersion", "component", "read", "tasks"}, "component")
+        component = _identifier(manifest, "component")
+        component_key = (namespace, component)
+        if component_key in components:
+            raise ContractError("duplicate_component", "component")
+        components.add(component_key)
+        reader = require(manifest, "read", str)
+        for task in require(manifest, "tasks", list):
+            if not isinstance(task, dict):
+                raise ContractError("invalid_type", "tasks")
+            fields(task, {"id", "kind", "entrypoint", "schedule_hint", "timeout_seconds", "concurrency_key", "checks"}, "tasks")
+            task_id = component + "/" + _identifier(task, "id")
+            if namespace is not None:
+                task_id = namespace + "/" + task_id
+            if task_id in seen:
+                raise ContractError("duplicate_task", "tasks.id")
+            seen.add(task_id)
+            kind = require(task, "kind", str)
+            if kind not in ("oneshot", "daemon", "dispatcher"):
+                raise ContractError("invalid_value", "tasks.kind")
+            _nonnegative(require(task, "timeout_seconds", int), "timeout_seconds")
+            if "schedule_hint" in task:
+                _trigger(require(task, "schedule_hint", dict))
+            if task_id not in tasks:
+                raise ContractError("missing_binding", "bindings.tasks")
+            binding = tasks[task_id]
+            if not isinstance(binding, dict) or not isinstance(overrides.get(task_id, {}), dict):
+                raise ContractError("invalid_type", "binding")
+            binding = {**binding, **overrides.get(task_id, {})}
+            _binding(binding)
+            if binding["category"] not in categories:
+                raise ContractError("unknown_category", "category")
+            if binding["name"].casefold() in names:
+                raise ContractError("duplicate_name", "name")
+            names.add(binding["name"].casefold())
+            binding["checks"] = _checks(require(task, "checks", list), binding["checks"])
+            result.append(TaskSpec(component=component, task_id=task_id, kind=kind,
+                                   entrypoint=require(task, "entrypoint", str), read=reader,
+                                   schedule_hint=task.get("schedule_hint"),
+                                   recommended_timeout_seconds=task["timeout_seconds"],
+                                   installation_namespace=namespace, installation_identity=identity,
+                                   concurrency_key=require(task, "concurrency_key", str), **binding))
+    if (tasks.keys() | overrides.keys()) - seen:
+        raise ContractError("unknown_task", "bindings.tasks/overrides")
+    if not result:
+        raise ContractError("missing_tasks", "components.tasks")
+    return result
+
+
+# ---- compiler ----------------------------------------------------------------------------------
+# Pure read-only planning against caller-supplied legacy and Scheduler snapshots.
+#
+# Generated files are declared-task projections, never replacement instructions.
+# This module neither imports the web server nor launches a scheduler or payload.
+
+
+def _plan_json(value) -> str:
+    return json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":"), allow_nan=False)
+
+
+def _revision(value) -> str:
+    return "sha256:" + hashlib.sha256(_plan_json(value).encode("utf-8")).hexdigest()
+
+
+def validate_trigger_shape(trigger):
+    """Only accept declaration fields that have defined rendering semantics."""
+    _trigger(trigger)
+    entries = trigger if isinstance(trigger, list) else [trigger]
+    shapes = {'daily': {'type', 'at'}, 'weekly': {'type', 'at', 'days'},
+              'interval': {'type', 'seconds', 'minutes'}, 'logon': {'type'},
+              'xml': {'type', 'xml', 'owner', 'reason'}}
+    for entry in entries:
+        fields(entry, shapes[entry['type']], 'trigger')
+        if entry['type'] == 'weekly' and len(set(entry['days'])) != len(entry['days']):
+            raise ContractError('duplicate_day', 'trigger.days')
+
+
+def _health_row(row: dict) -> dict:
+    result = {k: v for k, v in row.items() if k not in ("task_id", "component", "check_id", *OK_CODE_KEYS)}
+    if any(key in row for key in OK_CODE_KEYS):
+        result[OK_CODE_KEYS[0]] = declared_ok_codes(row)
+    return result
+
+
+def _rows(data, key: str) -> list:
+    rows = data.get(key) if isinstance(data, dict) else data
+    if not isinstance(rows, list) or any(not isinstance(row, dict) for row in rows):
+        raise ContractError("invalid_type", key)
+    return rows
+
+
+def _compare(before, after) -> dict:
+    return {"status": "equal" if before == after else "different", "before": before, "after": after}
+
+
+def _legacy_parity(baseline: dict, health: dict, names: str, categories: dict) -> dict:
+    parity = {}
+    for key, after in (("task_names", names), ("task_health", health), ("categories", categories)):
+        before = baseline.get(key)
+        if before is None:
+            parity[key] = {"status": "not-checked", "reason_code": "missing_source"}
+            continue
+        try:
+            if key == "task_names":
+                if not isinstance(before, str):
+                    raise ContractError("invalid_type", key)
+                parsed, reason = parse_names(before)
+                if parsed is None:
+                    parity[key] = {"status": "not-checked", "reason_code": "unreadable_allowlist", "reason": reason}
+                    continue
+                before, after = sorted(parsed), sorted(literal_names(after))
+            elif key == "task_health":
+                old = _rows(before, "tasks")
+                if any(not isinstance(row.get("name"), str) or not row["name"] for row in old):
+                    raise ContractError("missing_field", "name")
+                before = sorted(_plan_json(_health_row(row)) for row in old)
+                after = sorted(_plan_json(_health_row(row)) for row in after["tasks"])
+            else:
+                before, after = _rows(before, "categories"), after["categories"]
+                for row in before:
+                    require(row, "name", str)
+                    if any(not isinstance(name, str) for name in require(row, "tasks", list)):
+                        raise ContractError("invalid_type", "categories.tasks")
+            parity[key] = _compare(before, after)
+        except (ContractError, TypeError, ValueError):
+            parity[key] = {"status": "invalid", "reason_code": "malformed_source"}
+    return parity
+
+
+def _scheduler_parity(baseline: dict, specs: list[dict]) -> tuple[dict, list, list]:
+    observed = baseline.get("tasks")
+    if observed is None:
+        return {"status": "not-checked", "reason_code": "missing_source"}, [], []
+    if (not isinstance(observed, list) or any(not isinstance(row, dict) or not isinstance(row.get("name"), str)
+                                             or not row["name"] for row in observed)):
+        return {"status": "invalid", "reason_code": "malformed_source"}, [], []
+    by_name = {row["name"].casefold(): row for row in observed}
+    if len(by_name) != len(observed):
+        return {"status": "invalid", "reason_code": "duplicate_name"}, [], []
+    changes, missing, absent = [], [], 0
+    for task in specs:
+        old = by_name.get(task["name"].casefold())
+        if old is None:
+            absent += 1
+            changes.append({"kind": "scheduler-proposal", "operation": "create", "task_id": task["task_id"],
+                            "name": task["name"], "before": None, "after": deepcopy(task), "blocked": True,
+                            "reason_code": "task_absent_requires_review"})
+            continue
+        for field in SCHEDULER_FIELDS:
+            if field not in old and field != "xml_passthrough":
+                missing.append({"task_id": task["task_id"], "field": field, "reason_code": "field_not_observed"})
+            elif old.get(field) != task[field]:
+                blocked = field == "enabled" and old[field] is False and task[field] is True
+                changes.append({"kind": "scheduler-proposal", "task_id": task["task_id"], "name": task["name"],
+                                "field": field, "before": old.get(field), "after": task[field], "blocked": blocked,
+                                "reason_code": "disabled_task_requires_review" if blocked else "field_drift"})
+    owned = {task["name"].casefold() for task in specs}
+    adopt = [{"name": row["name"], "automatic": False, "observation": row,
+              "required_inputs": ["component task declaration", "private binding", "monitoring checks"]}
+             for row in observed if row["name"].casefold() not in owned]
+    status = "not-checked" if missing else "different" if changes else "equal"
+    return {"status": status, "missing": missing, "absent_tasks": absent,
+            "compared_tasks": len(specs) - absent - len({m["task_id"] for m in missing}),
+            "unmanaged_tasks": len(adopt)}, changes, adopt
+
+
+def plan(request: dict) -> dict:
+    """Return JSON-compatible projections and comparisons; perform no writes/I/O."""
+    versioned(request, "request")
+    fields(request, {"schemaVersion", "components", "bindings", "machine", "baseline"}, "request")
+    try:
+        input_revision = _revision(request)
+    except (TypeError, ValueError) as exc:
+        raise ContractError("invalid_json", "request") from exc
+    request = deepcopy(request)
+    specs = [task.to_dict() for task in compile_tasks(require(request, "components", list),
+             require(request, "bindings", dict), require(request, "machine", dict))]
+    for spec in specs:
+        validate_trigger_shape(spec['trigger'])
+    baseline = require(request, "baseline", dict)
+    fields(baseline, {"tasks", "task_names", "task_health", "categories"}, "baseline")
+    rows, coverage = [], []
+    for task in specs:
+        for check in task["checks"]:
+            entry = {"task_id": task["task_id"], "check_id": check["id"], "required": check["required"],
+                     "state": check["binding_state"]}
+            if "legacy" in check:
+                rows.append({**check["legacy"], "name": task["name"], "component": task["component"],
+                             "task_id": task["task_id"], "check_id": check["id"]})
+            if "watched_elsewhere" in check:
+                entry["watched_elsewhere"] = check["watched_elsewhere"]
+            coverage.append(entry)
+    health = {"tasks": rows}
+    names = render_names([task["name"] for task in specs if task["backup"]])
+    categories = {"categories": [{k: v for k, v in cat.items() if k != "id"} | {
+        "tasks": [task["name"] for task in specs if task["category"] == cat["id"]]}
+        for cat in request["machine"]["categories"]]}
+    for descriptor, category in zip(request["machine"]["categories"], categories["categories"]):
+        descriptions = {task["name"]: task["description"] for task in specs
+                        if task["category"] == descriptor["id"] and task["description"] is not None}
+        if descriptions:
+            category["taskDesc"] = descriptions
+    parity = _legacy_parity(baseline, health, names, categories)
+    parity["scheduler"], changes, adopt = _scheduler_parity(baseline, specs)
+    for key, comparison in parity.items():
+        if key != "scheduler" and comparison["status"] == "different":
+            changes.append({"kind": "projection-difference", "projection": key, **comparison})
+    available = Counter()
+    if parity["task_health"]["status"] in ("equal", "different"):
+        available.update(_plan_json(_health_row(row)) for row in _rows(baseline["task_health"], "tasks"))
+    for row in rows:
+        key = _plan_json(_health_row(row))
+        entry = next(c for c in coverage if (c["task_id"], c["check_id"]) == (row["task_id"], row["check_id"]))
+        if parity["task_health"]["status"] not in ("equal", "different"):
+            entry["state"] = "not-checked"
+            entry["reason_code"] = parity["task_health"]["reason_code"]
+        else:
+            entry["state"] = "matched" if available[key] else "not-matched"
+        if available[key]:
+            available[key] -= 1
+    generated = {}
+    for name, content in (("task-health.json", json.dumps(health, ensure_ascii=True, indent=2) + "\n"),
+                          ("TaskNames.ps1", names), ("categories.json", json.dumps(categories, ensure_ascii=True, indent=2) + "\n")):
+        generated[name] = {"content": content, "digest": "sha256:" + hashlib.sha256(content.encode("utf-8")).hexdigest(),
+                           "scope": "declared-tasks-only",
+                           "replacement_safe": False, "owners": [task["task_id"] for task in specs]}
+    return {"schemaVersion": 1, "mode": "read-only", "applicable": False,
+            "authority": {"mode": "legacy", "epoch": request["machine"]["authority_epoch"], "migrated_tasks": []},
+            "baseline_revision": _revision(baseline), "input_revision": input_revision,
+            "task_specs": specs, "changes": changes, "generated_files": generated, "parity": parity,
+            "check_coverage": {"declared": len(coverage), "matched": sum(c["state"] == "matched" for c in coverage),
+                               "evaluated": 0, "checks": coverage}, "adopt_proposals": adopt}
+
+
+# ---- registration ------------------------------------------------------------------------------
+# Explicit, journaled compensation for task registration.
+#
+# runtime.create_runtime supplies the durable adapters and the private declaration
+# bundle; importing this module performs no I/O. The Scheduler and filesystem do not
+# share an atomic commit. See docs/task-registration.md for adapter durability, lock
+# and staging requirements.
 
 
 class Conflict(ContractError):
@@ -78,7 +854,7 @@ def _use(runtime):
 
 def _validate_control(spec, snapshot):
     """A migrated task's live definition must still match its declaration."""
-    from .contracts import SCHEDULER_FIELDS
+    pass
     previous = snapshot['value']['spec']
     if any(previous.get(key) != spec.get(key) for key in SCHEDULER_FIELDS if key != 'enabled'):
         raise Conflict('declaration_apply_required', 'scheduler')
@@ -103,7 +879,7 @@ def _compile(bundle):
     _authority(bundle)
     request = deepcopy(bundle["request"])
     request["machine"]["migrated_tasks"] = []
-    return compile_plan(request)
+    return plan(request)
 
 
 def compile_effective(bundle):
@@ -135,7 +911,7 @@ def _scheduler_config(snapshot):
 
 def _same(kind, current, expected):
     if kind == "scheduler":
-        from .runtime_xml import same_candidate
+        from .scheduler import same_candidate
         return (_scheduler_config(current) == _scheduler_config(expected)
                 or same_candidate(current, expected))
     return current == expected
@@ -270,7 +1046,7 @@ def _assemble(runtime, intent):
     before, selected = {}, []
     for task_id in ids:
         spec = deepcopy(specs[task_id])
-        from .scheduler_windows import task_name
+        from .scheduler import task_name
         task_name(spec["name"])
         proof = require(bundle, "ownership", dict).get(task_id)
         writer = "declarations" if task_id in migrated else "legacy"
@@ -309,11 +1085,11 @@ def _assemble(runtime, intent):
         if intent.get('legacy_transaction') and snapshot['state'] == 'absent' and intent['operation'] != 'retire':
             raise Conflict('task_missing', 'scheduler')
         if intent['operation'] == 'restore':
-            from .export_restore import validate_restore_target
+            from .lifecycle import validate_restore_target
             spec['enabled'] = validate_restore_target(bundle, intent, spec, snapshot, scheduler=runtime.scheduler)
         _budget(spec)
         if snapshot['state'] == 'absent' and intent['operation'] == 'apply':
-            from .creation import inspect
+            pass
             if inspect(runtime, bundle, specs, task_id)['matches']:
                 raise Conflict('equivalent_task_exists', task_id)
         before[spec["name"]] = snapshot
@@ -326,7 +1102,7 @@ def _assemble(runtime, intent):
               "authority_epoch": epoch, "task_ids": ids,
               "linked_work_items": {i: bundle.get("linked_work_items", {}).get(i, []) for i in ids}}
     if intent['operation'] == 'retire':
-        from .linked_items import report
+        from .integrations import report
         linked = report(runtime, ids, bundle)
         public.update(linked_work_items=linked['items'], linked_work_items_status=linked['status'],
                       linked_work_items_code=linked.get('code'))
@@ -366,7 +1142,7 @@ def build_plan(runtime, task_ids, *, operation="apply", migrate=False, approve_e
 
 def creation_check(runtime, task_id):
     """Find an existing declared action before a skill proposes a new Scheduler identity."""
-    from .creation import inspect
+    pass
     runtime = _use(runtime)
     with runtime.locks.hold(['authority']):
         if runtime.journal.pending(['authority']):
@@ -430,15 +1206,15 @@ def _outputs(bundle, compiled, selected, before, intent, tx, *, linked=None):
         health["tasks"] += [r for r in projected["tasks"] if r["task_id"] in projected_ids]
     text = _decode(before[paths["TaskNames.ps1"]])
     try:
-        for name in allowlist.literal_names(text):
+        for name in literal_names(text):
             if name.casefold() in names:
-                text, _ = allowlist.remove_name(text, name)
+                text, _ = remove_name(text, name)
         for spec in selected:
             if spec['task_id'] in projected_ids and spec["backup"] and not retiring:
-                close = allowlist.closing_paren(text)
+                close = closing_paren(text)
                 text = text[:close] + "\n    '" + spec["name"].replace("'", "''") + "'\n" + text[close:]
-        allowlist.literal_names(text)
-    except allowlist.AllowlistError as exc:
+        literal_names(text)
+    except AllowlistError as exc:
         raise Conflict("invalid_allowlist", "TaskNames.ps1") from exc
     categories = _document(before[paths["categories.json"]])
     cats = require(categories, "categories", list)
@@ -481,7 +1257,7 @@ def _outputs(bundle, compiled, selected, before, intent, tx, *, linked=None):
         # Legacy enable/disable/restore changes no unrelated projection or launcher.
         for role in ('task-health.json', 'TaskNames.ps1', 'categories.json', 'tombstones'):
             result[paths[role]] = before[paths[role]]['value']
-    from .runtime_xml import launcher_bytes
+    from .scheduler import launcher_bytes
     for spec in selected:
         launcher = bundle.get('launchers', {}).get(spec['task_id'])
         if launcher is not None and spec['task_id'] not in legacy_ids:
@@ -827,7 +1603,7 @@ def recover(transaction_id, *, runtime=None):
     if isinstance(journal.get('reconcile'), dict):
         # Accepting external file edits requires the exact reviewed approval;
         # these current before-images must never enter ordinary compensation.
-        from .reconcile import _result as reconciliation_result
+        from .lifecycle import _reconcile_result as reconciliation_result
         return reconciliation_result(journal)
     if isinstance(journal.get("bootstrap"), dict):
         # Initial-authority journals are recognized before any rollback, cleanup
@@ -875,7 +1651,7 @@ def dispatch(name, verb, *, reason="", runtime=None):
     task goes through the same transaction with its bindings left as reviewed.
     """
     runtime = _use(runtime)
-    from .scheduler_windows import task_name
+    from .scheduler import task_name
     task_name(name)
     if verb not in ('enable', 'disable', 'run', 'stop', 'retire'):
         raise Conflict('invalid_operation', 'operation')
@@ -917,3 +1693,74 @@ def dispatch(name, verb, *, reason="", runtime=None):
                             'Ready' if value.get('enabled') else 'Disabled') if snapshot['state'] == 'present' else '(gone)'
         result['after'] = 'Ready' if verb == 'enable' else 'Disabled'
     return result
+
+
+# ---- creation ----------------------------------------------------------------------------------
+# Read-only action reuse checks shared by skill callers and registration.
+
+
+def _live_spec(value):
+    """Legacy Scheduler observations carry argv only; recover scope from their XML."""
+    spec = value.get('spec')
+    if not isinstance(spec, dict):
+        raise ContractError('creation_action_unknown', 'scheduler')
+    if spec.get('principal'):
+        return spec
+    from .scheduler import NS, parse
+    root = parse(value['xml'])
+    ns = {'t': NS}
+    principals = root.findall('t:Principals/t:Principal', ns)
+    actions = root.findall('t:Actions/t:Exec', ns)
+    if len(principals) != 1 or len(actions) != 1:
+        raise ContractError('creation_action_unknown', 'scheduler')
+    principal = {field: principals[0].findtext('t:' + tag, namespaces=ns)
+                 for field, tag in (('user_id', 'UserId'), ('logon_type', 'LogonType'),
+                                    ('run_level', 'RunLevel'))}
+    if principals[0].find('t:RunLevel', ns) is None:
+        principal['run_level'] = 'LeastPrivilege'  # Task Scheduler schema default
+    if not all(principal.values()):
+        raise ContractError('creation_action_unknown', 'principal')
+    return {**spec, 'principal': principal,
+            'cwd': actions[0].findtext('t:WorkingDirectory', namespaces=ns)}
+
+
+def _action(spec):
+    argv, principal = spec.get('argv'), spec.get('principal')
+    if not isinstance(argv, list) or not argv or not all(isinstance(arg, str) for arg in argv):
+        raise ContractError('creation_action_unknown', 'argv')
+    if not isinstance(principal, dict) or not principal:
+        raise ContractError('creation_action_unknown', 'principal')
+    cwd = spec.get('cwd')
+    if cwd is not None and not isinstance(cwd, str):
+        raise ContractError('creation_action_unknown', 'cwd')
+    path = lambda value: value.replace('\\', '/').rstrip('/').casefold()
+    return {'argv': [path(argv[0]), *argv[1:]], 'cwd': path(cwd or ''), 'principal': principal}
+
+
+def inspect(runtime, bundle, specs, task_id):
+    pass
+    if task_id not in specs:
+        raise Conflict('invalid_task_selection', 'task_id')
+    proposed = specs[task_id]
+    target = _action(proposed)
+    matches, observed = [], {}
+    current = None
+    for other_id, spec in specs.items():
+        snapshot = _read(runtime.scheduler, spec['name'])
+        observed[spec['name']] = fingerprint(_scheduler_config(snapshot))
+        if other_id == task_id:
+            current = snapshot
+            continue
+        existing = snapshot.get('value')
+        if existing is not None:
+            equivalent = _action(_live_spec(existing)) == target
+        else:
+            equivalent = _action(spec) == target
+        if equivalent:
+            matches.append({'task_id': other_id, 'name': spec['name'],
+                            'state': snapshot['state'], 'enabled': existing.get('enabled') if existing else False,
+                            'running': existing.get('running') if existing else False})
+    return {'schemaVersion': 1, 'task_id': task_id,
+            'decision': 'reuse' if matches else 'update' if current['state'] == 'present' else 'create',
+            'matches': matches, 'checked_tasks': len(specs), 'coverage': 'declared_tasks',
+            'inventory_revision': revision(observed), 'input_revision': revision(bundle)}

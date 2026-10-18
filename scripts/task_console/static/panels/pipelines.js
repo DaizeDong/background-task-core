@@ -1,4 +1,42 @@
 // Read-only projections of existing component observations. No execution or state store.
+// 机器代号换成人话。原代号仍放在悬停里,排查时照样查得到。不认识的代号按形状猜一个大类,
+// 不把 missing_workload_observer 这种字直接摆给人看。
+const REASON_LABELS={stale:"记录过期",observed:"已观测到",workload_observed:"观测到工作进程",
+  local_process_observed:"观测到本机进程",local_listener_observed:"观测到本机监听端口",
+  missing_workload_observer:"缺少观测器",observer_stale:"观测器记录过期",observer_unknown:"观测器状态未知",
+  missing_observer_timestamp:"观测器没有时间戳",clock_skew:"时间戳在未来",terminated:"进程已退出",
+  disabled:"已停用",query_failed:"查询失败",never_run:"从未运行",skipped_busy:"上次因忙碌跳过",deferred:"已推迟",
+  missing_source:"缺少数据来源",invalid_declaration:"声明无效",missing_check:"缺少检查项",missing_field:"缺少字段",
+  launch_failed:"启动失败",exit_failed:"退出码失败",execution_failed:"执行失败",receipt_missing:"缺少运行回执",
+  listener_missing:"监听端口不在",missing_external_observation:"缺少外部观测"};
+function reasonLabel(code){
+  const raw=String(code ?? "");
+  if(REASON_LABELS[raw]) return REASON_LABELS[raw];
+  if(/^missing_/.test(raw) || /_missing$/.test(raw)) return "缺少必要记录";
+  if(/_failed$/.test(raw)) return "某一步失败";
+  if(/_stale$/.test(raw)) return "记录过期";
+  if(/_observed$/.test(raw)) return "已观测到";
+  return "其他原因";
+}
+const CATALOG_LABELS={yes:"是",no:"否",unknown:"未检查",not_applicable:"不适用",
+  checked:"已检查",partial:"部分检查",unchecked:"未检查",complete:"完整",zero:"无检查项",
+  healthy:"正常",degraded:"需留意",unhealthy:"异常",completed:"已完成",running:"运行中",
+  repository:"仓库",blocked:"受阻",unsupported:"尚不支持",skill:"技能",plugin:"插件",mcp_binding:"MCP 连接",app_connector:"App 连接",agent_template:"角色模板",
+  skill_roots:"技能目录",plugin_registries:"插件登记",declared:"已登记",enabled:"已启用",cached:"已缓存",
+  installed:"已安装",resolved:"路径有效",discovered:"客户端可见",compatible:"兼容",
+  external_skill_repos:"外部技能仓",repo_roots:"仓库目录",private_bindings:"私有绑定",runtime_discovery:"运行时发现",workflow_roots:"工作流",plugin_descriptors:"插件描述",native_discovery:"原生发现",skills:"技能",agents:"角色",hooks:"钩子",memory:"记忆",mcp:"MCP"};
+const catalogLabel=value=>CATALOG_LABELS[value] || value || "未检查";
+function catalogCoverageText(coverage){
+  const c=coverage||{};
+  if(c.status) return catalogLabel(c.status);
+  return Object.entries(c).map(([name,part])=>{
+    if(!part || typeof part!=="object") return `${catalogLabel(name)}: ${catalogLabel(part)}`;
+    const count=part.checked!=null && part.expected!=null?` ${part.checked}/${part.expected}`:"";
+    return `${catalogLabel(name)} ${catalogLabel(part.status)}${count}`;
+  }).join(" · ") || "未检查";
+}
+
+
 let COMPONENTS = null, PIPELINE_QUERY="";
 const PIPELINE_DEFS = {
   sync: {title:"Claude → Codex 配置同步", name:"SyncClaudeToCodex",
@@ -112,7 +150,7 @@ async function loadComponents(){
   try{COMPONENTS=await api("/api/components");}
   // 读失败要和「读到了、没有配置」分得开:资源页的锚点前者画「!」,后者画「—」。
   catch(error){COMPONENTS={available:false,reason:error.message,tasks:[],readFailed:true};}
-  renderPipelines(); renderCatalog();
+  renderPipelines();
   renderPlatformSignals();
 }
 
@@ -188,7 +226,7 @@ function renderPipelines(){
           </td></tr>`).join("")}</tbody></table></div></div>`;
     }).join("")+
     `<div class="card"><div class="card-header"><h2 class="card-title">同步中发现的问题 <span id="pipeline-issue-count" class="n"></span></h2>
-    <div class="catalog-tools"><input id="pipeline-search" type="search" aria-label="搜索流水线问题" placeholder="搜索对象、类型或原因" value="${esc(PIPELINE_QUERY)}"><button class="icon-only" data-goto="resources" title="查看技能和插件"><svg class="ic" aria-hidden="true"><use href="#i-puzzle"/></svg><span class="control-label">查看技能和插件</span></button></div></div>
+    <div class="catalog-tools"><input id="pipeline-search" type="search" aria-label="搜索流水线问题" placeholder="搜索对象、类型或原因" value="${esc(PIPELINE_QUERY)}"></div></div>
     <div id="pipeline-issues" class="ops-scroll"></div></div>`;
   $("pipeline-search").addEventListener("input",event=>{PIPELINE_QUERY=event.target.value;renderPipelineIssues();});
   restoreTaskControlFocus(box,focused);

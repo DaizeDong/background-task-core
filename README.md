@@ -1,10 +1,8 @@
 # task-console
 
-A loopback-only console for one Windows machine: its scheduled tasks, the git repositories under one root, and whatever skill, memory and transcript directories you point it at.
+A loopback-only console for one Windows machine: its scheduled tasks, their run history and health, and the shared work records (todos and agent work) that the tasks serve.
 
-It shows agent work, recorded results, tracked commitments and local automation in one place. Work records come from the existing reminder owner; Windows Task Scheduler supplies triggers and task-console retains declarations, registration and guarded controls.
-
-The workbench separates human decisions from technical diagnostics. Every source reports its coverage: an unavailable source does not render as an empty successful one, and a completion summary does not stand in for execution evidence.
+Windows Task Scheduler supplies triggers; task-console keeps the task declarations, the registration authority and the guarded controls. Every source reports its coverage: an unavailable source does not render as an empty successful one, and a completion summary does not stand in for execution evidence.
 
 [![Local Console](https://img.shields.io/badge/Local-Console-orange?style=flat)](scripts/task_console/server.py)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
@@ -16,99 +14,77 @@ The workbench separates human decisions from technical diagnostics. Every source
 
 ---
 
-## ⭐ Read this first, the design philosophy
+## Design
 
-The console identifies missing checks, unhealthy state and gaps in execution evidence.
+**Check status and findings are reported separately.** Each view distinguishes unchecked, measured zero and unavailable states. An unconfigured source renders NOT CHECKED, so skipped coverage never reads as a pass.
 
-**Check status and findings are reported separately.** Each panel distinguishes unchecked, measured zero and unavailable/error states. An unconfigured source renders NOT CHECKED and remains in the self-check denominator, so skipped coverage cannot receive a complete pass.
+**Each control has one authority.** Task controls, deletion and registration all go through the registration authority in `lifecycle.py` and `registry.py`. The page has no Scheduler shortcut.
 
-**Each control has an explicit authority.** The closed table in `maint.py` defines page maintenance verbs. `scripts/task_console/README.md` lists environment variables, a contract that external launchers depend on.
+## Layout
 
-## What it is (and isn't)
+The package `scripts/task_console/` has eight modules:
 
-`scripts/task_console/server.py` serves a single page on `127.0.0.1`, generates a token per start and never persists it. `console_ingest.py` reads the Windows Operational event log separately, so page loads do not perform ingestion.
+| Module | Owns |
+| --- | --- |
+| `registry.py` | declaration contracts, the backup allowlist parser, component compilation, the plan compiler, registration transactions, the creation check |
+| `scheduler.py` | task-name rules, the Task Scheduler adapter, task XML rendering and normalisation, the COM and DPAPI transports |
+| `store.py` | authority storage: file resources, journals, the protected vault, authority history, the runtime |
+| `lifecycle.py` | control actions, adoption, reconciliation, export and restore, task deletion, repair orders, the passive observation pass |
+| `runs.py` | exit-code normalisation, health verdicts, freshness, the health log, the event log reader, the console database and its ingester, the component status reader |
+| `integrations.py` | the read boundary, the shared work service (schedule-reminder) and its actions, linked work items, the adapter registry |
+| `server.py` + `console.html` + `static/` | the HTTP server and the page |
+| `__main__.py` | the command line |
 
-The primary product is a local server with an auxiliary [automation-management skill](skills/automation-management/SKILL.md) for declaration, review and registration. It reads Windows Task Scheduler through PowerShell and `pywin32` and refuses to start on other platforms. Collection freshness and history coverage are described under Limitations.
+## What the page shows
 
-## What the page can do
-
-The page's maintenance verbs are defined in `maint.py`. Conversation operations have their own authenticated routes and use [convo-chain](https://github.com/DaizeDong/convo-chain) for transcript rules and file transactions. The console owns the routes, request checks and panel; the library owns parsing, export, fork, rename, migration and confirmed deletion. A suggested Chinese name for a session comes from `llmcall` and is only filled into the rename box; saving it is still a normal rename. See [the console README](scripts/task_console/README.md) for the supported controls and limits.
-
-Task creation and migration use the declaration, review and registration APIs described in [task registration](docs/task-registration.md). The web action table does not provide an unrestricted Scheduler shortcut. Registration records authority and recovery evidence before changing task definitions; the console keeps its existing review step for outgoing actions.
-
-Navigation groups information into work, automation and resources. Work, result and activity projections reuse the same owner records. Pipelines and execution details sit under automation; conversations and model calls support work records. Technical exceptions remain in diagnostics and do not become human approvals. See [the work platform design](docs/work-platform.md) for data ownership and integration limits.
-
-Pipeline evidence remains scoped: a zero-difference sync receipt does not prove capability parity, and a fresh backup artifact does not prove every step ran. The UI adds no scheduler, state store, notification transport or agent runner. Existing task-control authority and outgoing-action reviews remain in force.
-
-Outgoing actions retain a two-step review flow.
+Five areas: 工作台 (overview), 工作记录 (work records), 自动化 (task switches, sync and backup pipelines, run details), 接入 (the sources the console reads) and 诊断 (failed tasks, stale outputs, ingest state and the file freshness board). Task rows offer enable, disable, run, stop, a repair order and deletion; deletion previews first and retires Controller-owned tasks through the authority. See [task control](docs/task-control.md) and [the work platform](docs/work-platform.md).
 
 ## Install
 
-Windows, Python 3.12 or newer.
+Windows, Python 3.11 or newer.
 
 ```bash
 git clone https://github.com/DaizeDong/task-console
 cd task-console
-pip install pywin32 PyYAML
-pip install -e "$(git config --get fleet.guards)"
-git config core.hooksPath .githooks    # arms the guards; local config, so it cannot be committed
+pip install -e . -e "$(git config --get fleet.guards)"
+git config core.hooksPath .githooks
 ```
 
-The console also imports three pinned libraries at module top: `convo-chain`, `fleet-guards` and `llmcall` (see `pyproject.toml`).
+Dependencies (see `pyproject.toml`): `fleet-guards`, `llmcall`, `pywin32`.
 
-The hooks run the privacy checks from the local fleet-guards checkout named by `git config --global fleet.guards`, and the dash check from `fleet.style`. A commit is blocked while either key is unset or points at a missing checkout.
-
-## Quick start
+## Run
 
 ```bash
-python scripts/task_console/server.py --port 8787
+python -m task_console.server --port 8787            # the page, bound to 127.0.0.1
+python -m task_console ingest [--skip-runlog]       # fill the console database
+python -m task_console status --configured          # component status reader
+python -m task_console observations --periodic ...  # one passive health collection pass
+python -m task_console <authority command> ...      # plan, registration-plan, creation-check, apply, retire, control, ...
 ```
 
-Selected sources come from environment settings; their defaults and unavailable states are listed in the [environment table](scripts/task_console/README.md). llmcall resources and executable discovery retain their own documented defaults. An unconfigured source remains visibly unchecked.
+The server generates a token at each start and never writes it to disk. Ingestion runs out of band, so page loads never read the Windows event log.
 
-## Config
+## Configuration
 
-Set `TASK_CONSOLE_CONFIG` to the PRIVATE companion root. The launcher sets the console's environment from the companion's `data/launcher-binding.json`; to switch configurations, point it at the other companion's binding and recheck explicit resource overrides. [CONFIG.md](CONFIG.md) defines discovery, settings and read-only diagnosis. `tools/verify_config.py --json` checks local server/history prerequisites. It does not run ingestion or prove optional actions. A database override is used as given, except that a path inside this source tree is refused.
-
-## Where the details live
-
-These references define runtime interfaces, configuration and maintenance constraints.
-
-| Read this | When you are asking |
-| --- | --- |
-| [scripts/task_console/README.md](scripts/task_console/README.md) | What is on the page, and every environment variable it reads |
-| `scripts/task_console/maint.py` | Which verbs the page can perform against the machine |
-| `scripts/task_console/server.py` | Which routes exist, and the controls that make the write endpoints safe |
-| [docs/changing-this.md](docs/changing-this.md) | What a change must not break, and the traps this repository has already fallen into |
+All settings are environment variables; the owner launcher sets them from the private companion's `data/launcher-binding.json` ([synthetic example](launcher-binding.json.example)). [CONFIG.md](CONFIG.md) lists every variable and what happens when it is unset.
 
 ## Read-only declaration producer
 
-The `task_console.compiler.plan(request)` API and `task-console plan` JSON CLI compile
-component `.console.json` declarations, explicit private bindings, machine overrides and
-a caller-supplied legacy snapshot. They return field comparisons and generated content
-without writing files, querying Scheduler or starting tasks. Existing task definitions remain authoritative until the reviewed adoption or migration transaction transfers the selected responsibility; planning alone does not transfer authority.
-
-After installing the package into an isolated runtime, run the synthetic example:
+`task_console.registry.plan(request)` and `python -m task_console plan` compile component `.console.json` declarations, private bindings, machine overrides and a legacy snapshot into field comparisons and generated content, without writing files or touching the Scheduler.
 
 ```text
 python -m task_console plan --component examples/console/.console.json --bindings examples/console/bindings.example.json --machine examples/console/machine.console.example.json --baseline examples/console/baseline.example.json
 ```
 
-From a source checkout, the same entrypoint is `python -m scripts.task_console`.
-The existing `python scripts/task_console/server.py` entrypoint is unchanged.
-See `scripts/task_console/README.md` for the producer input contract and parity limits.
-Real requests and returned plans contain machine data and belong in private storage.
-Regenerate the public examples with `python tools/make_fixtures.py`.
+Real requests and returned plans contain machine data and belong in private storage. Regenerate the public examples with `python tools/make_fixtures.py`.
 
 ## Where the data lives
 
-The database and durable export live in a private companion resolved by `fleet_guards.runtime`. If no companion resolves, the console reports UNINITIALISED with setup instructions. Writes never fall back to this tool repository.
-
-[Storage contract and cleanup](docs/storage.md) distinguish protected runtime and recovery state from completed development artifacts. `storage.contract.json` sets review budgets; cleanup never truncates core history to meet them.
+The database and the run-event export live in a private companion resolved by `fleet_guards.runtime`. The database (`data/task-console/console.sqlite3`) is local state there and is not versioned; the versioned history is the monthly text export `data/task-console/run-events/YYYY-MM.jsonl`. If no companion resolves, the console reports UNINITIALISED; writes never fall back to this repository.
 
 ## Limitations
 
-The console reports only the Windows machine on which it runs. It does not poll or send alerts. Run history comes from a circular event log whose retention depends on configured size and event volume. Events missed within that window cannot be backfilled later; older history is limited to records retained in the durable export since ingestion began. Reported source and ingestion freshness do not establish complete history.
+The console reports only the Windows machine it runs on and sends no alerts. Run history comes from a circular event log; events that rotate out before ingestion are lost. The monthly export omits raw return codes, task settings history and ingest attempts, so it is not a complete database restore.
 
 ## Languages
 
@@ -116,6 +92,4 @@ English (`README.md`) · 中文 (`README_CN.md`)
 
 ## Roadmap · Contributing · License
 
-See [ROADMAP.md](ROADMAP.md) · [CHANGELOG.md](CHANGELOG.md) · [LICENSE](LICENSE) (MIT).
-
-The deviations from the house repository spec, and the reasons for each, are recorded in [docs/2026-09-22-spec-adaptation.md](docs/2026-09-22-spec-adaptation.md).
+See [ROADMAP.md](ROADMAP.md) · [CHANGELOG.md](CHANGELOG.md) · [LICENSE](LICENSE) (MIT). Before changing anything, read [docs/changing-this.md](docs/changing-this.md). Deviations from the house repository spec are recorded in [docs/2026-09-22-spec-adaptation.md](docs/2026-09-22-spec-adaptation.md).

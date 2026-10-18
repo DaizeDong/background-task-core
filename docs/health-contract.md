@@ -1,6 +1,6 @@
 # Component observations and health, version 1
 
-`task_console.health.evaluate_task(spec, observations, now)` is the pure evaluator.
+`task_console.runs.evaluate_task(spec, observations, now)` is the pure evaluator.
 It reads no files and runs no commands. `now` is Unix seconds or an ISO timestamp
 with a timezone. Task kind is `oneshot` or `daemon`. A bounded running oneshot may
 have missing outputs until its deadline; an overdue one stays execution `running`
@@ -56,7 +56,7 @@ paths grant no authority.
 From a checkout, add `scripts` to `PYTHONPATH` and run:
 
 ```powershell
-python -m task_console.component_status --input $PrivateSnapshot
+python -m task_console status --input $PrivateSnapshot
 ```
 
 Or feed JSON on stdin. `--now` fixes the evaluation clock. Exit 0 means

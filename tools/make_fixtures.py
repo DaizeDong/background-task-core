@@ -111,8 +111,7 @@ def generate_storage_schemas(output: Path, *, repo_layout=False) -> None:
         "launcher-binding.json.example": {"schemaVersion": 1, "runtime": {
             "InstalledRoot": "C:/Acme/runtime/installed", "StateRoot": "C:/AcmePrivate/registration"},
             "environment": {"TASK_CONSOLE_DB": "C:/AcmePrivate/console.sqlite3"}},
-        "storage-retention.json.example": {"schema_version": 1, "protected_paths": [], "retirements": []},
-        "task-console/run-events.jsonl.example": {"e": 1, "r": 1, "t": "AcmeTask", "i": 100,
+        "task-console/run-events-2030-01.jsonl.example": {"e": 1, "r": 1, "t": "AcmeTask", "i": 100,
                                                 "ts": "2030-01-01 00:00:00", "rc": None},
     }
     for name, document in documents.items():

@@ -24,13 +24,9 @@ it does not query reminder tables. `task-console` remains the owner of task cont
 registration, health conclusions and task/pipeline receipts. `llmcall` remains the sole
 model execution interface. There is no new scheduler, work database or agent runner.
 
-Library dependencies are not producers. `convo-chain` (the conversation chain),
-`llmcall` and `fleet_guards` are pinned in `pyproject.toml` and imported in process
-by fixed name; the console borrows their rules, not their records. `convo-chain`
-owns the transcript semantics (index, chain, node, export, fork and the "typed by a
-person" rule) and reads no environment variable: the console passes
-`TASK_CONSOLE_SESSIONS` as `root` and keeps authentication, host and shape checks
-on its own routes. Observed producers such as the reminder `work-feed` are the
+Library dependencies are not producers. `llmcall` and `fleet_guards` are pinned in
+`pyproject.toml` and imported in process by fixed name; the console borrows their rules,
+not their records. Observed producers such as the reminder `work-feed` are the
 opposite case: the console calls their CLI or reads their snapshot and never
 imports their code.
 
@@ -48,7 +44,7 @@ explicitly unavailable until an owner provides receipts. No repair or retry is s
 just because an observation failed.
 
 A task repair order is the one exception in shape, not in principle: it is filed only when a
-person clicks repair on one task row, never by an observation. `task_repair.py` adds no runner of
+person clicks repair on one task row, never by an observation. The repair section of `lifecycle.py` adds no runner of
 its own. `POST /api/task/repair {name, note, request_id}` re-checks the name against the live task
 payload, then calls the reminder owner's `ensure` verb (title `修复计划任务：<title>（<name>）`, source
 `task-console-repair`, an idempotency key derived from the task name and request ID, and a
@@ -56,7 +52,7 @@ description that carries the console's known facts as reference data plus fixed 
 and propose only, change code only in a clone inside the work folder, never touch the live task,
 its registration, XML, launcher, backup or any working copy, never delete, push, send or publish,
 and write `report.md`). It then reads the owner's work feed for that item, requires an enabled
-`agent` offer, and submits it through `work_actions.submit` with the feed's revision, which wakes
+`agent` offer, and submits it through `integrations.submit` with the feed's revision, which wakes
 the existing drainer. One submit reads the feed once under the per-task lock and passes it down;
 only a newly created order, which that read cannot contain, costs one more read after `ensure`. A missing or disabled offer is reported as `agent_offer_unavailable`, not as
 success. The source is deliberately not one of the owner's signal sources, which receive no agent
@@ -130,13 +126,9 @@ write through the work owner's API. The console never executes a command or
 opens a path supplied by a source record. To add an adapter, declare it in
 `ADAPTERS`, supply a bounded read function, and exercise authentication,
 unconfigured, empty, failed and recovery states. Parameterized reads and writes
-remain explicit guarded routes. A library dependency gets an informational row
-with layer `library` and no endpoint: it is listed with the installed version, and
-is never discovered or routed. The row is not a health check. `convo-chain` is
-imported at module level by the server and the session list, so without it the console does not start at all; the precondition lives
-at install time (the runtime lock must carry its wheel), not in this row.
+remain explicit guarded routes.
 
-`source_reads.py` shares concurrent reads per adapter, with at most eight
+The read boundary in `integrations.py` shares concurrent reads per adapter, with at most eight
 callers, and retains observation metadata only. Independent sources in an
 aggregate use up to four request-scoped workers, released when the request
 finishes. Groups accept leaf readers to avoid nested worker pools. Successful

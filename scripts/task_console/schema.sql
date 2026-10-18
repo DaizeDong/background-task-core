@@ -2,7 +2,7 @@
 --
 -- Preserve the current database and its required SQLite side files. Backfill can reread the
 -- retained health log and current OS event window, but cannot recreate old task configurations,
--- failed ingest attempts, or events already rotated out of the OS log. run-events.jsonl is the
+-- failed ingest attempts, or events already rotated out of the OS log. run-events/YYYY-MM.jsonl is the
 -- durable normalized event export; it omits rc_raw and the other tables. It is not a complete
 -- database backup, and there is currently no complete JSONL-to-database restore command.
 --

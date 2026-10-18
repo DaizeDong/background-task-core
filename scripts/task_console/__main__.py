@@ -1,14 +1,21 @@
-"""JSON task planning and authority-controlled actions. Inputs remain private."""
+
+"""Command line: task planning, authority-controlled actions, and the run-history jobs.
+
+    python -m task_console <authority command> [options]   JSON planning and registration
+    python -m task_console ingest [--skip-runlog] ...       fill the console database
+    python -m task_console status [--configured] ...        component status reader
+    python -m task_console observations --periodic ...      one passive health collection pass
+
+Inputs remain private.
+"""
 from __future__ import annotations
 
 import argparse
 import json
-from pathlib import Path
 import sys
+from pathlib import Path
 
-from .compiler import plan
-from .contracts import ContractError
-
+from .registry import plan, ContractError
 
 class _Parser(argparse.ArgumentParser):
     def error(self, message):
@@ -32,7 +39,16 @@ def _read(path: str):
         raise ContractError("unreadable_input", "input_file") from exc
 
 
+JOBS = {"ingest": ("runs", "ingest_main"), "status": ("runs", "status_main"),
+        "observations": ("lifecycle", "observations_main")}
+
+
 def main(argv: list[str] | None = None, *, runtime=None) -> int:
+    args_in = sys.argv[1:] if argv is None else list(argv)
+    if args_in and args_in[0] in JOBS:
+        import importlib
+        module, function = JOBS[args_in[0]]
+        return getattr(importlib.import_module("." + module, __package__), function)(args_in[1:])
     parser = _Parser(description=__doc__)
     parser.add_argument("command", choices=["plan", "registration-plan", "creation-check", "runtime-status", "apply", "retire", "recover", "control", "retire-plan", "export", "restore-plan", "restore", "restore-recover", "adoption-plan", "adoption-apply", "adoption-resume", "reconcile-plan", "reconcile-apply", "reconcile-resume"])
     parser.add_argument('--source-binding')
@@ -59,7 +75,7 @@ def main(argv: list[str] | None = None, *, runtime=None) -> int:
     parser.add_argument('--replace-identity')
     args = None
     def failure(exc):
-        from .controller import error_result
+        from .lifecycle import error_result
         return error_result(exc, name=getattr(args, 'name', '') or '', verb=getattr(args, 'verb', '') or '')
     try:
         args = parser.parse_args(argv)
@@ -69,8 +85,8 @@ def main(argv: list[str] | None = None, *, runtime=None) -> int:
         if any(configuration) and (runtime is not None or args.command == 'plan'):
             raise ContractError('invalid_runtime_arguments', 'runtime')
         if args.command != "plan":
-            from . import registration
-            from . import controller
+            from . import registry as registration
+            from . import lifecycle as controller
             if runtime is None:
                 runtime = controller.load_runtime(runtime_config=args.runtime_config, private_root=args.private_root,
                                                  state_root=args.state_root, vault_root=args.vault_root,
@@ -78,7 +94,7 @@ def main(argv: list[str] | None = None, *, runtime=None) -> int:
             if any((args.component, args.bindings, args.machine, args.baseline)):
                 raise ContractError("invalid_arguments", "mutation")
             if args.command.startswith('reconcile-'):
-                from . import reconcile
+                from . import lifecycle as reconcile
                 if any((args.task_id, args.name, args.verb, args.reason, args.migrate,
                         args.approve_enable, args.expected_revision, args.source_binding,
                         args.review_only)) or args.operation != 'apply':
@@ -86,34 +102,34 @@ def main(argv: list[str] | None = None, *, runtime=None) -> int:
                 if args.command == 'reconcile-resume':
                     if not args.transaction_id or not args.approval_revision or args.request:
                         raise ContractError('invalid_arguments', 'reconciliation')
-                    result = reconcile.resume(args.transaction_id, args.approval_revision, runtime=runtime)
+                    result = reconcile.reconcile_resume(args.transaction_id, args.approval_revision, runtime=runtime)
                 else:
                     if args.transaction_id or (args.command == 'reconcile-plan' and args.approval_revision):
                         raise ContractError('invalid_arguments', 'reconciliation')
                     if args.command == 'reconcile-apply' and not args.approval_revision:
                         raise ContractError('missing_field', 'approval_revision')
                     payload = _read(args.request) if args.request else json.load(sys.stdin, object_pairs_hook=_unique_keys)
-                    result = (reconcile.build_plan(runtime, payload) if args.command == 'reconcile-plan'
-                              else reconcile.apply(payload, args.approval_revision, runtime=runtime))
+                    result = (reconcile.reconcile_plan(runtime, payload) if args.command == 'reconcile-plan'
+                              else reconcile.reconcile_apply(payload, args.approval_revision, runtime=runtime))
                 print(json.dumps(result, ensure_ascii=True, sort_keys=True, allow_nan=False))
                 return 0 if args.command == 'reconcile-plan' or result.get('ok') else 3
             if args.command.startswith('adoption-'):
-                from . import adoption
+                from . import lifecycle as adoption
                 if any((args.task_id, args.name, args.verb, args.migrate, args.approve_enable, args.expected_revision)):
                     raise ContractError('invalid_arguments', 'adoption')
                 if args.command == 'adoption-plan':
                     if not args.source_binding or args.request or args.transaction_id or args.approval_revision:
                         raise ContractError('invalid_arguments', 'adoption_plan')
-                    result = adoption.build_plan(runtime, source_binding=args.source_binding, review_only=args.review_only)
+                    result = adoption.adoption_plan(runtime, source_binding=args.source_binding, review_only=args.review_only)
                 elif args.command == 'adoption-resume':
                     if not args.transaction_id or not args.approval_revision or args.request or args.source_binding or args.review_only:
                         raise ContractError('invalid_arguments', 'adoption_resume')
-                    result = adoption.resume(args.transaction_id, args.approval_revision, runtime=runtime)
+                    result = adoption.adoption_resume(args.transaction_id, args.approval_revision, runtime=runtime)
                 else:
                     if not args.approval_revision or args.source_binding or args.review_only or args.transaction_id:
                         raise ContractError('invalid_arguments', 'adoption_apply')
                     payload = _read(args.request) if args.request else json.load(sys.stdin, object_pairs_hook=_unique_keys)
-                    result = adoption.apply(payload, args.approval_revision, runtime=runtime)
+                    result = adoption.adoption_apply(payload, args.approval_revision, runtime=runtime)
                 print(json.dumps(result, ensure_ascii=True, sort_keys=True, allow_nan=False))
                 return 0 if args.command == 'adoption-plan' or result.get('ok') else 3
             if args.command in ('export', 'restore-plan', 'restore', 'restore-recover'):

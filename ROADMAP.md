@@ -9,17 +9,16 @@ The current feature set includes the original extraction and subsequent source c
 [CHANGELOG.md](CHANGELOG.md) retains their history.
 
 - A loopback-only single page server with a per start token, a host allowlist, and task names re-enumerated against the live system before any verb runs.
-- Panels over scheduled tasks, artifact freshness, git repositories under one root, skills, the memory pool, plugins, disk, saved conversations, and the LLM call ledger.
-- A self check strip that names every configured path, whether it was reached, and how fresh it was, and counts unconfigured sources in its own denominator.
-- Out of band ingestion of the Windows Task Scheduler Operational channel into a SQLite read model, plus a durable export for the history that channel drops.
-- Maintenance verbs in one closed table: run, stop, enable, disable, retire a task; archive or restore a skill; archive a memory entry; enable or disable a plugin; delete abandoned clone staging directories; fetch a repository.
+- Views over scheduled tasks, run history and health, artifact freshness, sync and backup pipelines, and the shared work records.
+- Out of band ingestion of the Windows Task Scheduler Operational channel into a SQLite read model, plus a monthly text export for the history that channel drops.
+- Task controls through the registration authority: run, stop, enable, disable, delete (retire for managed tasks) and repair orders.
 
 The following capabilities were added after the initial extraction:
 
 - Split page markup from static CSS and JavaScript.
 - Add declaration planning, reviewed registration and work-platform projections over owner records.
 - Bind database/export writes to the pinned source contract and PRIVATE versioned storage.
-- Add a read-only local configuration doctor.
+- Remove the panels the task console does not depend on and merge the package into eight modules (2026-10).
 
 Nothing here establishes installed service parity, current ingestion, external delivery or
 publication. Historical audit and release records remain in [CHANGELOG.md](CHANGELOG.md); configuration scope is in [CONFIG.md](CONFIG.md).

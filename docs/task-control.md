@@ -94,10 +94,10 @@ read-only accessor and attest its linkage schema.
 
 Delete means gone for good: absent from the Scheduler, from the console's category map, and,
 through the private follow-up hook, from the health watch list, the backup and the migration
-plan. `task_delete.py` implements it behind two authenticated POST routes.
+plan. The deletion section of `lifecycle.py` implements it behind two authenticated POST routes.
 
 `POST /api/task/delete/plan {name, reason}` is read-only. The name passes the same
-`scheduler_windows.task_name` gate as the Controller (spaces allowed, paths, wildcards and control
+`scheduler.task_name` gate as the Controller (spaces allowed, paths, wildcards and control
 characters refused), must appear in a fresh `collect.ps1` enumeration (root path, vendor tasks
 excluded), and the task must not be running. A non-empty reason is required; it goes into the
 Controller's tombstone or the archive receipt. The task's actions (execute, arguments, working

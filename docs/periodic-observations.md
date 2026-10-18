@@ -1,7 +1,7 @@
 # Periodic observation collection
 
 TaskHealthMonitor can refresh the existing console status snapshot on each of its
-scheduled runs. `task_console.observations --periodic` performs one pass and exits.
+scheduled runs. `python -m task_console observations --periodic` performs one pass and exits.
 It starts the bundled `collect.ps1 -CaptureOnly` through `llmcall.process`, then
 uses the existing observation worker, health evaluator, publication lock and
 atomic replacement. It creates no scheduler, service, task list or database.
@@ -64,7 +64,7 @@ tests and the normal release authorization process for deployment verification.
 The Python entrypoint is also available directly:
 
 ```text
-<selected-python> -I -B -X utf8 -m task_console.observations --periodic --binding <private-binding> --powershell <absolute-powershell>
+<selected-python> -I -B -X utf8 -m task_console observations --periodic --binding <private-binding> --powershell <absolute-powershell>
 ```
 
 The shared execution budget is 95 seconds, including the bounded Scheduler pass

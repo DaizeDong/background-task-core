@@ -4,6 +4,13 @@ All notable changes to this project are documented here (Keep a Changelog style)
 
 ## [Unreleased]
 
+### Console reduced to its core, package merged into eight modules
+- Deleted the panels the task console does not depend on, with their modules, routes, page sections and styles: model calls (`llmstats`), conversations and the conversation chain (`convos`, `title_suggest`, the `convo-chain` dependency), repositories (`repos`, `git_ops`, `identity`), memory (`memops`), Codex storage (`codexinfo`), system resources (`sysinfo`), skills and plugins (`maint`, `deletion`) and the configuration self-check (`selfcheck`). The 资源 area is now 接入 with the integrations view only; 诊断 keeps the task problem list, the freshness board and the data line.
+- Merged the remaining 40 modules into `registry`, `scheduler`, `store`, `lifecycle`, `runs`, `integrations`, `server` and `__main__`. The ingester, the component status reader and the observation pass are now `python -m task_console ingest|status|observations`; the server starts with `python -m task_console.server`; `launch_server` and the flat sibling imports are gone. `task-console-status` points at `task_console.runs:status_main`.
+- The run-event export is one file per month, `run-events/YYYY-MM.jsonl`, beside the database; the watermark is read from the two newest files.
+- Deleted the one-off tools and contracts: `tools/backup_console_db.py` (the database recovery snapshot), `tools/cleanup_storage.ps1`, `tools/storage_retention.py`, `tools/verify_config.py`, `make_icon.py`, `config.contract.json`, `storage.contract.json`, `storage-retention.json.example`, `docs/storage.md`, `docs/git-publishing.md` and the duplicate `scripts/task_console/README.md`. The environment table moved to `CONFIG.md`.
+- Dropped the `PyYAML` dependency, which nothing imported.
+
 - Removed the `TASK_CONSOLE_CONFIG_DIR` alias; `TASK_CONSOLE_CONFIG` alone names the companion root.
 - Removed dead and legacy code: `retire.py` and `maint` `task.retire` (delete replaced it), `runlog.ps1` and the PowerShell run-log fallback, `task_context.*`, `task_backup_check.py`, the registration `legacy=` dispatch callback, request-mode observation bindings, unused routes and payload fields, and the `TASK_CONSOLE_POWERSHELL`, `TASK_CONSOLE_ALLOWED_HOSTS` and `TASK_CONSOLE_LLMCALL_BODIES` overrides. `tools/make_fixtures.py` keeps only the generators for the published examples.
 - The call view resolves llmcall's runtime and bodies directories through the `fleet_guards` companion resolver bound to the installed llmcall, the same one llmcall uses. Its own `LLMCALL_DATA_DIR` / `LLMCALL_CONFIG` ladders are gone.
