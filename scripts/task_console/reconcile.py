@@ -20,13 +20,6 @@ def _fail(code, field='reconciliation'):
     raise reg.Conflict(code, field)
 
 
-def _authority(runtime):
-    authority = getattr(runtime, 'authority', None)
-    if authority is None or authority.config.source_path is None:
-        _fail('configured_authority_required')
-    return authority
-
-
 def _review(value, paths, task_ids):
     required = {'schemaVersion', 'reason', 'files', 'task_ids'}
     if (not isinstance(value, dict) or not required <= set(value)
@@ -146,7 +139,7 @@ def _configuration(config):
 
 
 def _collect(runtime, review, *, receipt=None):
-    authority = _authority(runtime)
+    authority = runtime.authority
     config = authority.config
     from .runtime import RuntimeConfig
     if RuntimeConfig.read(config.source_path, private_root=config.private_root,
@@ -285,7 +278,7 @@ def _expected_receipt(plan, prior, journal):
 
 def _verify_reviewed_scheduler(runtime, plan):
     """Recheck selected definitions at evidence saves without reopening history."""
-    authority = _authority(runtime)
+    authority = runtime.authority
     config, baseline = authority.config, plan['baseline']
     resources = FileResources([config.source_path, config.desired], config.state_root / 'stages')
     if (reg.fingerprint(reg._read(resources, str(config.source_path))) != baseline['configuration_fingerprint']

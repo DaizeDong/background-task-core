@@ -131,8 +131,6 @@ class JournalStore:
     def load(self, key):
         return self._validate(key, read_json(self._path(key)))
 
-    get = load
-
     def list(self):
         if not self.root.exists():
             return []  # Unprovisioned read-only status.
@@ -243,32 +241,6 @@ class FileResources:
         """The existing deterministic payload path; token/key validation is shared."""
         self._stage(token)
         return self._path(key).with_name('.t12-stage-' + digest(token.encode()))
-
-    def prepared_snapshot(self, key, token):
-        """Read a durably owned stage without provisioning or adopting an orphan."""
-        path = self._path(key)
-        record_path = self._stage(token)
-        stage = self.staging_path(key, token)
-        if not record_path.exists():
-            if stage.exists():
-                raise Conflict('stage_owner_lost', 'files')
-            return None
-        record = read_json(record_path)
-        if (not isinstance(record, dict) or
-                not {'token', 'key', 'stage', 'identity', 'digest'} <= set(record)):
-            raise Conflict('stage_owner_lost', 'files')
-        if any(record.get(k) != v for k, v in
-               {'token': token, 'key': str(path), 'stage': str(stage)}.items()):
-            raise Conflict('stage_owner_lost', 'files')
-        snapshot = FileResources([stage], self.root).read(str(stage))
-        if record.get('digest') is None:
-            if record.get('identity') is not None or snapshot['state'] != 'absent':
-                raise Conflict('stage_owner_lost', 'files')
-        elif (snapshot['state'] != 'present' or record.get('identity') is None
-              or snapshot['identity'] != json.dumps(record['identity'])
-              or digest(snapshot['value']) != record['digest']):
-            raise Conflict('stage_owner_lost', 'files')
-        return snapshot
 
     def prepare(self, key, value, token):
         path = self._path(key)

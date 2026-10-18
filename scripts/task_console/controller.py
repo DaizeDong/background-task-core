@@ -1,4 +1,4 @@
-"""Shared explicit authority entry for HTTP, CLI and compatibility delegates.
+"""Shared explicit authority entry for the HTTP server, CLI and task deletion.
 
 Construction never discovers a home, registers a task, or selects Python code
 from configuration. The only executable adapters are bundled runtime adapters.
@@ -76,7 +76,6 @@ def error_result(exc, *, name='', verb=''):
         'legacy_principal_conversion_required': 'Legacy XML principal differs from the reviewed declaration. Review an explicit declaration migration/rebinding before restore; task names cannot establish ownership.',
         'auth_pending': 'Password-based principal needs the credential owner\'s submission adapter. No password was requested and no task was registered by this refusal.',
         'ownership_required': 'Reviewed adoption/ownership evidence for this exact task ID, literal root path, writer, epoch and observed definition is required.',
-        'legacy_declarative_conversion_required': 'Mutating legacy callbacks cannot advance recoverable receipts. Use the built-in controller transaction or review a declaration conversion.',
     }
     if code in shortfalls:
         result['shortfalls'] = [shortfalls[code]]
@@ -91,9 +90,7 @@ def exit_code(result):
 
 class Controller:
     def __init__(self, runtime):
-        from .runtime import dispatch_adapter
         self.runtime = runtime
-        self.dispatch = dispatch_adapter(runtime)
 
     def export_tasks(self):
         from .export_restore import export_tasks
@@ -111,15 +108,7 @@ class Controller:
         from .export_restore import restore_recover
         return restore_recover(self.runtime, transaction_id, approval)
 
-    def _linked(self, task_ids):
-        from .linked_items import report
-        return report(self.runtime, task_ids, self.runtime.load())
-
-    def _scheduler_control(self, name, verb):
-        snapshot = registration._read(self.runtime.scheduler, name)
-        return self.runtime.scheduler.control(name, verb, snapshot)
-
-    def action(self, name, verb, *, reason='', legacy=None):
+    def action(self, name, verb, *, reason=''):
         validate(name, verb, reason)
         from llmcall.process import execution_scope
         # Registration also verifies protected before-images, publishes projections,
@@ -128,10 +117,7 @@ class Controller:
         with execution_scope(timeout=budget) as control:
             if control.is_set():
                 raise ContractError('control_cancelled', 'runtime')
-            callback = legacy
-            if callback is None and verb in ('run', 'stop'):
-                callback = lambda: self._scheduler_control(name, verb)
-            result = self.dispatch(name, verb, reason=reason, legacy=callback)
+            result = registration.dispatch(name, verb, reason=reason, runtime=self.runtime)
         if not isinstance(result, dict) or type(result.get('ok')) is not bool:
             raise ContractError('invalid_control_result', 'runtime')
         result = dict(result)
@@ -139,12 +125,6 @@ class Controller:
         result.setdefault('message', (verb + ' applied') if result['ok'] else 'Control incomplete; inspect status')
         result.setdefault('before', None)
         result.setdefault('after', None)
-        if verb == 'retire':
-            result.setdefault('done', ['scheduler', 'projections'] if result['ok'] else [])
-            result.setdefault('backups', [])
-            result.setdefault('reason', reason.strip())
-            if result.get('transaction_id'):
-                result['recovery_transaction'] = result['transaction_id']
         if verb in ('run', 'stop'):
             result['payload_success'] = None
         return result
@@ -159,23 +139,16 @@ class Controller:
         task_id = selected['task_id']
         proposal = registration.build_plan(self.runtime, [task_id], operation='retire', reason=reason,
                     legacy_transaction=task_id not in bundle['request']['machine']['migrated_tasks'])
-        result = {'name': name, 'reason': reason, 'changes': len(proposal['changes']['files']) + 1,
-                  'blocked': [], 'steps': [{'step': 'disable', 'state': 'will-change',
-                  'detail': 'Disable and verify the owned task'},
-                  {'step': 'projections', 'state': 'will-change',
-                   'detail': 'Remove active projections and retain a retirement tombstone'}],
-                  'registration_plan': proposal}
         items = proposal['linked_work_items']
-        result['linked_work_items'] = None if items is None else items[task_id]
-        result['linked_work_items_status'] = proposal['linked_work_items_status']
-        result['linked_work_items_code'] = proposal['linked_work_items_code']
-        return result
+        return {'registration_plan': proposal,
+                'linked_work_items': None if items is None else items[task_id],
+                'linked_work_items_status': proposal['linked_work_items_status'],
+                'linked_work_items_code': proposal['linked_work_items_code']}
 
 
-def action(name, verb, *, reason='', runtime=None, legacy=None):
+def action(name, verb, *, reason='', runtime=None):
     validate(name, verb, reason)
-    return Controller(runtime if runtime is not None else load_runtime()).action(
-        name, verb, reason=reason, legacy=legacy)
+    return Controller(runtime if runtime is not None else load_runtime()).action(name, verb, reason=reason)
 
 
 def retire_plan(name, reason, *, runtime=None):

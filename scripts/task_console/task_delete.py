@@ -40,7 +40,7 @@ import console_store
 import maint
 from winps import powershell
 
-# 同 retire.py:pythonw 下每个控制台子程序都要新分配控制台,不加这个标志会慢到超时。
+# pythonw 下每个控制台子程序都要新分配控制台,不加这个标志会慢到超时。
 _NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
 HOOK_ENV = "TASK_CONSOLE_DELETE_FOLLOWUP"
@@ -220,7 +220,7 @@ def _authority(env):
     没配控制器不能默认等于「没有任务归控制器管」:一个少了这四项环境变量的控制台进程
     (第二个启动器、开发用的工作树)会把控制器声明并拥有的任务直接注销,
     控制器的声明、归属证明和投影就此指向一个已删除的任务,既没有墓碑也没有日志。
-    retire.apply 在同样的情况下拒绝,这里不能比它松。配了但坏了同样是拒绝,不是降级。
+    配了但坏了同样是拒绝,不是降级。
     """
     try:
         return task_control.load_runtime(environ=env)
