@@ -1,17 +1,14 @@
 # Concrete task runtime
 
-The concrete runtime is implemented in source, not deployed. HTTP controls and
-standalone/registration delegates share the [controller](task-control.md).
-CONFIG install/export and other skill wrappers remain owner integrations. T11
-planning is unchanged: applicable=false and replacement_safe=false.
+HTTP controls and standalone/registration delegates share the
+[controller](task-control.md).
 
 ## Trusted configuration
 
 `RuntimeConfig.read(config_path, private_root=..., state_root=..., vault_root=...)`
 resolves bounded configuration under a caller-selected private root.
 `create_runtime(config)` uses the bundled COM transport and DPAPI protector.
-JSON cannot select modules, protectors, providers, scripts or executables. Trusted
-Python callers can inject a Scheduler transport/protector for synthetic testing.
+JSON cannot select modules, protectors, providers, scripts or executables.
 Import/construction/status do not run tasks or provision locks/state.
 
 The caller must establish private directory ownership, ACLs and backup policy.
@@ -38,17 +35,17 @@ supplied private root:
     "tombstones": "generated/tombstones.json"
   },
   "active_xml": {"acme-maintenance/sync": null},
-  "launchers": {"acme-maintenance/sync": "launchers/sync.vbs"}
+  "launchers": {"acme-maintenance/sync": "launchers/sync.vbs"},
+  "launcher_root_reference": "%EXAMPLE_ROOT%\\private"
 }
 ```
 
 Submitted desired input is the T11 request envelope, distinct from generated files
 and immutable during compensation. All six main output files must already exist.
 Launcher/export inventory is explicit; existing unmanaged launchers conflict.
-An optional `launcher_root_reference` such as `"%EXAMPLE_ROOT%\\private"` spells the
-private root through an environment variable. Scheduled actions then name each
-launcher as that reference plus its relative path and run
-`wscript.exe //B //Nologo <launcher>`, so the registered task names no machine path.
+The required `launcher_root_reference`, such as `"%EXAMPLE_ROOT%\\private"`, spells the
+private root through an environment variable. Scheduled actions always run
+`wscript.exe //B //Nologo <reference>\<launcher>`, so the registered task names no machine path.
 The Scheduler expands the reference when the task starts; `//B` makes a reference
 that names nothing exit 1 at once instead of opening a modal "cannot find script
 file" box that holds the run until its time limit. `//B` also hides runtime errors
@@ -99,19 +96,14 @@ python -m task_console recover --transaction-id ID
 registration-plan supports --operation apply|enable|disable|retire,
 --approve-enable and --reason. It selects one task; the Python API supports
 several. Exit 2 means refusal; exit 3 means incomplete/conflicted. Success requires
-a terminal cleaned journal. `main(argv, runtime=...)` remains available. Without
-an explicit runtime, standalone mutations refuse. The installed environment must
+a terminal cleaned journal. Without an explicit runtime, standalone mutations refuse. The installed environment must
 provide the existing fleet_guards and llmcall packages; packaging remains controller-owned.
 
-`runtime.dispatch_adapter(runtime)` returns
-`dispatch(name, verb, *, legacy, reason='')`. HTTP/standalone callers must wrap the
-entire legacy action in the callback. Authority remains locked throughout that
-callback; pending journals block dispatch. Unknown names, missing proofs and
-changed definitions never fall back. Migrated enable/disable/retire transact;
-explicit run/stop use bounded literal COM control under authority/task locks.
-See the controller outcome contract. Do not call control
-and then perform an unlocked legacy action. Concrete runtime work-item integration
-is empty; the injectable producer still reports caller-supplied linked items.
+The Controller calls `registration.dispatch(name, verb, reason=, runtime=)`.
+Authority stays locked throughout; pending journals block dispatch. Unknown names,
+missing proofs and changed definitions never fall back. Enable/disable/retire
+transact; explicit run/stop use bounded literal COM control under authority/task
+locks. See the controller outcome contract.
 
 ## Storage and recovery guarantees
 
@@ -221,18 +213,4 @@ and `wscript //B` swallows such an error and exits 0, which the Scheduler record
 as success. A launcher whose `cwd` holds a reference therefore sets the directory
 under `On Error Resume Next` and quits 1 when it fails, and one whose `argv` holds
 a reference runs `rc = shell.Run(...)` the same way, quits 1 when Run raised and
-otherwise quits with the payload's exit code. Launchers without references render
-byte for byte as before. Registration never executes a launcher or payload.
-
-## Integration evidence and remaining release work
-
-The runtime report records actual filesystem/process tests separately from injected
-Scheduler mutations. The repair checks use synthetic storage, native argv decoding
-and fixed PowerShell I/O probes; they perform no Scheduler or DPAPI operations.
-Concrete registration live validation and the controller's read-only observation
-recheck remain pending regardless of unit-test results.
-
-Root integration still owns CONFIG install/export and other skill wrappers, private
-adoption evidence, root ACLs and backup policy, package integration, password
-credential submission, real Scheduler readback validation, fleet parity, and
-install/export single-writer migration. No active bindings or private data changed.
+otherwise quits with the payload's exit code. Registration never executes a launcher or payload.

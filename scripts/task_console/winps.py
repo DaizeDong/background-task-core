@@ -10,9 +10,29 @@
 from __future__ import annotations
 
 import os
+import subprocess
 
 PINNED = r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe"
 
 
 def powershell() -> str:
     return PINNED if os.path.isfile(PINNED) else "powershell.exe"
+
+
+# pythonw 下每个控制台子进程都要新分配控制台:实测单次 4.5 秒,并发时全部超时。这个标志免掉它。
+NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
+
+def run_ps(script, args=None, timeout: int = 90) -> tuple[int, str, str]:
+    """Run a PowerShell script file and return (rc, stdout, stderr).
+
+    Output is decoded as UTF-8, not the locale: PowerShell 5.1 in a non-interactive session emits
+    the ANSI codepage by default and Chinese labels come back as mojibake. collect.ps1 pins its side.
+    """
+    p = subprocess.run(
+        [powershell(), "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
+         "-File", str(script)] + list(args or []),
+        capture_output=True, timeout=timeout, stdin=subprocess.DEVNULL, creationflags=NO_WINDOW)
+    return (p.returncode,
+            p.stdout.decode("utf-8", "replace").strip(),
+            p.stderr.decode("utf-8", "replace").strip())

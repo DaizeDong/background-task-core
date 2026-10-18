@@ -13,7 +13,7 @@ import json
 from . import allowlist
 from .components import compile_tasks, _trigger
 from .contracts import ContractError, SCHEDULER_FIELDS, fields, require, versioned
-from .freshness import OK_CODE_KEYS, declared_ok_codes
+from .health import OK_CODE_KEYS, declared_ok_codes
 
 
 def _json(value) -> str:

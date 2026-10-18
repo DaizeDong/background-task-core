@@ -412,7 +412,7 @@ def _outputs(bundle, compiled, selected, before, intent, tx, *, linked=None):
                 text, _ = allowlist.remove_name(text, name)
         for spec in selected:
             if spec['task_id'] in projected_ids and spec["backup"] and not retiring:
-                close = allowlist.find_block(text).start(3)
+                close = allowlist.closing_paren(text)
                 text = text[:close] + "\n    '" + spec["name"].replace("'", "''") + "'\n" + text[close:]
         allowlist.literal_names(text)
     except allowlist.AllowlistError as exc:

@@ -9,11 +9,8 @@ def report(runtime, task_ids, bundle):
         if all(isinstance(supplied[i], list) for i in task_ids):
             return {'status': 'provided', 'items': {i: supplied[i] for i in task_ids}}
         return {'status': 'error', 'items': None, 'code': 'linked_reader_failed'}
-    reader = getattr(runtime, 'linked_work_items', None)
-    if reader is None:
-        return {'status': 'unavailable', 'items': None, 'code': 'linked_reader_not_configured'}
     try:
-        result = reader(task_ids)
+        result = runtime.linked_work_items(task_ids)
         if (not isinstance(result, dict) or result.get('status') not in ('available', 'unavailable', 'error')
                 or 'items' not in result or result.get('status') != 'available' and result['items'] is not None
                 or result.get('status') == 'available' and (not isinstance(result['items'], dict)

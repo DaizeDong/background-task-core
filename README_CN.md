@@ -82,7 +82,6 @@ python scripts/task_console/server.py --port 8787
 | `scripts/task_console/maint.py` | 页面能对这台机器执行哪些动作 |
 | `scripts/task_console/server.py` | 有哪些路由，以及让写入端点得以存在的那三道控制 |
 | [docs/changing-this.md](docs/changing-this.md) | 一次改动不能破什么，以及这个仓已经踩过的坑 |
-| [docs/cleanup-plan.md](docs/cleanup-plan.md) | 一次全仓审查查出了什么，其中执行了多少 |
 
 <a id="只读声明生成与保留规则"></a>
 

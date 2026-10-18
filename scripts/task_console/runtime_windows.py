@@ -4,7 +4,6 @@ from collections import OrderedDict
 import hashlib
 import json
 import os
-from pathlib import Path
 
 from .registration import Conflict
 

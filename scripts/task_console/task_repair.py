@@ -33,7 +33,7 @@ import sys
 import threading
 
 import controller as task_control
-import freshness
+import health
 import maint
 import source_reads
 import work_actions
@@ -113,14 +113,14 @@ def facts_from_payload(payload: dict, name: str) -> dict:
         raise maint.Refused(f"不在本机可管理的任务列表里: {name}", "not_live")
     info = {k: v for k, v in (row.get("info") or {}).items() if isinstance(v, str)}
     runs = row.get("runs") or {}
-    okset = freshness._ok_codes({"ok_codes": [int(x) for x in str(row.get("okCodes") or "").split(",") if x.strip()]})
+    okset = health.ok_codes({"ok_codes": [int(x) for x in str(row.get("okCodes") or "").split(",") if x.strip()]})
     failing = []
     for key, count in sorted((runs.get("rcs") or {}).items()):
         code = norm_rc(key)
         if code is not None and code not in okset:
             failing.append({"code": _hex(code), "count": count})
     hist = row.get("hist") or {}
-    health = [{key: entry.get(key) for key in ("label", "check", "state", "verdict", "reasons",
+    checks = [{key: entry.get(key) for key in ("label", "check", "state", "verdict", "reasons",
                                                "reason_codes", "artifact", "artifact_max_age_hours")}
               for entry in (payload.get("freshness") or {}).get("tasks") or [] if entry.get("name") == name]
     return {
@@ -139,7 +139,7 @@ def facts_from_payload(payload: dict, name: str) -> dict:
         "actions": [{"execute": a.get("exec"), "arguments": a.get("args"), "workingDirectory": a.get("cwd")}
                     for a in (row.get("actions") or []) if isinstance(a, dict)],
         "artifact": {"path": row.get("artifact"), "maxAgeHours": row.get("artifactMax")},
-        "health": health,
+        "health": checks,
         "issues": [{"level": i[0], "text": i[1]} for i in row.get("issues") or [] if isinstance(i, list) and len(i) == 2],
         # 运行日志里非成功返回码的分布,是控制台手上「最近失败」的全部:它不按次保存失败明细。
         "recentFailures": {"window": (payload.get("runlog") or {}).get("countScope"),
@@ -343,8 +343,6 @@ def submit(name, note, request_id, *, facts, env=None) -> dict:
     env = os.environ if env is None else env
     item_id = None
     try:
-        if env.get("TASK_CONSOLE_READ_ONLY") == "1":
-            raise RepairError("read_only")
         if not isinstance(request_id, str) or not REQUEST_ID.fullmatch(request_id):
             raise RepairError("invalid_repair_request")
         name = _validate_name(name)

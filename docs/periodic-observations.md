@@ -8,10 +8,10 @@ atomic replacement. It creates no scheduler, service, task list or database.
 
 ## Runtime binding
 
-The private collector binding retains schemaVersion 1 and the existing
-`private_dir`, `snapshot`, `home`, `tasks`, `local_listeners`, `catalog_request`
-and freshness fields. For periodic collection replace its `request` field with
-`runtime`, an object containing exactly four absolute paths:
+The private collector binding has schemaVersion 1, `private_dir`, `snapshot`,
+`home`, `tasks`, `local_listeners`, optional `catalog_request`/`catalog_pins`,
+the freshness fields, and the required `runtime`, an object containing exactly
+four absolute paths:
 
 | Field | Owner |
 | --- | --- |
@@ -20,9 +20,8 @@ and freshness fields. For periodic collection replace its `request` field with
 | `state_root` | Existing runtime authority and journals |
 | `vault_root` | Existing protected runtime inputs |
 
-`request` and `runtime` are mutually exclusive. A frozen request remains available
-for finite offline captures; periodic mode requires runtime authority. There is no
-fallback from unreadable authority to an exported request or a global home path.
+There is no fallback from unreadable authority to an exported request or a global
+home path.
 The snapshot must be inside the private observation directory and outside the
 runtime roots. Provisioning and private-data policy remain with materialization
 and the existing filesystem/data-directory guards.

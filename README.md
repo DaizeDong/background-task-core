@@ -82,7 +82,6 @@ These references define runtime interfaces, configuration and maintenance constr
 | `scripts/task_console/maint.py` | Which verbs the page can perform against the machine |
 | `scripts/task_console/server.py` | Which routes exist, and the three controls that make the write endpoints safe |
 | [docs/changing-this.md](docs/changing-this.md) | What a change must not break, and the traps this repository has already fallen into |
-| [docs/cleanup-plan.md](docs/cleanup-plan.md) | What one full audit found, and how much of it was carried out |
 
 ## Read-only declaration producer
 

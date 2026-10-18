@@ -24,7 +24,10 @@ import os
 import time
 from pathlib import Path
 
-import component_status
+try:
+    from . import component_status
+except ImportError:
+    import component_status
 
 OK, STALE, MISSING, UNSET = "ok", "stale", "missing", "unset"
 
@@ -65,7 +68,6 @@ SOURCES = (
 # 随包发布的文件。它们没有环境变量:缺了就是安装坏了,而不是没配。
 BUNDLED = (
     ("collect", "采集脚本", "collect.ps1"),
-    ("runlog", "运行日志脚本", "runlog.ps1"),
     ("page", "页面", "console.html"),
     ("icon", "图标", "icon.svg"),
     # 外壳样式。缺了页面照样打开,但会退回成一堆没有布局的裸元素,

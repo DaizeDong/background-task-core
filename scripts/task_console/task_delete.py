@@ -897,8 +897,6 @@ def _remaining(steps, hook, retry=None) -> list[str]:
 
 def apply(token, name, *, live, categories_path, env=None) -> dict:
     env = os.environ if env is None else env
-    if env.get("TASK_CONSOLE_READ_ONLY") == "1":
-        raise maint.Refused("只读预览，无法执行操作", "read_only")
     with _LOCK:
         saved = _PLANS.pop(token, None) if isinstance(token, str) else None
     if not saved or saved["expires"] <= time.monotonic():

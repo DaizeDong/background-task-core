@@ -33,4 +33,3 @@ in [CHANGELOG.md](CHANGELOG.md); configuration scope is in [CONFIG.md](CONFIG.md
 - **Centralize storage and memory thresholds in the server.** Several page components currently apply separate thresholds to backend percentages, allowing their classifications to diverge.
 - Continue targeted UI maintenance across `console.html` and the separate static CSS/JavaScript modules; the page split is already implemented.
 - **Define history retention independently of the event channel.** The historical measurement found a roughly five-day event window; actual retention depends on configured size and event volume. Older records survive only when ingestion captured them in the durable export.
-- **Finish the audit in `docs/cleanup-plan.md`.** Its top section records which items landed; what remains is listed there rather than copied here.

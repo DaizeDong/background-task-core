@@ -1,18 +1,8 @@
 # Task registration producer contract
 
-The concrete runtime follow-up is documented in
-[task-registration-runtime.md](task-registration-runtime.md). It supersedes the
-adapter/CLI gaps listed below. The following records the accepted injectable
-producer baseline and remains useful for custom adapters; statements that an
-adapter is missing describe that earlier baseline, not current source. Deployment
-and wrapper migration are still pending.
-
-T12 provides an injectable transaction engine. It is **not installed production
-registration**. No live Scheduler, filesystem, lock, journal, vault or launcher
-adapter is selected automatically. Standalone mutation CLI calls fail with
-`runtime_adapter_required` until a trusted embedding supplies a Runtime. T11's
-`compiler.plan` remains read-only, `applicable=false`, and its generated files
-remain `replacement_safe=false`.
+The concrete Windows runtime is documented in
+[task-registration-runtime.md](task-registration-runtime.md). This page records the
+transaction engine's contract. T11's `compiler.plan` remains read-only.
 
 ## API and private inputs
 
@@ -54,7 +44,6 @@ remain readable throughout recovery. The controller advances its input pointer
 only after the journal is terminal, loading the resulting machine/bindings and
 ownership receipts for the next operation. Pointing load at files being rewritten
 by this same transaction causes `input_changed` and a conflict, intentionally.
-This generation pointer/receipt integration is not supplied here.
 
 An optional private task binding `description` stores category display text;
 `machine.overrides[full_task_id].description` can override it. It is a string
@@ -77,9 +66,8 @@ with a default repository path.
 
 ## Required transport guarantees
 
-Runtime accepts `load, files, scheduler, journal, vault, locks, render` plus an
-optional checkpoint callback for fault injection. The controller must supply and
-validate all of the following before allowing migration:
+Runtime accepts `load, files, scheduler, journal, vault, locks, render, authority,
+linked_work_items` plus an optional checkpoint callback. The adapters guarantee:
 
 | Adapter | Required operations and guarantees |
 | --- | --- |
@@ -95,7 +83,7 @@ validate all of the following before allowing migration:
 WindowsScheduler validates the structured query/prepare/publish/cleanup transport,
 pins TaskPath to root, rejects wildcard/path-bearing TaskNames, retains argv arrays,
 and verifies readback. It contains no shell interpolator or default subprocess
-runner. The Windows transport implementation itself is still required. A Python
+runner. A Python
 check followed by replacement is not an atomic compare-and-swap against an
 uncooperative writer. Existing-file and Scheduler replacement require the shared
 lock protocol or a controller-enforced quiescent window; do not claim stronger
@@ -124,10 +112,8 @@ the journal retained. A disabled but still running task is also busy. Recovery
 can proceed when execution ends; a durable identity/XML/configuration change
 remains a conflict. Re-enabling an original Scheduler configuration requires
 the complete supporting before-generation to pass readback, including unchanged
-files. New journals retain secure references for all Scheduler/file baselines;
-older v1 journals use their locked task IDs and pinned ownership fingerprints
-for resources with no steps. Cleanup after either terminal status is independently
-repeatable.
+files. Journals retain secure references for all Scheduler/file baselines.
+Cleanup after either terminal status is independently repeatable.
 
 `concurrency.gate_budget` optionally supplies positive integer wait_seconds,
 execution_seconds and cleanup_seconds plus held_by_payload=true. Their sum must
@@ -135,7 +121,7 @@ fit a finite effective timeout. No gate is inserted, acquired or run by validati
 The existing payload owns gate acquisition; absence of this optional metadata
 does not prove an existing payload's internal budgets.
 
-## CLI and legacy integration
+## CLI
 
 The installed/source package exposes:
 
@@ -150,52 +136,3 @@ registration Runtime in that process. Exit 2 is an input/contract refusal. Apply
 or retire returns 0 only for committed; a compensated/conflicted result returns
 3. Recover returns 0 for committed or rolled_back, 3 for conflict. T11 plan CLI
 semantics are unchanged. There is no runtime plugin loader from untrusted JSON.
-
-`maint.act(..., controller=...)` and legacy `retire.apply(..., controller=...)`
-accept a controller bound to `registration.dispatch`. Dispatch holds the authority
-lock through the legacy callback for a validated nonmigrated task, and invokes
-the transaction for migrated tasks. Malformed declarations raise before legacy
-dispatch. The callback must not swallow errors or map them to legacy fallback.
-The HTTP server does not yet install this callback. Its act route remains legacy
-until the controller wires equivalent dispatch around the entire legacy action.
-
-## Controller followups before release
-
-1. CONFIG register-profile-sync.ps1 and each skill registration wrapper must stop
-   editing Scheduler/health/categories themselves for migrated IDs. Resolve the
-   private generation, call build_plan/apply, report status/readback and propagate
-   nonzero exit codes. Replace substring membership checks with the shared parser.
-2. CONFIG install must select exactly one restore writer: declarations for migrated
-   IDs, legacy XML for nonmigrated IDs. Exclude tombstones/retired XML from its
-   active XML loop; malformed declarations stop restore. Never auto-enable an
-   existing disabled task. No production install changes were made here.
-3. CONFIG sync-from-local must consume the generated allowlist and ownership
-   generation, preserve unmanaged membership, exclude retired exports, and avoid
-   importing generated edits back into declarations. Coordinate with registration
-   locks so export and cutover cannot overlap incorrectly.
-4. Extract a safe staging adapter around existing hide-task-windows/install logic.
-   Preserve UTF-16LE BOM VBS, blocking Run(...,0,True), WScript.Quit propagation,
-   ASCII legacy health JSON, existing action arrays and complete XML. The current
-   helper writes even in dry-run and skips disabled tasks; it cannot be invoked
-   directly inside this transaction. Launcher creation/update remains a blocking
-   integration gap; current producer supports already prepared/preserved launchers.
-5. Connect the existing encrypted `.cred` SecureString boundary through durable,
-   verified put/get references. Reuse the reviewed credential owner's portable
-   export and restore tooling; copying machine-bound DPAPI files alone is not a
-   portable backup. No new crypto or second vault is needed. The transaction adapter
-   still must define object naming, durable references, access controls, retention
-   and restore validation. Supply durable journal/filesystem/lock adapters,
-   generation-pointer handling and receipt-derived ownership refresh together.
-6. Wire HTTP/standalone legacy action routing before moving any task into the
-   migrated set. Add controller-owned adoption inventory, deployment/parity checks,
-   real Windows transport validation and health evidence. This change does not
-   inventory or migrate live tasks, register extra daemons, or start payloads.
-
-Windows transport normalization remains a producer/integration gap: the injected
-core currently flips the separate `enabled` flag, while existing XML and embedded
-spec may still encode the prior state. Before production use, the renderer and
-transport must reconcile all representations and prove full principal, trigger,
-argv, timezone and power-setting parity using realistic XML. Fake token identities
-are test evidence only; production publication needs a recoverable identity for
-the actual Scheduler object. Launcher outputs also need explicit transactional
-resources before the renderer may create or update them.

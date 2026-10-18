@@ -26,7 +26,6 @@ import hashlib
 import json
 import os
 import sqlite3
-import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -35,8 +34,6 @@ import console_store
 import history
 from rcnorm import norm_rc
 
-# pythonw 下每个控制台子进程都要新分配控制台,又慢又会在并发时超时;这个标志免掉它。
-_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
 
 HERE = Path(__file__).resolve().parent
@@ -52,17 +49,7 @@ def now() -> str:
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 
-from winps import powershell  # noqa: E402
-
-
-def run_ps(script: Path, args=None, timeout=600):
-    p = subprocess.run(
-        [powershell(), "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
-         "-File", str(script)] + list(args or []),
-        capture_output=True, timeout=timeout, stdin=subprocess.DEVNULL, creationflags=_NO_WINDOW)
-    return (p.returncode,
-            p.stdout.decode("utf-8", "replace").strip(),
-            p.stderr.decode("utf-8", "replace").strip())
+from winps import run_ps  # noqa: E402
 
 
 def open_rw():

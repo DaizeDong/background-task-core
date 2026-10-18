@@ -29,7 +29,7 @@ Windows only. It reads the Windows Task Scheduler; there is nothing to read anyw
 | Self-check | every configured path | see which sources are `ok` / `stale` / `missing` / `unset` (folded on 诊断 until a source is missing) |
 | Artifact freshness | the health manifest plus each declared artifact | see five states, worst first |
 | Repositories | every git repo under one root | spot unpushed commits and dirty trees; run `fetch` |
-| Tasks | the Windows Task Scheduler | run, stop, enable, disable, retire; delete one after a bound preview; file a repair order that an agent diagnoses |
+| Tasks | the Windows Task Scheduler | run, stop, enable, disable; delete one after a bound preview; file a repair order that an agent diagnoses |
 | Skills | a skills directory | archive one out of the way, or restore it |
 | Memory pool | a memory directory | see index headroom and broken links; archive an entry |
 | Plugins | `claude plugin list` | enable or disable one |
@@ -177,7 +177,7 @@ The run-history panels read a database that nothing fills on its own. Until `con
 has run, those panels are empty, and they say so rather than drawing a flat line.
 
 ```
-python console_ingest.py --days 60      # first time: pull in what the log still holds
+python console_ingest.py --backfill     # first time: rebuild from everything the logs still hold
 python console_ingest.py --skip-runlog  # the cheap half: health observations only
 python console_ingest.py                # the full pass, including run events
 ```
@@ -187,10 +187,8 @@ a circular buffer: measured here at roughly 635 events an hour against 64 MB, wh
 days before the oldest records are overwritten. Anything not ingested inside that window is gone,
 not late, and no later run can recover it.
 
-Drive the two halves separately. Folding them into one caller has been tried and it killed that
-caller on every run for dozens of consecutive runs: the full pass hands `runlog.ps1` a 900 second
-budget, so any caller whose own execution limit is lower than that will be cut off before the inner
-budget is ever reachable, forever, without either number looking wrong on its own.
+Drive the two halves separately. The full pass reads the whole event channel and is slow; a caller
+whose own execution limit is shorter than that pass gets cut off on every run.
 
 How often to run each half is a property of the machine and is deliberately not stated here: this
 file has carried a wrong claim about it twice, in opposite directions. To find out whether ingest
@@ -324,19 +322,16 @@ the generator by the fixture boundary gate. Regenerate it from the repository ro
 | `TASK_CONSOLE_PLUGIN_CACHE` | a plugin cache directory | unset means the cache row reads NOT CHECKED and nothing can be deleted |
 | `TASK_CONSOLE_SESSIONS` | a session transcript directory; also the `root` the console passes to the `convo-chain` library for the conversation chain | unset means that row reads NOT CHECKED, the chain reads NOT CHECKED, and export and fork refuse with `unavailable` |
 | `TASK_CONSOLE_CLAUDE` | the CLI used for plugin actions | falls back to PATH; not found means the plugin panel reads NOT CHECKED |
-| `TASK_CONSOLE_ALLOWED_HOSTS` | extra Host header values to accept | only the three loopback spellings are accepted |
 | `TASK_CONSOLE_IDENTITIES` | a table of `login\|display name\|commit email`, one per line, `#` for comments, saying which identity each repository owner should be committed under | unset means the account-match column reads NOT CHECKED for every repository, which is deliberately not the same as saying they match; no address from this file is ever rendered, only the account name and the verdict |
 | `TASK_CONSOLE_CONVO_CACHE` | `data/user-state/convo-cache.json` in the PRIVATE companion; a path inside this source tree, or an unreadable cache, is reported as `summary.cacheError` | unset means the first scan of every page load walks every transcript again; correctness is unaffected, the page is just slower |
 | `TASK_CONSOLE_CONFIG` | PRIVATE companion root | when unset, follows DATA_DIR and the reviewed companion discovery described in CONFIG.md |
 | `TASK_CONSOLE_DATA_DIR` | companion root or its `data` child | when unset, uses the pinned companion resolver described in CONFIG.md; canonical database uses `<root>/data/task-console/console.sqlite3` |
 | `TASK_CONSOLE_DB` | the SQLite file the ingester writes and the page reads | falls back to the companion repo's `data/task-console/console.sqlite3`, and if no companion resolves it reports UNINITIALISED with setup instructions rather than falling back into this repo |
 | `TASK_CONSOLE_LLMCALL_LEDGER` | the append-only JSONL ledger the LLM-call primitive writes, one line per call | uses `LLMCALL_LEDGER` when set (empty, `0`, `off` or `false` disables it); otherwise `runtime/ledger.jsonl` under the llmcall data directory that the installed llmcall's own `fleet_guards` companion resolver selects. No configured root or missing file is reported as uninitialized or NOT CHECKED, not zero calls |
-| `TASK_CONSOLE_LLMCALL_CHAIN` | the file the call view writes a fallback-chain order into | uses `chain.txt` beside an explicit `TASK_CONSOLE_LLMCALL_LEDGER`; otherwise uses the same producer runtime root as above. `LLMCALL_LEDGER` alone does not relocate the chain. Missing configuration blocks a write. `LLMCALL_CHAIN` still overrides the file's order, and the page reports that override |
-| `TASK_CONSOLE_LLMCALL_BODIES` | the directory holding recorded prompt and reply bodies, one file per day | unset means `bodies/` under the llmcall data directory, resolved by the same `fleet_guards` companion resolver bound to the installed llmcall, so the console never keeps its own copy of the discovery order. The resolution steps actually walked, and their verdicts, are printed in the page when a body cannot be found. Body recording is off by default, and the three ways to have no bodies (never turned on, companion not initialised, entry past its retention) are reported as three different sentences rather than one empty box |
+| `TASK_CONSOLE_LLMCALL_CHAIN` | the file the call view writes a fallback-chain order into | uses `chain.txt` under the same producer runtime root as above. Missing configuration blocks a write. `LLMCALL_CHAIN` still overrides the file's order, and the page reports that override |
 | `TASK_CONSOLE_DELETE_FOLLOWUP` | absolute path of the private Python follow-up hook that a task delete runs after the Scheduler step, to clean the health watch list, backup and restore task manifest (protocol in `docs/task-control.md`) | no default; unset still deletes from the Scheduler and the console's category map, but the preview and the result say, as their own state, that the watch list, backup and restore task manifest were not cleaned, and the result is `partial`, never `ok` |
 | `TASK_CONSOLE_DELETE_WITHOUT_AUTHORITY` | `1` lets a console process that has none of the four Controller settings delete tasks, treating every task as unmanaged | unset; such a process refuses every delete with `authority_not_configured`, because it cannot tell which tasks the Controller owns |
 | `TASK_CONSOLE_DELETED_ARCHIVE` | existing absolute `data/user-state/deleted-tasks` directory in the PRIVATE companion; deletion of an unmanaged task first preserves its XML and receipt there | no default; unset blocks the delete of an unmanaged task in its preview; Controller-owned tasks keep their before-image in the Controller's vault and do not use it |
-| `TASK_CONSOLE_POWERSHELL` | the powershell.exe that task commands run through | falls back to the pinned `System32\WindowsPowerShell\v1.0\powershell.exe`, and only to a bare `powershell.exe` off PATH when that file is not there |
 
 The llmcall and executable defaults are documented in the table above. Pointing it at whatever else a machine keeps its
 watch-list and allow-list in is the launcher's job, and the launcher belongs on that machine.
@@ -395,14 +390,6 @@ the chip updates when the page re-reads after an action and on refresh; the repa
 An unreadable order feed is stated in the toolbar instead of drawing every row as having no order: a
 small ! whose tooltip says, in plain words, why progress cannot be seen (the reason code is kept in the
 tooltip), and a red ! with 修复进度读取失败 when the read itself failed.
-The retire button (停用并移出清单) is gone from the page: delete replaced it. `maint` `task.retire`
-still works for callers of the API.
-
-It can **retire** one, which is the opposite operation and is safe to automate precisely because
-it is subtractive: disable, write the reason into the description, drop it from the backup
-allow-list, drop it from the health manifest. All three, or none. A task that is only disabled is
-worse than one that was never touched, because an exported task definition does not record the
-disabled state: a backup that still lists it will faithfully reinstall it, enabled.
 
 Pushing is the one thing here that leaves the machine, so it is deliberately **not** one click.
 It is two steps: a read-only plan first (which files, which ref, whether that remote is public or
@@ -453,8 +440,8 @@ normal user session. The console says so instead of reporting a bare access-deni
 | `server.py` | the HTTP layer: routing, auth, host allowlist, the two write endpoints |
 | `console.html` | page shell loading separate static CSS and JavaScript; no build step |
 | `vendor/tabler/` | Tabler v1.5.0 (MIT), the dashboard shell. Vendored, not a CDN link |
-| `collect.ps1` / `runlog.ps1` | the Windows side |
-| `evtlog.py` | the fast event log reader (EvtQuery), with the PowerShell path as fallback |
+| `collect.ps1` | the Windows side |
+| `evtlog.py` | the event log reader (EvtQuery) |
 | `freshness.py` | five-state artifact freshness, a pure function of timestamps |
 | `selfcheck.py` | every configured source, probed and reported one by one |
 | `repos.py` | git repository scan, concurrent, one timeout per repo |
@@ -462,7 +449,6 @@ normal user session. The console says so instead of reporting a bare access-deni
 | `memops.py` | memory pool diagnosis; archiving is delegated, not reimplemented |
 | `sysinfo.py` | disk, cache size, abandoned clone staging directories |
 | `llmstats.py` | the LLM-call ledger: windowing, per-rung reconstruction, consecutive runs, and the chain config file |
-| `retire.py` | the three-place deregistration, planned first and then written |
 | `task_delete.py` | deleting a task: bound preview, Controller or archive-then-unregister, category map edit, follow-up hook |
 | `task_repair.py` | repair orders: the task's known facts plus fixed limits, filed and dispatched through the reminder owner |
 | `console_store.py` / `console_ingest.py` / `history.py` / `timeline.py` | the run history layer |
@@ -621,15 +607,13 @@ a general PowerShell evaluator.
 
 CLI exit 0 means a valid plan envelope, including drift and NOT CHECKED results. Exit 2
 means invalid arguments, unreadable input, invalid JSON or a contract error. Diagnostics
-identify fields without echoing input values. The package entrypoint exposes this producer;
-the source-tree web server and retirement APIs keep their existing launch/import forms.
+identify fields without echoing input values. The package entrypoint exposes this producer.
 Registration, scheduler mutation, observation collection, runtime launchers and authority
 cutover are outside this interface.
 
-T12 adds a separate, explicitly injected registration transaction API and the
-apply/retire/recover CLI entrypoints. It does not change the read-only plan above.
-See [the registration contract](../../docs/task-registration.md) for required
-private inputs, transport guarantees, recovery semantics and integration gaps.
+The registration transaction API and the apply/retire/recover CLI entrypoints are
+separate; see [the registration contract](../../docs/task-registration.md) for
+private inputs, transport guarantees and recovery semantics.
 No production runtime adapters or automatic authority cutover are installed.
 
 Configuration lifecycle, full companion discovery and database path resolution are described

@@ -469,8 +469,7 @@ function detailHTML(r){
     if(b && b.reason_code === "uninitialised")
       s += '<p class="faint" style="margin:4px 0 0">伴生仓若建在别处,设 '
          + "<code>LLMCALL_CONFIG</code> 指向它(正文会落到它下面的 "
-         + "<code>data/bodies/</code>),或者用 <code>TASK_CONSOLE_LLMCALL_BODIES</code> "
-         + "直接指定正文目录。正文记录本身还要 <code>LLMCALL_RECORD_BODIES=1</code> 才会开。</p>";
+         + "<code>data/bodies/</code>)。正文记录本身还要 <code>LLMCALL_RECORD_BODIES=1</code> 才会开。</p>";
     if(b && b.tried && b.tried.length)
       s += '<table class="l-att">' + b.tried.map(t=>
         "<tr><td>" + esc(t.source || "") + "</td><td>" + esc(t.path || "") + "</td>"

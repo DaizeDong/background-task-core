@@ -48,36 +48,3 @@ readback or a receipt: the durable prepared candidate can recognize only the
 equivalent object. An engine, action, trigger, principal, unknown-field or data
 edit cannot be adopted. Receipts continue binding the observed identity, and
 effective-input documents remain protected separately from Scheduler output.
-
-Unit tests never register tasks. The separate native canary script registers
-only a fresh disabled UUID-named task, uses inherited same-user DPAPI, never
-starts it, retires that exact name, and verifies absence. If the Scheduler root
-folder is unavailable, the result must report registration was not attempted;
-in-memory COM tests alone do not establish native registration success.
-
-For a selected legacy binding whose `principal` and `power` are XML-only,
-`task_console.export_restore.normalize_legacy_binding(binding, snapshot,
-scheduler=...)` returns a deep copy with those two fields made explicit. It
-reuses restore's `_principal` implementation. The snapshot must be present,
-its definition identity must match the task name and raw XML, and the complete
-passthrough and XML-only fields must agree with that observation. The enabled
-flag must also match. All other binding fields and both input objects survive
-unchanged. Retain the original snapshot as the raw CAS before-image.
-
-The API performs no query or publication and loads no runtime, registry, or
-authority. Supply the existing `WindowsScheduler(COMTransport())` for
-unregistered preparation when XML omits defaults. Identity and logon type remain
-explicit; omitted RunLevel uses restore's existing preparation-gated schema
-rule. Missing power flags require explicit boolean values in the prepared XML;
-absence never means false. Duplicate groups/settings, unsupported principal
-features, malformed power booleans and changed preparation input are refused.
-Password modes retain `auth_pending`. No credentials are requested or loaded.
-
-This derives representation from caller-supplied evidence, not proof of freshness
-or activation approval. The caller owns the fresh live binding check immediately
-before activation and uses the existing registration transaction. A saved
-snapshot's self-consistent digest alone cannot prove it is current. Ordinary
-`render` still requires explicit principal/power fields and boolean power values.
-For preservation checks, compare prepared XML using `runtime_xml.canonical`
-after excluding only intended action and controller metadata edits; duration
-spelling changes such as `PT7M` to `PT420S` have the existing canonical semantics.

@@ -171,23 +171,6 @@ def health_by_day(con, days: int = 45) -> dict:
     return out
 
 
-def health_by_hour(con, day_from: str, day_to: str) -> dict:
-    """Hour-level detail for a drill-down window. This is the query the text-log parser could not
-    answer, because it deduplicated on the hour and then discarded it."""
-    rows = con.execute(
-        "SELECT task, day, hour, klass, COUNT(*) n FROM health_obs "
-        "WHERE day BETWEEN ? AND ? GROUP BY task, day, hour, klass",
-        (day_from, day_to)).fetchall()
-    out: dict[str, dict] = {}
-    for r in rows:
-        key = f"{r['day']} {r['hour']:02d}"
-        d = out.setdefault(r["task"], {}).setdefault(key,
-                                                     {"ok": 0, "bad": 0, "stale": 0, "neutral": 0, "n": 0})
-        d[r["klass"]] = d.get(r["klass"], 0) + r["n"]
-        d["n"] += r["n"]
-    return out
-
-
 def health_totals(con, days: int = 45) -> dict:
     rows = con.execute(
         "SELECT task, klass, COUNT(*) n FROM health_obs "
@@ -229,17 +212,6 @@ def runs_today(con) -> dict:
     for r in rows:
         out.setdefault(r["task"], []).append(r["hm"])
     return {k: sorted(set(v)) for k, v in out.items()}
-
-
-def runs_by_day(con, days: int = 60) -> dict:
-    rows = con.execute(
-        "SELECT task, day, COUNT(*) n FROM run_event "
-        "WHERE event_id = 100 AND day >= date('now','localtime',?) GROUP BY task, day",
-        (f"-{days - 1} day",)).fetchall()
-    out: dict[str, dict] = {}
-    for r in rows:
-        out.setdefault(r["task"], {})[r["day"]] = r["n"]
-    return out
 
 
 # 摄入器停摆多久算「要人管」。这两个数不是随手定的档位,它们量的是**丢失风险**:

@@ -1,8 +1,7 @@
 # Task controller integration
 
-The source HTTP actions and standalone CLI share
-`controller.load_runtime` and `runtime.dispatch_adapter`. This is source
-integration with synthetic tests, not a deployment or live Scheduler acceptance.
+The source HTTP actions and standalone CLI share `controller.load_runtime`; the
+Controller calls `registration.dispatch(name, verb, reason=, runtime=)` directly.
 
 ## Explicit private authority
 
@@ -66,7 +65,7 @@ output, XML and exception text are not exposed. CLI exits: 0 acknowledged/applie
 Stop never claims a WorkItem is cancelled or that detached payload descendants
 are gone. It returns `payload_cleanup=unverified`. The fixed COM stop readback
 wait is bounded at two seconds inside the existing bounded process transport.
-Only an explicit `run` request can call COM `Run`; tests never start actual tasks.
+Only an explicit `run` request can call COM `Run`.
 The controller uses `llmcall.process.execution_scope`; it implements no process
 supervisor, cipher, lock or argument parser.
 
@@ -76,34 +75,26 @@ Legacy and migrated enable/disable/retire use the existing registration transact
 engine. Legacy ownership stays legacy; full XML controls change only enabled state,
 and retirement removes active projections with protected before-images. Verified
 publication advances selected ownership receipts, so repeated controls remain
-usable. Arbitrary definition-mutating legacy callbacks refuse with
-`legacy_declarative_conversion_required`; built-in controls explicitly convert
-their work into this transaction. Run/stop callbacks stay under authority/task
-locks. Pending journals, changed ownership and malformed declarations refuse.
-No ownership is inferred or refreshed from a matching task name.
+usable. Run/stop stay under authority/task locks. Pending journals, changed
+ownership and malformed declarations refuse. No ownership is inferred or
+refreshed from a matching task name.
 
-`retire.apply` preserves its name/reason API but now always dispatches. The old
-algorithm is a private callback tested separately. Migrated retirement preserves
-`done`, `backups`, `reason` and exposes `recovery_transaction` for protected
-before-images rather than creating plaintext XML backups. `retire_plan` preserves
-`steps`, `changes`, and `blocked` and adds the exact registration proposal.
-The legacy read-only preview without runtime configuration reports
-`authority_status=unconfigured`; this does not authorize an apply.
+Retirement exposes `recovery_transaction` for protected before-images rather than
+creating plaintext XML backups. `retire_plan` returns the exact registration
+proposal and the linked work items.
 
 Linked work items are queried through a fixed optional installed
 `reminder_linked_items.read_linked_items` accessor and the explicit absolute
 `TASK_CONSOLE_REMINDER_DB` path. Results distinguish available, unavailable and
 error; unavailable/error carry null items. No store initialization, migration,
 cancellation or task-name inference occurs. The reminder owner must deliver the
-read-only accessor and attest its linkage schema. Trusted Python composition can
-inject a reader or an explicit `load()['linked_work_items']` mapping.
+read-only accessor and attest its linkage schema.
 
 ## Deleting a task
 
 Delete means gone for good: absent from the Scheduler, from the console's category map, and,
 through the private follow-up hook, from the health watch list, the backup and the migration
-plan. `task_delete.py` implements it behind two authenticated POST routes; `maint` `task.retire`
-and `/api/retire/plan` keep working unchanged for their existing callers.
+plan. `task_delete.py` implements it behind two authenticated POST routes.
 
 `POST /api/task/delete/plan {name, reason}` is read-only. The name passes the same
 `scheduler_windows.task_name` gate as the Controller (spaces allowed, paths, wildcards and control
@@ -128,7 +119,7 @@ directory) and its exported XML digest are captured now, before anything is unre
   `authority.files`. An unreadable journal is its own failed step. A declared task whose ownership
   proof is missing is refused, never downgraded to the unmanaged path. Authority that is configured
   but broken refuses. A console with none of the four authority settings also refuses
-  (`authority_not_configured`), as `retire.apply` does, unless
+  (`authority_not_configured`) unless
   `TASK_CONSOLE_DELETE_WITHOUT_AUTHORITY=1` explicitly allows treating every task as unmanaged; the
   preview then says so in its notes.
 - **Unmanaged**: requires `TASK_CONSOLE_DELETED_ARCHIVE`, the existing absolute

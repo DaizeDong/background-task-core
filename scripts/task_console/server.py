@@ -24,7 +24,6 @@ import argparse
 import json
 import os
 import secrets
-import subprocess
 import sys
 import threading
 import time
@@ -60,15 +59,8 @@ import title_suggest
 # 退出码归一化只有 rcnorm 这一份,渲染侧和写入侧共用。
 from rcnorm import norm_rc
 
-# 在 pythonw(GUI 子系统)下,每个控制台子程序都要新分配一个控制台。那次分配很慢,
-# 而且并发时根本不成立:实测同一条 git 命令,普通 python 下几毫秒,pythonw 下单次
-# 4.5 秒,四个并发全部 15 秒超时。加上这个标志之后单次降到 0.08 秒。
-_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
-
-
 HERE = Path(__file__).resolve().parent
 COLLECT = HERE / "collect.ps1"
-RUNLOG = HERE / "runlog.ps1"
 PAGE = HERE / "console.html"
 ICON = HERE / "icon.svg"
 VENDOR = HERE / "vendor"
@@ -132,42 +124,13 @@ def _env_path(name: str) -> Path | None:
     return Path(os.path.expanduser(v)) if v else None
 
 
-# 解释器解析只有一份,在 winps.py。这里原来是三份手写中的一份。
-from winps import powershell  # noqa: E402
-
-
-def run_ps(script: Path, env_extra: dict[str, str] | None = None, timeout: int = 90,
-           args: list[str] | None = None):
-    """Run a PowerShell script and return (rc, stdout, stderr), stdout decoded as UTF-8.
-
-    Decoding is pinned rather than left to the locale: PowerShell 5.1 in a non-interactive session
-    emits the ANSI codepage by default, and a category label in Chinese comes back as mojibake that
-    then renders as garbage in the page. collect.ps1 pins its side too.
-    """
-    env = dict(os.environ)
-    env.update(env_extra or {})
-    p = subprocess.run(
-        [powershell(), "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
-         "-File", str(script)] + list(args or []),
-        capture_output=True, env=env, timeout=timeout, stdin=subprocess.DEVNULL, creationflags=_NO_WINDOW)
-    return (p.returncode,
-            p.stdout.decode("utf-8", "replace").strip(),
-            p.stderr.decode("utf-8", "replace").strip())
+from winps import run_ps  # noqa: E402
 
 
 # --------------------------------------------------------------------------- run log
-# 运行日志的读取窗口与条数上限。**两条通路必须用同一份**:
-# 这里以前快路写死 evtlog.read(days=30),而慢路 run_ps(RUNLOG) 吃的是 runlog.ps1 自己的
-# 默认 `-Days 60`,返回的却都标注「最近 30 天」。走回落时页面上那句口径说明少报一半的窗口,
-# 而没有任何一处能看出自己走的是哪条通路。
+# 运行日志的读取窗口与条数上限。
 RUNLOG_DAYS = 30
-# 上限从 2 万提到 10 万。2 万是个凭感觉的数,实测下来它只覆盖 **3 天**
-# (2026-09-06 到今天),而返回的口径写着「最近 30 天」, 一个七天没跑的任务
-# 在这条通路上看起来就像从来没跑过。
-# 实测(EvtQuery,本机):上限 2 万 -> 20000 条 / 1.8s / 截断;
-# 上限 10 万 -> 54447 条 / 7.4s / 不截断,而 54450 就是这个通道当前保有的全部。
-# 也就是说 10 万在这台机器上等于「有多少读多少」,代价是回落路径上多几秒,
-# 而那条路本来就有 180 秒预算,并且只在数据库不可用时才走。
+# 上限 10 万。2 万实测只覆盖 3 天,而口径写着「最近 30 天」;10 万在本机等于「有多少读多少」。
 RUNLOG_MAX_EVENTS = 100000
 
 
@@ -181,39 +144,11 @@ def load_runlog() -> dict:
     The log only goes back to the day it was enabled. An empty result therefore means NOT RECORDED
     YET, and is reported that way rather than as zero runs.
     """
-    # 优先走 EvtQuery。同一批 200 条事件,PowerShell 那条路取出来约 5.5 秒、再碰一次
-    # 显示名又要 5.1 秒;EvtQuery 取出来加渲染一共 2 毫秒。差三个数量级,慢的不是日志,
-    # 是每条事件都去解析一次 provider 的元数据。这个差距不是优化是可行性:整段日志
-    # 曾经要十几分钟才读得完,于是它被关掉了,于是「这个任务到底跑没跑成」一直是空的。
-    #
-    # 读不到就明说并回落,不装作成功:一段空的运行日志和一段读不到的运行日志,
-    # 在界面上长得一模一样。
-    raw = None
-    fast_why = None
+    # 读不到就明说,不装作成功:一段空的运行日志和一段读不到的运行日志,在界面上长得一模一样。
     try:
-        fast = evtlog.read(days=RUNLOG_DAYS, max_events=RUNLOG_MAX_EVENTS)
-        if fast.get("enabled"):
-            raw = fast
-        else:
-            fast_why = fast.get("reason")
+        raw = evtlog.read(days=RUNLOG_DAYS, max_events=RUNLOG_MAX_EVENTS)
     except Exception as e:
-        fast_why = f"{type(e).__name__}: {e}"
-
-    if raw is None:
-        # 天数与上限显式传进去,不吃脚本自己的默认值:
-        # 一个「两边各有一套默认值」的接口,迟早会在某次改动后悄悄分叉。
-        rc, out, err = run_ps(RUNLOG, timeout=180,
-                              args=["-Days", str(RUNLOG_DAYS),
-                                    "-MaxEvents", str(RUNLOG_MAX_EVENTS)])
-        if rc != 0 or not out:
-            return {"available": False,
-                    "reason": f"读运行日志失败: {err or out or '无输出'}"
-                              + (f"(快路不可用: {fast_why})" if fast_why else ""),
-                    "tasks": {}}
-        try:
-            raw = json.loads(out)
-        except Exception as e:
-            return {"available": False, "reason": f"运行日志解析失败: {e}", "tasks": {}}
+        return {"available": False, "reason": f"读运行日志失败: {type(e).__name__}: {e}", "tasks": {}}
     if not raw.get("enabled"):
         return {"available": False,
                 "reason": (raw.get("reason") or "任务运行历史日志是关闭的") +
@@ -224,32 +159,24 @@ def load_runlog() -> dict:
 
     evs = raw.get("events") or []
     # Return codes are kept as a distribution, NOT collapsed into zero/non-zero here. Some tasks
-    # encode a VERDICT in the exit code rather than a failure: an exit of 2 can mean "looked, found
-    # something, said so", which is a task doing its job. Those codes are declared per task in the
-    # health watch list as ok_codes. Bucketing them as failures at this layer would give exactly
-    # those tasks a permanent 0%, which is how a new column becomes noise on its first day. The
-    # ok-code test is applied later, where the declaration is in scope.
-    per: dict[str, dict] = defaultdict(lambda: {"starts": 0, "done": 0, "killed": 0,
-                                                "failStart": 0, "timedOut": 0,
+    # encode a VERDICT in the exit code rather than a failure; those codes are declared per task as
+    # ok_codes and the ok-code test is applied later, where the declaration is in scope.
+    per: dict[str, dict] = defaultdict(lambda: {**dict.fromkeys(evtlog.EVENT_FIELDS.values(), 0),
                                                 "rcs": Counter(), "byDay": defaultdict(int),
                                                 "todayRuns": []})
     today_str = date.today().isoformat()
     for e in evs:
         t = per[e["task"]]
         i = e["id"]
-        if i == 100:
-            t["starts"] += 1
-            day = e["t"][:10]
-            t["byDay"][day] += 1
-            # Times of today's actual starts, so the timeline can draw them against the planned
-            # marks. A planned mark with no actual run beside it is the thing worth seeing.
-            if day == today_str:
-                t["todayRuns"].append(e["t"][11:16])
-        elif i == 102: t["done"] += 1
-        elif i == 111: t["killed"] += 1
-        elif i == 203: t["failStart"] += 1
-        elif i == 329: t["timedOut"] += 1
-        elif i == 201:
+        if i in evtlog.EVENT_FIELDS:
+            t[evtlog.EVENT_FIELDS[i]] += 1
+            if evtlog.EVENT_FIELDS[i] == "starts":
+                day = e["t"][:10]
+                t["byDay"][day] += 1
+                # Today's actual starts, so the timeline can draw them against the planned marks.
+                if day == today_str:
+                    t["todayRuns"].append(e["t"][11:16])
+        elif i == evtlog.ACTION_RC:
             z = norm_rc(e.get("rc"))
             if z is not None:
                 t["rcs"][z] += 1
@@ -257,43 +184,26 @@ def load_runlog() -> dict:
     out_tasks = {}
     for name, t in per.items():
         out_tasks[name] = {
-            "starts": t["starts"], "done": t["done"], "killed": t["killed"],
-            "failStart": t["failStart"], "timedOut": t["timedOut"],
+            **{k: t[k] for k in evtlog.EVENT_FIELDS.values()},
             "rcs": {str(k): v for k, v in t["rcs"].items()},
             "byDay": dict(t["byDay"]),
             "todayRuns": sorted(set(t["todayRuns"])),
         }
-    # count 必须带着它的窗口一起给。同一个界面元素在有数据库时是「run_event 全表行数」、
-    # 在回落时是「最近 N 天的事件条数」,而表里的「实跑」「实成功%」永远只统计另一个窗口:
-    # 三个窗口、一个数字、页面不说是哪一个。想用它判断「日志覆盖了多久」的人会得到一个偏大的数,
-    # 并据此相信历史比实际更完整。
-    # 撞上条数上限时,**取到的是最近 N 条,不是最近 30 天**。原来无论如何都标「最近 30 天」,
-    # 于是一份只覆盖到十几天前的数据会被读成整整 30 天的完整历史,
-    # 而「某个任务这段时间一次都没跑」和「它跑过但被截掉了」在屏幕上一模一样。
+    # count 必须带着它的窗口一起给。撞上条数上限时,取到的是最近 N 条,不是最近 30 天;
+    # 没截断也不等于覆盖满了窗口(这个通道是滚动缓冲),所以把真实回溯到哪天一起说出来。
     truncated = bool(raw.get("truncated"))
     _oldest = raw.get("oldest")
     if truncated:
         scope = (f"最近 {RUNLOG_MAX_EVENTS} 条(撞上条数上限,没有覆盖满 {RUNLOG_DAYS} 天"
                  + (f",最早只到 {str(_oldest)[:10]}" if _oldest else "") + ")")
     else:
-        # 没截断也不等于覆盖满了那个窗口:这个通道是滚动缓冲,本机实测只保有约八天。
-        # 把真实回溯到哪天一起说出来,否则「这段时间它没跑」和「这段时间日志已经没了」
-        # 又变成同一个空白。
         scope = f"最近 {RUNLOG_DAYS} 天" + (
             f"(日志只回溯到 {str(_oldest)[:10]})" if _oldest else "")
     return {"available": True, "reason": None, "since": raw.get("since"),
             "oldest": raw.get("oldest"), "count": raw.get("count", len(evs)),
             "countScope": scope,
             "truncated": truncated,
-            # 读到一半失败、以及解析不了的条数,两个都要带出去。
-            # ⚠ 这句以前写的是「读取器一直在数它们」, **只有快路(evtlog)在数**。
-            # 慢路 runlog.ps1 从来不产出 dropped / partial / truncated 三个键,
-            # 于是 `raw.get("dropped") or 0` 把「这个读取器根本不数」变成了一个确定的 0:
-            # 同一个页面字段在一条通路上是量出来的,在另一条通路上是缺失被当成了值。
-            # 2026-09-09 已给慢路补上这三个计数,所以现在这句话对两条通路都成立。
-            # 而这里原来把两个数都扔了:事件格式一变、大批事件被丢掉时,页面上只会看到
-            # 运行次数变少、成功率漂移,没有任何一处说明有多少条读不懂,
-            # 一个看起来精确、实则不完整的数字,而它旁边正好还有个 count 给它背书。
+            # 读到一半失败、以及解析不了的条数都带出去,否则大批事件被丢掉时页面只看到次数变少。
             "partial": bool(raw.get("partial")),
             "dropped": int(raw.get("dropped") or 0),
             "tasks": out_tasks,
@@ -338,7 +248,6 @@ def load_from_db():
     try:
         by_day = console_store.health_by_day(con, days=45)
         totals = console_store.health_totals(con, days=45)
-        runs_by_day = console_store.runs_by_day(con, days=60)
         rtot = console_store.run_totals(con, days=60)
         today_runs = console_store.runs_today(con)
         cov = console_store.coverage(con)
@@ -1261,7 +1170,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(400, {"error": f"bad request: {e}"})
         try:
             return self._json(200, llmstats.write_chain(body.get("chain") or []))
-        except llmstats.Refused as e:
+        except maint.Refused as e:
             return self._json(400, {"error": str(e), "code": e.code})
         except Exception as e:
             return self._json(500, {"error": f"{type(e).__name__}: {e}"})

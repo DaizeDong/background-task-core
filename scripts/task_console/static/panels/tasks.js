@@ -440,7 +440,7 @@ function renderTL(){
   // 视窗外的标记直接不渲染。让它们留在 DOM 里靠 overflow 裁掉,在放大到几十分钟时
   // 等于每行仍要摆几百个绝对定位元素,滚动会明显掉帧。
   const vis=m=>m>=tlFrom-1&&m<=tlTo+1;
-  // timeline.build 拼的行只有 name/cat/points/spans/eventDriven/unknownTriggers/actual/sk,
+  // timeline.build 拼的行只有 name/points/spans/eventDriven/unknownTriggers/actual/sk,
   // 不带说明;说明在任务表那条通路上(ROWS)。行名从那里取中文标题,机器名留在悬停提示里。
   // 任务表还没读到、或者里面没有这一行时,照旧显示机器名,不编一个名字出来。
   const byName=new Map(ROWS.map(t=>[t.name,t]));
