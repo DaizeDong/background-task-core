@@ -56,6 +56,7 @@ def main(argv: list[str] | None = None, *, runtime=None) -> int:
     parser.add_argument('--operation', choices=['apply', 'enable', 'disable', 'retire'], default='apply')
     parser.add_argument('--migrate', action='store_true')
     parser.add_argument('--approve-enable', action='store_true')
+    parser.add_argument('--replace-identity')
     args = None
     def failure(exc):
         from .controller import error_result
@@ -188,7 +189,8 @@ def main(argv: list[str] | None = None, *, runtime=None) -> int:
                 if not args.task_id:
                     raise ContractError('missing_field', 'task_id')
                 result = registration.build_plan(runtime, [args.task_id], operation=args.operation,
-                          migrate=args.migrate, approve_enable=args.approve_enable, reason=args.reason or '')
+                          migrate=args.migrate, approve_enable=args.approve_enable, reason=args.reason or '',
+                          replace_identity=args.replace_identity)
                 print(json.dumps(result, ensure_ascii=True, sort_keys=True))
                 return 0
             if args.command == "recover":

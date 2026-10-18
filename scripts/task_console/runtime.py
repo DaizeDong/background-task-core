@@ -211,6 +211,16 @@ class GenerationAuthority:
             receipt['input_reference'] = reference
             receipt['generation'] = journal['transaction_id']
             receipt['authority'] = {k: machine[k] for k in ('authority_epoch', 'migrated_tasks')}
+            # A task adopted in this transaction has no proof yet; the loop below fills it in.
+            request = self._inputs(reference)['request']
+            for lock in journal['locks']:
+                task_id = lock[len('task:'):] if lock.startswith('task:') else None
+                if task_id and task_id not in receipt['ownership']:
+                    name = request['bindings']['tasks'][task_id]['name']
+                    current = reg._read(self.scheduler, name)
+                    receipt['ownership'][task_id] = {
+                        'name': name, 'task_path': '\\', 'identity': None, 'writer': 'legacy',
+                        'state': current.get('state'), 'enabled': current.get('value', {}).get('enabled')}
             # Preserve unselected proofs, advancing their epoch consistently.
             for proof in receipt['ownership'].values():
                 proof['epoch'] = machine['authority_epoch']

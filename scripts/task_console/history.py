@@ -31,6 +31,7 @@ from datetime import date, timedelta
 from pathlib import Path
 
 LINE = re.compile(r"^\[(\d{4})-(\d{2})-(\d{2}) (\d{2}):\d{2}:\d{2}\]\s{2,}(\S[^:]*?) : (.+)$")
+LASTRUN = re.compile(r"last (\d{1,2}/\d{1,2}/\d{4} \d{1,2}:\d{2}:\d{2} [AP]M)")
 
 
 def classify(verdict: str) -> str:

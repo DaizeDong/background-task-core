@@ -11,6 +11,7 @@ from copy import deepcopy
 from dataclasses import dataclass
 import hashlib
 import json
+import re
 from typing import Callable
 import uuid
 
@@ -236,13 +237,14 @@ def _assemble(runtime, intent):
         raise Conflict("invalid_resource_paths", "paths")
     if len({p.casefold() for p in paths.values()}) != len(paths):
         raise Conflict("aliased_resources", "paths")
-    extra_paths = []
+    extra_paths, launcher_paths = [], set()
     for task_id in ids:
         launcher = bundle.get('launchers', {}).get(task_id)
         if launcher is not None:
             if not isinstance(launcher, str) or launcher.casefold() in {p.casefold() for p in paths.values()}:
                 raise Conflict('invalid_launcher_path', 'launcher')
             extra_paths.append(launcher)
+            launcher_paths.add(launcher.casefold())
     if intent["operation"] == "retire":
         exports = require(bundle, "active_xml", dict)
         for task_id in ids:
@@ -254,8 +256,13 @@ def _assemble(runtime, intent):
                     raise Conflict("invalid_active_xml_path", "active_xml")
                 extra_paths.append(path)
     file_before = {p: _read(runtime.files, p) for p in list(paths.values()) + extra_paths}
+    owned = require(bundle, "file_ownership", dict)
     for path, snapshot in file_before.items():
-        if require(bundle, "file_ownership", dict).get(path) != fingerprint(snapshot):
+        # A launcher newly listed in the runtime configuration has no receipt entry yet. Its
+        # declared absence is the approval; the transaction records its first published image.
+        if path not in owned and path.casefold() in launcher_paths and snapshot.get("state") == "absent":
+            continue
+        if owned.get(path) != fingerprint(snapshot):
             raise Conflict("file_ownership_changed", "files")
     old_tombstones = _document(file_before[paths["tombstones"]])
     if not isinstance(old_tombstones, dict):
@@ -267,6 +274,10 @@ def _assemble(runtime, intent):
         task_name(spec["name"])
         proof = require(bundle, "ownership", dict).get(task_id)
         writer = "declarations" if task_id in migrated else "legacy"
+        if proof is None and intent.get("replace_identity") is not None:
+            # Adopting an unmanaged task: the reviewed identity names the live definition, and
+            # the receipt gains its ownership proof when the transaction completes.
+            proof = {"name": spec["name"], "task_path": "\\", "epoch": epoch, "writer": writer, "identity": None}
         if not isinstance(proof, dict) or any(proof.get(k) != v for k, v in {
             "name": spec["name"], "task_path": "\\", "epoch": epoch, "writer": writer}.items()):
             raise Conflict("ownership_required", "ownership")
@@ -274,7 +285,13 @@ def _assemble(runtime, intent):
             raise Conflict("legacy_authority", "task_id")
         snapshot = _read(runtime.scheduler, spec["name"])
         if proof.get("identity") != snapshot.get("identity") or "identity" not in proof:
-            raise Conflict("scheduler_ownership_changed", "ownership")
+            # A definition edited outside the authority may be replaced by the declaration when
+            # the operator names the exact drifted definition they reviewed. Its before-image is
+            # kept like any other, so compensation restores it.
+            if not ("identity" in proof and snapshot["state"] == "present"
+                    and intent["operation"] == "apply" and len(ids) == 1
+                    and intent.get("replace_identity") == snapshot.get("identity")):
+                raise Conflict("scheduler_ownership_changed", "ownership")
         if snapshot["state"] == "present":
             current = snapshot["value"]
             if not isinstance(current, dict) or type(current.get("running")) is not bool or type(current.get("enabled")) is not bool:
@@ -328,10 +345,16 @@ def _assemble(runtime, intent):
     return public, bundle, compiled, selected, before, file_before
 
 
-def build_plan(runtime, task_ids, *, operation="apply", migrate=False, approve_enable=False, reason="", legacy_transaction=False):
+def build_plan(runtime, task_ids, *, operation="apply", migrate=False, approve_enable=False, reason="",
+               legacy_transaction=False, replace_identity=None):
     """Read-only explicit plan. The result contains fingerprints, never raw XML."""
     intent = {"task_ids": list(task_ids), "operation": operation, "migrate": migrate,
               "approve_enable": approve_enable, "reason": reason}
+    if replace_identity is not None:
+        if (operation != "apply" or not isinstance(replace_identity, str)
+                or not re.fullmatch(r"task-definition:[a-f0-9]{64}", replace_identity) or not reason.strip()):
+            raise Conflict("invalid_replace_identity", "intent")
+        intent["replace_identity"] = replace_identity
     if legacy_transaction:
         if operation not in ('enable', 'disable', 'retire') or migrate:
             raise Conflict('invalid_legacy_transaction', 'intent')

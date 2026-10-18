@@ -43,6 +43,8 @@ supplied private root:
 Submitted desired input is the T11 request envelope, distinct from generated files
 and immutable during compensation. All six main output files must already exist.
 Launcher/export inventory is explicit; existing unmanaged launchers conflict.
+A launcher newly added to `launchers` has no receipt entry yet: registration accepts it
+only while the file is absent, publishes it, and records its fingerprint in the receipt.
 The required `launcher_root_reference`, such as `"%EXAMPLE_ROOT%\\private"`, spells the
 private root through an environment variable. Scheduled actions always run
 `wscript.exe //B //Nologo <reference>\<launcher>`, so the registered task names no machine path.
@@ -94,8 +96,12 @@ python -m task_console recover --transaction-id ID
 ```
 
 registration-plan supports --operation apply|enable|disable|retire,
---approve-enable and --reason. It selects one task; the Python API supports
-several. Exit 2 means refusal; exit 3 means incomplete/conflicted. Success requires
+--approve-enable, --reason and --replace-identity. It selects one task; the Python API supports
+several. `--replace-identity task-definition:<sha256>` (apply only, with a reason) names a live
+definition the operator reviewed: a declared task whose definition was edited outside the
+authority is replaced by its declaration, and a declared task with no ownership proof yet
+(an unmanaged job being adopted) is registered and gains its proof in the new receipt. Its
+before-image is kept like any other, so compensation restores the reviewed definition. Exit 2 means refusal; exit 3 means incomplete/conflicted. Success requires
 a terminal cleaned journal. Without an explicit runtime, standalone mutations refuse. The installed environment must
 provide the existing fleet_guards and llmcall packages; packaging remains controller-owned.
 
