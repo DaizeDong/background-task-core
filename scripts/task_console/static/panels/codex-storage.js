@@ -1,5 +1,4 @@
 // Classic script module; loaded in app.js dependency order.
-// 仓库面板。整片仓一秒多扫完(并发 + 每仓两次 git 调用),所以可以随手重扫。
 let CODEX=null;
 async function loadCodex(){
   try{ CODEX=await api("/api/codex"); }catch(e){ CODEX={error:e.message}; }
@@ -132,7 +131,7 @@ function renderCxList(){
       <span class="sel">选中 <b>${CXSEL.size}</b> 份 · ${kb(selBytes)}</span>
       <button class="icon-only mini danger" id="cxdel" title="永久删除选中的文件，需要确认"><svg class="ic" aria-hidden="true"><use href="#i-trash"/></svg><span class="control-label">删除选中文件</span></button>
     </div><div class="cx-list">${rows}</div>`;
-  if(typing){ const q=$("cxq"); q?.focus?.(); q?.setSelectionRange?.(q.value.length,q.value.length); }
+  if(typing){ const q=$("cxq"); q?.focus(); q?.setSelectionRange(q.value.length,q.value.length); }
   cxSelButtons();
 }
 
@@ -166,7 +165,7 @@ function cxSelButtons(){
   ConsoleActions.gate(allButton,!items.length?(filtered?"没有符合筛选的文件":"列表里没有文件"):all?(filtered?"筛出的文件都已选中":"已列出的文件都已选中"):"");
   ConsoleActions.gate(document.getElementById("cxnone"),CXSEL.size?"":"没有选中的文件");
   ConsoleActions.gate(document.getElementById("cxdel"),CXSEL.size?"":"请先选择文件");
-  document.querySelectorAll?.("#cxbody [data-cx-older]").forEach(button=>{
+  document.querySelectorAll("#cxbody [data-cx-older]").forEach(button=>{
     const days=Number(button.dataset.cxOlder), n=cxOlderThan(days).length;
     button.dataset.label=`超过 ${days} 天`;
     setDisabled(button,n?"":`没有修改时间超过 ${days} 天的文件`);
@@ -179,7 +178,7 @@ function cxSelButtons(){
 // 文字筛选只把不匹配的行藏起来,不重画清单:几千行重画一次会把滚动位置送回顶部,也会让输入框失焦。
 function cxApplyFilter(){
   const byRel={}; ((CXL&&CXL.items)||[]).forEach(i=>byRel[i.rel]=i);
-  document.querySelectorAll?.("#cxbody .cx-l").forEach(row=>{
+  document.querySelectorAll("#cxbody .cx-l").forEach(row=>{
     const item=byRel[row.dataset.cxrel]; row.hidden=!(item && cxMatches(item)); });
   cxSelButtons();
 }
@@ -187,7 +186,7 @@ function cxApplyFilter(){
 function cxMark(rels,on){
   const want=new Set(rels);
   rels.forEach(rel=>{ if(on) CXSEL.add(rel); else CXSEL.delete(rel); });
-  document.querySelectorAll?.("#cxbody .cx-l").forEach(row=>{
+  document.querySelectorAll("#cxbody .cx-l").forEach(row=>{
     if(!want.has(row.dataset.cxrel)) return;
     row.classList.toggle("on",on);
     const box=row.querySelector("input"); if(box) box.checked=on;

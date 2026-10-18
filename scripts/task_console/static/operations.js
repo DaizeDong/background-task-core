@@ -49,7 +49,7 @@ function activeFilterCount(scope){
 // 清除筛选按钮常驻:没有筛选时灰着并说明原因,有筛选时说清会清掉几项。
 // 原来有的页藏、有的页一直亮着,同一个按钮两种约定,而一直亮着的那种点了什么也不发生。
 function syncResetFilters(){
-  document.querySelectorAll?.('[data-reset-filters]').forEach(button=>{
+  document.querySelectorAll('[data-reset-filters]').forEach(button=>{
     const count=activeFilterCount(button.dataset.resetFilters);
     button.dataset.label='清除筛选';
     setDisabled(button,count?'':'当前没有生效的筛选');
@@ -107,7 +107,7 @@ function syncRefreshButton(){
   const button=$('page-refresh');if(!button) return;
   const busy=PAGE_REFRESHING_VIEWS.has(CURVIEW);
   setDisabled(button,busy?'正在读取这一页，读完后可再刷新':'');
-  if(busy) button.classList?.add?.('spinning');else button.classList?.remove?.('spinning');
+  button.classList.toggle('spinning',!!busy);
 }
 function renderRefreshAge(){
   syncRefreshButton();

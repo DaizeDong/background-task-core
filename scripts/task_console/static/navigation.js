@@ -80,11 +80,11 @@ function paintBadge(el,badge){
   el.textContent=badgeText(badge);
   el.className='nav-badge '+(badge.state==='count'?badge.tone:badge.state);
   el.title=badge.title;
-  el.setAttribute?.('aria-label',badge.title);
+  el.setAttribute('aria-label',badge.title);
 }
 function renderBadges(){
   Object.keys(VIEW_GROUPS).forEach(group=>paintBadge($('bg-'+group),groupBadge(group)));
-  document.querySelectorAll?.('#view-tabs [data-badge-for]').forEach(el=>paintBadge(el,badgeState(el.dataset.badgeFor)));
+  document.querySelectorAll('#view-tabs [data-badge-for]').forEach(el=>paintBadge(el,badgeState(el.dataset.badgeFor)));
 }
 // api() 每读完一次就告诉这里,读失败的来源不用等哪个面板重画,徽章自己变成「?」。
 function noteRead(path,state){
@@ -122,7 +122,7 @@ const DRILL_TARGETS='[data-task],[data-fr],[data-review-repo],[data-work-filter]
 let DRILL_FROM=null, VIEW_ORIGIN=null;
 // 点击的捕获阶段调这里:这一下要是下钻,就记下点之前在哪一屏,由紧接着的那次 showView 取走。
 function markDrill(target){
-  DRILL_FROM=target?.closest?.(DRILL_TARGETS) ? CURVIEW : null;
+  DRILL_FROM=target?.closest(DRILL_TARGETS) ? CURVIEW : null;
   return DRILL_FROM;
 }
 function noteOrigin(key,reset){
@@ -135,7 +135,7 @@ function noteOrigin(key,reset){
 const viewLabel=key=>VIEW_GROUPS[viewGroup(key)].views[key] || key;
 function originChip(){
   if(!VIEW_ORIGIN || VIEW_ORIGIN.to!==CURVIEW) return '';
-  return `<a class="view-origin" href="#${esc(VIEW_ORIGIN.view)}" data-origin-back title="回到刚才所在的「${esc(viewLabel(VIEW_ORIGIN.view))}」">← 返回 ${esc(viewLabel(VIEW_ORIGIN.view))}</a>`;
+  return `<a class="view-origin" href="#${esc(VIEW_ORIGIN.view)}" title="回到刚才所在的「${esc(viewLabel(VIEW_ORIGIN.view))}」">← 返回 ${esc(viewLabel(VIEW_ORIGIN.view))}</a>`;
 }
 // Esc 的最后一层:这一屏是下钻来的,就回来源一次,并把来源用掉。
 function returnToOrigin(){
@@ -160,8 +160,8 @@ function showView(key,push,options){
   // 人离开那一屏(侧栏、标签、浏览器后退、Esc 回来源)时放回人自己上次选的;
   // 离开本身又是一次下钻时不放回:从那里 Esc 回来,这一屏还该是刚才的样子。
   if(CURVIEW && CURVIEW!==key && !DRILL_FROM){
-    if(CURVIEW==='diagnostics' && typeof endReviewDrillScope==='function') endReviewDrillScope();
-    if(CURVIEW==='work' && typeof endWorkDrillFilters==='function') endWorkDrillFilters();
+    if(CURVIEW==='diagnostics') endReviewDrillScope();
+    if(CURVIEW==='work') endWorkDrillFilters();
   }
   noteOrigin(key,options?.reset);
   CURVIEW=key;
@@ -191,7 +191,7 @@ function showView(key,push,options){
   // 对话链开着时地址写成带 id 的那个:写成裸 #convos 的话,紧跟着的 hashchange
   // 会把它读成「后退回列表」而关掉对话链。面板没载入就照旧只写分区名。
   const want=key==='convos' && typeof convoChainRoute==='function' ? convoChainRoute(arg,push)
-    : key==='repos' && typeof repoRoute==='function' ? repoRoute(arg) : key;
+    : key==='repos' ? repoRoute(arg) : key;
   if(push && location.hash.slice(1)!==want) location.hash=want;
   // 批量操作条只属于运行详情:换到别的分区就收起来,选中的任务留着,回来还在。
   renderBulk();
@@ -199,8 +199,7 @@ function showView(key,push,options){
 }
 
 // ── 键盘约定 ──
-// 这里没有快捷键,只有两条通行的约定:Esc 退一层,Enter 提交搜索框。逻辑放在这里而不是 events.js,
-// 是为了让 node:vm 台架能直接测它;events.js 只负责把 keydown 接过来。
+// 这里没有快捷键,只有两条通行的约定:Esc 退一层,Enter 提交搜索框。events.js 只负责把 keydown 接过来。
 //
 // Esc 一次只退一层,而且只退**看得见**的那一层。按分区登记:每一项返回 true 表示这次按键退掉了一层。
 // 不在表里的分区什么都不做 : 以前任何分区按 Esc 都会清空运行详情里的勾选,
@@ -211,9 +210,11 @@ const ESC_STEPS={
     if(sel.size){ sel.clear(); if(DATA) render(); else renderBulk(); return true; }
     return false;
   },
+  // 任务开关:收起就地展开的明细。
+  automations:()=>collapseAutomationDetail(),
   llm:()=>closeCall(),
   // 手机上仓库详情盖着列表时,Esc 回到列表;宽屏上没有这一层。
-  repos:()=>typeof repoEscape==='function' && repoEscape(),
+  repos:()=>repoEscape(),
   // 对话链是可选面板,没载入时这一屏没有可退的层。
   convos:()=>typeof convoChainEscape==='function' && convoChainEscape()
 };
@@ -229,9 +230,7 @@ function isTextEntry(el){
 }
 // 对话框和弹出层不管焦点在哪都自己处理 Esc。它们开着时这里一律不动,否则一次按键会同时关掉两层。
 function overlayOpen(){
-  if(document.querySelector('dialog[open]')) return true;
-  // 不认识 :popover-open 的浏览器会在这里抛错,那时它也不可能有打开的弹出层。
-  try{ return !!document.querySelector(':popover-open'); }catch(error){ return false; }
+  return !!(document.querySelector('dialog[open]') || openPopover());
 }
 // 下拉菜单(运行详情的「显示列」)不一样:Bootstrap 只在按键落在菜单或它的按钮上时才收起它。
 // 人点了菜单里的分组标题或空白处,焦点掉回 body,Esc 两边都不接,菜单只能用鼠标点外面关。
@@ -240,19 +239,19 @@ function overlayOpen(){
 function closeStrayDropdown(event){
   const menu=document.querySelector('.dropdown-menu.show');
   if(!menu) return false;
-  const box=menu.closest?.('.dropdown') || menu.parentElement || null;
+  const box=menu.closest('.dropdown') || menu.parentElement;
   const target=event.target || document.activeElement;
-  if(box && target && typeof box.contains==='function' && box.contains(target)) return 'inside';
-  const toggle=box?.querySelector?.('[data-bs-toggle="dropdown"]') || null;
+  if(target && box.contains(target)) return 'inside';
+  const toggle=box.querySelector('[data-bs-toggle="dropdown"]');
   const Dropdown=globalThis.tabler?.Dropdown || globalThis.bootstrap?.Dropdown;
-  const instance=toggle && Dropdown?.getInstance?.(toggle);
+  const instance=toggle && Dropdown?.getInstance(toggle);
   if(instance) instance.hide();
   else{
-    menu.classList?.remove('show');
-    toggle?.classList?.remove('show');
-    toggle?.setAttribute?.('aria-expanded','false');
+    menu.classList.remove('show');
+    toggle?.classList.remove('show');
+    toggle?.setAttribute('aria-expanded','false');
   }
-  try{ toggle?.focus?.({preventScroll:true}); }catch(error){}
+  toggle?.focus({preventScroll:true});
   return true;
 }
 function handleEscape(event){
@@ -310,7 +309,8 @@ const SEARCH_ENTER={
   q:()=>openOnlyTask(),
   'review-search':()=>openOnlyReview(),
   'work-search':()=>openOnlyWorkRecord(),
-  rpq:()=>selectFirstRepo()
+  rpq:()=>selectFirstRepo(),
+  'automation-search':()=>openOnlyAutomation()
 };
 function handleSearchEnter(event){
   // 输入法组字时的 Enter 是在确认候选字,不是提交。按住不放的连发也不算。

@@ -49,7 +49,7 @@ function restoreWorkFilters(){
   if(!WORK_ROLES.includes(role) || !WORK_FILTER_STATES.includes(state) || typeof source!=='string' || source.length>200) return false;
   WORK_ROLE=role;WORK_STATE=state;WORK_SOURCE=source;WORK_FILTERS_SAVED={role,state,source};
   $('work-role').value=role;$('work-state').value=state;
-  WORK_FILTERS_RESTORED=typeof activeFilterCount==='function'?activeFilterCount('work')>0:true;
+  WORK_FILTERS_RESTORED=activeFilterCount('work')>0;
   return WORK_FILTERS_RESTORED;
 }
 // 「已应用上次的筛选」贴在清除筛选按钮旁边。页面里没有这个位置,第一次用到时插一个。
@@ -76,7 +76,7 @@ function setWorkFilters({role='work',state=role==='all'?'':'unfinished',source='
 function endWorkDrillFilters(){
   if(!WORK_FILTERS_DRILL) return;
   setWorkFilters({...WORK_FILTERS_SAVED,query:WORK_QUERY,remember:false});
-  WORK_FILTERS_RESTORED=typeof activeFilterCount==='function'?activeFilterCount('work')>0:false;
+  WORK_FILTERS_RESTORED=activeFilterCount('work')>0;
   renderWorkPlatform();
 }
 function selectedWorkRows(){return workGroups(WORK,{role:WORK_ROLE,state:WORK_STATE,query:WORK_QUERY,source:WORK_SOURCE});}
@@ -161,13 +161,8 @@ function renderWorkPlatform(){
   $('work-source-state').textContent=present?`${stale?'刷新失败，以下为上次读取的记录。':''}${WORK_LOADING?'正在刷新 · ':''}读取于 ${workTime(WORK.observed_at)}${coverage.omitted || coverage.invalid?' · 部分记录未读到':''}`:'';
   const slot=overviewFeedSlot();
   if(slot){slot.innerHTML=feedState;slot.hidden=present;}
-  if($('work')?.dataset) $('work').dataset.feed=phase;
-  if($('overview')?.dataset) $('overview').dataset.feed=phase;
-  // 「需要你确认」只在接上了审批来源时出现。没接上时整条藏起来,而不是常驻顶上告诉人审批还没接上:
-  // 那条横幅占着最显眼的位置,却永远不变,读了也做不了什么。
-  const decisions=present && Array.isArray(p.decisions)?p.decisions:null;
-  if($('decision-strip')) $('decision-strip').hidden=!decisions;
-  if(decisions) $('decision-state').innerHTML=decisions.map(item=>workItemRow(item,true)).join('') || workEmpty('没有要你确认的事');
+  $('work').dataset.feed=phase;
+  $('overview').dataset.feed=phase;
   // Agent 没做完或出错的工作单独一张卡,红色边条;一条都没有就整张藏起来。
   const interrupted=present?p.interrupted:[];
   if($('interrupted-card')) $('interrupted-card').hidden=!interrupted.length;
@@ -186,7 +181,7 @@ function renderWorkPlatform(){
   $('work-coverage').title=stale?'原始错误：'+WORK_ERROR:'';
   const rows=selectedWorkRows();
   const columns='<div class="work-list-heading" aria-hidden="true"><span>状态</span><span>工作与摘要</span><span>更新 / 截止时间</span><span>可用操作</span></div>';
-  const filtered=typeof activeFilterCount==='function' && activeFilterCount('work')?'work':'';
+  const filtered=activeFilterCount('work')?'work':'';
   $('work-list').innerHTML=!present?feedState:rows.length?columns+rows.map(item=>workItemRow(item)).join(''):emptyBlock('没有符合筛选条件的记录',{filtered});
   const grouped=rows.reduce((n,item)=>n+(item.linked_work?.length || 0)+(item.linked_records?.length || 0),0);
   const history=workRows(WORK,{role:WORK_ROLE,source:WORK_SOURCE,query:WORK_QUERY}).filter(item=>!workUnfinished(item)).length;
@@ -195,15 +190,15 @@ function renderWorkPlatform(){
   // 读坏了的时候,搜索、三个下拉和工作台上的「查看… →」都做不了事:灰掉并说清为什么,而不是点了进一张空列表。
   const blocked=phase==='broken'?WORK_FAILED_REASON:'';
   ['work-search','work-role','work-state','work-source','work-context-toggle'].forEach(id=>setDisabled($(id),blocked));
-  document.querySelectorAll?.('#overview [data-work-filter]').forEach(button=>setDisabled(button,blocked));
+  document.querySelectorAll('#overview [data-work-filter]').forEach(button=>setDisabled(button,blocked));
   const sources=[...new Set((WORK?.sources || []).map(row=>row.source))].sort();
   const missingSource=WORK_SOURCE && !sources.includes(WORK_SOURCE);
   const options='<option value="">全部来源</option>'+sources.map(source=>`<option value="${esc(source)}">${esc(workSourceLabel(source))}</option>`).join('')+(missingSource?`<option value="${esc(WORK_SOURCE)}">${esc(workSourceLabel(WORK_SOURCE))}（本次未读到）</option>`:'');
   if($('work-source').innerHTML!==options) $('work-source').innerHTML=options;
   $('work-source').value=WORK_SOURCE;
-  if(typeof syncResetFilters==='function') syncResetFilters();
+  syncResetFilters();
   const hint=workRestoredHint();
-  if(hint) hint.hidden=!(WORK_FILTERS_RESTORED && typeof activeFilterCount==='function' && activeFilterCount('work')>0);
+  if(hint) hint.hidden=!(WORK_FILTERS_RESTORED && activeFilterCount('work')>0);
   const counts=new Map();(WORK?.sources || []).forEach(row=>counts.set(row.source,(counts.get(row.source)||0)+row.count));
   $('source-volume').innerHTML=!present?'':[...counts].sort((a,b)=>b[1]-a[1]).map(([source,count])=>`<button data-work-source="${esc(source)}" title="只看此来源，清除其他筛选" aria-pressed="${source===WORK_SOURCE}">${esc(workSourceLabel(source))} <b>${fmtNum(count)}</b></button>`).join('') || emptyBlock('没有来源记录');
   const events=WORK?.events || [];
@@ -259,7 +254,7 @@ function attentionChips(summary){
 function renderAttentionStrip(){
   const strip=$('attention-strip');if(!strip) return;
   let summary=null;
-  try{summary=typeof attentionSummary==='function'?attentionSummary():null;}catch(error){summary=null;}
+  try{summary=attentionSummary();}catch(error){summary=null;}
   const {chips,pending}=summary?attentionChips(summary):{chips:[],pending:false};
   const html=chips.length?`<span class="attention-label">要处理</span>${chips.join('')}<a class="attention-all" href="#diagnostics" data-open-view="diagnostics" data-drill>全部技术问题 →</a>`:'';
   // role=status 的区域每写一次读屏就念一次,内容没变就不重写。
@@ -267,7 +262,7 @@ function renderAttentionStrip(){
   strip.hidden=!chips.length;
   // 某一类还在读时过一会儿再看一眼:有的来源读失败时不会叫任何面板重画,不看的话这里会一直写「读取中」。
   clearTimeout(ATTENTION_TIMER);ATTENTION_TIMER=null;
-  if(pending){ATTENTION_TIMER=setTimeout(renderAttentionStrip,2000);ATTENTION_TIMER?.unref?.();}
+  if(pending){ATTENTION_TIMER=setTimeout(renderAttentionStrip,2000);}
 }
 // 从摘要芯片去技术问题页:筛选设成那一类,搜索词清掉,好让页上的条数和芯片上的数对得上。
 // 搜索词用 input 事件交给那一页自己的监听;范围走 review.js 的 applyReviewFilter,不在这里改它的状态变量。
@@ -293,10 +288,10 @@ function renderAutomations(){
   updateTaskVerdictFilter('automation-verdict',candidates,verdict);
   const rows=candidates.filter(row=>taskMatchesVerdict(row,verdict));
   $('automation-count').textContent=DATA?`${rows.length}/${ROWS.length} 项`:'暂时读不到计划任务';
-  if(typeof syncResetFilters==='function') syncResetFilters();
+  syncResetFilters();
   const groups=new Map();rows.forEach(row=>{if(!groups.has(row.cat))groups.set(row.cat,[]);groups.get(row.cat).push(row);});
   // 这张列表会被工作记录刷新、修复进度轮询顺带重画:焦点在某个按钮上时,重画之后要放回同一个按钮。
-  const focused=$('automation-list').contains?.(document.activeElement)?taskControlKey(document.activeElement):null;
+  const focused=$('automation-list').contains(document.activeElement)?taskControlKey(document.activeElement):null;
   $('automation-list').innerHTML=!DATA?workEmpty('暂时读不到计划任务'):rows.length?[...groups].map(([name,items])=>{
     const group=DATA.groups.find(g=>g.cat===name), all=ROWS.filter(row=>row.cat===name);
     return `<section class="card automation-group"><div class="card-header automation-group-header"><div><h3 class="card-title">${esc(name)} <span class="n">${items.length===all.length?all.length:items.length+'/'+all.length} 项计划</span></h3>
@@ -332,7 +327,7 @@ function openWorkRecord(id,keepOrder=false){
   $('work-detail').scrollTop=0;
   if(!$('work-detail').open) $('work-detail').showModal();
 }
-// 这一屏的点击都在这里分派。单独成一个函数,node:vm 台架可以拿假事件直接测「点行打开、点行里按钮不打开」。
+// 这一屏的点击都在这里分派。
 function routeWorkClick(event){
   const target=event.target;
   if(!target?.closest) return;
@@ -343,7 +338,7 @@ function routeWorkClick(event){
   const record=target.closest('[data-work-id]');if(record){if(!record.disabled) openWorkRecord(record.dataset.workId);return;}
   // 紧凑行整行可点:行里的按钮、链接和展开块各有自己的事,不算;选着文字时也不算,好让人把标题复制走。
   const row=target.closest('[data-work-row]');
-  if(row && !target.closest('button,a,input,select,textarea,summary,label,details') && !String(globalThis.getSelection?.() || '')) openWorkRecord(row.dataset.workRow);
+  if(row && !target.closest('button,a,input,select,textarea,summary,label,details') && !String(window.getSelection())) openWorkRecord(row.dataset.workRow);
   const source=target.closest('[data-work-source]');if(source){setWorkFilters({role:'all',source:source.dataset.workSource});$('work-search').focus({preventScroll:true});$('work-search').scrollIntoView({block:'center'});}
   const filter=target.closest('[data-work-filter]');if(filter && !filter.disabled){setWorkFilters({role:filter.dataset.workFilter,state:filter.dataset.workState || '',remember:false});showView('work',true);}
   const verdict=target.closest('[data-automation-verdict]');
@@ -351,8 +346,8 @@ function routeWorkClick(event){
     const key=verdict.dataset.automationVerdict, next=$('automation-verdict').value===key?'':key;
     $('automation-verdict').value=next;renderAutomations();
     // 按钮随整张列表重画,焦点交回同一个建议的第一枚按钮;筛完它没了(取消筛选后总还在)就交给下拉框。
-    const again=$('automation-list').querySelector?.(`[data-automation-verdict="${key}"]`);
-    try{(again || $('automation-verdict')).focus({preventScroll:true});}catch(error){}
+    const again=$('automation-list').querySelector(`[data-automation-verdict="${key}"]`);
+    (again || $('automation-verdict')).focus({preventScroll:true});
   }
 }
 function startWorkPlatform(){
@@ -375,10 +370,9 @@ function startWorkPlatform(){
   for(const [id,delta] of [['work-detail-prev',-1],['work-detail-next',1]]) $(id).addEventListener('click',()=>{
     const next=WORK_DETAIL_IDS[WORK_DETAIL_IDS.indexOf(WORK_DETAIL_ID)+delta];if(next) openWorkRecord(next,true);
   });
-  $('work-detail-copy').addEventListener('click',async()=>{
+  $('work-detail-copy').addEventListener('click',()=>{
     const item=WORK_DETAIL_ITEM;if(!item) return;
-    try{await navigator.clipboard.writeText([item.title,item.summary || '',`记录 ID：${item.id}`,`记录状态：${workLabel(item)}`,item.execution?'这里尚无独立验证结果。':''].filter(Boolean).join('\n\n'));toast('已复制标题、摘要和记录信息','ok');}
-    catch(error){toast('复制失败，请选中详情文字手动复制','bad');}
+    copyText([item.title,item.summary || '',`记录 ID：${item.id}`,`记录状态：${workLabel(item)}`,item.execution?'这里尚无独立验证结果。':''].filter(Boolean).join('\n\n'),'已复制标题、摘要和记录信息');
   });
   document.addEventListener('click',routeWorkClick);
   restoreWorkFilters();

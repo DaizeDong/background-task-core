@@ -113,14 +113,13 @@ async function loadComponents(){
   // 读失败要和「读到了、没有配置」分得开:资源页的锚点前者画「!」,后者画「—」。
   catch(error){COMPONENTS={available:false,reason:error.message,tasks:[],readFailed:true};}
   renderPipelines(); renderCatalog();
-  if(typeof renderPlatformSignals==='function') renderPlatformSignals();
+  renderPlatformSignals();
 }
 
 function pipelineRows(){
   // 找不到这条任务有四种原因,要说的话和要做的事都不一样,不能共用一句「未读取」:
   // 计划任务还在读、读失败了、读到了但计划程序里没有它、有不止一个同名任务。
-  const read=typeof API_READS!=='undefined'?API_READS.get('/api/tasks'):null;
-  const failed=(typeof TASKS_LOAD_ERROR!=='undefined' && TASKS_LOAD_ERROR) || read?.error;
+  const failed=TASKS_LOAD_ERROR || API_READS.get('/api/tasks')?.error;
   return Object.entries(PIPELINE_DEFS).map(([key,def])=>{
     const scheduled=ROWS.filter(row=>row.name===def.name);
     const row=scheduled.length===1?scheduled[0]:null;
@@ -152,7 +151,7 @@ function pipelineVerdict(key, row, task, snap){
 }
 function renderPipelines(){
   const box=$("pipeline-body");if(!box) return;
-  const focused=box.contains?.(document.activeElement)?taskControlKey(document.activeElement):null;
+  const focused=box.contains(document.activeElement)?taskControlKey(document.activeElement):null;
   const query=$('pipeline-task-search').value, verdict=$('pipeline-verdict').value;
   // 卡片标题(「每日备份与整理」)也要搜得到:人是照着卡片上的字搜的,不是照着任务名。
   const q=query.trim().toLowerCase();
@@ -183,7 +182,7 @@ function renderPipelines(){
         </div>
         <div class="ops-scroll pipeline-steps"><table class="ops-table pipeline-table"><thead><tr><th>环节</th><th>结果</th><th>检查记录</th></tr></thead><tbody>
         ${steps.map((step,i)=>`<tr><th scope="row"><span class="step-index">${i+1}</span>${esc(step.title)}</th><td data-label="结果">${statusBadge(step.label,step.tone,step.symbol,'review-status')}</td>
-          <td data-label="检查记录"><div>${esc(step.detail.replace("展开问题查看具体对象。","见下方问题清单。"))}</div>
+          <td data-label="检查记录"><div>${esc(step.detail)}</div>
             ${(step.checks||[]).map(check=>`<span class="check-chip">${esc(check.check_id)} ${statusBadge(pipeState(check.state),componentTone(check.state))}</span>`).join("")}
             <div class="pipeline-evidence">${(step.evidence||[]).filter(([label])=>!["任务","任务标识","运行标识","开始时间"].includes(label)).map(([label,value])=>`<span>${esc(label)} <b>${esc(value ?? "未记录")}</b></span>`).join("")}</div>
           </td></tr>`).join("")}</tbody></table></div></div>`;

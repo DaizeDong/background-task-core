@@ -3,8 +3,7 @@
 // 而 claude --resume 只沿其中一条链走。这一块把那条链按「轮」切开给人看,并允许从任意节点
 // 导出或分叉。判定(哪条是链、哪里算分叉、压缩边界之前接哪一段)全在 convo-chain 库里,
 // 这里只画结论。
-// ⚠ 本文件载入时不许碰 DOM:它是可选面板,载入失败只能坏掉 #chbox 自己,
-// 而且 test_panel_parity 会在一个只有 querySelector 的假 document 里执行它。
+// ⚠ 本文件载入时不许碰 DOM:它是可选面板,载入失败只能坏掉 #chbox 自己。
 // 所有挂点都在 startConvoChain() 里,由 events.js 用 typeof 守卫调用。
 let CH=null, CH_ID=null, CH_SUB=null, CH_LEAF=null, CH_PARENT=null;
 // 选中的是一个**元素**而不是一个 uuid:一轮的标题行和它的第一步是同一个节点,
@@ -37,7 +36,7 @@ let CH_LIST_SCROLL=0, CH_LIST_FOCUS=null, CH_MOREOPEN=false;
 let CH_LIST_ID=null;
 const CH_UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const CH_AGENT=/^[A-Za-z0-9_-]{1,80}$/;
-// 字形、类名、可读名。类名逐字写在这里(不拼接),死 CSS 闸才找得到它们。
+// 字形、类名、可读名。类名逐字写在这里(不拼接),按类名搜得到它们。
 const CH_KIND={human:["👤","ch-hu","用户"], text:["✎","ch-tx","回复"], thinking:["💭","ch-th","思考"],
   tool:["🔧","ch-tl","工具调用"], result:["↩","ch-rs","工具结果"], usermeta:["·","ch-um","注入的用户行"],
   summary:["≡","ch-sm","压缩概括"], compact:["⟂","ch-cp","压缩边界"], system:["⚙","ch-sy","系统行"],
@@ -106,7 +105,7 @@ async function openConvoChain(id, opts){
   if(!$("cvbox").hidden){
     CH_LIST_SCROLL=window.scrollY;CH_LIST_FOCUS=document.activeElement;CH_LIST_ID=id;
     $("cvbox").hidden=true;
-    if(typeof CV_OBSERVER!=='undefined') CV_OBSERVER?.disconnect();
+    CV_OBSERVER?.disconnect();
   }
   const same=CH_ID===id && CH_SUB===sub;
   if(same && CH_LEAF===leaf && CH && !focusU && !opts.force){ $("chbox").hidden=false; return; }
@@ -191,7 +190,7 @@ function chClose(keepHash){
     window.scrollTo({top:CH_LIST_SCROLL,behavior:'instant'});
     const opener=CH_LIST_FOCUS?.isConnected && CH_LIST_FOCUS!==document.body ? CH_LIST_FOCUS : chListOpener(CH_LIST_ID);
     if(opener) opener.focus({preventScroll:true});
-    if(typeof cvObserve==='function') cvObserve();
+    cvObserve();
   });
   if(!keepHash && location.hash.slice(1).indexOf("convos/")===0){
     try{ history.replaceState(null, "", "#convos"); }catch(e){}
@@ -199,14 +198,14 @@ function chClose(keepHash){
 }
 
 function chListOpener(id){
-  if(!id || typeof CSS==='undefined') return null;
-  return $("cvgroups")?.querySelector?.(`[data-cvopen="${CSS.escape(id)}"]`) || null;
+  if(!id) return null;
+  return $("cvgroups").querySelector(`[data-cvopen="${CSS.escape(id)}"]`);
 }
 // 卡片标题就是会话名,接在面包屑「会话列表 /」后面。链还没读回来时先用列表里的名字,
 // 列表里也没有(从地址直接打开)就写会话 id 的前 8 位,不写一个笼统的「会话内容」。
 function chTitleText(){
   if(CH && CH.title) return CH.title;
-  const row=typeof CONVOS!=='undefined' && CONVOS && Array.isArray(CONVOS.groups)
+  const row=Array.isArray(CONVOS?.groups)
     ? CONVOS.groups.flatMap(group=>group.shown || []).find(item=>item.id===CH_ID) : null;
   return row?.title || (CH_ID ? "会话 "+String(CH_ID).slice(0,8) : "会话内容");
 }
@@ -262,7 +261,7 @@ function chRange(){
 }
 
 function chRender(){
-  $("chbox").classList?.toggle('ch-short',CH_ORDER.length<=12);
+  $("chbox").classList.toggle('ch-short',CH_ORDER.length<=12);
   chRenderHead(); chRenderList(); chRenderAct(); chRenderDet();
 }
 
@@ -299,7 +298,6 @@ function chRenderHead(){
   }
   const nT=(CH.turns || []).filter(t=>t.type==="turn").length;
   const manage=!CH_SUB && typeof cvOpenManager==='function', off=ConsoleActions.readOnly?' disabled':'';
-  const item=(icon,label,attrs,cls='')=>`<button type="button" class="menu-item${cls?' '+cls:''}" ${attrs}><svg class="ic" aria-hidden="true"><use href="#${icon}"/></svg><span>${label}</span></button>`;
   const S=CH.subagents || [];
   // 标题是会话名;这一行只写它属于哪个项目、有几轮。项目取工作目录的最后一段,完整路径在悬停。
   const dir=String(CH.storageCwd || CH.cwd || CH.projectDir || "");
@@ -311,7 +309,7 @@ function chRenderHead(){
     +(CH.leafIsDefault ? "" : `<span class="alt">正在看一条非默认分支</span><button class="icon-only mini" data-chact="latest" title="回到最新分支"><svg class="ic" aria-hidden="true"><use href="#i-branch"/></svg><span class="control-label">回到最新分支</span></button>`)
     +`<button type="button" class="mini ch-more" popovertarget="ch-more" title="更多操作与详情"><svg class="ic" aria-hidden="true"><use href="#i-more"/></svg>更多操作与详情</button>`
     +`<div class="pop-menu ch-more-menu" id="ch-more" popover aria-label="更多操作与详情">`
-    +(manage?item('i-edit','重命名',`data-cvrename="${esc(CH.id)}"${off} title="重命名"`)+item('i-move','移动会话',`data-cvmove="${esc(CH.id)}"${off} title="移动会话"`)+'<div class="menu-sep" role="separator"></div>':'')
+    +(manage?menuItem('i-edit','重命名',`data-cvrename="${esc(CH.id)}"${off} title="重命名"`)+menuItem('i-move','移动会话',`data-cvmove="${esc(CH.id)}"${off} title="移动会话"`)+'<div class="menu-sep" role="separator"></div>':'')
     // 一场长会话有上千个子代理:一个裸下拉框翻不动。加一个筛选框,每项前面写上派生它的那一轮。
     +(!CH_SUB && S.length ? `<div class="ch-subs"><div class="ch-subs-h">子代理 (${S.length})</div>`
       +`<input id="chsubq" type="search" placeholder="筛选(描述、类型、轮号)" aria-label="筛选子代理" value="${esc(CH_SUBQ)}">`
@@ -326,14 +324,14 @@ function chRenderHead(){
     +`<span title="${CH.cached ? "这次走的是缓存的索引,数字是当初建索引的耗时" : "这次重新建了索引"}">索引 ${chN(CH.indexMs)} ms${CH.cached ? "(缓存)" : ""}</span>`
     +`<span class="cwd" title="${esc(CH.file || "")}">保存于 ${esc(CH.locationInferred?CH.projectDir:CH.storageCwd || CH.cwd || CH.projectDir || '工作目录未记录')}</span>`
     +`</div>`
-    +(manage?'<div class="menu-sep" role="separator"></div>'+item('i-trash','删除会话',`data-cvdelete="${esc(CH.id)}"${off} title="永久删除这场会话"`,'menu-danger'):'')
+    +(manage?'<div class="menu-sep" role="separator"></div>'+menuItem('i-trash','删除会话',`data-cvdelete="${esc(CH.id)}"${off} title="永久删除这场会话"`,'menu-danger'):'')
     +`</div>`;
   // 读取警告留在菜单外面,永远看得见:坏数据不能藏在一个要点开才看到的地方。
   // 但只占一行:每条压成一个短说法,原句(含那串 uuid)放在悬停里。以前两条整行的黄色长句排在会话前面。
   const w=chWarnParts();
   wn.innerHTML=w.parts.length
     ? `<div class="warn-line" title="${esc(w.full.join("\n"))}">读取提示：${w.parts.map(esc).join(" · ")}</div>` : "";
-  if(CH_MOREOPEN) chReshow("ch-more");
+  if(CH_MOREOPEN) reopenPopover("ch-more", $("chbox"));
 }
 // 读取警告的短说法。后端的原句认得出的压短;认不出的原样放进这一行,一条都不丢。
 // 坏行和悬空父节点以计数字段为准,同义的那两句原句不再重复。
@@ -359,19 +357,8 @@ function chWarnParts(){
     if(!rule){ parts.push(text); return; }
     const short=rule[1](text.match(rule[0]));
     if(short) parts.push(short);
-    // 坏行、悬空父节点的原句在计数字段为空时(老版本后端)也不能丢。
-    else if(!CH.badLines && /JSON/.test(text)) parts.push("坏行 "+(text.match(/^\d+/) || ["?"])[0]);
-    else if(!CH.danglingParents && /父节点/.test(text)) parts.push("悬空父节点 "+(text.match(/^\d+/) || ["?"])[0]);
   });
   return {parts, full};
-}
-
-// 重画会把开着的菜单换掉,浏览器悄悄关上它(不发 toggle 事件);人没关过的菜单要原样再打开。
-function chReshow(id){
-  const menu=$(id);
-  if(!menu || typeof menu.showPopover!=="function") return;
-  const opener=typeof CSS!=="undefined" ? $("chbox").querySelector(`[popovertarget="${CSS.escape(id)}"]`) : null;
-  try{ if(!menu.matches(":popover-open")) menu.showPopover(opener ? {source:opener} : undefined); }catch(e){}
 }
 
 function chSubLabel(s){
@@ -481,7 +468,7 @@ function chRenderList(){
     : `<div class="ch-empty">这条链上没有节点</div>`);
   L.scrollTop=st;
   chMarks();
-  if(CH_FKOPEN) chReshow(chFkId(CH_FKOPEN));
+  if(CH_FKOPEN) reopenPopover(chFkId(CH_FKOPEN), $("chbox"));
 }
 
 function chRenderTurn(ti){
@@ -774,27 +761,13 @@ async function chFork(){
     if(stillSelected()){CH_FRES=j;$("chnote").textContent="";}
     toast("新会话已创建 "+chU8(j.newId), "ok");
     // 新文件已经落在会话根下了;不重扫的话列表里看不到它,像是没分叉成。
-    if(typeof loadConvos==="function") loadConvos().catch(()=>{});
+    loadConvos().catch(()=>{});
   }catch(e){
     if(stillSelected()){CH_FRES={error:e.message};$("chnote").textContent="新建会话失败:"+e.message;}
     toast("新建会话失败:"+e.message, "bad");
   }finally{ CH_FBUSY=false; chRenderAct(); chFocusList(true); }
 }
 
-// Explicitly opening details may reveal the side panel; row expansion never does.
-function chRevealSide(){
-  if(typeof window==="undefined" || !window.matchMedia || !window.matchMedia("(max-width:760px)").matches) return;
-  const A=$("chact");
-  if(!A || !A.getBoundingClientRect) return;
-  if(A.getBoundingClientRect().top > window.innerHeight*0.6){
-    try{ A.scrollIntoView({block:"start", behavior:"smooth"}); }catch(err){}
-  }
-}
-async function chCopy(text){
-  try{ await navigator.clipboard.writeText(text); toast("已复制","ok"); }
-  // 原文可能有几万字,不能整段塞进提示里;短的(比如启动命令)照旧附上,方便手动复制。
-  catch(e){ toast("无法访问剪贴板，请手动选择文字复制"+(String(text).length<=300 ? "："+text : ""), "bad"); }
-}
 
 function chAct(a){
   if(a==="from" || a==="to"){ chSetEnd(a); return; }
@@ -809,7 +782,8 @@ function chAct(a){
 function chOpenSub(agentId){
   // 选择器在「更多操作与详情」菜单里:打开子代理就把菜单收起,别让它浮在新内容上面。
   CH_MOREOPEN=false;
-  try{ const m=$("ch-more"); if(m && m.hidePopover && m.matches(":popover-open")) m.hidePopover(); }catch(err){}
+  const m=$("ch-more");
+  if(m?.matches(":popover-open")) m.hidePopover();
   CH_PARENT={title:CH && CH.title, leaf:CH_LEAF, u:chSelU()};
   openConvoChain(CH_ID, {sub:agentId});
 }
@@ -849,7 +823,7 @@ function chFocusList(onlyIfLost){
   const L=$("chlist");
   if(!L || !chOpen()) return;
   const ae=document.activeElement;
-  if(onlyIfLost && ae && ae!==document.body && document.contains && document.contains(ae)) return;
+  if(onlyIfLost && ae && ae!==document.body && document.contains(ae)) return;
   try{ L.focus({preventScroll:true}); }catch(err){}
 }
 function chClick(e){
@@ -865,7 +839,7 @@ function chClick(e){
   if(cp){
     // 空值的是详情里每段原文旁的「复制」:复制的是旁边那段 pre 的文字。
     const box=cp.dataset.chcopy==="" && cp.closest(".ch-prew"), pre=box && box.querySelector("pre");
-    chCopy(pre ? pre.textContent : cp.dataset.chcopy); return;
+    copyText(pre ? pre.textContent : cp.dataset.chcopy); return;
   }
   if(t.closest("[data-chretry]")){ openConvoChain(CH_ID, {sub:CH_SUB, leaf:CH_LEAF, force:true}); return; }
   if(t.closest("[data-chnode-retry]")){ if(CH_SEL) chSelect(CH_SEL, false); return; }
@@ -908,7 +882,7 @@ function startConvoChain(){
   box.addEventListener("toggle", e=>{
     const t=e.target, open=e.newState==="open";
     if(t.id==="ch-more") CH_MOREOPEN=open;
-    const u=t.dataset && t.dataset.chfkFor;
+    const u=t.dataset.chfkFor;
     if(u!=null){ if(open) CH_FKOPEN=u; else if(CH_FKOPEN===u) CH_FKOPEN=null; }
   }, true);
   box.addEventListener("input", e=>{

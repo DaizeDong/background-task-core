@@ -155,7 +155,7 @@ async function previewTaskDelete(){
   finally{
     TASK_DELETE.busy=false;TASK_DELETE.phase='';syncTaskDeleteConfirm();
     // 预览可用时光标直接进名称框;原因框里那一下 Enter 换来的下一步就是打名字。
-    if(taskDeletePlanUsable() && $('task-delete-dialog').open) $('task-delete-name').focus?.();
+    if(taskDeletePlanUsable() && $('task-delete-dialog').open) $('task-delete-name').focus();
   }
 }
 async function applyTaskDelete(){
@@ -411,7 +411,7 @@ function renderRepairReadState(){
   const icon=state.tone==='warn' || state.tone==='bad';
   const html=!icon?esc(state.text):`<span class="repair-read-icon" aria-hidden="true">!</span>`+
     (state.tone==='bad'?'修复进度读取失败':'')+`<span class="control-label">${esc(state.text)}</span>`;
-  document.querySelectorAll?.('[data-repair-read]').forEach(el=>{
+  document.querySelectorAll('[data-repair-read]').forEach(el=>{
     el.innerHTML=html;el.dataset.tone=state.tone;
     el.title=icon?(state.title || state.text):'';
     if(el.setAttribute) el.setAttribute('role','status');

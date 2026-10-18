@@ -68,23 +68,19 @@ function cvSearchChanged(){
 function cvCount(){
   if(!CONVOS?.available) return;
   const loaded=CONVOS.groups.reduce((n,g)=>n+g.shown.length,0);
-  const matched=CONVOS.summary.matched ?? CONVOS.summary.files;
-  $('cv-match').textContent=`已加载 ${loaded} / ${matched}`;
+  $('cv-match').textContent=`已加载 ${loaded} / ${CONVOS.summary.matched}`;
 }
 // 每行一个「…」菜单,用浏览器原生的 popover:点别处、按 Esc 都会收起,同一时间只开一个,
 // 浮在列表上面而不是把下面的行往下推。CV_MENU 记的是开着菜单的那一行;列表重画时
 // 元素被换掉,菜单会悄悄关上(不发 toggle 事件),cvReopenMenu() 再把它打开。
 let CV_MENU=null;
 const cvMenuId=id=>'cvm-'+encodeURIComponent(String(id || ''));
-function cvMenuItem(icon,label,attrs,cls=''){
-  return `<button type="button" class="menu-item${cls?' '+cls:''}" ${attrs}><svg class="ic" aria-hidden="true"><use href="#${icon}"/></svg><span>${label}</span></button>`;
-}
 function cvRows(g){
   return g.shown.map(r=>{
     const valid=CV_SESSION_ID.test(String(r.id||''));
     const chain=valid && typeof openConvoChain==='function';
     const manage=valid && typeof cvOpenManager==='function';
-    const disabled=typeof ConsoleActions!=='undefined' && ConsoleActions.readOnly;
+    const disabled=ConsoleActions.readOnly;
     const off=disabled?' disabled':'';
     const key=r.id || r.file, menu=cvMenuId(key);
     // 标题本身就是「打开」;删除收进菜单最底下、和别的项隔开:一行一个常驻的垃圾桶,永久删除就只差一次手滑。
@@ -93,35 +89,31 @@ function cvRows(g){
     const quick=manage && typeof cvQuickRename==='function'
       ?`<button type="button" class="icon-only mini cv-quick" data-cvquick="${esc(r.id)}"${off} title="重命名"><svg class="ic" aria-hidden="true"><use href="#i-edit"/></svg><span class="control-label">重命名</span></button>`:'';
     const title=chain?`<button class="t" data-cvopen="${esc(r.id)}" title="查看会话：${esc(r.title)}">${esc(r.title)}</button>`:`<span class="t">${esc(r.title)}</span>`;
-    return `<div class="cv-r${r.humanSeen>=2?' human':''}" data-cvfile="${esc(r.file)}"${chain?` data-cvid="${esc(r.id)}"`:''}>
+    return `<div class="cv-r${r.humanSeen>=2?' human':''}" data-cvfile="${esc(r.file)}">
       <div class="cv-main">${editing || `<div class="cv-title-line">${title}${quick}</div>`}
         ${r.preview&&r.preview!==r.title?`<span class="pv">${esc(r.preview)}</span>`:''}</div>
       <span class="cv-updated">${cvAge(r.ageHours)}</span>
       <button type="button" class="icon-only mini cv-more" popovertarget="${esc(menu)}" data-cvmenu="${esc(key)}" title="更多操作"><svg class="ic" aria-hidden="true"><use href="#i-more"/></svg><span class="control-label">更多操作</span></button>
       <div class="pop-menu cv-menu" id="${esc(menu)}" popover data-cvmenu-for="${esc(key)}" aria-label="会话操作">
-        ${manage?cvMenuItem('i-edit','重命名',`data-cvrename="${esc(r.id)}"${off} title="重命名"`)
-          +cvMenuItem('i-move','移动',`data-cvmove="${esc(r.id)}" data-cvdrag="${esc(r.id)}" draggable="${!disabled}"${off} title="点击选择目标项目，也可拖到其他项目上"`,'cv-handle'):''}
-        ${cvMenuItem('i-copy','复制文件路径',`data-cvcopy="${esc(r.file)}" title="复制文件路径"`)}
+        ${manage?menuItem('i-edit','重命名',`data-cvrename="${esc(r.id)}"${off} title="重命名"`)
+          +menuItem('i-move','移动',`data-cvmove="${esc(r.id)}" data-cvdrag="${esc(r.id)}" draggable="${!disabled}"${off} title="点击选择目标项目，也可拖到其他项目上"`,'cv-handle'):''}
+        ${menuItem('i-copy','复制文件路径',`data-cvcopy="${esc(r.file)}" title="复制文件路径"`)}
         <div class="menu-sep" role="separator"></div>
         <div class="menu-facts"><span>标题来源：${esc(CV_SRC[r.titleFrom]||r.titleFrom||'未记录')}</span><span>文件大小：${kb(r.bytes)}</span>
         <span>已识别的用户提问：${r.humanSeen ?? '未记录'}${r.partial?'（只读取了部分内容）':''}</span>
         <span class="cv-location">会话编号：${esc(r.id)}</span><span class="cv-location">文件位置：${esc(r.file)}</span>
         ${!valid?'<span class="warn">会话编号无法识别，可通过文件位置检查原始记录。</span>':''}</div>
-        ${manage?'<div class="menu-sep" role="separator"></div>'+cvMenuItem('i-trash','删除',`data-cvdelete="${esc(r.id)}"${off} title="永久删除这场会话"`,'menu-danger'):''}
+        ${manage?'<div class="menu-sep" role="separator"></div>'+menuItem('i-trash','删除',`data-cvdelete="${esc(r.id)}"${off} title="永久删除这场会话"`,'menu-danger'):''}
       </div>
     </div>`;
   }).join('');
 }
 function cvReopenMenu(){
-  if(!CV_MENU) return;
-  const menu=document.getElementById(cvMenuId(CV_MENU));
-  if(!menu || typeof menu.showPopover!=='function') return;
-  const opener=typeof CSS!=='undefined'?$('cvgroups').querySelector?.(`[popovertarget="${CSS.escape(menu.id)}"]`):null;
-  try{ if(!menu.matches(':popover-open')) menu.showPopover(opener?{source:opener}:undefined); }catch(error){}
+  if(CV_MENU) reopenPopover(cvMenuId(CV_MENU),$('cvgroups'));
 }
 function cvPage(g){
-  const id=cvKey(g), state=CV_PAGES.get(id), more=g.hasMore ?? g.truncated;
-  return `<div class="cv-page" data-cvpage="${esc(id)}"><span${state?.error?' class="bad" role="alert"':''}>${state?.error?esc(state.error):`已加载 ${g.shown.length} / ${g.count} 个会话`}</span>
+  const id=cvKey(g), state=CV_PAGES.get(id), more=g.hasMore;
+  return `<div class="cv-page"><span${state?.error?' class="bad" role="alert"':''}>${state?.error?esc(state.error):`已加载 ${g.shown.length} / ${g.count} 个会话`}</span>
     ${more?`<button data-cvmore="${esc(id)}"${state?.busy?' disabled':''}>${state?.busy?'加载中…':state?.error?'重试加载':'加载更多'}</button>`:'<span>已全部显示</span>'}</div>`;
 }
 function cvGroupElement(id){
@@ -158,7 +150,7 @@ async function cvLoadMore(id){
 }
 function cvObserve(){
   CV_OBSERVER?.disconnect();
-  if(CV_LOADING || typeof IntersectionObserver!=='function') return;
+  if(CV_LOADING) return;
   CV_OBSERVER ??= new IntersectionObserver(entries=>{
     for(const entry of entries){
       const id=entry.target.dataset.cvmore;
@@ -178,7 +170,7 @@ function renderConvos(){
   }
   const S=CONVOS.summary, query=CV_QUERY.trim().toLowerCase();
   if(query!==CV_OPEN_QUERY){CV_OPEN=query?{}:{...CV_BASE_OPEN};CV_OPEN_QUERY=query;}
-  $('cvhead').innerHTML=`<span class="cv-total"><b>${S.matched ?? S.files}</b> 个会话，分布在 <b>${S.groups}</b> 个项目</span>
+  $('cvhead').innerHTML=`<span class="cv-total"><b>${S.matched}</b> 个会话，分布在 <b>${S.groups}</b> 个项目</span>
     <label>排序 <select id="cvsort">${[['new','最近更新'],['count','会话最多'],['old','最早更新'],['size','占用空间']].map(([v,t])=>`<option value="${v}"${CV_SORT===v?' selected':''}>${t}</option>`).join('')}</select></label>
     <label title="根据已读取的内容识别，长会话可能只统计了一部分"><input type="checkbox" id="cvonly"${CV_HUMAN_ONLY?' checked':''}> 至少两次用户提问</label>
     ${S.unreadable?`<span class="bad" role="alert">${S.unreadable} 个文件或目录读取失败，列表可能不完整。请检查访问权限后刷新。</span>`:''}
@@ -213,15 +205,11 @@ function cvLocation(g){
       <span class="cv-location">会话存放位置：${esc(g.storagePath || g.cwd)}</span><span>文件合计：${kb(g.bytes)}</span>
       <button class="icon-only mini" data-cvcopy="${esc(g.storagePath || g.cwd)}" title="复制存放路径"><svg class="ic" aria-hidden="true"><use href="#i-copy"/></svg><span class="control-label">复制存放路径</span></button></div></details>`;
 }
-async function cvCopyPath(path){
-  try{await navigator.clipboard.writeText(path);toast('路径已复制','ok');}
-  catch(error){toast('无法复制，请手动选择：'+path,'bad');}
-}
 function cvClick(event){
   const copy=event.target.closest('[data-cvcopy]');
   // 行菜单里的「复制文件路径」跟同一菜单的重命名、移动、删除一样,选中就收起菜单,不然它一直浮在下面几行上。
   // 项目位置里那个复制按钮不在菜单里,closeMenuFor 找不到 [popover] 就什么也不做。
-  if(copy){event.stopPropagation();closeMenuFor(copy);cvCopyPath(copy.dataset.cvcopy);return;}
+  if(copy){event.stopPropagation();closeMenuFor(copy);copyText(copy.dataset.cvcopy,'路径已复制');return;}
   const open=event.target.closest('[data-cvopen]');
   if(open){openConvoChain(open.dataset.cvopen);return;}
   // 菜单按钮和菜单里的点击各有归属(浏览器开合菜单,动作另有监听),不能落到下面去开合项目。

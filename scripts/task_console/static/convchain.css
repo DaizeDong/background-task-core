@@ -50,7 +50,7 @@
 .ch-t{display:grid;grid-template-columns:12px auto minmax(0,1fr) auto auto;gap:6px;
   align-items:baseline;padding:4px 8px 4px 4px;border-top:1px solid var(--line2);
   cursor:pointer;font-size:var(--fs-body)}
-.ch-t .caret{color:var(--faint);font-size:var(--fs-chip)}
+.ch-t .caret{color:var(--faint);font-size:var(--fs-meta)}
 .ch-t .no{color:var(--faint);font-family:var(--mono);font-size:var(--fs-meta);font-variant-numeric:tabular-nums}
 .ch-t .pv{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink)}
 .ch-t .pv.none{color:var(--faint);font-style:italic}
@@ -59,11 +59,11 @@
   color:var(--faint);font-size:var(--fs-meta)}
 .ch-t .ts,.ch-s .ts,.ch-cmp .ts{color:var(--faint);font-size:var(--fs-meta);
   font-variant-numeric:tabular-nums;white-space:nowrap}
-.ch-cnt{display:inline-flex;gap:7px;font-size:var(--fs-chip);color:var(--dim);white-space:nowrap}
+.ch-cnt{display:inline-flex;gap:7px;font-size:var(--fs-meta);color:var(--dim);white-space:nowrap}
 .ch-cnt .fk{color:var(--amber)}
 .ch-steps{border-left:1px solid var(--line);margin:0 0 4px 22px}
 /* 展开后的第一行:这一轮各类节点各有几个,写成字。收起时它只在步数的悬停里。 */
-.ch-kinds{padding:2px 8px 4px 8px;color:var(--dim);font-size:var(--fs-chip)}
+.ch-kinds{padding:2px 8px 4px 8px;color:var(--dim);font-size:var(--fs-meta)}
 /* 本会话内搜索:一行,框在左,命中计数在右。 */
 .ch-find{display:flex;align-items:center;gap:8px;margin:0 0 6px;min-width:0}
 .ch-find input{flex:0 1 22em;min-width:0;font-size:var(--fs-meta)}
@@ -76,7 +76,7 @@
 .ch-s .pv{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--dim)}
 .ch-s .pv.faint{color:var(--faint);font-style:italic}
 .ch-s .x{grid-column:3 / -1;display:flex;gap:6px;flex-wrap:wrap;align-items:center}
-.ch-miss{color:var(--warn);font-size:var(--fs-chip)}
+.ch-miss{color:var(--warn);font-size:var(--fs-meta)}
 /* 各类节点的字形颜色。用户那句话是主线,所以唯一一个加粗的是它。 */
 .ch-hu .pv{color:var(--ink);font-weight:500}
 .ch-tx .g{color:var(--ok)}

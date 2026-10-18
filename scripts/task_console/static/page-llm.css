@@ -14,7 +14,7 @@
 /* 调用记录:每行自己说成没成。失败的行左边一道红色内边,和出错卡片的左边线同一个意思;
    不给整行染红:一页里失败多的时候整张表会红成一片,反而分不出哪几行。 */
 #llm .l-calls td.no{white-space:nowrap}
-#llm .l-calls td.no .caret{display:inline-block;width:12px;margin-right:4px;color:var(--faint);font-size:var(--fs-chip)}
+#llm .l-calls td.no .caret{display:inline-block;width:12px;margin-right:4px;color:var(--faint);font-size:var(--fs-meta)}
 #llm .l-calls tr.lrow.failed>td:first-child{box-shadow:inset 3px 0 0 var(--bad)}
 #llm .l-calls td.res{width:1%;white-space:nowrap}
 #llm .l-calls tr.lrow.jumped{background:var(--cur);outline:1px solid var(--cyan);outline-offset:-1px}

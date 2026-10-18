@@ -52,9 +52,7 @@ function workProjection(feed){
     tracked:groupWorkRows(rows.filter(workTracked),feed?.items || []),
     // 工作台「Agent 未完成 / 出错」那张卡:失败、停滞、受阻、结果待核实这些还悬着的。
     // 已取消、已停止是人自己收的尾,不算出错,不进这张红卡。
-    interrupted:rows.filter(item=>item.role==='agent_work' && !workActive(item) && !workResult(item) && workUnfinished(item)),
-    // No owner decision contract is connected. Never derive approvals from failed work.
-    decisions:null};
+    interrupted:rows.filter(item=>item.role==='agent_work' && !workActive(item) && !workResult(item) && workUnfinished(item))};
 }
 function automationRows(rows,query='',state='',verdict=''){
   return rows.filter(row=>taskMatches(row,query) && taskMatchesVerdict(row,verdict) &&

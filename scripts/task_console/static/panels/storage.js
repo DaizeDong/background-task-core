@@ -7,10 +7,6 @@ async function loadSys(){
   renderSys();
   updateBadges();
 }
-  // 会话转录的体积和文件数已从这里删掉:会话那一屏在报同一个目录,而两处用的是两套算法
-  // (这里递归数目录下所有文件、有 60000 上限;那边只数解析成功的转录),数字必然对不上,
-  // 而两处都不说自己是哪种口径。**同一个问题有两个都自称权威的答案**,比少显示一次糟。
-  // 留下的是会话那边那份,它数的正是那个面板要谈的东西。
 function renderSys(){
   const el=$("mt-sys"); if(!el) return;
   renderStorageAlert();
@@ -157,28 +153,20 @@ function renderMem(){
           `data-mt="memory.archive" data-name="${esc(b.slug)}"`):""}</div>`).join("")
     + `</div>`;
   memNote("");
-  if(typeof renderResourceAnchors==="function") renderResourceAnchors();
+  renderResourceAnchors();
 }
 
 // 一组问题名字默认只摊前 12 个;哪几组被人展开过记在这里,重画时保持展开。
 const MEM_CHIP_LIMIT=12, MEM_OPEN=new Set();
 let MEM_GROUPS={};
-// 复制到剪贴板。非安全上下文里没有剪贴板,那时把文字放进提示条里让人自己选:
-// 一个静默失败的复制会让人粘出上一次的东西。
-function memCopy(text,done){
-  const fail=()=>toast("无法访问剪贴板，内容是："+text,"warn");
-  if(typeof navigator!=="undefined" && navigator.clipboard && window.isSecureContext)
-    navigator.clipboard.writeText(text).then(()=>toast(done,"ok"),fail);
-  else fail();
-}
 function startMemory(){
   const box=$("mt-memory"); if(!box) return;
   box.addEventListener("click",event=>{
     const chip=event.target.closest("[data-mem-copy]");
-    if(chip){ memCopy(chip.dataset.memCopy,`已复制 ${chip.dataset.memCopy}`); return; }
+    if(chip){ copyText(chip.dataset.memCopy,`已复制 ${chip.dataset.memCopy}`); return; }
     const all=event.target.closest("[data-mem-copy-all]");
     if(all){ const names=MEM_GROUPS[all.dataset.memCopyAll]||[];
-      if(names.length) memCopy(names.join("\n"),`已复制 ${names.length} 个名字`); return; }
+      if(names.length) copyText(names.join("\n"),`已复制 ${names.length} 个名字`); return; }
     const more=event.target.closest("[data-mem-more]");
     if(more){ const key=more.dataset.memMore;
       if(MEM_OPEN.has(key)) MEM_OPEN.delete(key); else MEM_OPEN.add(key);
@@ -189,5 +177,3 @@ function startMemory(){
 // 卡头那行小字。读不到时它必须说出来 —— 卡片里那块空白自己不会解释自己。
 function memNote(t){ const n=$("memnote"); if(n) n.textContent=t; }
 
-// 退役。它同时改三处登记,所以流程是:先拉一次只读计划给人看,再问原因,最后才执行。
-// 顺序是刻意的 : 一个先问原因再告诉你要改什么的流程,等于让人在不知道后果时下决定。

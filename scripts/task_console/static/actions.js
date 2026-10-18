@@ -49,9 +49,9 @@ const ConsoleActions={
     // Sticky only while something is still running. A finished record stays in the page flow at
     // the top; pinned, it covered whatever the owner was looking at (the conversation chain card
     // right after a fork, by about 140px at phone width) for the rest of the page session.
-    panel.classList?.toggle('settled',!active.length);
+    panel.classList.toggle('settled',!active.length);
     const collapsed=this.collapsed && !active.length, last=this.lastFinished();
-    panel.classList?.toggle('collapsed',collapsed);
+    panel.classList.toggle('collapsed',collapsed);
     $('operation-current').textContent=current?line(current):'';
     $('operation-current').className=current?.pending?'warn':current?.tone || '';
     $('operation-history').innerHTML=rows.map(row=>`<li><span class="${row.pending?'warn':row.tone}">${esc(line(row))}</span></li>`).join('');
@@ -70,7 +70,7 @@ const ConsoleActions={
   },
   sync(){
     const active=this.operations.find(row=>row.pending);
-    document.querySelectorAll?.(this.selector).forEach(button=>{
+    document.querySelectorAll(this.selector).forEach(button=>{
       // 原来这里把 title 整句换成只读原因,一排图标悬停上去句句相同,认不出哪个是哪个。
       // 现在一律是「动作名（不可用：原因）」,动作名只取一次,重复同步不会叠后缀。
       if(this.readOnly){
@@ -85,7 +85,7 @@ const ConsoleActions={
       }
     });
     // 拖拽排序是同一份草稿的另一条路,只读时也要一起关掉。
-    if(this.readOnly) document.querySelectorAll?.('#lclist li[draggable="true"]').forEach(item=>item.setAttribute('draggable','false'));
+    if(this.readOnly) document.querySelectorAll('#lclist li[draggable="true"]').forEach(item=>item.setAttribute('draggable','false'));
   },
   start(){
     syncStickyOffsets();startDialogs();
@@ -93,11 +93,9 @@ const ConsoleActions={
     // 收起后人点开 summary:浏览器先把 details 打开,这里把面板退回展开态。
     // render() 自己改 open 时也会触发 toggle,那时状态已经一致,expand() 什么都不做。
     $('operation-details')?.addEventListener('toggle',()=>{if($('operation-details').open) this.expand();});
-    if(typeof ResizeObserver==='function'){
-      const observer=new ResizeObserver(()=>syncStickyOffsets());
-      ['bar','operation-panel'].forEach(id=>{if($(id)) observer.observe($(id));});
-    }
-    if(typeof window!=='undefined') window.addEventListener?.('resize',syncStickyOffsets);
+    const observer=new ResizeObserver(()=>syncStickyOffsets());
+    ['bar','operation-panel'].forEach(id=>observer.observe($(id)));
+    window.addEventListener('resize',syncStickyOffsets);
     const mode=$('console-mode');mode.hidden=!this.readOnly;
     mode.textContent='只读预览 · 无法修改';mode.title=this.reason;
     this.sync();new MutationObserver(()=>this.sync()).observe(document.body,{childList:true,subtree:true,attributes:true,attributeFilter:['disabled']});
@@ -115,7 +113,6 @@ const ConsoleActions={
 // card opening, a pipeline run) land below whatever is actually pinned.
 function syncStickyOffsets(){
   const root=document.documentElement;
-  if(!root?.style?.setProperty || typeof getComputedStyle!=='function') return;
   const pinned=el=>el && !el.hidden && getComputedStyle(el).position==='sticky' ? Math.ceil(el.getBoundingClientRect().height) : 0;
   const bar=pinned($('bar'));
   root.style.setProperty('--bar-stick',bar+'px');
@@ -180,8 +177,7 @@ function taskOutcome(reply,verb){
 // 「同步与备份」流水线上的任务是备份本身的骨架:删掉它们,删除这件事的后续清理(包括把被删任务移出备份)
 // 也就跟着没了着落。所以它们在任何一个标签页都没有删除按钮,而不只是在流水线卡片上;后端同样拒绝
 // (task_delete.PIPELINE_BLOCK)。修复只开工单不改任务,哪里都可以给。
-const taskIsPipeline=name=>typeof PIPELINE_DEFS!=='undefined' &&
-  Object.values(PIPELINE_DEFS).some(def=>String(def.name).toLowerCase()===String(name).toLowerCase());
+const taskIsPipeline=name=>Object.values(PIPELINE_DEFS).some(def=>String(def.name).toLowerCase()===String(name).toLowerCase());
 // 行内两个常用动作(运行、停用或启用)和明细里「运行一次」共用这一份:不可用的原因、悬停说明、按钮长相只写一处。
 const TASK_VERB_HINTS={enable:'恢复按计划启动',disable:'不再按计划启动；正在运行的任务继续执行',run:'立即运行一次，保留原计划',stop:'请求停止当前运行，保留后续计划'};
 // 停用是把定时关掉,不是暂停这一次运行:用开关的「关」,不用暂停键。
@@ -200,9 +196,6 @@ function taskVerbButton(row,verb,label,{text=label,extraReason=''}={}){
   const why=taskVerbReason(row) || extraReason;
   return `<button type="button" class="mini task-control${verb==='disable'?' danger':''}" data-act="${verb}" data-name="${esc(row.name)}" data-label="${esc(label)}" ${why?'disabled':''} title="${taskControlTitle(label,why,TASK_VERB_HINTS[verb])}"><svg class="ic" aria-hidden="true"><use href="#${TASK_VERB_SYMBOLS[verb]}"/></svg><span class="task-op-label">${esc(text)}</span></button>`;
 }
-function taskMenuItem(icon,label,attrs,cls=''){
-  return `<button type="button" class="menu-item${cls?' '+cls:''}" ${attrs}><svg class="ic" aria-hidden="true"><use href="#${icon}"/></svg><span class="task-op-label">${label}</span></button>`;
-}
 // 同一个任务同时出现在运行详情、任务开关和同步与备份三处,菜单的 id 带上是哪一处,整页不重名。
 const taskMenuId=(scope,name)=>'tkm-'+scope+'-'+encodeURIComponent(String(name || ''));
 // 一行只摆两个常用动作,带字;启动方式、修复、删除收进「⋯」菜单。原来五个灰色图标方块排成两列三行,
@@ -217,10 +210,10 @@ function taskActionButtons(row,{deletable=!taskIsPipeline(row.name),scope='tbl'}
     (row.state==='Disabled'?taskVerbButton(row,'enable','启用'):taskVerbButton(row,'disable','停用'))+
     `<button type="button" class="mini icon-only task-more" popovertarget="${esc(menu)}" data-task-menu="${esc(row.name)}" title="更多操作：启动方式、修复${deletable?'、删除':''}"><svg class="ic" aria-hidden="true"><use href="#i-more"/></svg><span class="control-label">更多操作</span></button>`+
     `<div class="pop-menu task-menu" id="${esc(menu)}" popover aria-label="更多操作">`+
-    taskMenuItem('i-terminal','启动方式',`data-launch="${esc(row.name)}" title="查看完整命令、身份和运行条件"`)+
-    taskMenuItem('i-repair','修复',`data-task-repair="${esc(row.name)}" data-label="修复" ${repairReason?'disabled':''} title="${taskControlTitle('修复',repairReason,'修复：查看任务事实，开一张工单交给 Agent 诊断；不会改动任务本身')}"`)+
+    menuItem('i-terminal','启动方式',`data-launch="${esc(row.name)}" title="查看完整命令、身份和运行条件"`)+
+    menuItem('i-repair','修复',`data-task-repair="${esc(row.name)}" data-label="修复" ${repairReason?'disabled':''} title="${taskControlTitle('修复',repairReason,'修复：查看任务事实，开一张工单交给 Agent 诊断；不会改动任务本身')}"`)+
     (deletable?'<div class="menu-sep" role="separator"></div>'+
-      taskMenuItem('i-trash','删除',`data-task-delete="${esc(row.name)}" data-label="删除" ${removeReason?'disabled':''} title="${taskControlTitle('删除',removeReason,'删除：先预览每一步要改哪里，输入完整任务名后才执行')}"`,'menu-danger'):'')+
+      menuItem('i-trash','删除',`data-task-delete="${esc(row.name)}" data-label="删除" ${removeReason?'disabled':''} title="${taskControlTitle('删除',removeReason,'删除：先预览每一步要改哪里，输入完整任务名后才执行')}"`,'menu-danger'):'')+
     '</div></span>';
 }
 
@@ -259,10 +252,9 @@ function dialogDismissMode(busy,dirty){return busy?'none':dirty?'closerequest':'
 function syncDialogDismiss(dialog,busy,dirty){
   if(!dialog) return '';
   const mode=dialogDismissMode(!!busy,!!dirty);
-  if(typeof dialog.setAttribute==='function') dialog.setAttribute('closedby',mode);
-  else dialog.closedBy=mode;
+  dialog.setAttribute('closedby',mode);
   // ✕ 和取消是同一个动作:忙着的时候取消按不动,✕ 也一起灰着,而不是点了没反应。
-  const close=dialog.querySelector?.('.dialog-x[data-dismiss]');
+  const close=dialog.querySelector('.dialog-x[data-dismiss]');
   if(close) setDisabled(close,busy?'正在执行，完成后才能关闭':'');
   return mode;
 }
@@ -279,14 +271,28 @@ function nameMismatchReason(typed,expected){
 function confirmNameHtml(name){
   return `<code class="confirm-name">${esc(name)}</code><button type="button" class="icon-only mini" data-copy-text="${esc(name)}" title="复制名称"><svg class="ic" aria-hidden="true"><use href="#i-copy"/></svg><span class="control-label">复制名称</span></button>`;
 }
+// 弹出菜单的一项。任务行、会话行和对话链的菜单都是这一个长相。
+function menuItem(icon,label,attrs,cls=''){
+  return `<button type="button" class="menu-item${cls?' '+cls:''}" ${attrs}><svg class="ic" aria-hidden="true"><use href="#${icon}"/></svg><span>${label}</span></button>`;
+}
+// 开着的弹出层;selector 把范围收窄到某一类(比如 '.pop-menu')。
+const openPopover=(selector='')=>document.querySelector(selector+':popover-open');
+// 列表重画会把开着的菜单整个换掉,浏览器悄悄关上它(不发 toggle 事件)。各面板记下开着的是哪一个 id,
+// 重画之后在 scope 里把它重新打开,锚回打开它的那个按钮。
+function reopenPopover(id,scope){
+  const menu=id && scope ? document.getElementById(id) : null;
+  if(!menu || !scope.contains(menu) || menu.matches(':popover-open')) return;
+  const opener=scope.querySelector(`[popovertarget="${CSS.escape(id)}"]`);
+  try{ menu.showPopover(opener?{source:opener}:undefined); }catch(error){}
+}
 // 菜单里的一项被选中后先收起菜单、把焦点交回打开它的按钮。接着弹出的对话框关掉时,
 // 焦点回到它打开前的位置;那时菜单项已经藏起来了,焦点会掉回页面开头。
 function closeMenuFor(el){
-  const menu=el?.closest?.('[popover]');
+  const menu=el?.closest('[popover]');
   if(!menu) return;
-  try{ if(menu.matches(':popover-open')) menu.hidePopover(); }catch(error){}
-  const opener=menu.id && typeof CSS!=='undefined'?document.querySelector?.(`[popovertarget="${CSS.escape(menu.id)}"]`):null;
-  opener?.focus?.({preventScroll:true});
+  if(menu.matches(':popover-open')) menu.hidePopover();
+  const opener=menu.id?document.querySelector(`[popovertarget="${CSS.escape(menu.id)}"]`):null;
+  opener?.focus({preventScroll:true});
 }
 // 点菜单外面只关菜单,不替人按下底下那个控件。
 // 弹出层的「点外面关闭」不像模态框那样有一层遮罩吃掉这一下,它照样落到底下的控件上。任务行的「⋯」旁边
@@ -294,13 +300,9 @@ function closeMenuFor(el){
 // 所以有菜单开着时,按在菜单和任何「⋯」之外的那一下只用来关菜单:按下时记住,接着那次 click 在捕获阶段拦掉。
 // 点另一个「⋯」不拦,它只是换开另一个菜单。只拦真人点出来的 click(isTrusted),代码里调的 .click() 照常。
 let MENU_DISMISS_CLICK=false;
-function openPopMenu(){
-  // 不认识 :popover-open 的浏览器会在这里抛错,那时它也不可能有打开的菜单。
-  try{ return document.querySelector('.pop-menu:popover-open'); }catch(error){ return null; }
-}
 function menuDismissPointerDown(event){
   const target=event.target;
-  MENU_DISMISS_CLICK=!!openPopMenu() && !(target && target.closest && target.closest('.pop-menu,[popovertarget]'));
+  MENU_DISMISS_CLICK=!!openPopover('.pop-menu') && !target?.closest('.pop-menu,[popovertarget]');
 }
 function menuDismissClick(event){
   if(!MENU_DISMISS_CLICK) return false;
@@ -320,12 +322,10 @@ function startDialogs(){
   startMenuDismissGuard();
   document.addEventListener('click',event=>{
     // ✕ 就是那个对话框自己的取消按钮,走同一段处理(忙着时拦下、清掉预览),不另写一份。
-    const dismiss=event.target.closest?.('[data-dismiss]');
+    const dismiss=event.target.closest('[data-dismiss]');
     if(dismiss){const target=$(dismiss.dataset.dismiss);if(target && !target.disabled) target.click();return;}
-    const copy=event.target.closest?.('[data-copy-text]');
-    if(copy){
-      navigator.clipboard.writeText(copy.dataset.copyText).then(()=>toast('已复制','ok'),()=>toast('无法访问剪贴板，请手动选中复制','bad'));
-    }
+    const copy=event.target.closest('[data-copy-text]');
+    if(copy) copyText(copy.dataset.copyText);
   });
 }
 
@@ -366,7 +366,7 @@ function askConfirm({title,body='',items=[],more='',confirmLabel='确认',danger
     CONFIRM_SETTLE=resolve;
     $('confirm-dialog').showModal();
     // 危险的确认停在「取消」上:手滑多按一下 Enter 不能把东西删掉。
-    (danger?$('confirm-cancel'):ok).focus?.();
+    (danger?$('confirm-cancel'):ok).focus();
   });
 }
 
@@ -391,7 +391,7 @@ async function previewDeletion(data){
     DELETE_BUSY=false;syncDeleteConfirm();
     // 预览到了就把光标放进名称框,省得再去点一下;人已经点到别处(比如复制按钮)就不抢。
     const active=document.activeElement;
-    if(DELETE_PLAN && $('delete-dialog').open && (!active || active===$('delete-cancel') || active===$('delete-dialog'))) $('delete-name').focus?.();
+    if(DELETE_PLAN && $('delete-dialog').open && (!active || active===$('delete-cancel') || active===$('delete-dialog'))) $('delete-name').focus();
   }
 }
 function deleteConfirmReason(){
