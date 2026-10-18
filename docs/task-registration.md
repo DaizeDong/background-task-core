@@ -136,3 +136,17 @@ registration Runtime in that process. Exit 2 is an input/contract refusal. Apply
 or retire returns 0 only for committed; a compensated/conflicted result returns
 3. Recover returns 0 for committed or rolled_back, 3 for conflict. T11 plan CLI
 semantics are unchanged. There is no runtime plugin loader from untrusted JSON.
+
+## Creation check
+
+`task-console creation-check --task-id ID` takes the same four runtime/configuration roots as
+`registration-plan` and returns `reuse`, `update` or `create` with the matching task IDs, their
+enabled/running state and an inventory revision. It registers, runs and enables nothing. Two tasks
+are equivalent when their executable, argument contents, working directory and principal match;
+frequency is excluded, so a cadence change updates the existing definition. It covers declared
+tasks only, not every unmanaged Scheduler entry.
+
+Creating a missing task rechecks the declared inventory under the authority lock and raises
+`equivalent_task_exists` before publication when an equivalent action is already declared, so a
+renamed declaration cannot register the same command again. An unreadable inventory refuses
+creation.

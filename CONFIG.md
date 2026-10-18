@@ -1,6 +1,6 @@
 # Task Console configuration
 
-Task Console is software with native environment settings. The auxiliary
+Task Console is configured through environment variables. The auxiliary
 [automation-management skill](skills/automation-management/SKILL.md) describes safe use of its
 declaration and registration interfaces. [config.contract.json](config.contract.json) records
 settings applicability; an unconfigured server can render unavailable sources but is not ready
@@ -29,7 +29,7 @@ Missing dependencies report unavailable and block writers. There is no ancestor 
 resolver search. Resolution makes no Git or network calls: it is a path decision plus the
 own-source-tree refusal.
 
-## Native settings and resources
+## Settings and resources
 
 The complete environment schema and each optional panel's absent-source behavior live in the
 [environment table](scripts/task_console/README.md#configure-it). Core server requirements are
@@ -57,26 +57,22 @@ companion does not relocate llmcall files, and selected executables can still us
 Create or clone the PRIVATE companion. Companion discovery requires the `fleet-guards>=0.2.1`
 runtime API, installed with `pip install -e "$(git config --get fleet.guards)"`. A missing
 runtime API fails visibly; installed packages do not search checkout ancestors.
-From this source root:
+
+The console's settings live in the companion's `data/launcher-binding.json`
+([synthetic example](launcher-binding.json.example)). Its `environment` map holds the
+`TASK_CONSOLE_*` values and `runtime` holds the registration roots; the owner launcher reads the
+file and sets those values in the console process before starting it. To check a configuration
+from this source root, set the same variables in a shell and run:
 
 ```powershell
-$env:TASK_CONSOLE_CONFIG = '<private-companion>'
-python tools/init_config.py --out $env:TASK_CONSOLE_CONFIG
-. (Join-Path $env:TASK_CONSOLE_CONFIG 'settings.ps1')
 python tools/verify_config.py --json
 ```
 
-The initializer writes a native `settings.ps1` template that derives the selected root and canonical
-database path from its own directory when dot-sourced, and enables read-only mode. The template
-bytes are independent of the companion location. Existing settings are preserved byte for byte. It creates no
-database, task, registration, event or server. Review the template and add the optional resource
-paths before dot-sourcing it. An empty or missing database keeps the doctor NOT READY.
-
-Switch by selecting and dot-sourcing the other companion's reviewed settings in the process
-that will run the console. Recheck the optional explicit overrides too. Doctor output identifies
-its scope as `local-server-and-history`; it does not prove recent ingestion, task execution,
-work-owner connectivity or external delivery. It uses an immutable read-only database probe and
-refuses active WAL/journal state instead of creating SQLite sidecars.
+Switch by pointing the launcher at the other companion's binding and rechecking the optional
+explicit overrides. Doctor output identifies its scope as `local-server-and-history`; it does not
+prove recent ingestion, task execution, work-owner connectivity or external delivery. It uses an
+immutable read-only database probe and refuses active WAL/journal state instead of creating SQLite
+sidecars. An empty or missing database keeps the doctor NOT READY.
 
 ## Recovery and retention
 

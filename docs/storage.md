@@ -19,8 +19,8 @@ The native cleanup and database-backup commands still accept `<private-data>`, t
 paths or their separate protection rules.
 
 Legacy development artifacts use explicit top-level namespaces, so a date in a task declaration
-cannot also classify it as retired work. The legacy scopes partition the existing 16 MiB review
-budget: repair and chain-inspection work have 4 MiB each, and the other eight scopes have 1 MiB each.
+cannot also classify it as retired work. The legacy scopes partition an 8 MiB review budget:
+chain-inspection work has 4 MiB and the other four scopes have 1 MiB each.
 These shares are bounded review thresholds, not estimates of required storage. Classification alone
 does not establish completed work or authorize deletion: the private retirement record must still
 name exact reviewed roots. Unrecognized paths remain undeclared and require a separate review of
@@ -92,35 +92,7 @@ Calling scheduled mode without a bound source can only report `status: skipped, 
 when the shared resolver finds no companion and there is no console configuration in the environment;
 it never infers an existing default database for publication.
 
-Current registration also depends on protected input files in its configured vault. The vault is `<companion>/data/task-console/vault/` (artifact `registration-vault`), selected by `runtime.VaultRoot` in `data/launcher-binding.json`; it holds only `task-console-<domain>-<object>.cred` files, tracked in the PRIVATE companion. A backup that
-excludes every `.cred` file cannot restore that authority. The existing configuration-backup caller
-can export the required closure with `tools/export_registration_recovery.py --private-root
-<declaration-root> --state-root <registration-root> --vault-root <configured-vault> --output
-<absolute-temporary-zip>`. Obtain all three roots from the same authoritative launcher-binding parser,
-including any complete runtime overrides. The exporter checks that the roots exist and are disjoint (no Git or network calls),
-uses the existing authority lock, validates the current pointer/receipt digest, and includes every
-protected reference required by that receipt and pending or uncleaned journals. Cleaned terminal
-journals do not pull historical before-images into this current snapshot. Missing state or references
-fail before replacing an existing archive; there is no initialized-state skip or repository fallback.
-
-The caller stores the ZIP at `secrets/task-console-current/registration-recovery.zip` in its private
-configuration export root; that backup owner declares this artifact in its own storage contract.
-`manifest.json` has `schema_version: 1`, the selected generation/domain,
-source roots, document and protected-reference member paths/byte counts/SHA256 hashes, pending journal
-IDs, `missing_references: 0`, and `machine_bound: true`. The archive contains `state/current.json`,
-the selected `state/receipts/<generation>.json`, unresolved `state/journals/<transaction>.json`, and
-only the referenced `vault/task-console-<domain>-<object>.cred` files. Source readback and ZIP-byte
-verification protect capture consistency. They prove ciphertext fidelity, not decrypted reference
-identity. Stable inputs produce the same archive bytes.
-Each input is bounded at 8 MiB and aggregate member input at 128 MiB; these capture limits never
-authorize deletion or truncation of the original state.
-
-Restore requires the matching private declarations and runtime plus the original Windows account
-and machine capable of decrypting DPAPI. Verify archive member hashes, stage the state/vault members
-separately, and verify current input decoding before any explicitly reviewed live replacement. The
-exporter neither registers tasks nor restores filesystem ownership receipts. Cross-machine recovery
-and historical rollback are not established by this current ciphertext archive. Keep one current ZIP
-in private Git; older versions remain in private Git history.
+Current registration also depends on protected input files in its configured vault. The vault is `<companion>/data/task-console/vault/` (artifact `registration-vault`), selected by `runtime.VaultRoot` in `data/launcher-binding.json`; it holds only `task-console-<domain>-<object>.cred` files, tracked in the PRIVATE companion. They are DPAPI ciphertext: only the original Windows account on the original machine can decrypt them, so cloning the companion elsewhere does not restore registration authority.
 
 Create new temporary development work under `<private-data>/work/`. Before retiring a work directory,
 commit its useful code, keep the current release handoff and one concise final result, and confirm that

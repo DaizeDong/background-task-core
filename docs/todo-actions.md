@@ -46,7 +46,7 @@ dispatches the owner-selected exact task ID through the existing Controller. For
 the console only asks the scheduler to run the drainer (`schtasks /run /tn <name part of TASK_CONSOLE_AGENT_TASK_ID>`)
 on a background thread after the owner accepts; it does not wait for it, and a failed wake costs
 only latency because the drainer's own trigger picks the queued work up. Uncertain task dispatch stays unconfirmed and is never automatically replayed.
-Agent or task execution leaves the original todo open until its owner records completion.
+Agent or task execution leaves the original todo open until its owner records completion. A simulated completion does not prove a real Agent satisfied the todo.
 For active human todos, the owner also offers `complete` (标记完成). This records the user's
 manual completion, sets progress to 100 and ends reminders without creating Agent work or
 starting a scheduled task. Only the owner CLI/database binding is required for this action.
@@ -64,11 +64,3 @@ from the last time the page itself saw that item's state or progress change, not
 receipt's timestamp, so long work that keeps progressing keeps being polled and work that has shown
 no change for 30 minutes stops. States that wait for a person (reconcile, task_requested,
 review_unavailable) are never polled; the page re-reads after every action and on refresh.
-
-## Validation
-
-Use generated todos and intercept scheduler, model and notification effects. Exercise concurrent
-requests, stale revisions, lost replies, stop during preparation, receipt reload and terminal result
-projection. Browser acceptance should cover keyboard controls, narrow screens and both themes.
-An isolated test's simulated completion is UI/transport evidence; it does not prove a real Agent
-has satisfied the todo. Final live acceptance uses one explicitly selected real todo after activation.

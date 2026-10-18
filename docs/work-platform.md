@@ -113,7 +113,7 @@ rules. UI capability hints never grant authority.
 - Signal feed volume never inflates the count of active agent work.
 - Missing sources never become a green zero; timestamps and result coverage remain visible.
 - Refresh, filters, legacy links, task controls, themes and exports work across view groups.
-- Preview does not send mutations. Synthetic action tests verify the existing control path.
+- Preview does not send mutations.
 - Owner reads cannot create or migrate a database; malformed/older sources fail visibly.
 - Real machine records and browser captures stay outside public repositories.
 
@@ -143,7 +143,7 @@ aggregate use up to four request-scoped workers, released when the request
 finishes. Groups accept leaf readers to avoid nested worker pools. Successful
 payloads are not cached by time. Readers still own their I/O deadlines.
 A caller that arrives while a read of the same generation is running joins it
-and gets that result. A work action or repair submit bumps the generation when
+and gets that result. Every authenticated POST bumps the generation when
 it returns, whatever the outcome, so the page's re-read after its own write
 starts a fresh read instead of joining one that began before the write. Aggregated resource sections isolate failures independently;
 catalog failures do not replace task evidence.
@@ -165,8 +165,9 @@ meet that boundary before being marked optional.
 Initial page reads run when the user opens that view. Explicit refresh repeats
 its reads; navigating to another view does not scan unrelated resource stores.
 The one exception is the sidebar badges: once per page load, after the opened
-view's reads settle, the badge sources that have never been read (tasks,
-repositories, system, memory and the model call ledger) are read once, so the
+view's reads settle, the badge sources that have never been read (system,
+memory and the model call ledger; the repository scan and task list are read
+only when their view opens) are read once, so the
 badges have a number before the owner opens each section. A source that was
 read already, even unsuccessfully, is not read again; refreshing is the job of
 the refresh button.

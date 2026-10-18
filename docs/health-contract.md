@@ -48,18 +48,10 @@ never deletes or writes receipts.
 
 ## Controller adapter
 
-The controller captures existing component read responses into a private snapshot:
-
-```python
-from tools.make_fixtures import health_case
-case = health_case()
-snapshot = {"schemaVersion": 1, "expected": 1, "tasks": [case]}
-```
-
-
-The runnable fixture generators are `health_case()`, `legacy_health_snapshot()` and
-`catalog_snapshot()` in `tools/make_fixtures.py`. Real snapshots belong in private
-storage. Snapshot fields containing commands or paths grant no authority.
+The controller captures existing component read responses into a private snapshot
+`{"schemaVersion": 1, "expected": <count>, "tasks": [...]}`, each task carrying its `spec` and
+`observations`. Real snapshots belong in private storage. Snapshot fields containing commands or
+paths grant no authority.
 
 From a checkout, add `scripts` to `PYTHONPATH` and run:
 
@@ -67,7 +59,7 @@ From a checkout, add `scripts` to `PYTHONPATH` and run:
 python -m task_console.component_status --input $PrivateSnapshot
 ```
 
-Or feed JSON on stdin. `--now` fixes the evaluation clock for tests. Exit 0 means
+Or feed JSON on stdin. `--now` fixes the evaluation clock. Exit 0 means
 the JSON envelope was evaluated, including unhealthy, unknown and zero coverage.
 Exit 2 means reader/schema failure, written as JSON to stderr. There are no
 notifications, payload execution, maintenance actions or state writes in this CLI.

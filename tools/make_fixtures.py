@@ -69,18 +69,6 @@ def installation_request() -> dict:
     return request
 
 
-def automation_info_case() -> dict:
-    """Task metadata and a scheduler row, generated without machine observations."""
-    return {
-        "row": {"name": "AcmeSync", "description": "Legacy title: legacy summary",
-                "state": "Ready", "rcRaw": 0, "catchup": True, "timeout": "PT5M",
-                "stopOnBattery": False, "refuseOnBattery": False, "triggersRaw": []},
-        "info": {"title": "同步示例文件", "summary": "检查并同步合成文件。",
-                 "cadence": "每天 08:00", "status": "最近一次检查发现差异。",
-                 "advice": "核对合成输出后重试。", "verdict": "fix", "asOf": "2026-10-01"},
-    }
-
-
 def categories_example() -> dict:
     """Portable category config with complete, partial and absent metadata."""
     return {
@@ -104,7 +92,10 @@ def categories_example() -> dict:
              "tasks": ["AcmeConfigSync", "AcmeCorpusSync"],
              "taskDesc": {"AcmeConfigSync": "同步示例配置：检查合成文件的差异。",
                           "AcmeCorpusSync": "同步示例语料：保存合成文本。"},
-             "taskInfo": {"AcmeConfigSync": automation_info_case()["info"],
+             "taskInfo": {"AcmeConfigSync": {"title": "同步示例文件", "summary": "检查并同步合成文件。",
+                                            "cadence": "每天 08:00", "status": "最近一次检查发现差异。",
+                                            "advice": "核对合成输出后重试。", "verdict": "fix",
+                                            "asOf": "2026-10-01"},
                           "AcmeCorpusSync": {"title": "归档示例语料",
                                              "summary": "保存合成文本，便于核对改动。"}}},
             {"name": "Health and governance", "desc": "the layer that watches the other tasks",
@@ -113,47 +104,6 @@ def categories_example() -> dict:
              "tasks": ["AcmePriceWatch"]},
         ],
     }
-
-
-def health_case() -> dict:
-    """Synthetic component observation shared by CLI, HTTP and panel regressions."""
-    now = 1_800_000_000
-    return {"now": now, "spec": {"component": "acme-maintenance", "id": "sync", "kind": "oneshot",
-            "timeout_seconds": 300, "checks": [{"id": "output"}, {"id": "dependencies"}]},
-            "observations": {"schemaVersion": 1, "run_id": "acme-current",
-                "execution": {"state": "completed", "exit_code": 0, "code_domain": "process",
-                              "started_at": now - 60, "finished_at": now - 10},
-                "last_success": {"run_id": "acme-previous", "finished_at": now - 3600},
-                "checks": [{"id": "output", "state": "healthy", "run_id": "acme-current"},
-                           {"id": "dependencies", "state": "healthy", "run_id": "acme-current"}]}}
-
-
-def catalog_snapshot() -> dict:
-    """SMITH's documented v1 record shape, generated without scanning a machine."""
-    dimensions = ("declared", "enabled", "cached", "installed", "resolved", "discovered", "compatible")
-    records = []
-    for kind, name, client in (("skill", "acme-skill", "shared"), ("plugin", "acme-plugin@acme-market", "codex"),
-                               ("mcp_binding", "acme-connector", "codex")):
-        records.append({"source_id": "synthetic:" + name, "kind": kind, "registry_key": name,
-                        "origin": {"kind": "synthetic", "client": client}, "relative_path": name,
-                        "version": "1.0", "source_hash": None, "dependencies": [],
-                        "status": {key: "unknown" for key in dimensions},
-                        "entrypoints": [] if kind == "mcp_binding" else [
-                            {"kind": "agent_template" if kind == "plugin" else "skill", "name": name,
-                             "client": client, "status": {"discovered": "yes"}}]})
-    return {"schema_version": 1, "observed_at": "2027-01-15T08:00:00Z", "records": records,
-            "coverage": {"skill_roots": {"status": "checked", "expected": 2, "checked": 2},
-                         "plugin_registries": {"status": "partial", "expected": 2, "checked": 1}},
-            "problems": [{"reason": "synthetic missing registry"}]}
-
-
-def legacy_health_snapshot() -> dict:
-    now = health_case()["now"]
-    return {"schemaVersion": 1, "declarations": [
-        {"name": "AcmeSync", "check": "output", "max_age_hours": 24,
-         "artifact": "synthetic-output", "artifact_max_age_hours": 24, "ok_exit_codes": [2]}],
-        "rows": {"AcmeSync": {"state": "Ready", "last_rc": "0x80070002", "last_run": now - 60}},
-        "artifact_observations": {"synthetic-output": {"mtime": now - 60}}}
 
 
 def generate_storage_schemas(output: Path, *, repo_layout=False) -> None:
@@ -170,11 +120,6 @@ def generate_storage_schemas(output: Path, *, repo_layout=False) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes((json.dumps(document, sort_keys=True) + "\n").encode("utf-8"))
 
-    (output / "settings.ps1.example").write_bytes(
-        b"# Synthetic native environment schema; review private paths before use.\n"
-        b"$env:TASK_CONSOLE_CONFIG = 'C:/AcmePrivate/task-console-config'\n"
-        b"$env:TASK_CONSOLE_DB = 'C:/AcmePrivate/task-console-config/data/task-console/console.sqlite3'\n"
-        b"$env:TASK_CONSOLE_READ_ONLY = '1'\n")
 
 
 def generate(output: Path, *, categories_output: Path | None = None) -> None:

@@ -5,7 +5,6 @@ import argparse
 from contextlib import closing, contextmanager
 from datetime import datetime, timezone
 import hashlib
-import importlib.util
 import json
 import os
 from pathlib import Path
@@ -17,7 +16,8 @@ import tempfile
 import time
 import zipfile
 
-from storage_retention import REPO, ordinary_path, data_root, relative_path
+from storage_retention import ordinary_path, data_root, relative_path
+import console_store  # on sys.path via storage_retention
 
 
 def digest(path):
@@ -160,18 +160,10 @@ def _backup_locked(root, *, verify_only=False, timeout=120):
         return result
 
 
-def console_store():
-    spec = importlib.util.spec_from_file_location("backup_console_store", REPO / "scripts/task_console/console_store.py")
-    store = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(store)
-    return store
-
-
 def resolve_scheduled_source(source_db):
     """Resolve the launcher-selected DB through the console's existing domain resolver."""
-    store = console_store()
     if source_db is None:
-        path, state = store.resolve_db(create_parent=False)
+        path, state = console_store.resolve_db(create_parent=False)
         configured = any(key.startswith("TASK_CONSOLE_") and value for key, value in os.environ.items())
         if path is None and state and state.code == "NO_COMPANION" and not configured:
             return None
@@ -184,7 +176,7 @@ def resolve_scheduled_source(source_db):
     try:
         # JSON launcher bindings override ambient UI settings. Resolve using that exact binding.
         os.environ["TASK_CONSOLE_DB"] = str(source)
-        resolved, state = store.resolve_db(create_parent=False)
+        resolved, state = console_store.resolve_db(create_parent=False)
     finally:
         if previous is None:
             os.environ.pop("TASK_CONSOLE_DB", None)
