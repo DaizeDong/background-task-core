@@ -10,21 +10,21 @@ authentication token; callers must preserve their existing approval boundary.
 from task_console import git_ops
 
 # Obtain these literal leaf paths from the caller's already authorized scope.
-review = git_ops.snapshot(repo, ["artifacts/summary.json"], env=identity_env)
-target = git_ops.push_target(repo, env=identity_env)
-history = git_ops.review_history(repo, review["head"], target=target, env=identity_env)
+review = git_ops.snapshot(repo, ["artifacts/summary.json"])
+target = git_ops.push_target(repo)
+history = git_ops.review_history(repo, review["head"], target=target)
 if history["truncated"]:
     raise RuntimeError("Complete history review is required")
 # Review history["diff"], the prospective byte diff, and the exact target.
 # The caller owns approval and must block if required evidence is unavailable.
 history.pop("diff")  # Preserve the complete metadata/digest, after displaying it.
-git_ops.verify_history(repo, history, target, env=identity_env)
-local = git_ops.commit(repo, review, message, env=identity_env)
+git_ops.verify_history(repo, history, target)
+local = git_ops.commit(repo, review, message)
 if local["state"] == "committed":
     # Persist local + target before attempting delivery.
     created = {"commit": local["commit"], "tree": local["tree"], "message": message.strip()}
     delivery = git_ops.publish(repo, local["commit"], local["tree"], target,
-                               history=history, created=created, env=identity_env)
+                               history=history, created=created)
 ```
 
 `snapshot(repo, allowed_paths)` records HEAD, branch, HEAD tree, index tree, a
@@ -103,31 +103,23 @@ evidence and retry **only** `publish` with them. Later worktree changes remain u
 drift or target drift requires intervention. An unknown commit with an unexpected
 tree or parent is not a publishable receipt.
 
-The injectable runner has signature `runner(repo, *argv, timeout=..., env=...)`
-and returns `(exit_code_or_None, output)`. `None` means interruption or missing
-exit evidence. The default uses installed `llmcall.process` for operations that
-can launch hooks or transports and `subprocess.run` for simple local Git reads.
-It never invokes a model. Packaging must provide that installed process module;
-there is no fallback process-tree implementation or embedded retry ladder.
-Identity and credential environment overlays are per call. Repository/index/object
-storage redirection via the caller environment is rejected.
+`run_git` uses installed `llmcall.process` for add, commit, push, fetch and
+`ls-remote`, which can launch hooks or transports, and `subprocess.run` for local
+reads. It never invokes a model.
 
 ## Console integration
 
-The endpoints and action names stay unchanged. `repos.commit_push_plan` retains
-`files` for display and adds `expect`, `diff`, `diffTruncated` and `pushTarget`.
-Both publish flows display the review and send `expect`. Path-only requests fail
-closed with `no_plan`, including clean-worktree pushes.
+`repos.commit_push_plan` returns `files` for display plus `expect`, `diff`,
+`diffTruncated` and `pushTarget`. Execution requires the full `expect` snapshot;
+a path-only or missing `expect` is refused with `no_plan`, including clean-worktree
+pushes.
 
-The UI must respect `blocked`, display the diff safely as text, and retain the
-returned `expect` on `push_failed`/delivery `unknown` for an explicit push-only
-retry. Such a retry still requires `push: true`. Commit uncertainty caused by an
-unexpected tree/parent does not receive a retry payload. `ok: false` is not proof
-that no commit happened; inspect `state`, `commit`, `tree` and `committed`.
-
-The UI collects complete plans before its approval dialog and sends the frozen
-`expect`. It keeps explicit push-only retry receipts. Accepting filenames could
-not identify which of two reviews of the same paths was approved.
+The UI respects `blocked`, displays the diff as text, collects complete plans
+before its approval dialog and sends the frozen `expect`. On `push_failed` or
+delivery `unknown` it keeps the returned receipt; a retry pushes only the already
+created commit. Commit uncertainty caused by an unexpected tree/parent does not
+receive a retry payload. `ok: false` is not proof that no commit happened;
+inspect `state`, `commit`, `tree` and `committed`.
 
 ### Complete history and unavailable plans
 

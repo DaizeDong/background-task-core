@@ -1,14 +1,13 @@
 # Work platform
 
-The console answers four questions: what needs a decision, what is being worked on,
-what was delivered, and which automations are enabled. Backend names are not navigation categories.
+The console answers three questions: what is being worked on, what was delivered,
+and which automations are enabled. Backend names are not navigation categories.
 
 Primary views:
 
 - Workbench: in order of urgency, a technical-trouble summary strip, interrupted agent work,
   tracked commitments beside current agent work, recent agent deliveries, and a compact source
-  status strip. The decision strip is shown only when the projection carries decisions (an
-  approval source is connected); it is not a permanent placeholder.
+  status strip.
 - Work records: searchable work, results and activity. Conversations and model calls are
   supporting records, not proof that a work item was completed.
 - Automations: readable enable/disable controls; schedules, execution diagnostics and

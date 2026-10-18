@@ -208,8 +208,8 @@ def act(action: str, name: str, arg: str | None = None) -> dict:
         return repos.fetch(name)
     if action == "repo.commitpush":
         # 唯一一个把东西送出这台机器的动作,所以是两步:先出只读计划
-        # (repo.commitpush.plan),执行时必须带着计划里那份文件清单回来,对不上就整个拒绝。
-        # arg 是 JSON: {"message": ..., "expect": [...]}。
+        # (repo.commitpush.plan),执行时必须带着计划里那份完整快照回来,对不上就整个拒绝。
+        # arg 是 JSON: {"message": ..., "expect": <计划返回的完整快照>}。
         import repos
         try:
             payload = json.loads(arg or "{}")
@@ -217,9 +217,7 @@ def act(action: str, name: str, arg: str | None = None) -> dict:
             raise Refused("参数不是合法 JSON", "bad_args")
         if not isinstance(payload, dict):
             raise Refused("参数必须是对象", "bad_args")
-        return repos.commit_push(name, payload.get("message") or "",
-                                 payload.get("expect"),
-                                 bool(payload.get("push", True)))
+        return repos.commit_push(name, payload.get("message") or "", payload.get("expect"))
     if action.startswith("skill."):
         root, arch = _root("TASK_CONSOLE_SKILLS"), _root("TASK_CONSOLE_SKILL_ARCHIVE")
         if not root or not arch:

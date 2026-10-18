@@ -689,7 +689,7 @@ async function repoPublishPlans(names){
       try{
         result=await api("/api/maint/act", {method:"POST", body:JSON.stringify({
           action:"repo.commitpush", name,
-          arg:JSON.stringify({message, expect:plan.expect, push:true})})});
+          arg:JSON.stringify({message, expect:plan.expect})})});
       }catch(e){
         failure=name + ": 未收到完整结果，需要先核查本地提交和远端状态。\n" + e.message;
         RP_REPORTS.set(name, failure);
