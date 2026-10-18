@@ -22,9 +22,7 @@ The console identifies missing checks, unhealthy state and gaps in execution evi
 
 **Check status and findings are reported separately.** Each panel distinguishes unchecked, measured zero and unavailable/error states. An unconfigured source renders NOT CHECKED and remains in the self-check denominator, so skipped coverage cannot receive a complete pass.
 
-**Each control has an explicit authority.** The closed table in `maint.py` defines page maintenance verbs. `scripts/task_console/README.md` lists environment variables, and tests reconcile that contract with code in both directions because external launchers depend on it. Representations that must be duplicated require consistency checks.
-
-**Checks require failure cases and negative controls.** Fault injection establishes that a check rejects invalid state; negative controls establish that valid state passes. Tests retain previously missed failure conditions to prevent regressions.
+**Each control has an explicit authority.** The closed table in `maint.py` defines page maintenance verbs. `scripts/task_console/README.md` lists environment variables, a contract that external launchers depend on.
 
 ## What it is (and isn't)
 
@@ -70,7 +68,7 @@ Selected sources come from environment settings; their defaults and unavailable 
 
 ## Config
 
-Set `TASK_CONSOLE_CONFIG` to the PRIVATE companion root. To switch configurations, select and dot-source the other companion's reviewed settings and recheck explicit resource overrides. [CONFIG.md](CONFIG.md) defines discovery, native environment settings, initialization and read-only diagnosis. `tools/init_config.py` writes a reviewed `settings.ps1` in an initialized PRIVATE companion; `tools/verify_config.py --json` checks local server/history prerequisites. It does not run ingestion or prove optional actions. A database override is used as given, except that a path inside this source tree is refused.
+Set `TASK_CONSOLE_CONFIG` to the PRIVATE companion root. The launcher sets the console's environment from the companion's `data/launcher-binding.json`; to switch configurations, point it at the other companion's binding and recheck explicit resource overrides. [CONFIG.md](CONFIG.md) defines discovery, settings and read-only diagnosis. `tools/verify_config.py --json` checks local server/history prerequisites. It does not run ingestion or prove optional actions. A database override is used as given, except that a path inside this source tree is refused.
 
 ## Where the details live
 
@@ -80,7 +78,7 @@ These references define runtime interfaces, configuration and maintenance constr
 | --- | --- |
 | [scripts/task_console/README.md](scripts/task_console/README.md) | What is on the page, and every environment variable it reads |
 | `scripts/task_console/maint.py` | Which verbs the page can perform against the machine |
-| `scripts/task_console/server.py` | Which routes exist, and the three controls that make the write endpoints safe |
+| `scripts/task_console/server.py` | Which routes exist, and the controls that make the write endpoints safe |
 | [docs/changing-this.md](docs/changing-this.md) | What a change must not break, and the traps this repository has already fallen into |
 
 ## Read-only declaration producer
@@ -105,8 +103,6 @@ Regenerate the public examples with `python tools/make_fixtures.py`.
 ## Where the data lives
 
 The database and durable export live in a private companion resolved by `fleet_guards.runtime`. If no companion resolves, the console reports UNINITIALISED with setup instructions. Writes never fall back to this tool repository.
-
-<a id="storage-retention"></a>
 
 [Storage contract and cleanup](docs/storage.md) distinguish protected runtime and recovery state from completed development artifacts. `storage.contract.json` sets review budgets; cleanup never truncates core history to meet them.
 

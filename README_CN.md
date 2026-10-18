@@ -22,9 +22,7 @@
 
 **检查状态与检查结果分别报告。** 每块面板区分未检查、测量值为零和不可用或错误。未配置的来源显示 NOT CHECKED，并计入自检分母，跳过检查不能获得完整通过结论。
 
-**每项控制有明确权威。** `maint.py` 的封闭动作表定义页面可执行的维护操作。`scripts/task_console/README.md` 列出环境变量，测试双向核对文档与代码；仓外启动器依赖这份契约。无法消除的重复表示必须有一致性检查。
-
-**检查器需要失败样本和负对照。** 注入故障验证检查能够拒绝错误状态，负对照验证合法状态能够通过。测试保留曾漏检的故障条件，防止同类回归。
+**每项控制有明确权威。** `maint.py` 的封闭动作表定义页面可执行的维护操作。`scripts/task_console/README.md` 列出环境变量，仓外启动器依赖这份契约。
 
 ## 它是什么（不是什么）
 
@@ -70,7 +68,7 @@ python scripts/task_console/server.py --port 8787
 
 ## 配置
 
-将 `TASK_CONSOLE_CONFIG` 指向 PRIVATE 伴生仓。切换配置时，在启动进程中加载另一个伴生仓的设置，并重新核对显式资源覆盖值。[CONFIG.md](CONFIG.md) 说明完整发现顺序、环境变量、初始化和只读检查。`tools/init_config.py` 在已初始化的 PRIVATE 伴生仓生成 `settings.ps1`，已有文件保持原样。`tools/verify_config.py --json` 检查本地服务端和历史数据库的前提条件，不启动摄取，也不替可选动作作就绪证明。数据库覆盖路径按原样使用，只拒绝落在本仓源码目录里的路径。
+将 `TASK_CONSOLE_CONFIG` 指向 PRIVATE 伴生仓。启动器按伴生仓里的 `data/launcher-binding.json` 设置控制台的环境变量；切换配置时，让启动器读另一个伴生仓的绑定文件，并重新核对显式资源覆盖值。[CONFIG.md](CONFIG.md) 说明完整发现顺序、环境变量和只读检查。`tools/verify_config.py --json` 检查本地服务端和历史数据库的前提条件，不启动摄取，也不替可选动作作就绪证明。数据库覆盖路径按原样使用，只拒绝落在本仓源码目录里的路径。
 
 ## 细节各自住在哪
 
@@ -80,10 +78,8 @@ python scripts/task_console/server.py --port 8787
 | --- | --- |
 | [scripts/task_console/README.md](scripts/task_console/README.md) | 页面上有什么，以及它读的每一个环境变量 |
 | `scripts/task_console/maint.py` | 页面能对这台机器执行哪些动作 |
-| `scripts/task_console/server.py` | 有哪些路由，以及让写入端点得以存在的那三道控制 |
+| `scripts/task_console/server.py` | 有哪些路由，以及让写入端点得以存在的那些控制 |
 | [docs/changing-this.md](docs/changing-this.md) | 一次改动不能破什么，以及这个仓已经踩过的坑 |
-
-<a id="只读声明生成与保留规则"></a>
 
 ## 只读声明生成
 

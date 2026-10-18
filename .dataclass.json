@@ -9,7 +9,7 @@
     "",
     "Enforced by fleet-guards tools/data_boundary.py through the .githooks shims (git config fleet.guards)."
   ],
-  "_audited": "The runtime database, durable event export, registration state and launcher configuration live in the PRIVATE companion. The current database is protected: its historical task configurations, ingest attempts and raw event fields cannot all be recovered by --backfill. The JSONL preserves normalized events beyond the rotating OS log window but is not a complete database restore. storage.contract.json uses private-companion repository-root paths with a data/ prefix for runtime state. It defines review budgets and protects current state and the exact current recovery archive/receipt, while legacy copies and private helper source require separate reconciliation. This manifest still names source-relative forbidden runtime DATA paths; only explicit reviewed retirement permits artifact removal. TASK_CONSOLE_DB is an explicit selection, but runtime admission still requires the canonical source-owned leaf in PRIVATE versioned storage; discovery alone is not write authorization.",
+  "_audited": "The runtime database, durable event export, registration state and launcher configuration live in the PRIVATE companion. The current database is protected: its historical task configurations, ingest attempts and raw event fields cannot all be recovered by --backfill. The JSONL preserves normalized events beyond the rotating OS log window but is not a complete database restore. storage.contract.json uses private-companion repository-root paths with a data/ prefix for runtime state. It defines review budgets and protects current state, while legacy copies and private helper source require separate reconciliation. This manifest still names source-relative forbidden runtime DATA paths; only explicit reviewed retirement permits artifact removal.",
   "data": [
     "task-console/console.sqlite3",
     "task-console/run-events.jsonl",
@@ -22,7 +22,6 @@
     "storage-retention.json",
     "memory-pressure-monitor/",
     "maintenance/",
-    "settings.ps1",
     "user-state/"
   ],
   "data_sealed": [
@@ -37,8 +36,7 @@
     "scripts/task_console/categories.example.json",
     "launcher-binding.json.example",
     "storage-retention.json.example",
-    "task-console/run-events.jsonl.example",
-    "settings.ps1.example"
+    "task-console/run-events.jsonl.example"
   ],
   "_data_home": "A PRIVATE companion outside this repo, resolved at runtime through fleet_guards.runtime (fleet-guards tools/datadir.py) by the convention that file documents. Deliberately not named here: a public repo that spells out which private repo it pairs with has published the link between them, and the resolver derives the name anyway, so writing it down buys nothing. If this tool ever needs to record real-run output, it goes THERE -- never back into this repo.",
   "_run_shape_probes": [

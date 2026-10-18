@@ -275,20 +275,3 @@ Supply the same four authority settings to HTTP and standalone processes. The
 public declarations, actual private task IDs/bindings, adoption proof and launcher
 inventory must be supplied and reviewed by their source owners. No actual task
 ownership is inferred by this integration.
-
-CONFIG's registration adapters preview with an explicit task ID and optional
-`-Migrate`; `-Apply` requires `-Request` and `-ExpectedRevision`. They no longer
-install payload scripts, generate launchers themselves, or register via cmdlets.
-The profile adapter refuses a legacy `-SyncRepo` override: source roots belong in
-reviewed private bindings. The installer must deliver payloads before planning.
-Only explicit reviewed enable control may enable an existing disabled task.
-
-CONFIG's launcher and backup delegate share `task-console-binding.ps1`, which
-uses T18's `install-runtime-artifacts --resolve` output for the installed Python,
-entrypoints and optional reminder import root. Status/stop do not resolve or
-install artifacts. Startup requires explicit reviewed roots, resolver and Python;
-guessed source, home or working directories and PythonPath overrides are refused. Existing
-snapshot bindings are preserved. Installer integration is supplied as a separate
-owner patch: it consumes `restore-task-snapshot.ps1` receipts and removes outer
-Scheduler registration. Applying that installer patch and shipping the optional
-reminder accessor remain their owners' responsibilities.

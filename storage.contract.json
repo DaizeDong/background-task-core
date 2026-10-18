@@ -164,7 +164,7 @@
       "rebuild_or_restore": "Clone the companion; the files are machine-bound DPAPI ciphertext readable only by the original Windows account on the original machine.",
       "retention_rule": {
         "class": "core",
-        "rule": "Keep every file the current receipt and unresolved journals reference (tools/export_registration_recovery.py collect). Files no current or pending document references may be retired after that check; explicit historical reconciliation needs the files of the reviewed chain."
+        "rule": "Keep every file the current receipt and unresolved journals reference. Files no current or pending document references may be retired; the companion's git history keeps retired ciphertext recoverable."
       }
     },
     {
@@ -235,76 +235,6 @@
       "retention_rule": {
         "class": "rebuildable",
         "rule": "Close and retire after source reconciliation and final acceptance; do not keep complete build copies as history."
-      }
-    },
-    {
-      "artifact_id": "legacy-console-repair",
-      "path_pattern": "data/console-repair-20*/**",
-      "purpose": "Legacy console-repair development output",
-      "schema": "Legacy artifacts explicitly listed in the private retirement record",
-      "producer": "Historical release sessions",
-      "consumer_or_final_deliverable": "Consolidated final result and preserved useful tooling",
-      "rebuild_or_restore": "Committed source retains product changes; the latest handoff is preserved outside these trees.",
-      "max_bytes": 4194304,
-      "retention_rule": {
-        "class": "retired",
-        "rule": "Only exact reviewed roots named by the retirement record may be removed after source reconciliation and writer/reference checks. This namespace has a bounded share of the combined 16 MiB legacy review budget."
-      }
-    },
-    {
-      "artifact_id": "legacy-console-ux",
-      "path_pattern": "data/console-ux-20*/**",
-      "purpose": "Legacy console-ux development output",
-      "schema": "Legacy artifacts explicitly listed in the private retirement record",
-      "producer": "Historical release sessions",
-      "consumer_or_final_deliverable": "Consolidated final result and preserved useful tooling",
-      "rebuild_or_restore": "Committed source retains product changes; the latest handoff is preserved outside these trees.",
-      "max_bytes": 1048576,
-      "retention_rule": {
-        "class": "retired",
-        "rule": "Only exact reviewed roots named by the retirement record may be removed after source reconciliation and writer/reference checks. This namespace has a bounded share of the combined 16 MiB legacy review budget."
-      }
-    },
-    {
-      "artifact_id": "legacy-icon-controls",
-      "path_pattern": "data/icon-controls-20*/**",
-      "purpose": "Legacy icon-controls development output",
-      "schema": "Legacy artifacts explicitly listed in the private retirement record",
-      "producer": "Historical release sessions",
-      "consumer_or_final_deliverable": "Consolidated final result and preserved useful tooling",
-      "rebuild_or_restore": "Committed source retains product changes; the latest handoff is preserved outside these trees.",
-      "max_bytes": 1048576,
-      "retention_rule": {
-        "class": "retired",
-        "rule": "Only exact reviewed roots named by the retirement record may be removed after source reconciliation and writer/reference checks. This namespace has a bounded share of the combined 16 MiB legacy review budget."
-      }
-    },
-    {
-      "artifact_id": "legacy-automation-ui",
-      "path_pattern": "data/automation-ui-20*/**",
-      "purpose": "Legacy automation-ui development output",
-      "schema": "Legacy artifacts explicitly listed in the private retirement record",
-      "producer": "Historical release sessions",
-      "consumer_or_final_deliverable": "Consolidated final result and preserved useful tooling",
-      "rebuild_or_restore": "Committed source retains product changes; the latest handoff is preserved outside these trees.",
-      "max_bytes": 1048576,
-      "retention_rule": {
-        "class": "retired",
-        "rule": "Only exact reviewed roots named by the retirement record may be removed after source reconciliation and writer/reference checks. This namespace has a bounded share of the combined 16 MiB legacy review budget."
-      }
-    },
-    {
-      "artifact_id": "legacy-task-ops",
-      "path_pattern": "data/task-ops-20*/**",
-      "purpose": "Legacy task-ops development output",
-      "schema": "Legacy artifacts explicitly listed in the private retirement record",
-      "producer": "Historical release sessions",
-      "consumer_or_final_deliverable": "Consolidated final result and preserved useful tooling",
-      "rebuild_or_restore": "Committed source retains product changes; the latest handoff is preserved outside these trees.",
-      "max_bytes": 1048576,
-      "retention_rule": {
-        "class": "retired",
-        "rule": "Only exact reviewed roots named by the retirement record may be removed after source reconciliation and writer/reference checks. This namespace has a bounded share of the combined 16 MiB legacy review budget."
       }
     },
     {
@@ -627,19 +557,6 @@
       "retention_rule": {
         "class": "retired",
         "rule": "Review exact terminal or superseded runs for source, result and writer clearance. This namespace is not a permitted new long-lived runtime store."
-      }
-    },
-    {
-      "artifact_id": "native-settings",
-      "path_pattern": "settings.ps1",
-      "purpose": "Reviewed native environment settings for the selected console process.",
-      "schema": "CONFIG.md; PowerShell environment assignments generated by tools/init_config.py.",
-      "producer": "tools/init_config.py and private operator edits.",
-      "consumer_or_final_deliverable": "The owner launcher or explicit dot-source before console startup.",
-      "rebuild_or_restore": "Restore the reviewed private version; rebind absolute paths on another machine.",
-      "retention_rule": {
-        "class": "core",
-        "rule": "Keep the active native settings and the versions needed for recovery."
       }
     },
     {

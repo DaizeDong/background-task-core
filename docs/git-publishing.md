@@ -1,4 +1,4 @@
-# Shared Git publication API
+# Git publication API
 
 `task_console.git_ops` owns Git status parsing, review snapshots, commit execution
 and push outcome handling. It imports no server, UI, allowlist or private bindings.
@@ -47,7 +47,7 @@ Explicitly selecting even a clean gitlink is unsupported. These cases raise
 `unsupported_submodule`; console plans are unavailable and contain no `expect`.
 Rejection preserves real index bytes, worktree and refs. No submodule publisher
 or recursive push is provided. The gitlink path set is also bound into snapshot
-state; approval issued before this contract change requires a fresh review.
+state.
 
 Snapshot construction uses a temporary index and may create unreachable Git
 objects. It preserves the real index bytes, worktree and refs. The tree is checked
@@ -116,9 +116,8 @@ storage redirection via the caller environment is rejected.
 
 The endpoints and action names stay unchanged. `repos.commit_push_plan` retains
 `files` for display and adds `expect`, `diff`, `diffTruncated` and `pushTarget`.
-Both publish flows must display the review and send `expect: p.expect`, replacing
-`expect: p.files`. The action dispatcher already passes this JSON field through.
-Path-only requests now fail closed with `no_plan`, including clean-worktree pushes.
+Both publish flows display the review and send `expect`. Path-only requests fail
+closed with `no_plan`, including clean-worktree pushes.
 
 The UI must respect `blocked`, display the diff safely as text, and retain the
 returned `expect` on `push_failed`/delivery `unknown` for an explicit push-only
@@ -127,9 +126,8 @@ unexpected tree/parent does not receive a retry payload. `ok: false` is not proo
 that no commit happened; inspect `state`, `commit`, `tree` and `committed`.
 
 The UI collects complete plans before its approval dialog and sends the frozen
-`expect`. It keeps explicit push-only retry receipts. The backup consumer still
-needs its own integration; accepting filenames cannot identify which of two
-reviews of the same paths was approved.
+`expect`. It keeps explicit push-only retry receipts. Accepting filenames could
+not identify which of two reviews of the same paths was approved.
 
 ### Complete history and unavailable plans
 
@@ -175,7 +173,6 @@ base, target, complete final outgoing commit IDs, their digest and the original
 review digest. Failed delivery retains that evidence, `history`, and the optional
 `created` commit/tree/message for a publication-only retry. An exact remote tip
 already equal to the retained commit reconciles delivery without pushing again.
-Legacy receipts without exact-target history require a new review.
 
 Shallow, grafted or replacement-ref repositories are refused. Replacement objects
 and lazy fetching are disabled in the Git environment, including hooks/transports.
@@ -200,11 +197,8 @@ completeness flags; a preview is not approval evidence.
 | `unavailable` | `ok: false`; safe `error` and stable `code`, `blocked` reasons, and any available display evidence; no `expect`. |
 
 A snapshot timeout is an unavailable plan, not successful empty evidence.
-Callers must stop at that plan. Existing drift tests require a successfully
-created review, then expect `plan_stale` after mutation. A missing, null or
-path-only approval still returns `no_plan`: the independent review's suggestion
-that falling back to a filename list would produce `plan_stale` does not match
-the existing API. No test assertion or timeout is relaxed to hide this distinction.
+Callers must stop at that plan. A mutation after a successful review returns
+`plan_stale`; a missing, null or path-only approval returns `no_plan`.
 
 For push outcomes, a nonzero exit or an arbitrary `fatal:` line alone does not
 prove failure. Connection resets, broken pipes, remote hangs and interruptions
@@ -232,10 +226,9 @@ a fast-forward (or an absent-ref creation). Divergent ancestry is refused before
 Git push. The lease supplies comparison, never permission to rewrite history.
 
 For cooperative Git receive-pack implementations, a changed advertisement fails
-the lease; a change after advertisement fails the server's old-OID ref update.
-Tests use real Git native pipe transport with synthetic local bare repositories
-for matching-base success and reset/advance/new-ref collision rejection. This is
-a practical exact-ref contract, not a global or permanent server transaction:
+the lease; a change after advertisement fails the server's old-OID ref update,
+so a reset, advance or new-ref collision is rejected and only a matching base
+succeeds. This is a practical exact-ref contract, not a global or permanent server transaction:
 a writer can change the ref after success, ABA changes returning to the same OID
 are indistinguishable, and a malicious server/transport or trusted hook can act
 outside this protocol. No guarantee is made that a hostile endpoint retains its
@@ -255,8 +248,6 @@ local commit after the last observation. Callers needing a fully quiescent sourc
 must supply that operational boundary.
 
 Repositories need an existing HEAD. Directory/submodule changes, multiple push
-URLs, and ambiguous upstreams require separate handling. Real authenticated
-transport, production guard hooks, signing and deployment are not validated by the
-synthetic tests. The backup owner must retain its existing scheduling/order,
-managed-path policy, credentials, and durable receipts, and must not rerun
-curation or capture in response to a push failure.
+URLs, and ambiguous upstreams require separate handling. Authenticated transport,
+guard hooks and signing are the caller's environment; this API does not configure
+them.

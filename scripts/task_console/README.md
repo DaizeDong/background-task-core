@@ -134,12 +134,7 @@ call's chain did not contain it, which is neither a success nor a failure; befor
 its own it was indistinguishable from a rung that simply never got its turn.
 
 Everything this module returns ends up inside a JSON response, so none of it may hold a value
-`json.dumps` cannot take. That is asserted for every public return at once rather than function by
-function, because the one that got through was a `Path` on a resolution step that answered `None`
-until the day the companion repo was configured: a check written per function only ever covers the
-functions someone thought of, and this one was invisible on any machine where the thing worked out
-to nothing. The test deliberately configures the companion first, since that is the only state in
-which the bug exists.
+`json.dumps` cannot take.
 
 Who made the call is recorded as a bare script name, never a full path. The ledger sits outside
 every repository, but this page serves it over HTTP, and a full path carries a home directory for
@@ -350,50 +345,23 @@ Creating one correctly means naming it so the backup drift gate can see it, choo
 deliberately, generating its launcher, and registering it in three places. A button that skipped
 those steps would manufacture exactly the untracked task that procedure exists to prevent.
 
-It can **delete** one, but only through a bound preview. `POST /api/task/delete/plan` lists every
-step with its target (the Controller's retire transaction for a task it owns; for any other task,
-an XML export into the private `TASK_CONSOLE_DELETED_ARCHIVE` followed by an unregister at the root
-path), the edit to the category map, and what the private follow-up hook will clean (the health
-watch list, the backup and the migration plan). It hands back a single-use token that lives 300
-seconds and is bound to a fingerprint of everything the preview depended on; `/apply` re-checks
-that fingerprint, asks the hook again, and refuses before anything irreversible if either moved.
-The result is `ok` only when every step read back as done; a Scheduler delete whose later cleanup
-did not finish, or whose hook is not configured, is `partial` and says what remains. Whether the task
-is gone is always decided by re-reading the Scheduler, never by the Controller's or the unregister
-call's own reply, and a re-read that fails is `unknown`, not "not deleted". A category map that
-still lists the task but cannot be rewritten byte for byte blocks the preview, because after the
-Scheduler step there is no console path back to it. When the hook refuses only after the task is
-gone, the result says the task was deleted and nothing was cleaned, and hands back the exact
-request and command to re-run just the follow-up. A console process
-without the Controller's configuration refuses to delete unless
-`TASK_CONSOLE_DELETE_WITHOUT_AUTHORITY=1` is set. The full
-protocol is in `docs/task-control.md`.
+It can **delete** one, but only through a bound preview: `POST /api/task/delete/plan` returns the
+steps and a single-use token bound to a fingerprint of what the preview read, and `/apply` refuses
+if anything moved. Whether the task is gone is decided by re-reading the Scheduler; an unfinished
+cleanup is `partial` and a failed re-read is `unknown`, never shown as done. The protocol, the
+follow-up hook and the page dialog are in
+[docs/task-control.md](../../docs/task-control.md#deleting-a-task).
 
 It can also file a **repair order** for one task, on an explicit click only. The order is an
-ordinary todo created through the reminder owner's `ensure` verb and dispatched through the
-existing agent action; the agent diagnoses and proposes a fix on copies and never touches the live
-task, its registration, launcher or backup. Nothing files a repair order because an observation
-failed.
-
-On the page, every task row on 任务开关 and every row of the 运行详情 table carries both a repair
-(修复) and a delete (删除) item in its ⋯ menu, except the two 同步与备份 pipeline tasks, which carry repair
-only on every tab, because those two tasks are the backup itself; the backend refuses to issue a
-delete token for them too. Delete opens a dialog that asks for the reason, shows the preview step
-by step with each target, puts any blocking reason and warning directly under the task name and keeps the confirm button disabled
-while one exists, and enables it only once the exact task name is typed. The result names every
-step's status; `partial`, `failed` and `unknown` are never shown as done, and the task list is
-re-read either way. Repair opens a dialog with the facts and limits that will go into the order and an optional
-one-line note; a submission is reported as accepted, with the result to appear on the work page and
-in Discord, never as fixed. Each row then shows the order's progress (queued, running, awaiting
-verification, proposal ready, failed, closed, or unknown) as a dashed chip that opens the order;
-the chip updates when the page re-reads after an action and on refresh; the repairs view does not poll.
-An unreadable order feed is stated in the toolbar instead of drawing every row as having no order: a
-small ! whose tooltip says, in plain words, why progress cannot be seen (the reason code is kept in the
-tooltip), and a red ! with 修复进度读取失败 when the read itself failed.
+ordinary todo dispatched through the reminder owner and the existing agent action; the agent works
+on copies and never touches the live task, its registration, launcher or backup. Each task row's ⋯
+menu carries repair and delete, except the pipeline tasks that are the backup itself, which carry
+repair only. The order lifecycle and its row chip are in
+[docs/work-platform.md](../../docs/work-platform.md#data-ownership).
 
 Pushing is the one thing here that leaves the machine, so it is deliberately **not** one click.
 It is two steps: a read-only plan first (which files, which ref, whether that remote is public or
-private), and the confirm step must hand back the very file list the plan showed, or the whole
+private), and the confirm step must send back the frozen plan (`expect`) that the review showed, or the whole
 thing is refused. A stray click opens a plan and nothing else. It never uses `--no-verify`, it
 never stages with `git add -A`, and whatever the hooks say comes back verbatim.
 
@@ -403,10 +371,6 @@ authority and this file does not keep a second copy of it.
 ## Why it is locked down
 
 It can change system state, so it has several controls, none of them decorative.
-
-(This line used to say "three controls" while the list below had five. A count in prose next to
-a list that anyone can append to is a fact with two homes and no reconciliation -- the list grew,
-the number did not. So the number is gone: the list is the only place that says how many.)
 
 1. **Binds 127.0.0.1 only.** Nothing off this machine can reach it.
 2. **Every `/api/` call needs a token** minted fresh at startup and never written to disk. Without
@@ -437,7 +401,7 @@ normal user session. The console says so instead of reporting a bare access-deni
 
 | File | What it is |
 |---|---|
-| `server.py` | the HTTP layer: routing, auth, host allowlist, the two write endpoints |
+| `server.py` | the HTTP layer: routing, auth, host allowlist, the authenticated write endpoints |
 | `console.html` | page shell loading separate static CSS and JavaScript; no build step |
 | `vendor/tabler/` | Tabler v1.5.0 (MIT), the dashboard shell. Vendored, not a CDN link |
 | `collect.ps1` | the Windows side |
@@ -475,7 +439,7 @@ one is right.
 
 `/vendor/` is served without a token, because a `<link>` tag cannot send one and there is
 nothing secret in there. That makes "cannot escape the vendor directory" the only control on
-that route, so it is tested directly, including percent-encoded traversal.
+that route: it must not resolve outside `vendor/`, including through percent-encoded traversal.
 
 ## Data boundary
 
@@ -614,8 +578,7 @@ cutover are outside this interface.
 The registration transaction API and the apply/retire/recover CLI entrypoints are
 separate; see [the registration contract](../../docs/task-registration.md) for
 private inputs, transport guarantees and recovery semantics.
-No production runtime adapters or automatic authority cutover are installed.
 
 Configuration lifecycle, full companion discovery and database path resolution are described
-in [CONFIG.md](../../CONFIG.md). The native environment template is `settings.ps1` in the PRIVATE
-companion. `console.html` contains the page shell and loads the separate static modules.
+in [CONFIG.md](../../CONFIG.md); the launcher sets the environment from the PRIVATE companion's
+`data/launcher-binding.json`. `console.html` contains the page shell and loads the separate static modules.

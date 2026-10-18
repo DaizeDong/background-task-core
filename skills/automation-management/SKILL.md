@@ -31,7 +31,7 @@ also review relevant unmanaged jobs before adoption. Follow the local artifact r
 than copying a generation path into a new permanent launcher.
 
 Registration rejects a new identity for an equivalent command, working directory and principal.
-Use the returned existing ID. An unknown/unreadable inventory is not an empty inventory. Do not
+Use the returned existing ID ([creation check](../../docs/task-registration.md#creation-check)). An unknown/unreadable inventory is not an empty inventory. Do not
 bypass the authority with direct Scheduler commands or by renaming the job.
 
 ## Preserve this in the producing skill

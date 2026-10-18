@@ -1,4 +1,4 @@
-"""Read-only native environment doctor; no server, ingestion, model or Scheduler action."""
+"""Read-only configuration doctor; no server, ingestion, model or Scheduler action."""
 import argparse
 from contextlib import closing
 import importlib.util
