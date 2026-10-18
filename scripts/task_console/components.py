@@ -7,7 +7,7 @@ import re
 from xml.etree import ElementTree
 
 from .contracts import ContractError, TaskSpec, anchored_path, fields, require, stray_percent, versioned
-from .freshness import OK_CODE_KEYS
+from .health import OK_CODE_KEYS
 
 _ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]*\Z")
 _BINDING_FIELDS = {"name", "enabled", "argv", "cwd", "source_root", "timezone", "trigger", "principal",

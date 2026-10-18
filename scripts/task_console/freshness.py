@@ -1,4 +1,5 @@
-"""Legacy freshness response adapter around the shared pure health evaluator."""
+"""The page's artifact-freshness view: reads declared artifacts' mtimes and judges each
+declaration with health.evaluate_task."""
 from __future__ import annotations
 import os
 try:
@@ -6,15 +7,10 @@ try:
 except ImportError:
     import health
 
-RC_NOT_RUN, RC_RUNNING = health.RC_NOT_RUN, health.RC_RUNNING
-UP, GRACE, DOWN, NEVER, RUNNING, PAUSED, UNKNOWN = (
-    "up", "grace", "down", "never", "running", "paused", "unknown")
-OK_CODE_KEYS = health.OK_CODE_KEYS
-declared_ok_codes = health.declared_ok_codes
-_ok_codes = health.ok_codes
-worst_of = health.worst_of
+DOWN, NEVER, UNKNOWN = "down", "never", "unknown"
 
-def newest_mtime(path: str, stat=os.stat, listdir=os.listdir, isdir=os.path.isdir):
+
+def newest_mtime(path: str):
     """产物可以是一个文件,也可以是一个目录(比如一个按年份分目录的归档)。
     目录取里面最新那个文件的 mtime;空目录返回 None,**不是 0**:0 会被读成 1970 年,
     那是一个看起来很确定的错误答案。
@@ -22,23 +18,23 @@ def newest_mtime(path: str, stat=os.stat, listdir=os.listdir, isdir=os.path.isdi
     读不到就返回 None 并附上原因。返回 (mtime, reason)。"""
     p = os.path.expanduser(path)
     try:
-        if isdir(p):
+        if os.path.isdir(p):
             best = None
-            for name in listdir(p):
+            for name in os.listdir(p):
                 try:
-                    m = stat(os.path.join(p, name)).st_mtime
+                    m = os.stat(os.path.join(p, name)).st_mtime
                 except OSError:
                     continue
                 if best is None or m > best:
                     best = m
             return (best, None) if best is not None else (None, "产物目录是空的")
-        return stat(p).st_mtime, None
+        return os.stat(p).st_mtime, None
     except OSError as e:
         return None, f"读不到产物: {e.__class__.__name__}"
 
 
 def evaluate(decls, rows, now, mtime_of=None):
-    """Read only explicitly declared artifacts; preserve the old page fields."""
+    """Judge every declaration against its scheduler row and declared artifacts."""
     mtime_of = mtime_of or newest_mtime
     out = []
     for index, raw_decl in enumerate(decls):
