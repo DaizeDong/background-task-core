@@ -26,7 +26,7 @@
 #automations .task-heading strong,#pipelines .task-heading strong,#tasks #tbl .task-heading strong{flex:0 1 auto}
 #tasks #tbl .task-heading .row-toggle{flex:0 1 auto}
 #automations .task-summary-text,#pipelines .task-summary-text{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.task-op-label{white-space:nowrap}
+.task-op-label,.task-menu .menu-item>span{white-space:nowrap}
 
 /* 任务开关和同步与备份的一行:状态列放得下「失败 · 退出码 1」,操作列放得下运行、停用、⋯ 和详情,不再折成两行。 */
 @media(min-width:1101px){

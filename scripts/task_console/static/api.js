@@ -42,8 +42,6 @@ function toast(message,tone){
   const box=$("toast");
   tone=Object.hasOwn(TOAST_LIFE,tone)?tone:"info";
   const item=document.createElement("div");
-  // 测试用的假 DOM 没有事件和子节点,这时什么都不做,也不留下定时器。
-  if(!box?.appendChild || typeof item?.addEventListener!=="function") return null;
   item.className="toast-item "+tone;
   item.innerHTML=`<span class="toast-text"></span><button type="button" class="icon-only toast-x" title="关闭提示" aria-label="关闭提示"><svg class="ic" aria-hidden="true"><use href="#i-close"/></svg></button>`;
   item.querySelector(".toast-text").textContent=String(message ?? "");
@@ -51,7 +49,7 @@ function toast(message,tone){
   const close=()=>{clearTimeout(timer);item.remove();};
   const arm=()=>{clearTimeout(timer);if(TOAST_LIFE[tone]) timer=setTimeout(close,TOAST_LIFE[tone]);};
   item.addEventListener("click",event=>{
-    if(!event.target.closest?.(".toast-x") && String(window.getSelection?.() || "")) return;
+    if(!event.target.closest(".toast-x") && String(window.getSelection())) return;
     close();
   });
   item.addEventListener("mouseenter",()=>clearTimeout(timer));
@@ -66,6 +64,13 @@ function toast(message,tone){
   }
   arm();
   return item;
+}
+// 复制文字。剪贴板不可用(非安全上下文、被拒绝)时要说出来:静默失败的复制会让人粘出上一次的东西。
+// 短的文字附在提示里方便手动复制;原文可能有几万字,长的不附。返回是否复制成功。
+async function copyText(text,okMsg='已复制'){
+  text=String(text ?? '');
+  try{await navigator.clipboard.writeText(text);toast(okMsg,'ok');return true;}
+  catch(error){toast('无法访问剪贴板，请手动选中复制'+(text.length<=300?'：'+text:''),'bad');return false;}
 }
 
 let API_SEQUENCE=0;
@@ -92,7 +97,7 @@ function api(p,o){
   // 所以不记进「最近操作」、不锁全页的写按钮、也不让读缓存失效。
   // 只读预览照样拒绝它:那边的服务一律不收 POST,提前说清楚比等一个 405 好。
   const inspect=!read && options.inspect===true;
-  if(!read && typeof ConsoleActions!=='undefined' && ConsoleActions.readOnly) return Promise.reject(new Error(ConsoleActions.reason));
+  if(!read && ConsoleActions.readOnly) return Promise.reject(new Error(ConsoleActions.reason));
   const epoch=API_READ_EPOCH, identity=JSON.stringify([p,{...options,method}]);
   const key=JSON.stringify([read?epoch:null,identity]);
   // 和别处正在读的同一路合并时也要记上:这一屏等的就是那一次的结果。
@@ -103,11 +108,11 @@ function api(p,o){
   // 侧栏徽章靠这份记录分辨「还在读」和「读不到」,所以每记一次就告诉它(navigation.js 的 noteRead)。
   const record=state=>{if(read && (API_READS.get(p)?.sequence || 0)<=sequence){
     API_READS.set(p,{path:p,sequence,observedAt:new Date().toISOString(),...state});
-    if(typeof noteRead==='function') noteRead(p,state);
+    noteRead(p,state);
   }};
   record({pending:true});
-  const operation=!read && !inspect && typeof ConsoleActions!=='undefined' ? ConsoleActions.begin?.(p,options) : null;
-  const controller=!options.signal && typeof AbortController!=='undefined' ? new AbortController() : null;
+  const operation=!read && !inspect ? ConsoleActions.begin(p,options) : null;
+  const controller=!options.signal ? new AbortController() : null;
   const timer=controller ? setTimeout(()=>controller.abort(),read?90000:360000) : null;
   if(read) API_ACTIVE_READS.set(identity,(API_ACTIVE_READS.get(identity)||0)+1);
   const request=(async()=>{
@@ -261,15 +266,15 @@ const disabledTitle=(label,reason)=>label?`${label}（不可用：${reason}）`:
 // 动作自己的名字:aria-label 优先,其次是图标按钮里藏着的文字,再次是原来的 title。
 // 已经拼过原因的 title 要先剥掉后缀,不然第二次禁用会叠成「X（不可用：…）（不可用：…）」。
 function controlName(button){
-  if(button.dataset?.label) return button.dataset.label;
-  const own=button.getAttribute?.('aria-label') || button.querySelector?.('.control-label')?.textContent ||
+  if(button.dataset.label) return button.dataset.label;
+  const own=button.getAttribute('aria-label') || button.querySelector('.control-label')?.textContent ||
     button.title || button.textContent || '';
   return String(own).trim().replace(/（不可用：[^）]*）$/,'');
 }
 // reason 为空就恢复可用;title 只在仍是我们写的那句时才还原,渲染方中途改过的 title 不去覆盖。
 function setDisabled(button,reason,describedBy){
   if(!button) return;
-  const dataset=button.dataset || (button.dataset={});
+  const dataset=button.dataset;
   if(!dataset.label) dataset.label=controlName(button);
   if(reason){
     if(dataset.lockedTitle!==button.title) dataset.plainTitle=button.title || '';
@@ -278,13 +283,13 @@ function setDisabled(button,reason,describedBy){
     // 监听 disabled 来重新同步的,无条件写一次就是一个停不下来的循环。
     if(!button.disabled) button.disabled=true;
     button.title=title;dataset.lockedTitle=title;
-    if(describedBy) button.setAttribute?.('aria-describedby',describedBy);
+    if(describedBy) button.setAttribute('aria-describedby',describedBy);
     return;
   }
   if(button.disabled) button.disabled=false;
   if(dataset.lockedTitle && button.title===dataset.lockedTitle) button.title=dataset.plainTitle || dataset.label;
   delete dataset.lockedTitle;
-  if(describedBy) button.removeAttribute?.('aria-describedby');
+  if(describedBy) button.removeAttribute('aria-describedby');
 }
 
 // reason 给了就渲染成不可用:aria-label 仍是动作名,原因只进 title。

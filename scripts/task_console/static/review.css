@@ -64,12 +64,10 @@ section[data-view]>.card,section[data-view]>.module-section{margin-bottom:0}
 #overview-pipelines>button+button{border-left:1px solid var(--line2)}
 #overview-pipelines strong{font-size:var(--fs-body)}
 #sck{margin-bottom:8px;padding:8px 12px;border-radius:4px;flex-wrap:wrap;gap:8px}
-#sck .dots{display:none}#sck .lab{font-weight:600}#sck .sum{font-size:var(--fs-meta)}
+#sck .lab{font-weight:600}#sck .sum{font-size:var(--fs-meta)}
 #sckd{font-size:var(--fs-meta);max-height:180px;overflow:auto;margin-bottom:12px}
 .task-summary{display:flex;gap:var(--space-2);flex-wrap:wrap;margin:0 0 var(--section-gap);color:var(--dim)}
-.task-summary>span{display:inline-flex;align-items:center;gap:var(--space-2);padding:6px 10px;border:1px solid var(--line);border-radius:4px;background:var(--panel)}
 .task-summary b{margin-left:4px;color:var(--ink);font-variant-numeric:tabular-nums}
-.task-summary>span:has(.bad){color:var(--bad);background:var(--badb);border-color:transparent}.task-summary>span:has(.warn){color:var(--warn);background:var(--warnb);border-color:transparent}
 .task-summary b.bad,.task-summary b.warn{color:inherit}
 #tools{padding:var(--space-2);margin-bottom:var(--section-gap);gap:var(--space-2);border:1px solid var(--line);border-radius:var(--card-radius)}
 #tools #q{flex:1 1 18rem;min-width:0;width:0}
@@ -103,12 +101,7 @@ table.g th.num{text-align:right}
 .card-header .catalog-tools{margin:0;padding:0;background:none;border:0}
 .catalog-tools input{flex:1;min-width:180px}
 #catalog-count,#health-count{font-size:var(--fs-meta);color:var(--dim)}
-.catalog-table{table-layout:fixed;min-width:1100px}
-.catalog-table th:first-child{width:230px}.catalog-table th:nth-child(2){width:130px}
-.catalog-table th:nth-child(n+3):nth-child(-n+9){width:82px;text-align:center}.catalog-table th:nth-child(10){width:110px}
-.catalog-state{text-align:center}.catalog-state .status-chip{gap:3px}
 .catalog-table .catalog-entry{background:var(--panel2)}
-.catalog-entry th{font-weight:400;color:var(--dim)}
 .auth-state{margin:5px 0 0;display:flex;gap:6px;flex-wrap:wrap}.auth-state dt{font-weight:400;color:var(--dim)}.auth-state dd{margin:0}
 .runtime-tools{padding:0 12px}
 .mt-grid{display:grid;grid-template-columns:1fr 1fr;gap:var(--section-gap);padding:0 var(--section-inset) var(--section-inset);align-items:start}
@@ -118,7 +111,7 @@ table.g th.num{text-align:right}
 .runtime-section>.mt-col{border:0;padding:var(--section-inset);border-radius:0}
 .mt-rows{max-height:320px}.mt-r{min-height:30px}
 .rp-split{min-width:0}.rp-detail{overflow-wrap:anywhere}.rp-filters{flex-wrap:wrap}.rp-filters input{min-width:0}
-.cv-r .src{padding:2px 5px;border-radius:4px}.cv-r .pv{line-height:1.5}
+.cv-r .pv{line-height:1.5}
 .rp-filters input{flex:1 1 18rem;width:0}.rp-r{min-height:32px}.rp-r .n{color:var(--ink)}
 .rp-r.on{background:var(--cur);border-left-color:var(--cyan)}
 .rp-detail{padding:var(--section-inset) var(--space-4)}.rp-acts{gap:var(--space-2)}
@@ -211,10 +204,6 @@ table.g th.num{text-align:right}
 .l-run-group{min-width:0}
 .l-run .bar{display:block}
 @container workspace (min-width:100rem){
-  .catalog-table th:first-child{width:20%}
-  .catalog-table th:nth-child(2){width:9%}
-  .catalog-table th:nth-child(n+3):nth-child(-n+9){width:6%}
-  .catalog-table th:nth-child(10){width:10%}
   .llm-summary{grid-template-columns:minmax(0,.8fr) minmax(0,1.2fr) minmax(0,1.5fr)}
   .llm-summary>#luse{grid-column:3;grid-row:1}
   .diagnostic-context{grid-template-columns:repeat(2,minmax(0,1fr))}

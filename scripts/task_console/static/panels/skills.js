@@ -18,13 +18,13 @@ async function loadMaint(){
 // 数目用计数格子的五种样子写:读取中「…」、读坏了「!」、没检查「—」、零是淡色的 0,
 // 免得一个还没读回来的块在锚点上显示成 0。
 function renderResourceAnchors(){
-  const anchor=goto=>document.querySelector?.(`#resources .resources-anchors [data-goto="${goto}"]`);
+  const anchor=goto=>document.querySelector(`#resources .resources-anchors [data-goto="${goto}"]`);
   const paint=(goto,label,cell)=>{ const el=anchor(goto); if(el) el.innerHTML=`${esc(label)} ${cell}`; };
   const maint=part=>MAINT_ERROR?countCell("broken",null,MAINT_ERROR):!MAINT?countCell("loading"):
     MAINT[part] && MAINT[part].available?countCell("ok",(MAINT[part][part]||[]).length):countCell("unchecked");
   paint("#mt-skills","技能",maint("skills"));
   paint("#mt-plugins","插件",maint("plugins"));
-  const mem=typeof MEM==="undefined"?null:MEM;
+  const mem=MEM;
   paint("#membox","记忆",!mem?countCell("loading"):mem.error?countCell("broken",null,mem.error):
     !mem.available?countCell("unchecked"):countCell("ok",(mem.live||0)+(mem.cold||0)));
   const components=catalogComponents(), catalog=components && components.catalog;
@@ -98,14 +98,7 @@ function renderSkills(){
       ${S.descUnreadable ? `<div class="warn-line">${S.descUnreadable} 份描述读不出来，上面的字数偏低</div>` : ""}
       <div class="mt-rows">${rows || emptyBlock(S.skills.length?"没有匹配的技能":"没有技能",RUNTIME_QUERY||RUNTIME_STATE?{filtered:"resources"}:{})}</div>`;
   }
-  // 记忆池那一栏由 renderMem 单独渲染(它有自己的端点和诊断)。
-  // --- 插件:整包装卸,disable 可逆,不用重新下载 ---
-
 }
-
-// 仓库详情里的三个动作。它们各自有各自的回显方式,所以不走 maintAct 那条通用路:
-// 复制路径根本不需要后端,打开网页由前端直接开一个**已知**的地址,而看改动要把
-// 文件列表铺在面板里。硬塞进通用路的结果是三种回显被压成一句 toast。
 
 function renderClientPlugins(){
   if(typeof renderPlugins==='function') renderPlugins();
@@ -157,7 +150,7 @@ const CATALOG_OPEN=new Set();
 // 下面的自动化检查结果要翻十几屏才看得到。默认排序有问题的在前,前 25 行里就是要人管的那些。
 const CATALOG_ROW_LIMIT=25;
 let CATALOG_ALL=false;
-function catalogComponents(){return (typeof COMPONENTS !== "undefined" && COMPONENTS) || (MAINT && MAINT.components);}
+function catalogComponents(){return COMPONENTS || (MAINT && MAINT.components);}
 function catalogName(source){
   return source.registry_key || (source.relative_path && source.relative_path!=="." ? source.relative_path : null)
     || `未命名${catalogLabel(source.kind)} (${source.source_id.split(":").pop().slice(0,8)})`;
@@ -204,7 +197,7 @@ function renderCatalog(){
   renderCatalogResults();renderCatalogHealth();
   renderResourceAnchors();
   // 工具栏整块重画,清除筛选按钮是新造的,要当场按现有筛选定亮灭。
-  if(typeof syncResetFilters==='function') syncResetFilters();
+  syncResetFilters();
 }
 function renderCatalogHealth(){
   const components=catalogComponents(), el=$("health-results");if(!el) return;
@@ -316,6 +309,6 @@ function startResources(){
       [...$('catalog-results').querySelectorAll('[data-catalog-toggle]')].find(button=>button.dataset.catalogToggle===id)?.focus();
     }
   });
-  if(typeof startMemory==='function') startMemory();
+  startMemory();
   renderResourceAnchors();
 }

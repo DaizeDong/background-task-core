@@ -1,5 +1,6 @@
 // Classic script module; loaded in app.js dependency order.
-let LLM=null, LCDRAFT=null, LMROWS=null, LMTOTAL=0, LMOPEN=null, LMBODY={};
+// LC_BUSY: 调用顺序正在保存。和计划任务的 busy 分开:两边打的是不同的后端,互不阻塞。
+let LC_BUSY=false, LLM=null, LCDRAFT=null, LMROWS=null, LMTOTAL=0, LMOPEN=null, LMBODY={};
 let LM_REQUEST=0;
 // 明细读失败时整张表换成红色的失败块(带重试),不再是标题旁一行灰字,也不画成「没有符合条件的记录」:
 // 读坏了和真的没有是两件事。
@@ -131,8 +132,8 @@ function renderChain(){
     + '<span class="mv">' + mv("up", i, "上移", i===0 ? "已在最前" : "")
     + mv("dn", i, "下移", i===eff.length-1 ? "已在最后" : "") + '</span></li>'
   ).join("");
-  ConsoleActions.gate($("lcsave"), busy ? '正在保存' : dirty ? '' : '顺序没有改动，先用上下箭头调整');
-  if(dirty && !busy && !ConsoleActions.readOnly) $("lcsave").title = '保存当前排列顺序';
+  ConsoleActions.gate($("lcsave"), LC_BUSY ? '正在保存' : dirty ? '' : '顺序没有改动，先用上下箭头调整');
+  if(dirty && !LC_BUSY && !ConsoleActions.readOnly) $("lcsave").title = '保存当前排列顺序';
   ConsoleActions.gate($("lcreset"), LCDRAFT ? '' : '当前没有未保存的修改');
   if(LCDRAFT && !ConsoleActions.readOnly) $("lcreset").title = '放弃未保存的排列修改';
   $("lcpath").textContent = c.file_path || "";
@@ -149,8 +150,8 @@ function lcMove(i, d){
 }
 
 async function lcSave(){
-  if(!LCDRAFT || busy) return;
-  busy = true; $("lcsave").disabled = true;
+  if(!LCDRAFT || LC_BUSY) return;
+  LC_BUSY = true; $("lcsave").disabled = true;
   try{
     const r = await api("/api/llmcall/chain", {method:"POST", body: JSON.stringify({chain: LCDRAFT})});
     LLM.chain = r;
@@ -163,7 +164,7 @@ async function lcSave(){
       r.shadowed_by_env ? "bad" : "ok");
     renderChain();
   }catch(e){ toast("保存失败:" + e.message, "bad"); }
-  finally{ busy = false; renderChain(); }
+  finally{ LC_BUSY = false; renderChain(); }
 }
 
 // ── 用量窗口 ──
@@ -510,7 +511,7 @@ function jumpToCalls(startOffset){
   return lmJumpOffset(startOffset).then(offset=>{ LMQ.offset = offset; return loadCalls(); }, e=>{
     // 问不到总数就退回正序翻过去,不让跳转静默地落在一个算错的位置上。
     LMQ.order = "asc"; LMQ.offset = Math.max(0, startOffset);
-    if($("lmorder")) $("lmorder").value = "asc";
+    $("lmorder").value = "asc";
     toast("读不到调用总数，已改为最早在前显示这一段：" + e.message, "warn");
     return loadCalls();
   }).then(()=>{
@@ -553,19 +554,12 @@ async function openCall(i){
   if(LMOPEN === i) renderCalls();
 }
 
-// 路由就是 location.hash,没有路由库。一把分区、一个哈希,引一个库只会多一份要维护的东西。
-// (这里原来写着「五个分区」。分区数是会变的,而散文里的数字不会跟着变 : 上一次加分区时
-//  它就已经过期了。真值永远只有下面那个 VIEWS 数组,别在注释里复写它的长度。)
-// hash 还顺带给了两个白送的好处:刷新回到原来那一屏,以及可以把某一屏发给自己。
-
-// ── 模型调用这一屏的挂点 ──(从 events.js 搬来,原因见 tasks.js 的 startTasksPage 上方)
+// ── 模型调用这一屏的挂点,由 events.js 调用 ──
 let LCFROM = null;
 function startCalls(){
   $("lcsave").addEventListener("click", lcSave);
   $("lcreset").addEventListener("click", ()=>{ LCDRAFT = null; renderChain(); });
   // 顺序不是筛选:清除筛选不动它,所以它不进 RESET_FILTER_COUNTS,挂在筛选前面。
-  $("lmprov").insertAdjacentHTML("beforebegin", '<select id="lmorder" class="l-sel" title="调用记录的排列顺序" aria-label="调用记录的排列顺序">'
-    + '<option value="desc">最新在前</option><option value="asc">最早在前</option></select>');
   $("lmorder").value = LMQ.order;
   $("lmorder").addEventListener("change", e=>{ LMQ.order = e.target.value === "asc" ? "asc" : "desc"; LMQ.offset = 0; LMOPEN = null; LMJUMP = null; loadCalls(); });
   $("lmok").value = LMQ.ok;

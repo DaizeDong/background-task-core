@@ -16,7 +16,7 @@ async function loadIntegrations(){
 }
 function integrationReasonText(raw){
   if(!/^[a-z0-9_]+$/.test(raw)) return raw;
-  return INTEGRATION_REASONS[raw] || (typeof reasonLabel==='function' ? reasonLabel(raw) : '原因未识别');
+  return INTEGRATION_REASONS[raw] || reasonLabel(raw);
 }
 function integrationReason(reason){
   const raw=String(reason ?? '').trim();
@@ -83,7 +83,7 @@ function startIntegrations(){
     await loadIntegrations();
     // 清单没能重画(读接入信息本身失败)时,旧按钮还在页面上,把它恢复过来。
     if(check.isConnected){setDisabled(check,'');check.classList.remove('spinning');}
-    window.scrollTo?.(0,top);
+    window.scrollTo(0,top);
     // 成功的那句过一会儿自己消失;失败的留着,直到下一次重读。
     const flash=INTEGRATION_FLASH.get(endpoint);
     if(flash && flash.ok) setTimeout(()=>{

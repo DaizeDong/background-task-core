@@ -88,11 +88,10 @@ function fixBtn(fix, arg){
     title="${esc(FIX_LAB[fix])}: ${esc(arg)}">${FIX_LAB[fix]}</button>`;
 }
 
-// 清单的三种样子由 status 决定:pending 还在读任务、failed 任务读不到、loaded 读到了。
-// 老的调用方传一个布尔(true 表示读不到),照旧认。
+// 清单的三种样子由 status.state 决定:pending 还在读任务、failed 任务读不到、loaded 读到了。
 function renderReviewQueue(rows,status){
   const box=$("todod");
-  const st=status===true?{state:"failed"}:status && typeof status==="object"?status:{state:"loaded"};
+  const st=status || {state:"loaded"};
   if(st.state==="pending"){
     $("todon").textContent="";
     $("review-count").textContent="正在读取检查结论";
@@ -119,7 +118,7 @@ function renderReviewQueue(rows,status){
     if(!group.reasons.some(seen=>seen.key===reason.key)) group.reasons.push(reason);
   });
   // 标题用主人认得的那个名字:任务表里的中文标题(taskText),机器名退到下面一行小字。
-  const known=name=>name && typeof ROWS!=="undefined" ? ROWS.find(row=>row.name===name) : null;
+  const known=name=>name ? ROWS.find(row=>row.name===name) : null;
   const all=[...groups.values()].map(row=>{
     const info=known(row.task);
     return {...row,info,title:info?taskText(info).title:(row.task || row.nm)};
@@ -155,10 +154,10 @@ function renderReviewQueue(rows,status){
 function setReviewFilter(value){
   applyReviewFilter(value);
   const card=$("todo");
-  card.scrollIntoView?.({block:"start",behavior:"smooth"});
+  card.scrollIntoView({block:"start",behavior:"smooth"});
   // 焦点交给清单本身:用键盘点的人接下来按 Tab 就进到第一行,不用从页顶再走一遍。
   if(card.tabIndex!==0) card.tabIndex=-1;
-  card.focus?.({preventScroll:true});
+  card.focus({preventScroll:true});
 }
 function reviewClick(event){
   const scope=event.target.closest("[data-review-filter]");
@@ -170,7 +169,7 @@ function reviewClick(event){
   // 选中了一段文字也不算点击:人可能只是想复制那个任务名。
   const row=event.target.closest("#todod .review-row");
   if(!row || event.target.closest("button,a,input,select,.review-actions")) return;
-  if(String(window.getSelection?.() || "")) return;
+  if(String(window.getSelection())) return;
   row.querySelector("[data-review-open]")?.click();
 }
 // 问题搜索里按 Enter:只剩一个对象时等于点它的「查看详情」,去同一个地方。
@@ -181,8 +180,8 @@ function openOnlyReview(){
   if(open) open.click();
 }
 
-// ── 技术问题与数据来源这一屏的挂点和渲染 ──(从 events.js、profile.js、tasks.js 搬来:
-// 数据来源自检、产物新鲜度灯板和数据那一行都只画在诊断这一屏上,放在这里,诊断的包只改这一个文件。)
+// ── 技术问题与数据来源这一屏的挂点和渲染,由 events.js 调用 ──
+// 数据来源自检、产物新鲜度灯板和数据那一行都只画在诊断这一屏上。
 function startDiagnostics(){
   let stored=null;
   try{ stored=localStorage.getItem(REVIEW_FILTER_KEY); }catch(e){}
@@ -230,9 +229,6 @@ const SCK_STATE={ok:"正常",stale:"未更新",missing:"读不到",unset:"未配
 function renderSelfcheck(){
   if(!SCK) return;
   const label=r=>SCK_LABEL[r.key] || r.title;
-  $("sckdots").innerHTML=SCK.rows.map(r=>
-    `<i class="d ${r.state}" title="${esc(label(r))}: ${esc(SCK_STATE[r.state] || r.state)}${r.why?" ("+esc(r.why)+")":""}"></i>`
-  ).join("");
   const c=SCK.counts||{};
   const parts=[`读到 ${SCK.probed}/${SCK.total}`];
   if(c.unset) parts.push(`未配 ${c.unset}`);

@@ -6,7 +6,7 @@ const CONSOLE_MODULES = [
   "panels/skills.js",
   "panels/plugins.js",
   "panels/integrations.js",
-  "panels/profile.js",
+  "panels/codex-storage.js",
   "panels/repositories.js",
   "panels/storage.js",
   "panels/conversations.js",

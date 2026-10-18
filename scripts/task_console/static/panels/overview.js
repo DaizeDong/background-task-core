@@ -17,9 +17,9 @@ function updateBadges(){
   const sckBroken = SCK && !SCK.ok ? ((SCK.broken || []).length || 1) : 0;
   setBadge("diagnostics", todoN, !(REVIEW_TOTALS.bad || sckBroken),
     `技术问题：${todoN} 个对象要处理` + (sckBroken ? `；另有 ${sckBroken} 个数据来源读不到，清单可能不全` : ""));
-  if(typeof renderPlatformSignals === "function") { renderPlatformSignals(); renderAutomations(); }
+  renderPlatformSignals(); renderAutomations();
 
-  if(typeof DATA !== "undefined" && DATA && DATA.summary)
+  if(DATA && DATA.summary)
     setBadge("tasks", DATA.summary.bad || 0, false, `运行详情：${DATA.summary.bad || 0} 个任务上次运行失败`);
 
   if(REPOS && REPOS.available && REPOS.summary){
@@ -74,7 +74,7 @@ function waitingTile(filter, key, read){
 // 这两个函数是「要人管的集合」的唯一读取点。后端不给时才回落到一份写死的默认,
 // 而回落本身要看得见 : 一个静默回落的默认值,和后端真给了这个值,在页面上长得一样。
 function FR_ATT(){
-  const S = (typeof DATA !== "undefined" && DATA && DATA.freshness && DATA.freshness.summary) || {};
+  const S = (DATA && DATA.freshness && DATA.freshness.summary) || {};
   return S.attentionStates || ["down","never","unknown"];
 }
 function RP_ATT(){
@@ -86,7 +86,7 @@ function RP_ATT(){
 // console_store.ingest_verdict 里,连同它为什么是这两个数 —— 在这里再写一遍就是
 // 同一条规则的第二份,而两份一定会漂,漂的时候两处都还在正常渲染。
 function INGEST(){
-  const h = (typeof DATA !== "undefined" && DATA && DATA.history) || {};
+  const h = (DATA && DATA.history) || {};
   const v = h.ingest;
   // 后端没给判定 ≠ 摄入器没事。老版本的后端、或者一条忘了带这个键的通路,
   // 都会走到这里;此时说「不知道」,不说「正常」。
@@ -113,12 +113,12 @@ function attentionRows(){
   // 任务:sk 是任务模块自己的判定键,bad 这一档就是它判失败的那些。
   // 不在这里另立一套「怎么算失败」 : 两份规则一定会漂,而漂的时候两块内容都还在正常渲染,
   // 看不出哪一份是对的。
-  if(typeof DATA !== "undefined" && DATA && Array.isArray(DATA.groups))
+  if(DATA && Array.isArray(DATA.groups))
     DATA.groups.flatMap(g=>g.rows||[]).filter(r=>r.sk==="bad").forEach(r=>rows.push(
       {key:"tasks", v:"tasks", src:"任务", nm:r.name, task:r.name, description:r.desc, why:r.sl || "上次运行失败", sev:3,
        fix:"run"}));
 
-  if(typeof DATA !== "undefined" && DATA && DATA.freshness && Array.isArray(DATA.freshness.tasks))
+  if(DATA && DATA.freshness && Array.isArray(DATA.freshness.tasks))
     // 状态集合来自后端 summary.attentionStates,不在这里再写一遍。
     // 两处各写一份的后果是它们会漂,而漂的时候两处都还在正常渲染。
     DATA.freshness.tasks.filter(r=>FR_ATT().indexOf(r.state) >= 0).forEach(r=>rows.push(
@@ -360,10 +360,3 @@ function renderHeat(){
   }).join("");
   $("heat").innerHTML=`<thead><tr><th class="tn"></th>${head}</tr></thead><tbody>${body}</tbody>`;
 }
-
-// 十行四列四十个百分比,而这张表的用途是横向比较哪一类拖后腿 —— 纯数字做不到
-// 「一眼看出谁最差」。加一条短横杠,数字原样留在旁边。
-// ⚠ null 分支**完全不画槽**,只给一个灰 `-` 加 title。空槽(未检查)和 0% 长度的条
-// (真的 0)在形状上必须不同:给 null 画一条空槽,就是把「没查」画成了「查了,是零」。
-// 绝对时刻 -> 相对。空串不接受:调用处先判空再进来,不靠返回值兜底 ——
-// 一个把空串变成「0分前」的函数,会把「从未跑过」画成「刚刚跑过」,方向正好反了。

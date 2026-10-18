@@ -178,11 +178,9 @@
 <section id="overview" data-view="overview" data-label="工作台" hidden>
   <div class="workspace-meta"><span id="work-source-state">正在连接工作记录</span><span id="work-context"></span></div>
   <!-- 按急迫程度排:要人管的事(技术问题摘要)在最上;接着是 Agent 没做完或出错的工作;再是待办和正在做并排;
-       完成记录最不急,放到最下面占满整行。手机上同一顺序排成一列。
-       「需要你确认」只有接上审批来源(projection.decisions 不为空)才出现:以前它常驻顶上,只写着审批还没接上,
-       占着整页最显眼的位置却永远不变。 -->
+       完成记录最不急,放到最下面占满整行。手机上同一顺序排成一列。 -->
   <div id="attention-strip" class="attention-strip" role="status" hidden></div>
-  <div class="decision-strip" id="decision-strip" hidden><h2><span class="section-symbol idle" aria-hidden="true">?</span>需要你确认</h2><div id="decision-state"></div></div>
+  <div id="overview-work-state"></div>
   <div class="work-section interrupted-card" id="interrupted-card" hidden><div class="section-heading"><h2><span class="section-symbol bad" aria-hidden="true">×</span>Agent 未完成 / 出错 <span id="interrupted-count">—</span></h2></div><div id="interrupted-work"></div></div>
   <div class="work-columns">
     <div class="work-aside"><div class="work-section"><div class="section-heading"><h2><span class="section-symbol pending" aria-hidden="true">◷</span>待办事项 <span id="tracked-count">—</span></h2><button class="icon-only record-link" data-work-filter="tracked_item" data-work-state="tracked_active" title="查看全部待办 →"><svg class="ic" aria-hidden="true"><use href="#i-right"/></svg><span class="control-label">查看全部待办 →</span></button></div><div id="tracked-work"></div></div></div>
@@ -196,7 +194,7 @@
     <input id="work-search" type="search" placeholder="搜索工作、摘要、项目" aria-label="搜索工作记录">
     <select id="work-role" aria-label="记录类别"><option value="work">工作与待办</option><option value="agent_work">Agent 工作</option><option value="tracked_item">待办事项</option><option value="signal">通知与线索</option><option value="all">全部记录</option></select>
     <select id="work-state" aria-label="工作状态"><option value="unfinished">未结束</option><option value="">全部状态</option><option value="active">执行中 / 排队</option><option value="tracked_active">未完成待办</option><option value="pending">待办</option><option value="doing">进行中</option><option value="done">已完成</option><option value="blocked">遇到阻碍</option><option value="stalled">已停滞</option><option value="failed">执行失败</option><option value="cancelled">已取消</option><option value="stopped">已停止</option><option value="snoozed">已延后</option><option value="reconcile">结果待核实</option><option value="review_unavailable">无法复核</option><option value="notified">已提醒</option></select>
-    <select id="work-source" aria-label="记录来源"><option value="">全部来源</option></select><button class="icon-only" id="work-reset" data-reset-filters="work" title="清除筛选"><svg class="ic" aria-hidden="true"><use href="#i-filter-clear"/></svg><span class="control-label">清除筛选</span></button><span id="work-match" role="status"></span><button class="icon-only" id="work-context-toggle" aria-controls="work-context-panels" aria-expanded="true" title="收起活动与来源"><svg class="ic" aria-hidden="true"><use href="#i-sidebar"/></svg><span class="control-label">收起活动与来源</span></button>
+    <select id="work-source" aria-label="记录来源"><option value="">全部来源</option></select><button class="icon-only" id="work-reset" data-reset-filters="work" title="清除筛选"><svg class="ic" aria-hidden="true"><use href="#i-filter-clear"/></svg><span class="control-label">清除筛选</span></button><span id="work-filter-restored" class="work-filter-restored" hidden>已应用上次的筛选</span><span id="work-match" role="status"></span><button class="icon-only" id="work-context-toggle" aria-controls="work-context-panels" aria-expanded="true" title="收起活动与来源"><svg class="ic" aria-hidden="true"><use href="#i-sidebar"/></svg><span class="control-label">收起活动与来源</span></button>
   </div>
   <div class="work-layout">
   <div class="work-section"><p id="work-coverage" class="work-section-note"></p><div id="work-list" class="work-list"></div></div>
@@ -255,7 +253,7 @@
     <div class="fr-list" id="frlist"></div>
   </div>
   </div>
-<div class="card"><div id="sck"><span class="lab">数据来源</span><span class="dots" id="sckdots"></span><span class="sum" id="scksum">读取中</span><button class="icon-only" id="scktog" title="收起检查"><svg class="ic" aria-hidden="true"><use href="#i-up"/></svg><span class="control-label">收起检查</span></button></div>
+<div class="card"><div id="sck"><span class="lab">数据来源</span><span class="sum" id="scksum">读取中</span><button class="icon-only" id="scktog" title="收起检查"><svg class="ic" aria-hidden="true"><use href="#i-up"/></svg><span class="control-label">收起检查</span></button></div>
 <div id="sckd" class="on"></div>
 <div id="warns"></div><div id="s-src"></div></div>
 </aside>
@@ -293,7 +291,7 @@
   <span class="faint" id="cnt"></span><span class="repair-read-state" data-repair-read></span>
 </div>
 <div class="card" id="dtbox">
-    <div class="card-header"><h3 class="card-title">任务列表 </h3></div>
+    <div class="card-header"><h3 class="card-title">任务列表 </h3><div class="card-actions task-sort"><span id="task-sort-state" class="faint" role="status"></span><button type="button" class="mini" id="task-sort-severity" title="改回按严重程度排序：失败在前">按严重程度</button></div></div>
     <div class="pad task-table-scroll"><table class="g" id="tbl"></table></div>
   </div>
 <div class="module-section"><div class="card" id="tlbox">
@@ -330,7 +328,7 @@
     <div class="pad">
       <div class="rp-head" id="rphead"></div>
       <div class="rp-filters">
-        <input id="rpq" type="search" placeholder="搜索仓库名称或账号" aria-label="搜索仓库">
+        <input id="rpq" type="search" placeholder="搜索名称、账号、路径或远程地址" aria-label="搜索仓库">
         <select id="rpacc" aria-label="按账号过滤"><option value="">全部账号</option></select>
         <select id="rpkind" aria-label="按类型过滤"><option value="">全部类型</option></select>
 
@@ -404,6 +402,7 @@
       <div class="ch-crumb" id="chcrumb"></div>
       <div class="ch-head" id="chhead"></div>
       <div id="chwarn"></div>
+      <div class="ch-find" id="chfind" hidden><input type="search" id="chfindq" placeholder="在本会话中搜索提问或回复" aria-label="在本会话中搜索提问或回复" autocomplete="off"><span class="faint" id="chfindn" role="status" aria-live="polite"></span></div>
       <div class="ch-split">
         <div class="ch-list" id="chlist" tabindex="0" role="listbox" aria-label="对话链节点"></div>
         <div class="ch-side"><details class="ch-actions-panel" open><summary>导出与新建会话</summary><div class="ch-act" id="chact"></div></details><div class="ch-det" id="chdet"></div></div>
@@ -452,6 +451,7 @@
   <div class="card" id="lcalls">
     <div class="card-header"><h3 class="card-title">调用记录<span class="n" id="lmnote"></span></h3>
       <div class="card-actions">
+        <select id="lmorder" class="l-sel" title="调用记录的排列顺序" aria-label="调用记录的排列顺序"><option value="desc">最新在前</option><option value="asc">最早在前</option></select>
         <select id="lmprov" class="l-sel" title="按实际应答服务筛选"><option value="">全部服务</option></select>
         <select id="lmcaller" class="l-sel" title="按发起调用的脚本筛"><option value="">全部调用方</option></select>
         <input type="search" id="lmq" class="l-q" placeholder="搜索错误信息" title="搜索调用失败的原因" aria-label="搜索调用失败的原因">

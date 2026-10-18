@@ -48,7 +48,7 @@ function cvOpenManager(kind,id,target){
   if(!row){toast('这场会话的位置已改变，请刷新列表后重试','bad');return;}
   CV_EDIT={kind,row,suggesting:false};
   if(kind==='delete'){cvOpenDelete(row);return;}
-  const rename=kind==='rename', locations=CONVOS?.locations || CONVOS?.groups || [];
+  const rename=kind==='rename', locations=CONVOS?.locations || [];
   $('cv-delete-field').hidden=true;$('cv-repreview').hidden=true;
   $('cv-submit').classList.remove('danger');$('cv-submit').classList.add('primary');
   $('cv-dialog-title').textContent=rename?'重命名会话':'移动会话文件';
@@ -65,7 +65,7 @@ function cvOpenManager(kind,id,target){
   $('cv-edit-note').textContent=!rename && !options.length?'还没有其他项目目录可供迁移':'';
   $('cv-edit-note').className='cv-notice';
   cvSyncSubmit();cvTargetLocation();$('cv-dialog').showModal();
-  const input=rename?$('cv-new-title'):$('cv-target');input.focus?.();if(rename) input.select?.();
+  const input=rename?$('cv-new-title'):$('cv-target');input.focus();if(rename) input.select();
 }
 const cvDeleteKey=row=>row.projectDir+'/'+row.id;
 function cvDeleteSummary(plan){
@@ -89,7 +89,7 @@ const cvShortId=id=>String(id || '').slice(0,8);
 function cvDeleteFacts(row){
   const group=(CONVOS?.groups || []).find(g=>cvKey(g)===row.projectDir);
   const cwd=group?.cwd || row.storageCwd || row.cwd || row.projectDir || '未记录';
-  const age=row.ageHours!=null && typeof cvAge==='function'?cvAge(row.ageHours):'<span class="u">时间未知</span>';
+  const age=row.ageHours!=null?cvAge(row.ageHours):'<span class="u">时间未知</span>';
   return `<span>工作目录：<code>${esc(cwd)}</code></span><span>会话编号：<code>${esc(cvShortId(row.id))}</code></span><span>最近活动：${age}</span>`;
 }
 function cvLookalikeNote(row,alike){
@@ -143,7 +143,7 @@ async function cvDelete(){
     CV_DELETIONS.delete(key);$('cv-dialog').close();
     if(typeof CH_ID!=='undefined' && CH_ID===row.id) chClose();
     if(typeof CH_FRES!=='undefined' && CH_FRES?.newId===row.id){CH_FRES=null;chRenderAct();}
-    if(typeof CV_MENU!=='undefined' && CV_MENU===row.id) CV_MENU=null;
+    if(CV_MENU===row.id) CV_MENU=null;
     const alike=cvLookalikes(row).length;
     toast(alike?`会话 ${cvShortId(row.id)} 及关联文件已永久删除。列表里另有 ${alike} 个同名或同一来源分叉的会话，它们没有被删除。`
       :'会话及关联文件已永久删除','ok');
@@ -162,7 +162,7 @@ async function cvDelete(){
   }
 }
 function cvTargetLocation(){
-  const target=(CONVOS?.locations || CONVOS?.groups || []).find(g=>cvKey(g)===$('cv-target').value);
+  const target=(CONVOS?.locations || []).find(g=>cvKey(g)===$('cv-target').value);
   $('cv-target-path').textContent=target?.storagePath || '';
 }
 // 保存成功后先把已加载列表里那一行的名字改掉,再整表刷新:刷新要几百毫秒,这段时间里不该还显示旧名字。
@@ -170,7 +170,7 @@ function cvApplyTitle(id,title){
   if(!title) return;
   for(const group of CONVOS?.groups || []){
     const row=(group.shown || []).find(item=>item.id===id);
-    if(row){row.title=title;row.titleFrom='custom-title';if(typeof cvPaintGroup==='function') cvPaintGroup(group);}
+    if(row){row.title=title;row.titleFrom='custom-title';cvPaintGroup(group);}
   }
 }
 function cvUpdateSession(result,title){
@@ -209,7 +209,7 @@ async function cvDialogSuggest(){
     edit.suggesting=false;cvSyncSubmit();
     $('cv-new-title').value=result.title;cvSyncSubmit();
     $('cv-edit-note').textContent=cvSuggestedNote(result);
-    $('cv-new-title').focus?.();$('cv-new-title').select?.();
+    $('cv-new-title').focus();$('cv-new-title').select();
   }catch(error){
     if(CV_EDIT!==edit || seq!==CV_DIALOG_SUGGEST) return;
     $('cv-edit-note').className='cv-notice error';$('cv-edit-note').textContent='未生成名称：'+error.message;
@@ -290,8 +290,8 @@ function cvInlineSync(){
 function cvInlineFocus(select){
   const input=$('cv-inline-input');
   if(!input || input.disabled) return;
-  try{input.focus?.({preventScroll:true});}catch(error){}
-  if(select) input.select?.();
+  input.focus({preventScroll:true});
+  if(select) input.select();
 }
 function cvInlineGroup(id){
   return (CONVOS?.groups || []).find(group=>(group.shown || []).some(row=>row.id===id));
@@ -300,8 +300,8 @@ function cvInlineGroup(id){
 function cvInlineRepaint(scope,id,focus){
   if(scope==='list'){
     const group=cvInlineGroup(id);
-    if(group && typeof cvPaintGroup==='function') cvPaintGroup(group);
-    else if(typeof renderConvos==='function') renderConvos();
+    if(group) cvPaintGroup(group);
+    else renderConvos();
   }else if(typeof chRenderHead==='function') chRenderHead();
   if(focus) cvInlineFocus(focus==='select');
 }
@@ -347,9 +347,9 @@ function cvInlineClose(returnFocus=true){
 function cvInlineReturnFocus(scope,id){
   const active=document.activeElement;
   if(active && active!==document.body && active.tagName!=='BODY' && active.isConnected!==false) return;
-  const value=typeof CSS!=='undefined' && CSS.escape?CSS.escape(id):String(id).replace(/[^A-Za-z0-9_-]/g,'');
+  const value=CSS.escape(id);
   const opener=document.querySelector(scope==='list'?`[data-cvquick="${value}"]`:`[data-cvquick-chain="${value}"]`);
-  try{opener?.focus?.({preventScroll:true});}catch(error){}
+  opener?.focus({preventScroll:true});
 }
 // 编辑器的那一处没了(对话链关掉或换成另一场):编辑器跟着收起。打过的字不能一声不吭地丢,
 // 所以改过的名字放进提示里,人还能复制回去。保存进行中的不动,结果回来时自己收尾。
@@ -414,14 +414,14 @@ async function cvInlineSuggest(){
 // 编辑器看不见(列表被对话链盖住)时不接:这一下该退的是看得见的那一层,也就是对话链。
 function cvInlineEscape(){
   if(!CV_INLINE) return false;
-  if(typeof CURVIEW!=='undefined' && CURVIEW!=='convos') return false;
+  if(CURVIEW!=='convos') return false;
   if(!cvInlineHostVisible()) return false;
   if(!CV_INLINE.busy) cvInlineClose();
   return true;
 }
 function cvInlinePointerDown(event){
   if(!CV_INLINE || CV_INLINE.busy || !cvInlineHostVisible()) return;
-  if(event.target?.closest?.('[data-cvinline]')) return;
+  if(event.target?.closest('[data-cvinline]')) return;
   if(cvInlineDirty()){cvInlineNote('名称还没保存：点「保存」，或点「取消」放弃','error');return;}
   cvInlineClose(false);
 }
@@ -499,7 +499,7 @@ function startConversationActions(){
     if(!handle || handle.disabled || CV_EDIT_BUSY || !ConsoleActions.allowWrite()){event.preventDefault();return;}
     CV_DRAG=cvSession(handle.dataset.cvdrag);
     if(!CV_DRAG){event.preventDefault();return;}
-    const locations=CONVOS?.locations || CONVOS?.groups || [];
+    const locations=CONVOS?.locations || [];
     $('cv-drop-targets').innerHTML='<strong>松开以迁移到此目录</strong>'+locations.filter(g=>cvKey(g)!==CV_DRAG.projectDir)
       .map(g=>`<div class="cv-drop-destination" data-cvproject="${esc(cvKey(g))}" title="${esc(g.storagePath || '')}">${esc(g.cwd || g.id)}</div>`).join('');
     $('cv-drop-targets').hidden=false;

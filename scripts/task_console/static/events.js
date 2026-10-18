@@ -20,7 +20,7 @@ document.addEventListener("click", e=>{
   const reset=e.target.closest('[data-reset-filters]');
   if(reset){
     const scope=reset.dataset.resetFilters;resetFilters(scope);
-    $(RESET_FILTER_SEARCH[scope])?.focus?.({preventScroll:true});return;
+    $(RESET_FILTER_SEARCH[scope])?.focus({preventScroll:true});return;
   }
   // ⚠ 这一段必须留在**这个**监听里,而且在最前面。
   // 页面上有两个 document 级的 click 监听,先注册的先跑,而 stopPropagation
@@ -32,7 +32,7 @@ document.addEventListener("click", e=>{
   if(fx){
     const a = fx.dataset.arg;
     if(fx.dataset.fix === "commitpush"){ showView("repos"); RP_SEL = a; renderRepoList();
-                                         repoCommitPush(a); }
+                                         repoPublishPlans([a]); }
     // ⚠ act 的签名是 (names, verb),两个都是位置参数而且顺序反直觉。
     // 写成 act("run", a) 会把动词当成任务名去跑,而那种调用不报错,只会静默什么都不做。
     else if(fx.dataset.fix === "run"){ act([a], "run"); }
@@ -56,7 +56,7 @@ document.addEventListener("click", e=>{
   const fa = e.target.closest("[data-fixall]");
   if(fa){
     const names = fa.dataset.args.split(String.fromCharCode(1)).filter(Boolean);
-    if(fa.dataset.fixall === "commitpush") repoCommitPushBatch(names);
+    if(fa.dataset.fixall === "commitpush") repoPublishPlans(names);
     return;
   }
   const tk = e.target.closest("[data-task]");
@@ -117,30 +117,19 @@ document.addEventListener("keydown", e=>{
   // 不给那四类补 tabindex,是因为代价是几百个 tab 停靠点(表格每行、会话每行、
   // 时间轴每行),侧栏当初正是为此改成 roving tabindex。
   // 任务表的行另有出路:每行的标题是一个真按钮(.row-toggle),Tab 停得上去,Enter 由浏览器自己接。
-  // 所以这里只留真的能聚焦的那一类,并由 test_page_js.py 钉住这条对应关系。
+  // 所以这里只留真的能聚焦的那一类。
   // [data-jump] 是调用屏里那些「连续降级段」,它们自带 tabindex="0"。
   // 加在这里而不是只给个 tabindex:一个能用 Tab 停上去、按回车却没反应的元素,
   // 比一个根本停不上去的元素更糟 —— 前者看起来是可操作的。
-  const act = e.target.closest && e.target.closest("[data-fr],[data-jump]");
+  const act = e.target.closest("[data-fr],[data-jump]");
   if(act){ e.preventDefault(); e.stopPropagation(); act.click(); return; }
-  const th = e.target.closest && e.target.closest("#tbl th[data-k]");
+  const th = e.target.closest("#tbl th[data-k]");
   if(!th) return;
   e.preventDefault(); e.stopPropagation();
   th.click();
 });
 window.addEventListener("hashchange", ()=>showView(location.hash.slice(1), false));
 
-// 概览的关键指标。每一格都是别的分区早就算好的数字,搬到这里只是让人不用先点进去;
-// 点一下就跳过去看细节。所以它既是概览也是导航。
-// 拿不到的那一格显示「未检查」而不是零 : 一个还没读到的数字和一个真的是零的数字,
-// 在一块大字号的板子上长得一模一样,而这块板子正是给人扫一眼用的。
-// 纯图标按钮。title 同时当 aria-label,所以不可能造出一个没有可读名字的图标按钮 ——
-// 少写一个参数就少一个名字,这种事迟早会发生,于是干脆不给它发生的机会。
-// extra 里放 data-* 或 disabled。
-// pct / pctWhat 给这一格加一条比例条。
-// ⚠ pct 传 null 时**不画轨道**,而不是画一条 0% 的空轨道:一条空轨道会被读成「0%」,
-// 那正是这一页到处在防的「没检查和零长得一样」。所以「未检查」那几档一律不传。
-// ⚠ 条的含义必须写进 pctWhat 并进 title:一条填充含义和大字不同的条,比没有条更糟。
 document.addEventListener("click",e=>{
   // 点灯板上的一格 = 把下面的任务表过滤到它。再点一次同一格就清空过滤。
   const fc=e.target.closest("[data-fr]");
@@ -165,7 +154,7 @@ document.addEventListener("click",e=>{
   // 这三个各有各的回显,所以单独接。
   const ra=e.target.closest("button[data-rpact]");
   if(ra){ e.stopPropagation();
-          if(ra.dataset.rpact==="commitpush"){ repoCommitPush(RP_SEL); return; }
+          if(ra.dataset.rpact==="commitpush"){ repoPublishPlans([RP_SEL]); return; }
           repoAct(ra.dataset.rpact); return; }
   // 选中一个仓。整行可点 —— 之前整块面板只有每行末尾一个 fetch 按钮可以点,
   // 而卡片本身看着像能点、实际不能,那种「看起来可点却不可点」比没有交互更糟。
@@ -188,13 +177,13 @@ document.addEventListener("click",e=>{
   if(tr){
     // 拖选一段文字(复制任务名或说明)松手时也会发一次 click。那一下不是要开合明细:
     // 开合会整表重建,刚选中的文字跟着没了。
-    const picked=window.getSelection ? window.getSelection() : null;
-    if(picked && String(picked) && (tr.contains(picked.anchorNode) || tr.contains(picked.focusNode))) return;
+    const picked=window.getSelection();
+    if(String(picked) && (tr.contains(picked.anchorNode) || tr.contains(picked.focusNode))) return;
     cur=+tr.dataset.i; const d=tr.nextElementSibling;
     if(d&&d.classList.contains("det")){ closeDetail(); render(); }
     else { render(); const t2=document.querySelector(`#tbl tbody tr[data-i="${cur}"]`); if(t2) openDetail(t2); } }
 });
-// 键盘约定只有两条,逻辑都在 navigation.js(那里能被 node:vm 测到):
+// 键盘约定只有两条,逻辑都在 navigation.js:
 // Enter 提交搜索框,Esc 退一层。这一页刻意没有单键快捷键。
 document.addEventListener("keydown",e=>{
   if(handleSearchEnter(e)) return;
@@ -230,10 +219,7 @@ ConsoleActions.start();
 startDeletionControls();
 startTaskOperations();
 $('launch-close').addEventListener('click',()=>$('launch-dialog').close());
-$('launch-copy').addEventListener('click',async()=>{
-  try{await navigator.clipboard.writeText($('launch-copy').dataset.command);toast('启动命令已复制','ok');}
-  catch(error){toast('无法访问剪贴板，请在启动说明中手动复制命令','bad');}
-});
+$('launch-copy').addEventListener('click',()=>copyText($('launch-copy').dataset.command,'启动命令已复制'));
 startWorkPlatform();
 startWorkActions();
 if(typeof startIntegrations==='function') startIntegrations();

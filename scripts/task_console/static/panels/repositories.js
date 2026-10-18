@@ -4,12 +4,8 @@ async function repoAct(what){
   if(!r){ toast("没有选中的仓","bad"); return; }
   const out = $("rpout");
   if(what==="copy"){
-    // 剪贴板在非安全上下文里不存在。失败时把路径显示出来让人自己选 ——
-    // 一个静默失败的复制按钮会让人以为已经复制了,然后粘出上一次的东西。
-    if(navigator.clipboard && window.isSecureContext){
-      navigator.clipboard.writeText(r.path).then(()=>toast("路径已复制","ok"),
-        ()=>{ if(out) out.textContent = r.path; toast("复制不了,路径显示在下面","bad"); });
-    } else { if(out) out.textContent = r.path; toast("复制不了,路径显示在下面","bad"); }
+    // 复制不了时把路径也写进下面的结果栏,让人自己选。
+    if(!(await copyText(r.path,"路径已复制")) && out) out.textContent = r.path;
     return;
   }
   if(what==="web"){
@@ -100,7 +96,7 @@ function renderRepos(){
   // 一个「没有未知」的舰队和一张压根没加载的可见性表,在「不显示这一段」下长得一样。
   {
     const vc={pub:0,priv:0,unk:0};
-    REPOS.repos.forEach(r=>{ vc[!r.visibility?"unk":(/pub/i.test(r.visibility)?"pub":"priv")]++; });
+    REPOS.repos.forEach(r=>{ vc[rpVis(r)]++; });
     head += `<span title="可见性分档。闸门对未知 remote 是按公开拦的">可见性 ${vc.pub}公开 / ${
       vc.priv}私有 / <b style="color:${vc.unk?"var(--warn)":"var(--faint)"}">${vc.unk}</b>未知</span>`;
   }
@@ -137,11 +133,6 @@ function renderRepos(){
 }
 
 const RP_KIND_LAB = {skill:"skill", shared:"共享组件", other:"其它", companion:"伴生配置"};
-const RP_KIND_WHY = {
-  skill: "有 SKILL.md。伴生的配置仓跟在自己那一行下面。",
-  shared: "被别的仓当 submodule 用。改一处,所有引用它的仓跟着走。",
-  other: "工具、库、独立的配置仓。名字像伴生仓但在这次扫描里配不上宿主的,也在这里。",
-};
 const RP_ID_LAB = {ok:"匹配", mismatch:"不匹配", foreign:"第三方", unchecked:"未检查"};
 let RP_SEL = null;          // 选中的仓名
 let RP_STATE = "";          // 状态条上点中的那一段,空串=不按状态过滤
@@ -168,6 +159,16 @@ function rpSave(){
     issue:RP_ISSUE, state:RP_STATE, sel:RP_SEL})); }catch(_){}
 }
 
+// 可见性三档各自判,不写「不是公开就算私有」那种兜底 ——
+// 可见性问不出来的仓会被那种写法归进私有,而闸门对它们是按公开拦的。
+const rpVis = r => !r.visibility ? "unk" : (/pub/i.test(r.visibility) ? "pub" : "priv");
+// 宿主仓名 → 它的伴生仓。
+function companionsByHost(){
+  const byHost = {};
+  REPOS.repos.forEach(r=>{ if(r.kind==="companion" && r.companionOf) byHost[r.companionOf]=r; });
+  return byHost;
+}
+
 function rpMatches(r, q, acc, kind, vis){
   if(RP_ISSUE==="identity_mismatch" && r.identity?.state!=="mismatch") return false;
   if(RP_ISSUE==="identity_unchecked" && r.identity?.state!=="unchecked") return false;
@@ -176,12 +177,7 @@ function rpMatches(r, q, acc, kind, vis){
   if(RP_STATE && r.state !== RP_STATE) return false;
   if(acc && r.owner !== acc) return false;
   if(kind && r.kind !== kind) return false;
-  if(vis){
-    // 三档各自判,不写「不是公开就算私有」那种兜底 ——
-    // 可见性问不出来的仓会被那种写法归进私有,而闸门对它们是按公开拦的。
-    const vk = !r.visibility ? "unk" : (/pub/i.test(r.visibility) ? "pub" : "priv");
-    if(vk !== vis) return false;
-  }
+  if(vis && rpVis(r) !== vis) return false;
   if(!q) return true;
   // 路径和远程地址也算:记得「放在哪个目录」或「推到哪」却记不清仓名的时候,也能搜到。
   const hay = [r.name, r.owner, r.path, r.remote].filter(Boolean).join(" ").toLowerCase();
@@ -214,8 +210,7 @@ function renderRepoList(){
 
   const q = ($("rpq").value||"").trim().toLowerCase();
   const acc = $("rpacc").value, kind = $("rpkind").value, vis = $("rpvis").value;
-  const byHost = {};
-  REPOS.repos.forEach(r=>{ if(r.kind==="companion" && r.companionOf) byHost[r.companionOf]=r; });
+  const byHost = companionsByHost();
 
   // 过滤时伴生仓跟着宿主走:一个 <宿主>-config 单独出现在列表里,那个从属关系就只剩
   // 名字在说,而名字是会被读漏的。宿主命中则两行都留;伴生自己命中则把宿主一起带出来。
@@ -274,7 +269,6 @@ function renderRepoList(){
     hit.title = "关联 = 自己不匹配,但它的伴生仓(或宿主)匹配,所以一起列出来保住从属关系。"
               + "每一行的徽章仍然是它自己的真实值。"; }
 
-  if(RP_SEL && !REPOS.repos.some(r=>r.name===RP_SEL)) RP_SEL=null;
   renderRepoDetail();
   rpSave();
   rpSyncRoute();
@@ -286,8 +280,7 @@ function rpSyncRoute(){
   if(RP_SEL===RP_ROUTED){ RP_ROUTE_REPLACE=false; return; }
   const replace = RP_ROUTE_REPLACE || RP_ROUTED===undefined;
   RP_ROUTED = RP_SEL; RP_ROUTE_REPLACE = false;
-  if(typeof CURVIEW==="undefined" || CURVIEW!=="repos") return;
-  if(typeof location==="undefined" || typeof history==="undefined") return;
+  if(CURVIEW!=="repos") return;
   const want = "#" + repoRoute();
   if(location.hash===want) return;
   try{ history[replace ? "replaceState" : "pushState"](null, "", want); }catch(_){}
@@ -328,8 +321,7 @@ const RP_VIS_GLYPH = {
 function rpListRow(r, sub, showAcc){
   // 伴生行只显示后缀:前缀逐字等于宿主名,完整名字仍在 title 里。
   const label = sub ? (r.name.slice((r.companionOf||"").length).replace(/^-/,"") || r.name) : r.name;
-  const v = !r.visibility ? RP_VIS_GLYPH.unk
-          : (/pub/i.test(r.visibility) ? RP_VIS_GLYPH.pub : RP_VIS_GLYPH.priv);
+  const v = RP_VIS_GLYPH[rpVis(r)];
   const id = r.identity||{};
   const cls = id.state==="mismatch" ? " bad" : (id.state==="unchecked" ? " unk" : "");
   const mono = id.state==="unchecked" ? "??" : rpMonogram(r.owner);
@@ -355,11 +347,6 @@ function rpListRow(r, sub, showAcc){
     <span class="vis ${v.cls}" title="${esc(v.t)}">${v.g}</span></div>`;
 }
 
-function rpField(label, value, cls, title){
-  return `<div class="rp-f"><span class="lb">${esc(label)}</span>`
-    + `<span class="vv ${cls||""}"${title?` title="${esc(title)}"`:""}>${value}</span></div>`;
-}
-
 function rpChip(n, label, tone, title){
   const cls = (n===0||n==null) ? (tone==="unk" ? "unk" : "zero") : (tone||"");
   const shown = (n==null) ? "?" : n;
@@ -376,18 +363,16 @@ function rpBtn(sym, label, text, extra, cls, reason, hint){
 // 手机宽度下列表和详情放不下两栏:点一个仓,详情整块盖在列表上,顶上有「← 返回列表」。
 // 宽屏上这个类不起作用(规则只写在窄容器条件里),返回按钮也藏着。
 function rpApplySheet(){
-  const box = $("rpdetail");
-  box?.parentElement?.classList?.toggle("rp-sheet", !!(RP_SHEET && RP_SEL));
+  $("rpdetail").parentElement.classList.toggle("rp-sheet", !!(RP_SHEET && RP_SEL));
 }
 function rpNarrow(){
   const back = $("rpback");
-  if(!back || typeof getComputedStyle!=="function") return false;
-  try{ return getComputedStyle(back).display!=="none"; }catch(_){ return false; }
+  return !!back && getComputedStyle(back).display!=="none";
 }
 function rpCloseSheet(){
   RP_SHEET = false; rpApplySheet();
-  const row = RP_SEL && [...(document.querySelectorAll?.("#rplist [data-rp]") || [])].find(el=>el.dataset.rp===RP_SEL);
-  if(row){ row.scrollIntoView?.({block:"nearest"}); row.focus?.(); }
+  const row = RP_SEL && [...document.querySelectorAll("#rplist [data-rp]")].find(el=>el.dataset.rp===RP_SEL);
+  if(row){ row.scrollIntoView({block:"nearest"}); row.focus(); }
 }
 // Esc 的这一页那一层:手机上详情盖着列表时,Esc 退回列表。宽屏上没有这一层。
 function repoEscape(){
@@ -402,7 +387,7 @@ function rpChangesHtml(r){
   if(r.state==="error" || !(r.dirty>0)) return "";
   const got = RP_STATUS.get(r.name);
   if(!got){
-    if(typeof ConsoleActions!=="undefined" && ConsoleActions.readOnly)
+    if(ConsoleActions.readOnly)
       return `<p class="rp-changes-note">只读预览不读取改动列表</p>`;
     RP_STATUS.set(r.name, {pending:true});
     Promise.resolve().then(()=>rpLoadStatus(r.name, false));
@@ -447,10 +432,8 @@ function renderRepoDetail(){
   const r = REPOS.repos.find(x=>x.name===RP_SEL);
   if(!r){ box.innerHTML = `<div class="rp-empty">这个仓在上一次扫描后不见了。</div>`; return; }
   const id = r.identity||{};
-  const byHost = {};
-  REPOS.repos.forEach(x=>{ if(x.kind==="companion" && x.companionOf) byHost[x.companionOf]=x; });
-  const v = !r.visibility ? RP_VIS_GLYPH.unk
-          : (/pub/i.test(r.visibility) ? RP_VIS_GLYPH.pub : RP_VIS_GLYPH.priv);
+  const byHost = companionsByHost();
+  const v = RP_VIS_GLYPH[rpVis(r)];
 
   // 标题行:名字 + 类型 + 可见性形状 + 账号。判定不是 ok 时账号才带颜色和文字,
   // 因为 ok 的那 47 个不需要每次都念一遍「匹配」。
@@ -551,10 +534,10 @@ function renderRepoDetail(){
   // 焦点原来在详情里的某个控件上(手机上点开一个仓,焦点交给了「← 返回列表」),重画会把它扔回 body,
   // 读屏器就落在一张看不见的页上。记下是哪个控件,重画后放回同一个上。
   const had = document.activeElement;
-  const keep = had && had!==box && typeof box.contains==="function" && box.contains(had)
-    ? (had.id ? "#"+had.id : had.dataset && had.dataset.rpact ? `[data-rpact="${had.dataset.rpact}"]` : null) : null;
+  const keep = had && had!==box && box.contains(had)
+    ? (had.id ? "#"+had.id : had.dataset.rpact ? `[data-rpact="${had.dataset.rpact}"]` : null) : null;
   box.innerHTML = h;
-  if(keep) box.querySelector?.(keep)?.focus?.({preventScroll:true});
+  if(keep) box.querySelector(keep)?.focus({preventScroll:true});
   const report=RP_REPORTS.get(r.name);
   if(report) $("rpout").textContent=report;
 }
@@ -615,19 +598,17 @@ function repoReview(items){
   return new Promise(resolve=>{
     const make=(tag, props)=>Object.assign(document.createElement(tag), props || {});
     const dialog=make("dialog", {className:"rp-review console-dialog"});
-    dialog.setAttribute?.("closedby", "any");
-    dialog.setAttribute?.("aria-label", "审阅并发布");
+    dialog.setAttribute("closedby", "any");
+    dialog.setAttribute("aria-label", "审阅并发布");
     const form=make("form", {method:"dialog"});
     const head=make("div", {className:"dialog-head"});
     const title=make("h2", {textContent:"审阅并发布 " + items.length + " 个仓库"});
     const close=make("button", {type:"button", className:"icon-only dialog-x", title:"关闭"});
     close.setAttribute("aria-label", "关闭");
     // 和别的对话框同一个 ✕ 图标;这里全程不写 innerHTML(审阅内容是外来数据),所以按节点拼。
-    if(typeof document.createElementNS==="function"){
-      const svg=document.createElementNS("http://www.w3.org/2000/svg", "svg"), use=document.createElementNS("http://www.w3.org/2000/svg", "use");
-      svg.setAttribute("class", "ic");svg.setAttribute("aria-hidden", "true");use.setAttribute("href", "#i-close");
-      svg.appendChild(use);close.appendChild(svg);
-    }else close.textContent="✕";
+    const svg=document.createElementNS("http://www.w3.org/2000/svg", "svg"), use=document.createElementNS("http://www.w3.org/2000/svg", "use");
+    svg.setAttribute("class", "ic");svg.setAttribute("aria-hidden", "true");use.setAttribute("href", "#i-close");
+    svg.appendChild(use);close.appendChild(svg);
     const body=make("div", {className:"dialog-body"});
     const detail=make("pre", {textContent:items.map(({name, plan})=>repoPlanText(name, plan)).join("\n\n────────\n\n")});
     const label=make("label", {textContent:"提交信息"});
@@ -641,7 +622,7 @@ function repoReview(items){
     let settled=false, armed=false;
     const finish=value=>{ if(settled) return; settled=true; dialog.remove(); resolve(value); };
     const dirty=()=>input.value!==initial;
-    const syncDismiss=()=>dialog.setAttribute?.("closedby", dirty() ? "closerequest" : "any");
+    const syncDismiss=()=>dialog.setAttribute("closedby", dirty() ? "closerequest" : "any");
     const publish=()=>{
       const message=input.value.trim();
       if(!message || /[\r\n`$]/.test(message)){
@@ -662,7 +643,7 @@ function repoReview(items){
       if(event.isComposing || event.repeat || !armed) event.preventDefault();
     });
     form.addEventListener("submit", event=>{ event.preventDefault(); publish(); });
-    accept.addEventListener("click", event=>{ event?.preventDefault?.(); publish(); });
+    accept.addEventListener("click", event=>{ event.preventDefault(); publish(); });
     head.appendChild(title);head.appendChild(close);
     [detail, label, error].forEach(node=>body.appendChild(node));
     foot.appendChild(cancel);foot.appendChild(accept);
@@ -670,7 +651,7 @@ function repoReview(items){
     dialog.appendChild(form);
     document.body.appendChild(dialog);
     dialog.showModal();
-    cancel.focus?.();
+    cancel.focus();
   });
 }
 
@@ -727,7 +708,7 @@ async function repoPublishPlans(names){
       const out=$("rpout"); if(out) out.textContent=summary;
       toast("发布未全部完成，详情已保留", "bad");
       // 结果写在仓库详情的结果栏里(#rpout),一直留着;不再弹浏览器自带的提示框,那个关掉就没了。
-      if(out) out.scrollIntoView?.({block:"nearest"});
+      if(out) out.scrollIntoView({block:"nearest"});
     }else{
       toast(done.length === 1 ? done[0] + " 已推送" : done.length + " 个仓库已推送","ok");
     }
@@ -737,10 +718,7 @@ async function repoPublishPlans(names){
   }finally{ RP_PUBLISH_BUSY=false; }
 }
 
-async function repoCommitPush(name){ return repoPublishPlans([name]); }
-async function repoCommitPushBatch(names){ return repoPublishPlans(names); }
-
-// ── 代码仓库这一屏的挂点 ──(从 events.js 搬来,原因见 tasks.js 的 startTasksPage 上方)
+// ── 代码仓库这一屏的挂点,由 events.js 调用 ──
 function startRepositories(){
   // 上次的筛选和选中放回去。地址里带了仓名(#repos/<仓名>)的话,随后 showView 会以地址为准。
   const saved = rpSaved();
@@ -749,8 +727,6 @@ function startRepositories(){
   if(typeof saved.state==="string" && Object.hasOwn(RP_LAB, saved.state)) RP_STATE = saved.state;
   if(typeof saved.sel==="string" && saved.sel) RP_SEL = saved.sel;
   RP_PENDING = {acc:typeof saved.acc==="string" ? saved.acc : "", kind:typeof saved.kind==="string" ? saved.kind : ""};
-  // 搜索框现在也搜路径和远程地址,提示语跟着说清楚。
-  $("rpq").placeholder = "搜索名称、账号、路径或远程地址";
   // 过滤只改看得见什么,不重新扫描 —— 扫一遍所有仓要一秒多,而每敲一个字符重扫一次
   // 既慢又会让选中的那个仓在脚下换位置。
   $("rpq").addEventListener("input", renderRepoList);
@@ -780,6 +756,6 @@ function startRepositories(){
 function rpRevealSheet(){
   if(!RP_SHEET || !rpNarrow()) return;
   const back = $("rpback");
-  $("rpdetail").scrollIntoView?.({block:"start"});
-  back?.focus?.({preventScroll:true});
+  $("rpdetail").scrollIntoView({block:"start"});
+  back?.focus({preventScroll:true});
 }

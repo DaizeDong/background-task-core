@@ -15,9 +15,6 @@
 #view-tabs a.view-origin:hover{border-color:var(--cyan);background:var(--cur)}
 .mode-badge{color:var(--warn);background:var(--warnb);padding:3px 7px;border:1px solid var(--line);border-radius:4px;font-size:var(--fs-meta)}
 .workspace-meta{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;color:var(--dim);font-size:var(--fs-meta);margin:0}
-.decision-strip{display:flex;gap:var(--space-3);align-items:center;padding:8px var(--section-inset);border:1px solid var(--line);border-radius:var(--card-radius);background:var(--panel)}
-.decision-strip h2{font-size:var(--fs-lead);margin:0;white-space:nowrap}
-.decision-strip .work-empty{padding:0}
 .work-columns{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--section-gap);align-items:start}
 .work-main,.work-aside{min-width:0;display:grid;gap:var(--section-gap)}
 .work-section{border:1px solid var(--line);border-radius:var(--card-radius);background:var(--panel);min-width:0;overflow:hidden}
@@ -148,7 +145,7 @@ dialog#work-detail{width:min(760px,calc(100vw - 32px))}#work-detail h3{font-size
 /* 手机上工具条的下拉框从自己的字宽起步(flex-basis:auto),放不下就整个换到下一行,再把余下的宽度分掉。
    以前是 flex:1(起步宽度 0),清除按钮、计数和图标都挤在同一行时,两个下拉被压到 101px,
    「全部建议 (43)」的右括号藏在箭头底下,看不出正在按哪一项筛。 */
-@media(max-width:767px){#side .nav-item:last-child{margin-top:0}.workspace-meta{gap:3px}.decision-strip{align-items:flex-start;flex-wrap:wrap}.work-row:has(>.work-actions),#overview .work-row:has(>.work-actions){grid-template-columns:minmax(0,1fr)}.work-context-panels{grid-template-columns:1fr}.work-row-heading{align-items:flex-start}.work-meta{gap:2px 8px}.work-toolbar input{width:100%}.work-toolbar select{max-width:100%;min-width:0;flex:1 1 auto}.automation-row{grid-template-columns:minmax(0,1fr);gap:10px}.automation-name,.automation-schedule,.automation-state,.automation-actions{grid-column:1;grid-row:auto}.activity-list li{grid-template-columns:1fr;gap:2px}.source-strip{gap:7px 12px}.source-strip a{margin-left:0}}
+@media(max-width:767px){#side .nav-item:last-child{margin-top:0}.workspace-meta{gap:3px}.work-row:has(>.work-actions),#overview .work-row:has(>.work-actions){grid-template-columns:minmax(0,1fr)}.work-context-panels{grid-template-columns:1fr}.work-row-heading{align-items:flex-start}.work-meta{gap:2px 8px}.work-toolbar input{width:100%}.work-toolbar select{max-width:100%;min-width:0;flex:1 1 auto}.automation-row{grid-template-columns:minmax(0,1fr);gap:10px}.automation-name,.automation-schedule,.automation-state,.automation-actions{grid-column:1;grid-row:auto}.activity-list li{grid-template-columns:1fr;gap:2px}.source-strip{gap:7px 12px}.source-strip a{margin-left:0}}
 
 /* Fixed table tracks keep the default task list within a desktop panel. */
 #tasks,#automations,#pipelines,#dtbox,#pipeline-body{min-width:0;max-width:100%}
@@ -246,7 +243,7 @@ dialog#work-detail{width:min(760px,calc(100vw - 32px))}#work-detail h3{font-size
 
 /* 芯片一种盒子:圆角 4px、高 22px、内距 2px 7px、12px 字。颜色、描边、虚线这些表示含义的部分
    仍归各自的类;以前同一种「状态或标签」在不同页是 15 到 24px 高、圆角从 0 到 9px 的八种样子。 */
-.status-chip,.chip,.lc-src,.rp-chip,.tlbadge,.st,.ch-flags span,.check-chip{display:inline-flex;align-items:center;justify-content:center;
+.status-chip,.lc-src,.rp-chip,.tlbadge,.st,.ch-flags span,.check-chip{display:inline-flex;align-items:center;justify-content:center;
   box-sizing:border-box;min-height:22px;padding:2px 7px;border-radius:4px;font-size:var(--fs-meta);line-height:16px;vertical-align:middle}
 /* 流水线的检查项是「检查名 | 结果」拼成的一枚:外框是芯片,结果徽章贴在右半边。 */
 .check-chip{gap:6px;padding:0 0 0 7px;border:1px solid var(--line);margin:6px 8px 0 0}
