@@ -162,7 +162,12 @@ def _file_evidence(repo, path):
     for parent in full.parents:
         if parent == repo:
             break
-        if parent.is_symlink() or parent.is_junction():
+        try:
+            info = parent.lstat()
+        except FileNotFoundError:
+            continue
+        # Path.is_junction needs Python 3.12; the reparse tag works on 3.11.
+        if stat.S_ISLNK(info.st_mode) or getattr(info, "st_reparse_tag", 0) == stat.IO_REPARSE_TAG_MOUNT_POINT:
             raise GitError("Reparse parent in reviewed paths", "bad_paths")
     try:
         info = full.lstat()
