@@ -2,7 +2,7 @@
   collect.ps1 - dump the live Windows Task Scheduler state as JSON on stdout.
 
   It emits raw facts without health judgments. With -CaptureOnly it also adds local process and
-  listener facts, which python -m task_console observations --periodic reads.
+  listener facts, which python -m background_task_core observations --periodic reads.
 
   I3 (spec invariant): enumerating zero tasks is a FAILURE, not an empty result. A collector that
   returns [] when the scheduler service is down looks exactly like a machine with no tasks, and the

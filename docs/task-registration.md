@@ -126,9 +126,9 @@ does not prove an existing payload's internal budgets.
 The installed/source package exposes:
 
 ```text
-task-console apply --request PRIVATE_PLAN.json --expected-revision REVISION
-task-console retire --task-id FULL_ID --expected-revision REVISION --reason TEXT
-task-console recover --transaction-id TRANSACTION_ID
+background-task-core apply --request PRIVATE_PLAN.json --expected-revision REVISION
+background-task-core retire --task-id FULL_ID --expected-revision REVISION --reason TEXT
+background-task-core recover --transaction-id TRANSACTION_ID
 ```
 
 An embedding calls `main(argv, runtime=runtime)` or explicitly configures the
@@ -139,7 +139,7 @@ semantics are unchanged. There is no runtime plugin loader from untrusted JSON.
 
 ## Creation check
 
-`task-console creation-check --task-id ID` takes the same four runtime/configuration roots as
+`background-task-core creation-check --task-id ID` takes the same four runtime/configuration roots as
 `registration-plan` and returns `reuse`, `update` or `create` with the matching task IDs, their
 enabled/running state and an inventory revision. It registers, runs and enables nothing. Two tasks
 are equivalent when their executable, argument contents, working directory and principal match;

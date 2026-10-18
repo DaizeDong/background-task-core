@@ -1,6 +1,6 @@
 # Generated fixtures declared in .dataclass.json are written by tools/make_fixtures.py with LF; keep them LF.
 examples/console/*.json text eol=lf
 examples/console/.console.json text eol=lf
-scripts/task_console/categories.example.json text eol=lf
+scripts/background_task_core/categories.example.json text eol=lf
 launcher-binding.json.example text eol=lf
-task-console/run-events-*.jsonl.example text eol=lf
+background-task-core/run-events-*.jsonl.example text eol=lf

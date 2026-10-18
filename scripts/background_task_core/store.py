@@ -190,7 +190,7 @@ class ProtectedVault:
         data = self.protector.protect(envelope)
         if not isinstance(data, bytes) or len(data) > LIMIT:
             raise Conflict('secure_storage_failed', 'vault')
-        path = self.root / ('task-console-' + self.domain + '-' + obj + '.cred')
+        path = self.root / ('background-task-core-' + self.domain + '-' + obj + '.cred')
         if not fs.create_no_replace(path, data):
             raise Conflict('secure_storage_conflict', 'vault')
         if self.get(ref) != snapshot:
@@ -203,7 +203,7 @@ class ProtectedVault:
             if prefix != 'cred' or domain != self.domain or not re.fullmatch('[a-f0-9]{64}', checksum):
                 raise ValueError()
             identifier(obj)
-            path = self.root / ('task-console-' + self.domain + '-' + obj + '.cred')
+            path = self.root / ('background-task-core-' + self.domain + '-' + obj + '.cred')
             raw = self.protector.unprotect(fs.read_bounded(path, LIMIT))
             value = decode(raw)
             if (digest(raw) != checksum or value['domain'] != domain or value['object'] != obj

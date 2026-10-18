@@ -20,7 +20,7 @@ Primary views:
 `schedule-reminder` owns the read-only `work-feed` contract: items, recent events,
 source roles, persisted execution state and summary. It opens an existing database in
 read-only mode, without initialization or migration. The console calls the owner CLI;
-it does not query reminder tables. `task-console` remains the owner of task control,
+it does not query reminder tables. `background-task-core` remains the owner of task control,
 registration, health conclusions and task/pipeline receipts. `llmcall` remains the sole
 model execution interface. There is no new scheduler, work database or agent runner.
 
@@ -47,7 +47,7 @@ A task repair order is the one exception in shape, not in principle: it is filed
 person clicks repair on one task row, never by an observation. The repair section of `lifecycle.py` adds no runner of
 its own. `POST /api/task/repair {name, note, request_id}` re-checks the name against the live task
 payload, then calls the reminder owner's `ensure` verb (title `修复计划任务：<title>（<name>）`, source
-`task-console-repair`, an idempotency key derived from the task name and request ID, and a
+`background-task-core-repair`, an idempotency key derived from the task name and request ID, and a
 description that carries the console's known facts as reference data plus fixed limits: diagnose
 and propose only, change code only in a clone inside the work folder, never touch the live task,
 its registration, XML, launcher, backup or any working copy, never delete, push, send or publish,
@@ -57,8 +57,8 @@ the existing drainer. One submit reads the feed once under the per-task lock and
 only a newly created order, which that read cannot contain, costs one more read after `ensure`. A missing or disabled offer is reported as `agent_offer_unavailable`, not as
 success. The source is deliberately not one of the owner's signal sources, which receive no agent
 offer. The target task is marked on the description's first line
-(`task-console-repair/v1 {"task": "<name>"}`) and in `ext.x_task_console_repair`; the reviewed
-linkage key `ext.task_console.task_id` is never written. A second click for a task that already has
+(`background-task-core-repair/v1 {"task": "<name>"}`) and in `ext.x_background_task_core_repair`; the reviewed
+linkage key `ext.background_task_core.task_id` is never written. A second click for a task that already has
 an active order returns that order (dispatching it once if it never was). Because every browser tab
 sends its own request ID and the owner's similarity check is waived with `--distinct-reason`, the
 lookup, `ensure` and dispatch for one task name run under one per-task lock in the server process,

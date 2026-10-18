@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="task console">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="background task core">
   <!-- 灯板:这个控制台最有辨识度的那块。九格里一格是红的,因为一块永远全绿的板子
        正是它存在要反对的东西。 -->
   <rect width="64" height="64" rx="13" fill="#0E1A1D"/>

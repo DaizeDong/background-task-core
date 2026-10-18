@@ -1,4 +1,4 @@
--- task-console read model.
+-- background-task-core read model.
 --
 -- Preserve the current database and its required SQLite side files. Backfill can reread the
 -- retained health log and current OS event window, but cannot recreate old task configurations,

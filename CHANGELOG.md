@@ -4,6 +4,10 @@ All notable changes to this project are documented here (Keep a Changelog style)
 
 ## [Unreleased]
 
+### Renamed to background-task-core
+- The project, its repository and its private companion are now `background-task-core` and `background-task-core-config`. The Python package is `background_task_core`, the console scripts are `background-task-core` and `background-task-core-status`, every environment variable starts with `BACKGROUND_TASK_CORE_`, the run data lives under `data/background-task-core/`, vault files are named `background-task-core-<domain>-<object>.cred` and the scheduler data marker is `background-task-core-v1:`. No old name is accepted.
+- The page title is Background Task Core.
+
 ### Console reduced to its core, package merged into eight modules
 - Deleted the panels the task console does not depend on, with their modules, routes, page sections and styles: model calls (`llmstats`), conversations and the conversation chain (`convos`, `title_suggest`, the `convo-chain` dependency), repositories (`repos`, `git_ops`, `identity`), memory (`memops`), Codex storage (`codexinfo`), system resources (`sysinfo`), skills and plugins (`maint`, `deletion`) and the configuration self-check (`selfcheck`). The 资源 area is now 接入 with the integrations view only; 诊断 keeps the task problem list, the freshness board and the data line.
 - Merged the remaining 40 modules into `registry`, `scheduler`, `store`, `lifecycle`, `runs`, `integrations`, `server` and `__main__`. The ingester, the component status reader and the observation pass are now `python -m task_console ingest|status|observations`; the server starts with `python -m task_console.server`; `launch_server` and the flat sibling imports are gone. `task-console-status` points at `task_console.runs:status_main`.

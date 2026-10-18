@@ -10,10 +10,10 @@ arguments do not merge with environment settings. Paths must be absolute.
 
 | CLI argument | Environment variable |
 |---|---|
-| `--runtime-config` | `TASK_CONSOLE_RUNTIME_CONFIG` |
-| `--private-root` | `TASK_CONSOLE_PRIVATE_ROOT` |
-| `--state-root` | `TASK_CONSOLE_STATE_ROOT` |
-| `--vault-root` | `TASK_CONSOLE_VAULT_ROOT` |
+| `--runtime-config` | `BACKGROUND_TASK_CORE_RUNTIME_CONFIG` |
+| `--private-root` | `BACKGROUND_TASK_CORE_PRIVATE_ROOT` |
+| `--state-root` | `BACKGROUND_TASK_CORE_STATE_ROOT` |
+| `--vault-root` | `BACKGROUND_TASK_CORE_VAULT_ROOT` |
 
 The config schema is [the concrete runtime contract](task-registration-runtime.md).
 It cannot select modules, providers or executable adapters. The caller establishes
@@ -34,9 +34,9 @@ provision locks/state or register tasks.
 With the four authority settings provided:
 
 ```text
-python -m task_console control --name AcmeSync --verb stop
-python -m task_console retire-plan --name AcmeSync --reason maintenance
-python -m task_console control --name AcmeSync --verb retire --reason maintenance
+python -m background_task_core control --name AcmeSync --verb stop
+python -m background_task_core retire-plan --name AcmeSync --reason maintenance
+python -m background_task_core control --name AcmeSync --verb retire --reason maintenance
 ```
 
 `control` also accepts a JSON object on stdin (or `--request FILE`):
@@ -50,7 +50,7 @@ All control results include `schemaVersion`, `ok`, `name`, `verb`, `message`,
 `before` and `after`. Errors contain a safe `error.code`/`error.field`; transport
 output, XML and exception text are not exposed. CLI exits: 0 acknowledged/applied,
 2 refused, 3 incomplete or uncertain.
-`TASK_CONSOLE_PYTHON` selects the caller-installed interpreter, outside runtime JSON.
+`BACKGROUND_TASK_CORE_PYTHON` selects the caller-installed interpreter, outside runtime JSON.
 
 | Operation | Meaning of success |
 |---|---|
@@ -85,7 +85,7 @@ proposal and the linked work items.
 
 Linked work items are queried through a fixed optional installed
 `reminder_linked_items.read_linked_items` accessor and the explicit absolute
-`TASK_CONSOLE_REMINDER_DB` path. Results distinguish available, unavailable and
+`BACKGROUND_TASK_CORE_REMINDER_DB` path. Results distinguish available, unavailable and
 error; unavailable/error carry null items. No store initialization, migration,
 cancellation or task-name inference occurs. The reminder owner must deliver the
 read-only accessor and attest its linkage schema.
@@ -120,9 +120,9 @@ directory) and its exported XML digest are captured now, before anything is unre
   proof is missing is refused, never downgraded to the unmanaged path. Authority that is configured
   but broken refuses. A console with none of the four authority settings also refuses
   (`authority_not_configured`) unless
-  `TASK_CONSOLE_DELETE_WITHOUT_AUTHORITY=1` explicitly allows treating every task as unmanaged; the
+  `BACKGROUND_TASK_CORE_DELETE_WITHOUT_AUTHORITY=1` explicitly allows treating every task as unmanaged; the
   preview then says so in its notes.
-- **Unmanaged**: requires `TASK_CONSOLE_DELETED_ARCHIVE`, the existing absolute
+- **Unmanaged**: requires `BACKGROUND_TASK_CORE_DELETED_ARCHIVE`, the existing absolute
   `data/user-state/deleted-tasks` directory in the PRIVATE companion. Unset or unusable is a
   blocking reason in the preview, so no token is issued. Apply writes `<safe name>-<UTC stamp>.xml`
   (UTF-16, as the export declares) and a JSON receipt (name, reason, original actions, XML digest),
@@ -135,7 +135,7 @@ directory) and its exported XML digest are captured now, before anything is unre
   runs when the unregister call fails or times out: a task that is gone anyway is a deletion
   (a failed `scheduler.unregister` step, result `partial`), not "still there".
 
-The console's own category map (`TASK_CONSOLE_CATEGORIES`, the file the page reads) loses the
+The console's own category map (`BACKGROUND_TASK_CORE_CATEGORIES`, the file the page reads) loses the
 name from every category's `tasks`, `taskDesc` and `taskInfo`, compared case-insensitively as the
 Controller and the hook compare it. Only a map that parsed and does not list the task counts as
 "nothing to edit"; a missing path or file is a `skipped` step and an unreadable file, invalid UTF-8
@@ -199,7 +199,7 @@ the status was.
 
 ### Follow-up hook protocol
 
-`TASK_CONSOLE_DELETE_FOLLOWUP` holds the absolute path of a private Python script. The console runs
+`BACKGROUND_TASK_CORE_DELETE_FOLLOWUP` holds the absolute path of a private Python script. The console runs
 `[sys.executable, '-B', '-I', script]` with `PYTHONDONTWRITEBYTECODE=1`, the script's directory as
 the working directory, one UTF-8 JSON document on stdin, and a timeout of 60 seconds in plan mode
 and 600 seconds in apply mode. `-I` ignores `PYTHONIOENCODING`, so the hook should read
@@ -237,7 +237,7 @@ machine: it is part of the token's fingerprint.
 
 ## Export and restore
 
-`python -P -m task_console export` queries the compiled backup scope under
+`python -P -m background_task_core export` queries the compiled backup scope under
 authority/task/resource locks. It verifies projection ownership and returns exact
 observed XML, enabled state, literal root identity and generation-bound receipts.
 ABSENT and FAILED are separate; FAILED makes the batch INCOMPLETE. Retired and
@@ -269,7 +269,7 @@ runtime_ready or payload success.
 
 ## Installer and source-owner responsibilities
 
-Install the reviewed task-console, fleet_guards and llmcall artifacts into the
+Install the reviewed background-task-core, fleet_guards and llmcall artifacts into the
 selected interpreter before replacing legacy scripts with these delegates.
 Supply the same four authority settings to HTTP and standalone processes. The
 public declarations, actual private task IDs/bindings, adoption proof and launcher

@@ -1,7 +1,7 @@
 # Periodic observation collection
 
 TaskHealthMonitor can refresh the existing console status snapshot on each of its
-scheduled runs. `python -m task_console observations --periodic` performs one pass and exits.
+scheduled runs. `python -m background_task_core observations --periodic` performs one pass and exits.
 It starts the bundled `collect.ps1 -CaptureOnly` through `llmcall.process`, then
 uses the existing observation worker, health evaluator, publication lock and
 atomic replacement. It creates no scheduler, service, task list or database.
@@ -15,7 +15,7 @@ four absolute paths:
 
 | Field | Owner |
 | --- | --- |
-| `runtime_config` | Existing task-console RuntimeConfig document |
+| `runtime_config` | Existing background-task-core RuntimeConfig document |
 | `private_root` | Existing runtime declaration resources |
 | `state_root` | Existing runtime authority and journals |
 | `vault_root` | Existing protected runtime inputs |
@@ -42,10 +42,10 @@ comes from the effective declaration bundle.
 
 ## Monitor integration
 
-Runtime materialization supplies `TASK_CONSOLE_OBSERVATION_BINDING` and
-`TASK_CONSOLE_OBSERVATION_PYTHON`, or the equivalent monitor parameters
+Runtime materialization supplies `BACKGROUND_TASK_CORE_OBSERVATION_BINDING` and
+`BACKGROUND_TASK_CORE_OBSERVATION_PYTHON`, or the equivalent monitor parameters
 `-ObservationBinding` and `-ObservationPython`. The interpreter must be an absolute,
-available interpreter with task-console, fleet-guards, llmcall and, when configured,
+available interpreter with background-task-core, fleet-guards, llmcall and, when configured,
 skill-smith installed. It runs with `-I -B -X utf8`; PYTHONPATH and source-checkout
 fallbacks are intentionally unavailable. Resolve and verify this interpreter with
 the existing installation resolver before passing it to the monitor.
@@ -64,7 +64,7 @@ tests and the normal release authorization process for deployment verification.
 The Python entrypoint is also available directly:
 
 ```text
-<selected-python> -I -B -X utf8 -m task_console observations --periodic --binding <private-binding> --powershell <absolute-powershell>
+<selected-python> -I -B -X utf8 -m background_task_core observations --periodic --binding <private-binding> --powershell <absolute-powershell>
 ```
 
 The shared execution budget is 95 seconds, including the bounded Scheduler pass

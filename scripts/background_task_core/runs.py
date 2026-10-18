@@ -2,7 +2,7 @@
 the Task Scheduler event log, the console database and its ingester, and the component status
 reader. Each former module keeps its own section below, marked with a `# ---- name` line.
 
-CLI: `python -m task_console ingest ...` and `python -m task_console status ...`.
+CLI: `python -m background_task_core ingest ...` and `python -m background_task_core status ...`.
 """
 from __future__ import annotations
 
@@ -610,7 +610,7 @@ def load(path: str | os.PathLike | None, days: int = 45) -> dict:
     """Return per-task history, or a dict carrying only a reason when there is none."""
     if not path:
         return {"available": False,
-                "reason": "没有设 TASK_CONSOLE_HISTORY,所以没有历史。这是「未提供」,不是「没有问题」。",
+                "reason": "没有设 BACKGROUND_TASK_CORE_HISTORY,所以没有历史。这是「未提供」,不是「没有问题」。",
                 "tasks": {}, "days": []}
     p = Path(os.path.expanduser(str(path)))
     if not p.exists():
@@ -1116,15 +1116,15 @@ def read(days: int, max_events: int) -> dict:
 
 
 # ---- console_store -----------------------------------------------------------------------------
-# Read side of the task-console database, plus the one place that decides where the file lives.
+# Read side of the background-task-core database, plus the one place that decides where the file lives.
 #
 # WHERE THE FILE LIVES, and why this module refuses rather than guesses. The database holds real-run
 # output: what ran on this machine and when. Under this fleet's data boundary that can never sit in
 # the public repo, not even gitignored, because .gitignore is advisory and `git add -f` walks straight
 # through it. Resolution order:
 #
-#     1. TASK_CONSOLE_DB, if set. An explicit operator override.
-#     2. <companion>/data/task-console/console.sqlite3, where <companion> comes from the shared
+#     1. BACKGROUND_TASK_CORE_DB, if set. An explicit operator override.
+#     2. <companion>/data/background-task-core/console.sqlite3, where <companion> comes from the shared
 #        datadir resolver.
 #     3. UNINITIALISED. Not a fallback into the repo, not a temp file: a stated condition with
 #        instructions. A repo-relative fallback is how real data ends up in a public repo, and it is
@@ -1141,7 +1141,7 @@ def read(days: int, max_events: int) -> dict:
 
 
 HERE = Path(__file__).resolve().parent
-SKILL = "task-console"
+SKILL = "background-task-core"
 DB_NAME = "console.sqlite3"
 
 # A wheel carries the source-owned contract beside the installed package.
@@ -1201,14 +1201,14 @@ class DbState:
 def resolve_db(create_parent: bool = False):
     """Return the database path or a distinct unavailable state; never write on reads."""
     try:
-        if os.environ.get("TASK_CONSOLE_DB"):
-            p = Path(os.environ["TASK_CONSOLE_DB"]).expanduser().absolute()
+        if os.environ.get("BACKGROUND_TASK_CORE_DB"):
+            p = Path(os.environ["BACKGROUND_TASK_CORE_DB"]).expanduser().absolute()
         else:
             root = companion_root()
             if root is None:
                 return None, DbState("NO_COMPANION",
                     "尚未配置伴生仓。请按 CONFIG.md 设置私有伴生仓。")
-            p = root / "data" / "task-console" / DB_NAME
+            p = root / "data" / "background-task-core" / DB_NAME
         p = outside_source(p)
         if create_parent:
             p.parent.mkdir(parents=True, exist_ok=True)
@@ -1244,7 +1244,7 @@ def connect_ro():
         return None, st
     if not p.exists():
         return None, DbState("NO_FILE",
-                             f"数据库还没建。跑一次 python -m task_console ingest --backfill 就会从现有日志重建。",
+                             f"数据库还没建。跑一次 python -m background_task_core ingest --backfill 就会从现有日志重建。",
                              str(p))
     con = None
     try:
@@ -1356,7 +1356,7 @@ def ingest_verdict(last_ingest: dict | None, now=None) -> dict:
     if not parsed:
         return {"state": "never", "ageHours": None, "source": None, "at": None,
                 "failed": [], "why": "摄入器没有留下任何运行记录 —— 库里的数字要么是"
-                                     "手动灌的,要么根本没有。跑一次 python -m task_console ingest。"}
+                                     "手动灌的,要么根本没有。跑一次 python -m background_task_core ingest。"}
     failed = sorted(k for k, v, _t in parsed if v.get("ok") is False)
 
     parsed.sort(key=lambda x: x[2])
@@ -1400,7 +1400,7 @@ def db_coverage(con) -> dict:
 
 
 # ---- console_ingest ----------------------------------------------------------------------------
-# Fill the task-console database. THE ONLY WRITER.
+# Fill the background-task-core database. THE ONLY WRITER.
 #
 # Runs out of band, not from the web request. That split is most of the point: reading the Windows
 # Operational event log costs 109 seconds end to end and was on the request path, so every page load
@@ -1813,10 +1813,10 @@ def ingest_tasks(con) -> tuple[bool, int, str]:
 
 
 def ingest_main(argv=None) -> int:
-    ap = argparse.ArgumentParser(description="ingest into the task-console database")
+    ap = argparse.ArgumentParser(description="ingest into the background-task-core database")
     ap.add_argument("--backfill", action="store_true",
                     help="rebuild health observations from the whole log rather than the recent window")
-    ap.add_argument("--health-log", default=os.environ.get("TASK_CONSOLE_HISTORY"))
+    ap.add_argument("--health-log", default=os.environ.get("BACKGROUND_TASK_CORE_HISTORY"))
     ap.add_argument("--run-days", type=int, default=60)
     ap.add_argument("--skip-runlog", action="store_true", help="the slow one; skip for a quick pass")
     a = ap.parse_args(argv)
@@ -1833,7 +1833,7 @@ def ingest_main(argv=None) -> int:
         ok_all &= ok
         if msg: msgs.append(msg)
     else:
-        print("  health : skipped (no --health-log / TASK_CONSOLE_HISTORY). 这是跳过,不是通过。")
+        print("  health : skipped (no --health-log / BACKGROUND_TASK_CORE_HISTORY). 这是跳过,不是通过。")
         ok_all = False
 
     if not a.skip_runlog:
@@ -1956,8 +1956,8 @@ def read_catalog(reader):
 def read_configured(now=None, env=None) -> dict:
     """Environment paths are startup/private bindings; HTTP supplies no path parameter."""
     env = os.environ if env is None else env
-    path = env.get("TASK_CONSOLE_STATUS_SNAPSHOT")
-    catalog_path = env.get("TASK_CONSOLE_CATALOG_SNAPSHOT")
+    path = env.get("BACKGROUND_TASK_CORE_STATUS_SNAPSHOT")
+    catalog_path = env.get("BACKGROUND_TASK_CORE_CATALOG_SNAPSHOT")
     result = {"schemaVersion": 1, "read_only": True, "available": False,
               "tasks": [], "coverage": coverage(0, 0), "authority": "observation_only",
               "reason": "Component snapshot not configured; unchecked", "catalog": catalog_view(None)}

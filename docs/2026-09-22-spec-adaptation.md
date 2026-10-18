@@ -6,7 +6,7 @@ This file is the record of those decisions, so the next person auditing this rep
 
 ## Refused, because meeting them would be a false claim
 
-**No `.claude-plugin/plugin.json`.** Chapter 1 makes it mandatory so that even a single skill repository stays installable with `/plugin install`. There is nothing here for that command to install: no `SKILL.md`, no skill entrypoint, no agent behaviour at all. A manifest would be advertising rather than metadata. What this repository ships is a server you start with a port and a set of environment variables, and the file that documents those is `scripts/task_console/README.md`.
+**No `.claude-plugin/plugin.json`.** Chapter 1 makes it mandatory so that even a single skill repository stays installable with `/plugin install`. There is nothing here for that command to install: no `SKILL.md`, no skill entrypoint, no agent behaviour at all. A manifest would be advertising rather than metadata. What this repository ships is a server you start with a port and a set of environment variables, and the file that documents those is `scripts/background_task_core/README.md`.
 
 **No Claude Code Skill badge.** Chapter 3 fixes the first badge as `Claude Code Skill` linking to the Claude Code docs. The slot is kept, because a reader should learn what kind of thing this is from the first line of badges, but its content is `Local Console`, linking to `server.py`. A second green badge carries `Platform Windows`, which is the fact a visitor most needs before cloning: the tool reads the Windows Task Scheduler and refuses to start anywhere else.
 

@@ -1,12 +1,12 @@
-# task-console
+# background-task-core
 
 A loopback-only console for one Windows machine: its scheduled tasks, their run history and health, and the shared work records (todos and agent work) that the tasks serve.
 
-Windows Task Scheduler supplies triggers; task-console keeps the task declarations, the registration authority and the guarded controls. Every source reports its coverage: an unavailable source does not render as an empty successful one, and a completion summary does not stand in for execution evidence.
+Windows Task Scheduler supplies triggers; background-task-core keeps the task declarations, the registration authority and the guarded controls. Every source reports its coverage: an unavailable source does not render as an empty successful one, and a completion summary does not stand in for execution evidence.
 
-[![Local Console](https://img.shields.io/badge/Local-Console-orange?style=flat)](scripts/task_console/server.py)
+[![Local Console](https://img.shields.io/badge/Local-Console-orange?style=flat)](scripts/background_task_core/server.py)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Platform](https://img.shields.io/badge/Platform-Windows-green?style=flat)](scripts/task_console/server.py)
+[![Platform](https://img.shields.io/badge/Platform-Windows-green?style=flat)](scripts/background_task_core/server.py)
 [![Languages](https://img.shields.io/badge/Languages-EN%20%2F%20CN-blue?style=flat)](#languages)
 [![Roadmap](https://img.shields.io/badge/Roadmap-v0.1.0-purple?style=flat)](ROADMAP.md)
 
@@ -22,7 +22,7 @@ Windows Task Scheduler supplies triggers; task-console keeps the task declaratio
 
 ## Layout
 
-The package `scripts/task_console/` has eight modules:
+The package `scripts/background_task_core/` has eight modules:
 
 | Module | Owns |
 | --- | --- |
@@ -44,8 +44,8 @@ Five areas: 工作台 (overview), 工作记录 (work records), 自动化 (task s
 Windows, Python 3.11 or newer.
 
 ```bash
-git clone https://github.com/DaizeDong/task-console
-cd task-console
+git clone https://github.com/DaizeDong/background-task-core
+cd background-task-core
 pip install -e . -e "$(git config --get fleet.guards)"
 git config core.hooksPath .githooks
 ```
@@ -55,11 +55,11 @@ Dependencies (see `pyproject.toml`): `fleet-guards`, `llmcall`, `pywin32`.
 ## Run
 
 ```bash
-python -m task_console.server --port 8787            # the page, bound to 127.0.0.1
-python -m task_console ingest [--skip-runlog]       # fill the console database
-python -m task_console status --configured          # component status reader
-python -m task_console observations --periodic ...  # one passive health collection pass
-python -m task_console <authority command> ...      # plan, registration-plan, creation-check, apply, retire, control, ...
+python -m background_task_core.server --port 8787            # the page, bound to 127.0.0.1
+python -m background_task_core ingest [--skip-runlog]       # fill the console database
+python -m background_task_core status --configured          # component status reader
+python -m background_task_core observations --periodic ...  # one passive health collection pass
+python -m background_task_core <authority command> ...      # plan, registration-plan, creation-check, apply, retire, control, ...
 ```
 
 The server generates a token at each start and never writes it to disk. Ingestion runs out of band, so page loads never read the Windows event log.
@@ -70,17 +70,17 @@ All settings are environment variables; the owner launcher sets them from the pr
 
 ## Read-only declaration producer
 
-`task_console.registry.plan(request)` and `python -m task_console plan` compile component `.console.json` declarations, private bindings, machine overrides and a legacy snapshot into field comparisons and generated content, without writing files or touching the Scheduler.
+`background_task_core.registry.plan(request)` and `python -m background_task_core plan` compile component `.console.json` declarations, private bindings, machine overrides and a legacy snapshot into field comparisons and generated content, without writing files or touching the Scheduler.
 
 ```text
-python -m task_console plan --component examples/console/.console.json --bindings examples/console/bindings.example.json --machine examples/console/machine.console.example.json --baseline examples/console/baseline.example.json
+python -m background_task_core plan --component examples/console/.console.json --bindings examples/console/bindings.example.json --machine examples/console/machine.console.example.json --baseline examples/console/baseline.example.json
 ```
 
 Real requests and returned plans contain machine data and belong in private storage. Regenerate the public examples with `python tools/make_fixtures.py`.
 
 ## Where the data lives
 
-The database and the run-event export live in a private companion resolved by `fleet_guards.runtime`. The database (`data/task-console/console.sqlite3`) is local state there and is not versioned; the versioned history is the monthly text export `data/task-console/run-events/YYYY-MM.jsonl`. If no companion resolves, the console reports UNINITIALISED; writes never fall back to this repository.
+The database and the run-event export live in a private companion resolved by `fleet_guards.runtime`. The database (`data/background-task-core/console.sqlite3`) is local state there and is not versioned; the versioned history is the monthly text export `data/background-task-core/run-events/YYYY-MM.jsonl`. If no companion resolves, the console reports UNINITIALISED; writes never fall back to this repository.
 
 ## Limitations
 

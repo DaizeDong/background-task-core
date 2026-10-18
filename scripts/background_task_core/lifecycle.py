@@ -1,7 +1,7 @@
 """Task lifecycle through the authority: control actions, adoption, reconciliation, export and
 restore, deletion, repair orders, and the passive observation pass.
 
-CLI: `python -m task_console observations ...`.
+CLI: `python -m background_task_core observations ...`.
 """
 from __future__ import annotations
 
@@ -39,10 +39,10 @@ from .store import FileResources, digest, encode, identifier, decode, read_json,
 
 
 ENVIRONMENT = {
-    'runtime_config': 'TASK_CONSOLE_RUNTIME_CONFIG',
-    'private_root': 'TASK_CONSOLE_PRIVATE_ROOT',
-    'state_root': 'TASK_CONSOLE_STATE_ROOT',
-    'vault_root': 'TASK_CONSOLE_VAULT_ROOT',
+    'runtime_config': 'BACKGROUND_TASK_CORE_RUNTIME_CONFIG',
+    'private_root': 'BACKGROUND_TASK_CORE_PRIVATE_ROOT',
+    'state_root': 'BACKGROUND_TASK_CORE_STATE_ROOT',
+    'vault_root': 'BACKGROUND_TASK_CORE_VAULT_ROOT',
 }
 VERBS = ('enable', 'disable', 'run', 'stop', 'retire')
 
@@ -185,7 +185,7 @@ def retire_plan(name, reason, *, runtime=None):
 
 
 # ---- adoption ----------------------------------------------------------------------------------
-# Explicit initial authority preparation in the existing task-console runtime.
+# Explicit initial authority preparation in the existing background-task-core runtime.
 #
 # Planning observes only declared literal root tasks. Apply publishes authority
 # files with the existing transaction stores; it never calls Scheduler mutation.
@@ -1394,11 +1394,11 @@ def restore_recover(runtime, transaction_id, approval):
 #   - 受控制器管理的任务(registration 的声明里有它)只走控制器的 retire 事务:
 #     停用、COM DeleteTask、改写控制器自己的登记投影、墓碑、日志、回执、凭据库里的加密 XML 原件。
 #     这个模块不碰那些文件,也不绕过控制器。
-#   - 不受管理的任务由这里导出 XML 到私有存档(TASK_CONSOLE_DELETED_ARCHIVE),再按名字从根路径删除。
+#   - 不受管理的任务由这里导出 XML 到私有存档(BACKGROUND_TASK_CORE_DELETED_ARCHIVE),再按名字从根路径删除。
 #     存档没配就拒绝:一个连原件都没留下的删除,事后没人说得清删掉的是什么。
-#   - 控制台自己的分类配置(TASK_CONSOLE_CATEGORIES)由这里改,改之前先证明原样重写能逐字节复现。
+#   - 控制台自己的分类配置(BACKGROUND_TASK_CORE_CATEGORIES)由这里改,改之前先证明原样重写能逐字节复现。
 #   - 健康监控清单、备份仓、迁移计划这些不在这个公开仓的视野里,交给机主私有的后续钩子
-#     (TASK_CONSOLE_DELETE_FOLLOWUP)。没配钩子时照样能删,但预览和结果都要单独说出
+#     (BACKGROUND_TASK_CORE_DELETE_FOLLOWUP)。没配钩子时照样能删,但预览和结果都要单独说出
 #     「这几处没有清理」,不许和「清理完了」长得一样。
 #
 # 预览和执行之间用一次性令牌绑定,做法照搬 deletion.py:300 秒有效,只能用一次,
@@ -1409,10 +1409,10 @@ def restore_recover(runtime, transaction_id, approval):
 # pythonw 下每个控制台子程序都要新分配控制台,不加这个标志会慢到超时。
 _NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
-HOOK_ENV = "TASK_CONSOLE_DELETE_FOLLOWUP"
-ARCHIVE_ENV = "TASK_CONSOLE_DELETED_ARCHIVE"
+HOOK_ENV = "BACKGROUND_TASK_CORE_DELETE_FOLLOWUP"
+ARCHIVE_ENV = "BACKGROUND_TASK_CORE_DELETED_ARCHIVE"
 # 控制器没配置时默认拒绝删除。只有显式设成 1,才把所有任务当作不受控制器管理来删。
-WITHOUT_AUTHORITY_ENV = "TASK_CONSOLE_DELETE_WITHOUT_AUTHORITY"
+WITHOUT_AUTHORITY_ENV = "BACKGROUND_TASK_CORE_DELETE_WITHOUT_AUTHORITY"
 HOOK_PLAN_TIMEOUT = 60
 HOOK_APPLY_TIMEOUT = 600
 HOOK_OUTPUT_MAX = 1 << 20
@@ -1430,9 +1430,9 @@ _TTL = 300
 # 输入错误回 400,其余拒绝(状态冲突、预览过期、钩子拦下)回 409。
 INPUT_CODES = frozenset(("bad_name", "no_reason", "bad_request", "name_mismatch", "not_live"))
 
-NOT_CONFIGURED = ("没有配置删除后续钩子（TASK_CONSOLE_DELETE_FOLLOWUP）：健康监控清单、备份和迁移计划"
+NOT_CONFIGURED = ("没有配置删除后续钩子（BACKGROUND_TASK_CORE_DELETE_FOLLOWUP）：健康监控清单、备份和迁移计划"
                   "不会被清理，需要手动处理。")
-WITHOUT_AUTHORITY = ("任务控制器没有配置，已按 TASK_CONSOLE_DELETE_WITHOUT_AUTHORITY=1 把这个任务当作不受控制器管理："
+WITHOUT_AUTHORITY = ("任务控制器没有配置，已按 BACKGROUND_TASK_CORE_DELETE_WITHOUT_AUTHORITY=1 把这个任务当作不受控制器管理："
                      "如果控制器其实声明了它，控制器的登记会继续指向一个已删除的任务。")
 
 # 控制器拒绝码 -> 给人看的话。没列出来的照原码报,不猜。
@@ -1443,7 +1443,7 @@ _AUTHORITY_MESSAGES = {
     "busy": "任务正在运行，请先停止本次运行再删除。",
     "incomplete_runtime_configuration": "任务控制器的四项配置不全，拒绝删除。",
     "absolute_runtime_paths_required": "任务控制器的配置路径必须是绝对路径。",
-    "authority_not_configured": ("这个控制台进程没有任务控制器的配置（TASK_CONSOLE_RUNTIME_CONFIG 等四项），"
+    "authority_not_configured": ("这个控制台进程没有任务控制器的配置（BACKGROUND_TASK_CORE_RUNTIME_CONFIG 等四项），"
                                  "分不清哪些任务归控制器管，拒绝删除。"),
 }
 
@@ -1812,7 +1812,7 @@ def _archive_dir(env):
     """Require an existing absolute archive directory outside this payload's source tree."""
     raw = env.get(ARCHIVE_ENV)
     if not raw:
-        return None, "没有设置删除存档目录（TASK_CONSOLE_DELETED_ARCHIVE），不受控制器管理的任务不能删除"
+        return None, "没有设置删除存档目录（BACKGROUND_TASK_CORE_DELETED_ARCHIVE），不受控制器管理的任务不能删除"
     path = Path(raw)
     if not path.is_absolute() or not path.is_dir():
         return None, "删除存档目录不是一个已存在的绝对路径，不受控制器管理的任务不能删除"
@@ -2364,16 +2364,16 @@ def _run(name, reason, preview, context, categories_path, env) -> dict:
 #
 # 两个刻意的选择:
 #
-#   - 来源是 task-console-repair。SIGNALS 里的来源(task-health、agent-center:work)
+#   - 来源是 background-task-core-repair。SIGNALS 里的来源(task-health、agent-center:work)
 #     拿不到 agent 处理选项,用它们开出来的工单只会是一条点不动的待办。
-#   - 不写 ext.task_console.task_id。那是「经审核的任务关联」用的键,写进去会让主人以为
+#   - 不写 ext.background_task_core.task_id。那是「经审核的任务关联」用的键,写进去会让主人以为
 #     这条待办已经审核过和某个任务关联。工单认人靠说明第一行的标记,工作记录会把它带回来。
 #
 # 这是**人点出来的**工单,不是观察到失败就自动开的修复。没有人点,这里什么都不做。
 
 
-SOURCE = "task-console-repair"
-MARKER = "task-console-repair/v1"
+SOURCE = "background-task-core-repair"
+MARKER = "background-task-core-repair/v1"
 NOTE_PREFIX = "机主备注："
 NOTE_MAX = 500
 DESCRIPTION_MAX = 16000
@@ -2521,7 +2521,7 @@ def _rank(order):
 
 
 def _orders_from(feed) -> dict:
-    """任务名 -> 工单。只认来源是 task-console-repair、说明第一行带标记的待办。"""
+    """任务名 -> 工单。只认来源是 background-task-core-repair、说明第一行带标记的待办。"""
     out = {}
     for item in feed.get("items") or []:
         if not isinstance(item, dict) or item.get("source") != SOURCE:
@@ -2602,11 +2602,11 @@ def _description(name, note, known) -> str:
 
 def _ensure(fields: dict, env) -> dict:
     """调待办主人的 ensure。和 work_actions.invoke 同一个绑定、同一个子进程环境。"""
-    cli, database = env.get("TASK_CONSOLE_REMINDER_CLI"), env.get("TASK_CONSOLE_REMINDER_DB")
+    cli, database = env.get("BACKGROUND_TASK_CORE_REMINDER_CLI"), env.get("BACKGROUND_TASK_CORE_REMINDER_DB")
     if (not cli or not database or not Path(cli).is_absolute() or not Path(cli).is_file()
             or not Path(database).is_absolute() or not Path(database).is_file()):
         raise RepairError("work_binding_invalid")
-    argv = [sys.executable, cli, "--db", database, "--actor", "task-console", "ensure",
+    argv = [sys.executable, cli, "--db", database, "--actor", "background-task-core", "ensure",
             "--title", fields["title"], "--description", fields["description"], "--source", SOURCE,
             "--idempotency-key", fields["key"], "--ext", json.dumps(fields["ext"], ensure_ascii=False),
             "--distinct-reason", fields["distinct_reason"]]
@@ -2705,8 +2705,8 @@ def submit(name, note, request_id, *, facts, env=None) -> dict:
             created = _ensure({
                 "title": f"修复计划任务：{title}（{name}）",
                 "description": _description(name, note, known),
-                "key": "task-console-repair:" + hashlib.sha256(json.dumps([name, request_id]).encode("utf-8")).hexdigest()[:32],
-                "ext": {"x_task_console_repair": {"schema": 1, "task": name}},
+                "key": "background-task-core-repair:" + hashlib.sha256(json.dumps([name, request_id]).encode("utf-8")).hexdigest()[:32],
+                "ext": {"x_background_task_core_repair": {"schema": 1, "task": name}},
                 # 相似度闸要求说明理由:不同任务的修复工单标题几乎一样,但它们是不同的事。
                 # 同一个任务的重复由上面那次查找挡住(在 _task_lock 之内),不靠相似度闸。
                 "distinct_reason": f"控制台为计划任务「{name}」发起的修复工单；不同任务的修复工单彼此独立",
@@ -2767,7 +2767,7 @@ def collect_supervised(binding, capture, *, now=None, bundle=None):
         request["bundle"] = bundle
     payload = encode_document(request)
     result = process.run(
-        [sys.executable, "-I", "-B", "-X", "utf8", "-m", "task_console", "observations", "--worker"],
+        [sys.executable, "-I", "-B", "-X", "utf8", "-m", "background_task_core", "observations", "--worker"],
         payload, COLLECTION_TIMEOUT, context=process.resolve_context(),
         max_input_bytes=LIMIT, max_output_bytes=LIMIT)
     if result.error:
@@ -2820,7 +2820,7 @@ def load_binding(path):
     if not private.is_dir():
         raise ValueError("private_directory_must_exist")
     output = fs.validate_path(binding["snapshot"], root=private)
-    console_store._load_datadir().assert_outside_own_repo(output, "task-console")
+    console_store._load_datadir().assert_outside_own_repo(output, "background-task-core")
     if output == absolute(str(path)):
         raise ValueError("snapshot_overwrites_binding")
     if output == private:

@@ -1,10 +1,10 @@
 
 """Command line: task planning, authority-controlled actions, and the run-history jobs.
 
-    python -m task_console <authority command> [options]   JSON planning and registration
-    python -m task_console ingest [--skip-runlog] ...       fill the console database
-    python -m task_console status [--configured] ...        component status reader
-    python -m task_console observations --periodic ...      one passive health collection pass
+    python -m background_task_core <authority command> [options]   JSON planning and registration
+    python -m background_task_core ingest [--skip-runlog] ...       fill the console database
+    python -m background_task_core status [--configured] ...        component status reader
+    python -m background_task_core observations --periodic ...      one passive health collection pass
 
 Inputs remain private.
 """

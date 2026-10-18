@@ -1,12 +1,12 @@
-# task-console
+# background-task-core
 
 单台 Windows 机器的本地控制台，只监听环回地址，管这台机器的计划任务、它们的运行历史和健康状况，以及这些任务所服务的工作记录（待办和 agent 工作）。
 
-Windows 计划任务负责触发；task-console 保管任务声明、登记权威和受控操作。每个来源都说明自己查了多少：来源读不到不会显示成一张空的成功列表，完成摘要也不能顶替执行证据。
+Windows 计划任务负责触发；background-task-core 保管任务声明、登记权威和受控操作。每个来源都说明自己查了多少：来源读不到不会显示成一张空的成功列表，完成摘要也不能顶替执行证据。
 
-[![本地控制台](https://img.shields.io/badge/%E6%9C%AC%E5%9C%B0-%E6%8E%A7%E5%88%B6%E5%8F%B0-orange?style=flat)](scripts/task_console/server.py)
+[![本地控制台](https://img.shields.io/badge/%E6%9C%AC%E5%9C%B0-%E6%8E%A7%E5%88%B6%E5%8F%B0-orange?style=flat)](scripts/background_task_core/server.py)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![平台](https://img.shields.io/badge/%E5%B9%B3%E5%8F%B0-Windows-green?style=flat)](scripts/task_console/server.py)
+[![平台](https://img.shields.io/badge/%E5%B9%B3%E5%8F%B0-Windows-green?style=flat)](scripts/background_task_core/server.py)
 [![语言](https://img.shields.io/badge/%E8%AF%AD%E8%A8%80-EN%20%2F%20CN-blue?style=flat)](#语言)
 [![Roadmap](https://img.shields.io/badge/Roadmap-v0.1.0-purple?style=flat)](ROADMAP.md)
 
@@ -22,7 +22,7 @@ Windows 计划任务负责触发；task-console 保管任务声明、登记权�
 
 ## 模块
 
-`scripts/task_console/` 一共八个模块：
+`scripts/background_task_core/` 一共八个模块：
 
 | 模块 | 负责 |
 | --- | --- |
@@ -44,8 +44,8 @@ Windows 计划任务负责触发；task-console 保管任务声明、登记权�
 Windows，Python 3.11 或更新。
 
 ```bash
-git clone https://github.com/DaizeDong/task-console
-cd task-console
+git clone https://github.com/DaizeDong/background-task-core
+cd background-task-core
 pip install -e . -e "$(git config --get fleet.guards)"
 git config core.hooksPath .githooks
 ```
@@ -55,11 +55,11 @@ git config core.hooksPath .githooks
 ## 运行
 
 ```bash
-python -m task_console.server --port 8787            # 页面,只绑 127.0.0.1
-python -m task_console ingest [--skip-runlog]       # 写控制台数据库
-python -m task_console status --configured          # 组件状态读取
-python -m task_console observations --periodic ...  # 一次被动健康观测
-python -m task_console <权威命令> ...                # plan、registration-plan、creation-check、apply、retire、control 等
+python -m background_task_core.server --port 8787            # 页面,只绑 127.0.0.1
+python -m background_task_core ingest [--skip-runlog]       # 写控制台数据库
+python -m background_task_core status --configured          # 组件状态读取
+python -m background_task_core observations --periodic ...  # 一次被动健康观测
+python -m background_task_core <权威命令> ...                # plan、registration-plan、creation-check、apply、retire、control 等
 ```
 
 服务每次启动生成新令牌，从不落盘。摄入在页面之外跑，打开页面不会去读 Windows 事件日志。
@@ -70,17 +70,17 @@ python -m task_console <权威命令> ...                # plan、registration-p
 
 ## 只读的声明生成
 
-`task_console.registry.plan(request)` 和 `python -m task_console plan` 把组件 `.console.json` 声明、私有绑定、机器覆盖和旧快照编译成字段对照和生成内容，不写文件，也不碰计划程序。
+`background_task_core.registry.plan(request)` 和 `python -m background_task_core plan` 把组件 `.console.json` 声明、私有绑定、机器覆盖和旧快照编译成字段对照和生成内容，不写文件，也不碰计划程序。
 
 ```text
-python -m task_console plan --component examples/console/.console.json --bindings examples/console/bindings.example.json --machine examples/console/machine.console.example.json --baseline examples/console/baseline.example.json
+python -m background_task_core plan --component examples/console/.console.json --bindings examples/console/bindings.example.json --machine examples/console/machine.console.example.json --baseline examples/console/baseline.example.json
 ```
 
 真实请求和返回的计划含机器数据，只能放私有存储。公开示例用 `python tools/make_fixtures.py` 重新生成。
 
 ## 数据在哪
 
-数据库和运行事件导出放在 `fleet_guards.runtime` 解析出的私有伴生仓。数据库 `data/task-console/console.sqlite3` 是那里的本地状态，不进版本管理；进版本管理的历史是按月的文本导出 `data/task-console/run-events/YYYY-MM.jsonl`。解析不到伴生仓时控制台报「未初始化」，写入永远不会落回本仓。
+数据库和运行事件导出放在 `fleet_guards.runtime` 解析出的私有伴生仓。数据库 `data/background-task-core/console.sqlite3` 是那里的本地状态，不进版本管理；进版本管理的历史是按月的文本导出 `data/background-task-core/run-events/YYYY-MM.jsonl`。解析不到伴生仓时控制台报「未初始化」，写入永远不会落回本仓。
 
 ## 局限
 

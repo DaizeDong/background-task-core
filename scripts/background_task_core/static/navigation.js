@@ -175,7 +175,7 @@ function showView(key,push,options){
   renderBadges();
   // 标题说清在哪一个标签上:「自动化 · 运行详情」。只写分组名的话,侧栏亮着的是同一个词,标题等于没说。
   $('view-title').textContent=tabs.length>1?`${definition.label} · ${definition.views[key]}`:definition.label;
-  document.title=definition.views[key]+' · 本机工作台';
+  document.title=definition.views[key]+' · Background Task Core';
   loadPageOnce(key);
   renderRefreshAge();
   if(key==='automations') renderAutomations();

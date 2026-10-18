@@ -11,9 +11,9 @@
   ],
   "_audited": "The runtime database, durable monthly event export, registration state and launcher configuration live in the PRIVATE companion. The database is local state there and is not versioned; the monthly run-events/YYYY-MM.jsonl text export is the versioned history. It preserves normalized events beyond the rotating OS log window but is not a complete database restore. This manifest names source-relative forbidden runtime DATA paths.",
   "data": [
-    "task-console/console.sqlite3",
-    "task-console/run-events/",
-    "task-console/registration/",
+    "background-task-core/console.sqlite3",
+    "background-task-core/run-events/",
+    "background-task-core/registration/",
     "launcher-binding.json",
     "declarations-*/",
     "user-state/"
@@ -27,12 +27,12 @@
     "examples/console/machine.console.example.json",
     "examples/console/baseline.example.json",
     "examples/console/installations.request.example.json",
-    "scripts/task_console/categories.example.json",
+    "scripts/background_task_core/categories.example.json",
     "launcher-binding.json.example",
-    "task-console/run-events-2030-01.jsonl.example"
+    "background-task-core/run-events-2030-01.jsonl.example"
   ],
   "_data_home": "A PRIVATE companion outside this repo, resolved at runtime through fleet_guards.runtime (fleet-guards tools/datadir.py) by the convention that file documents. Deliberately not named here: a public repo that spells out which private repo it pairs with has published the link between them, and the resolver derives the name anyway, so writing it down buys nothing. If this tool ever needs to record real-run output, it goes THERE -- never back into this repo.",
   "_run_shape_probes": [
-    "task-console/console.sqlite3"
+    "background-task-core/console.sqlite3"
   ]
 }

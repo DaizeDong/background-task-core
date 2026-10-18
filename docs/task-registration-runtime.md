@@ -88,11 +88,11 @@ Every runtime command takes `--runtime-config CONFIG --private-root PRIVATE
 arguments; append all four explicit root/config arguments:
 
 ```text
-python -m task_console runtime-status
-python -m task_console registration-plan --task-id FULL_ID --migrate
-python -m task_console apply --request PLAN --expected-revision REVISION
-python -m task_console retire --task-id FULL_ID --reason TEXT --expected-revision REVISION
-python -m task_console recover --transaction-id ID
+python -m background_task_core runtime-status
+python -m background_task_core registration-plan --task-id FULL_ID --migrate
+python -m background_task_core apply --request PLAN --expected-revision REVISION
+python -m background_task_core retire --task-id FULL_ID --reason TEXT --expected-revision REVISION
+python -m background_task_core recover --transaction-id ID
 ```
 
 registration-plan supports --operation apply|enable|disable|retire,
@@ -132,7 +132,7 @@ whose identity was never recorded remains a conflict and is retained for review.
 
 Ordinary journals contain references, phases, resource metadata and safe codes.
 All before/after/undo images use per-object
-task-console-<domain>-<object>.cred files in the existing secrets domain. The
+background-task-core-<domain>-<object>.cred files in the existing secrets domain. The
 serializer explicitly encodes binary values inside the protected envelope.
 ConvertFrom/To-SecureString matches CONFIG's current format. References bind
 domain, object, transaction owner and plaintext-envelope digest; CONFIG DPAPI

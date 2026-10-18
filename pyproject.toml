@@ -3,7 +3,7 @@ requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "task-console"
+name = "background-task-core"
 version = "0.1.0"
 description = "Local work and automation console with guarded Windows task controls"
 readme = "README.md"
@@ -12,16 +12,16 @@ dependencies = ["fleet-guards>=0.2.1", "llmcall>=0.3.0", "pywin32>=306; sys_plat
 license = "MIT"
 
 [project.scripts]
-task-console = "task_console.__main__:main"
-task-console-status = "task_console.runs:status_main"
+background-task-core = "background_task_core.__main__:main"
+background-task-core-status = "background_task_core.runs:status_main"
 
 [tool.setuptools]
 include-package-data = false
 
 [tool.setuptools.packages.find]
 where = ["scripts"]
-include = ["task_console", "task_console.*"]
+include = ["background_task_core", "background_task_core.*"]
 namespaces = true
 
 [tool.setuptools.package-data]
-task_console = ["*.ps1", "*.html", "*.sql", "*.svg", "*.json", "vendor/tabler/*", "static/*.js", "static/*.css", "static/panels/*.js"]
+background_task_core = ["*.ps1", "*.html", "*.sql", "*.svg", "*.json", "vendor/tabler/*", "static/*.js", "static/*.css", "static/panels/*.js"]

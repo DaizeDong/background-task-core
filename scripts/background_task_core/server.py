@@ -17,7 +17,7 @@ decorative, and all three are implemented in this file:
      to the fixed root-folder COM transport, never as PowerShell source.
 
 Usage:
-    python -m task_console.server [--port 8787] [--no-browser]
+    python -m background_task_core.server [--port 8787] [--no-browser]
 """
 from __future__ import annotations
 
@@ -217,7 +217,7 @@ def load_from_db():
     # 同样是「这张图没东西可画」,而那时摄入器很可能已经停了。
     if not all_days:
         _rows = cov["health"]["rows"]
-        _why = ("数据库里还没有观察数据,跑一次 python -m task_console ingest --backfill"
+        _why = ("数据库里还没有观察数据,跑一次 python -m background_task_core ingest --backfill"
                 if not _rows else
                 f"最近这个窗口内没有观察(全表 {_rows} 行,最后一条在 "
                 f"{cov['health'].get('to') or '未知'}),摄入器可能已经停了")
@@ -247,7 +247,7 @@ def load_from_db():
     _rwhy = None
     if not _rruns:
         _rwhy = ("数据库里还没有运行事件。要么运行日志通道是关的,要么摄入器还没跑过 —— "
-                 "跑一次 python -m task_console ingest 就知道是哪一种。"
+                 "跑一次 python -m background_task_core ingest 就知道是哪一种。"
                  "⚠ 那个通道是滚动缓冲,实测约 5-8 天就会覆盖,拖着不摄入等于永久丢失。")
     runs = {
         "available": _rruns > 0, "reason": _rwhy,
@@ -271,7 +271,7 @@ def load_from_db():
 # --------------------------------------------------------------------------- merge
 def categories_path() -> Path | None:
     """分类配置在哪。页面读它、删除任务时改它,两边必须是同一个文件,所以位置只在这里算一次。"""
-    explicit = _env_path("TASK_CONSOLE_CATEGORIES")
+    explicit = _env_path("BACKGROUND_TASK_CORE_CATEGORIES")
     if explicit is not None:
         return explicit
     root = console_store.companion_root()
@@ -304,9 +304,9 @@ def load_health() -> tuple[dict, list, str | None]:
     The merged map feeds the task table (one row per task); the raw list feeds artifact freshness,
     which judges every declaration on its own.
     """
-    p = _env_path("TASK_CONSOLE_HEALTH")
+    p = _env_path("BACKGROUND_TASK_CORE_HEALTH")
     if not p:
-        return {}, [], "没有设 TASK_CONSOLE_HEALTH,健康监控覆盖这一列是「未检查」,不是通过。"
+        return {}, [], "没有设 BACKGROUND_TASK_CORE_HEALTH,健康监控覆盖这一列是「未检查」,不是通过。"
     if not p.exists():
         return {}, [], f"健康监控清单不存在: {p}"
     try:
@@ -379,7 +379,7 @@ def _merge_decls(decls: list[dict]) -> dict:
 def load_allowlist() -> tuple[set[str] | None, str | None]:
     """None means NOT CHECKED. An empty set would read as 'nothing is backed up', which is a
     different and much louder claim, so the two are never collapsed."""
-    p = _env_path("TASK_CONSOLE_ALLOWLIST")
+    p = _env_path("BACKGROUND_TASK_CORE_ALLOWLIST")
     if p is None:
         return None, None
     if not p.exists():
@@ -638,7 +638,7 @@ def build_payload() -> dict:
         warnings.append(runs["reason"])
     if db_reason:
         warnings.append(f"数据库不可用,回落到直接解析日志(会慢很多):{db_reason}")
-        hist = history.load(os.environ.get("TASK_CONSOLE_HISTORY"))
+        hist = history.load(os.environ.get("BACKGROUND_TASK_CORE_HISTORY"))
         if hist.get("reason"):
             warnings.append(hist["reason"])
         runs = load_runlog()
@@ -736,7 +736,7 @@ def task_facts(name: str) -> dict:
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "task-console"
+    server_version = "background-task-core"
     # fail-closed:空集合什么都不匹配,所以一个没走过 main() 的 Handler 会拒绝每一个请求。
     # 默认成 "*" 会让「忘了设置」和「明确允许一切」变成同一件事,而那正是这份代码
     # 在别处一直拒绝的形状。
@@ -931,7 +931,7 @@ class Handler(BaseHTTPRequestHandler):
         path = self.path.split("?", 1)[0]
         if path in ("/", "/index.html"):
             html = PAGE.read_text(encoding="utf-8").replace("__TOKEN__", self.token)
-            if os.environ.get('TASK_CONSOLE_READ_ONLY') == '1':
+            if os.environ.get('BACKGROUND_TASK_CORE_READ_ONLY') == '1':
                 html = html.replace('name="console-read-only" content="false"', 'name="console-read-only" content="true"')
             return self._send(200, html.encode("utf-8"), "text/html; charset=utf-8")
         if path.startswith("/static/"):
@@ -1010,7 +1010,7 @@ class Handler(BaseHTTPRequestHandler):
         if not self._host_ok():
             self._drain()
             return self._json(400, {"error": "bad host"})
-        if os.environ.get('TASK_CONSOLE_READ_ONLY') == '1':
+        if os.environ.get('BACKGROUND_TASK_CORE_READ_ONLY') == '1':
             self._drain()
             return self._json(403, {'error': '只读预览，无法执行操作'})
         if self.path.split('?', 1)[0] in ('/api/work/action', '/api/work/stop'):
@@ -1083,7 +1083,7 @@ def main() -> int:
     a = ap.parse_args()
 
     if os.name != "nt":
-        print("task-console 只在 Windows 上有意义:它读的是 Windows 任务计划。", file=sys.stderr)
+        print("background-task-core 只在 Windows 上有意义:它读的是 Windows 任务计划。", file=sys.stderr)
         return 2
     for f in (COLLECT, PAGE):
         if not f.exists():
@@ -1095,7 +1095,7 @@ def main() -> int:
     Handler.allowed_hosts = frozenset((f"localhost:{a.port}", f"127.0.0.1:{a.port}", f"[::1]:{a.port}"))
     srv = ThreadingHTTPServer(("127.0.0.1", a.port), Handler)
     url = f"http://127.0.0.1:{a.port}/"
-    print(f"task-console: {url}")
+    print(f"background-task-core: {url}")
     print("  只监听 127.0.0.1。令牌每次启动重新生成,不落盘。关掉这个窗口即停止。")
     if not a.no_browser:
         threading.Timer(0.4, lambda: webbrowser.open(url)).start()

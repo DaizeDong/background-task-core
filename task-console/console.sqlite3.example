@@ -1,5 +1,0 @@
--- console.sqlite3.example
---
--- This is a pointer, not a sample database. The schema of record is scripts/task_console/schema.sql;
--- console_ingest.py creates the live database from it at <companion>/data/task-console/console.sqlite3,
--- outside this repo. See docs/storage.md for what that database holds and how it is recovered.

@@ -1,6 +1,6 @@
 # Component observations and health, version 1
 
-`task_console.runs.evaluate_task(spec, observations, now)` is the pure evaluator.
+`background_task_core.runs.evaluate_task(spec, observations, now)` is the pure evaluator.
 It reads no files and runs no commands. `now` is Unix seconds or an ISO timestamp
 with a timezone. Task kind is `oneshot` or `daemon`. A bounded running oneshot may
 have missing outputs until its deadline; an overdue one stays execution `running`
@@ -56,14 +56,14 @@ paths grant no authority.
 From a checkout, add `scripts` to `PYTHONPATH` and run:
 
 ```powershell
-python -m task_console status --input $PrivateSnapshot
+python -m background_task_core status --input $PrivateSnapshot
 ```
 
 Or feed JSON on stdin. `--now` fixes the evaluation clock. Exit 0 means
 the JSON envelope was evaluated, including unhealthy, unknown and zero coverage.
 Exit 2 means reader/schema failure, written as JSON to stderr. There are no
 notifications, payload execution, maintenance actions or state writes in this CLI.
-The package also declares the `task-console-status` entrypoint for the controller's
+The package also declares the `background-task-core-status` entrypoint for the controller's
 normal installation process; no installation is needed for the checkout command.
 
 The monitor compatibility input uses `schemaVersion: 1`, `declarations`, `rows`
@@ -81,8 +81,8 @@ unchanged. No task IDs are treated as migrated, and no authority epoch is create
 
 ## Console and catalog
 
-The launcher may set `TASK_CONSOLE_STATUS_SNAPSHOT` to the private component
-snapshot and `TASK_CONSOLE_CATALOG_SNAPSHOT` to a captured SMITH catalog. The latter
+The launcher may set `BACKGROUND_TASK_CORE_STATUS_SNAPSHOT` to the private component
+snapshot and `BACKGROUND_TASK_CORE_CATALOG_SNAPSHOT` to a captured SMITH catalog. The latter
 consumes `skill_smith.catalog`'s documented `schema_version: 1` envelope with
 `records`, `coverage`, `problems` and typed entrypoints. It never imports SMITH or
 rescans business repositories. A component snapshot can also embed `catalog`.

@@ -24,7 +24,7 @@ State the decision: **reuse**, **extend**, **create**, or **retire a proven dupl
 - Preserve paused/retired state. Reuse does not mean silently enabling a disabled task.
 
 Prepare the private declaration through the owner's supported proposal workflow, then run
-`python -m task_console creation-check --task-id <ID>` with the installed runtime's explicit
+`python -m background_task_core creation-check --task-id <ID>` with the installed runtime's explicit
 `--runtime-config`, `--private-root`, `--state-root` and `--vault-root` bindings. This read-only
 check returns existing action IDs and the inventory revision. Its coverage is declared tasks;
 also review relevant unmanaged jobs before adoption. Follow the local artifact resolver rather

@@ -158,7 +158,7 @@ def report(runtime, task_ids, bundle):
 
 
 def read_linked_items(task_ids):
-    path = os.environ.get('TASK_CONSOLE_REMINDER_DB')
+    path = os.environ.get('BACKGROUND_TASK_CORE_REMINDER_DB')
     if not path or not Path(path).is_absolute():
         return {'status': 'unavailable', 'items': None, 'code': 'linked_db_not_configured'}
     try:
@@ -176,15 +176,15 @@ def read_linked_items(task_ids):
 
 def owner_environment(env):
     child = dict(env)
-    child['SCHEDULE_DB_PATH'] = env.get('TASK_CONSOLE_REMINDER_DB', '')
-    child['SCHEDULE_ACTION_WORKSPACE'] = env.get('TASK_CONSOLE_ACTION_WORKSPACE', '')
+    child['SCHEDULE_DB_PATH'] = env.get('BACKGROUND_TASK_CORE_REMINDER_DB', '')
+    child['SCHEDULE_ACTION_WORKSPACE'] = env.get('BACKGROUND_TASK_CORE_ACTION_WORKSPACE', '')
     return child
 
 
 def read_work(env=None):
     env = os.environ if env is None else env
     unavailable = {"schemaVersion": 1, "available": False, "items": [], "events": [], "sources": []}
-    cli, database = env.get("TASK_CONSOLE_REMINDER_CLI"), env.get("TASK_CONSOLE_REMINDER_DB")
+    cli, database = env.get("BACKGROUND_TASK_CORE_REMINDER_CLI"), env.get("BACKGROUND_TASK_CORE_REMINDER_DB")
     if not cli or not database:
         return dict(unavailable, reason="work_reader_not_configured")
     if not Path(cli).is_absolute() or not Path(cli).is_file() or not Path(database).is_absolute():
@@ -209,8 +209,8 @@ def read_work(env=None):
                        or not _valid_actions(item.get('actions'))
                        for item in payload.get('items', []))):
             return dict(unavailable, reason="work_contract_invalid")
-        runtime_ready = all(env.get(key) for key in ('TASK_CONSOLE_RUNTIME_CONFIG', 'TASK_CONSOLE_PRIVATE_ROOT',
-                                                     'TASK_CONSOLE_STATE_ROOT', 'TASK_CONSOLE_VAULT_ROOT'))
+        runtime_ready = all(env.get(key) for key in ('BACKGROUND_TASK_CORE_RUNTIME_CONFIG', 'BACKGROUND_TASK_CORE_PRIVATE_ROOT',
+                                                     'BACKGROUND_TASK_CORE_STATE_ROOT', 'BACKGROUND_TASK_CORE_VAULT_ROOT'))
         for item in payload.get('items', []):
             actions = item.get('actions')
             if not isinstance(actions, dict):
@@ -218,7 +218,7 @@ def read_work(env=None):
             for offer in actions.get('offers', []):
                 # A linked task runs through the controller; an agent action only needs the queue tick.
                 if (offer.get('kind') == 'task' and not runtime_ready
-                        or offer.get('kind') == 'agent' and not env.get('TASK_CONSOLE_AGENT_TASK_ID')):
+                        or offer.get('kind') == 'agent' and not env.get('BACKGROUND_TASK_CORE_AGENT_TASK_ID')):
                     offer.update(enabled=False, reason='执行服务尚未连接')
             if actions.get('offers') and not actions.get('current') and not any(offer.get('enabled') for offer in actions['offers']):
                 actions.update(available=False, reason='执行服务尚未连接', offers=[])
@@ -272,7 +272,7 @@ def validate(request):
 
 
 def invoke(verb, payload, env):
-    cli, database = env.get('TASK_CONSOLE_REMINDER_CLI'), env.get('TASK_CONSOLE_REMINDER_DB')
+    cli, database = env.get('BACKGROUND_TASK_CORE_REMINDER_CLI'), env.get('BACKGROUND_TASK_CORE_REMINDER_DB')
     if (not cli or not database or not Path(cli).is_absolute() or not Path(cli).is_file()
             or not Path(database).is_absolute() or not Path(database).is_file()):
         raise ActionError('work_binding_invalid')
@@ -331,13 +331,13 @@ def submit(request, *, stop=False, env=None):
         if stop:
             return invoke('work-action-stop', request, env)
         action = request['action_id']
-        if action == 'agent' and not env.get('TASK_CONSOLE_AGENT_TASK_ID'):
+        if action == 'agent' and not env.get('BACKGROUND_TASK_CORE_AGENT_TASK_ID'):
             raise ActionError('queue_not_configured')
         # A linked task runs through the controller; validate it before reserving the action.
         runtime = None if action in ('complete', 'agent') else controller.load_runtime(environ=env)
         reply = invoke('work-action', {'request': request, 'context': ''}, env)
         if action == 'agent' and reply.pop('wakeup', False):
-            _wake_agent_tick(env['TASK_CONSOLE_AGENT_TASK_ID'])
+            _wake_agent_tick(env['BACKGROUND_TASK_CORE_AGENT_TASK_ID'])
         dispatch = reply.pop('dispatch', None) if runtime is not None else None
         if dispatch:
             try:

@@ -13,10 +13,10 @@ data root and run directory. The following are explicit deployment bindings:
 
 | Console setting | Purpose |
 |---|---|
-| `TASK_CONSOLE_REMINDER_CLI` | Absolute path to the compatible owner CLI |
-| `TASK_CONSOLE_REMINDER_DB` | Existing owner database |
-| `TASK_CONSOLE_ACTION_WORKSPACE` | Dedicated output directory inside the owner's private companion |
-| `TASK_CONSOLE_AGENT_TASK_ID` | Registered `owner/name` ID of the existing Agent queue drainer; enables the agent offer, and its name part is the task the console wakes |
+| `BACKGROUND_TASK_CORE_REMINDER_CLI` | Absolute path to the compatible owner CLI |
+| `BACKGROUND_TASK_CORE_REMINDER_DB` | Existing owner database |
+| `BACKGROUND_TASK_CORE_ACTION_WORKSPACE` | Dedicated output directory inside the owner's private companion |
+| `BACKGROUND_TASK_CORE_AGENT_TASK_ID` | Registered `owner/name` ID of the existing Agent queue drainer; enables the agent offer, and its name part is the task the console wakes |
 | Controller runtime settings | Existing runtime configuration, private, state and vault roots; needed only for linked task offers |
 
 The child CLI receives the database as `--db` and the workspace as `SCHEDULE_ACTION_WORKSPACE`.
@@ -39,11 +39,11 @@ Authenticated same-origin `POST /api/work/action` and `/api/work/stop` accept ex
 The browser never submits commands, task names or filesystem paths. (The separate task repair
 route takes a task name, re-checks it against the live task list, and then uses this same action;
 see `work-platform.md`.) GET requests do not enqueue
-work, invoke a model or upgrade a database. `TASK_CONSOLE_READ_ONLY=1` disables action submission.
+work, invoke a model or upgrade a database. `BACKGROUND_TASK_CORE_READ_ONLY=1` disables action submission.
 
 The owner reserves and deduplicates requests transactionally. For a linked task offer the console
 dispatches the owner-selected exact task ID through the existing Controller. For an agent action
-the console only asks the scheduler to run the drainer (`schtasks /run /tn <name part of TASK_CONSOLE_AGENT_TASK_ID>`)
+the console only asks the scheduler to run the drainer (`schtasks /run /tn <name part of BACKGROUND_TASK_CORE_AGENT_TASK_ID>`)
 on a background thread after the owner accepts; it does not wait for it, and a failed wake costs
 only latency because the drainer's own trigger picks the queued work up. Uncertain task dispatch stays unconfirmed and is never automatically replayed.
 Agent or task execution leaves the original todo open until its owner records completion. A simulated completion does not prove a real Agent satisfied the todo.
