@@ -1,16 +1,16 @@
 """对话历史:按当前会话存储目录分组,用对话自己的标题当标题。
 
-标题有六个来源,优先级从高到低,而且**结果里永远带着它来自哪一个**:
+标题有六个来源,优先级从高到低,而且**结果里永远带着它来自哪一个**(titleFrom):
 
-  custom-title  机主用 /rename 亲手起的名字,记在一条 custom-title 记录里
-  rename-args   同一件事的另一种记法:命令本身带的参数(老一点的转录里是这个形状)
+  rename        机主用 /rename 亲手起的名字:一条 custom-title 记录,或者命令本身带的参数
   ai-title      Claude Code 自动生成的那行,也就是没改名时窗口上显示的标题
   summary       会话被压缩时写下的一句话概括
   first-message 第一条真人打进去的消息的开头
   slug          自动生成的三词代号
+  id            以上都没有时,文件名的前八位
 
-前两个排最前没有别的理由:那是唯一两个**人明确说过「这场对话叫这个」**的地方,
-后面四个都是推断出来的。三种记录都可以出现在文件任何位置,而且**同一场对话可以改名多次,
+rename 排最前没有别的理由:那是唯一**人明确说过「这场对话叫这个」**的地方,
+后面的都是推断出来的。名字记录可以出现在文件任何位置,而且**同一场对话可以改名多次,
 最后一次才算数**,所以头尾窗口盖不住它们。
 
 这三种一起做一次全文件的字节级探测。字节扫描比逐行 json.loads 便宜一个数量级,而且
@@ -40,10 +40,7 @@ import time
 import uuid
 from pathlib import Path
 
-if __package__:
-    from . import console_store
-else:
-    import console_store
+import console_store
 from convo_chain import looks_injected, typed_text
 from convo_chain.session_ops import project_info
 from convo_chain.errors import ConvoChainError
@@ -56,8 +53,7 @@ from convo_chain.errors import ConvoChainError
 TITLE_MARKS = (b"custom-title", b"ai-title",
                b"<command-name>/rename</command-name>")
 
-# 分块大小。做成常量是为了让「标记跨块」这件事可测:默认值下一块四兆,
-# 任何真实标记都不可能被切开,于是那条边界逻辑永远跑不到。
+# 字节探测的分块大小。
 CHUNK = 4 << 20
 
 # 命令那一种的参数在 content 里,而 content 里是**真实换行**,所以必须开 DOTALL:
@@ -85,11 +81,6 @@ def _iter_json(chunk: str):
             continue
 
 
-# 「哪一条是人真的打进去的字」的两条判据(typed_text / looks_injected)住在 convo-chain 库里,
-# 对话链和这里各用一次,只有那一份实现。以前这里自带一份、对话链从这里借,同一条规则就有了
-# 两个家;现在两边都从库里导入。
-
-
 def read_titles(path: Path) -> dict:
     """这场对话叫什么。返回 {"custom":…, "renameArgs":…, "ai":…},取不到的是 None。
 
@@ -113,9 +104,8 @@ def read_titles(path: Path) -> dict:
                 if any(m in buf for m in TITLE_MARKS):
                     seen = True
                     break
-                # 留的是**合并后**那个缓冲区的尾巴,不是新块的尾巴。取新块的尾巴在
-                # 块比标记短的时候攒不够长度:一个跨了三块的标记会从窗口里溜过去。
-                # 默认块四兆时这个区别永远看不出来,所以它只能靠把块调小来测。
+                # 留的是**合并后**那个缓冲区的尾巴,不是新块的尾巴:块比标记短时,
+                # 新块的尾巴攒不够长度,跨了三块的标记会从窗口里溜过去。
                 prev = buf[-(longest - 1):] if longest > 1 else b""
     except OSError:
         return {"custom": None, "renameArgs": None, "ai": None}
@@ -174,7 +164,6 @@ def read_one(path: Path, now: float | None = None) -> dict:
     dec = lambda b: b.decode("utf-8", "replace")
 
     cwd = slug = summary = first_msg = None
-    first_ts = last_ts = None
     human = 0
     for entry in _iter_json(dec(head)):
         if cwd is None and entry.get("cwd"):
@@ -183,11 +172,6 @@ def read_one(path: Path, now: float | None = None) -> dict:
             slug = entry["slug"]
         if summary is None and entry.get("type") == "summary":
             summary = (entry.get("summary") or "").strip() or None
-        ts = entry.get("timestamp")
-        if ts:
-            if first_ts is None:
-                first_ts = ts
-            last_ts = ts
         if entry.get("type") == "user" and not entry.get("isSidechain"):
             txt = typed_text(entry)
             if txt and not looks_injected(txt):
@@ -195,8 +179,6 @@ def read_one(path: Path, now: float | None = None) -> dict:
                 if first_msg is None:
                     first_msg = txt
     for entry in _iter_json(dec(tail)):
-        if entry.get("timestamp"):
-            last_ts = entry["timestamp"]
         if summary is None and entry.get("type") == "summary":
             summary = (entry.get("summary") or "").strip() or None
         if cwd is None and entry.get("cwd"):
@@ -228,14 +210,9 @@ def read_one(path: Path, now: float | None = None) -> dict:
         # 标题和正文是两样东西:改过名之后标题不再透露这场对话在说什么,
         # 所以第一条消息单独留着,界面上两行都显示。
         "preview": (" ".join(first_msg.split())[:120] if first_msg else None),
-        "renamed": renamed,
-        "aiTitle": named["ai"],
-        "slug": slug,
         "bytes": size,
         "mtime": st.st_mtime,
         "ageHours": round((now - st.st_mtime) / 3600.0, 1),
-        "firstTs": first_ts,
-        "lastTs": last_ts,
         # 只数了读到的那部分。没读完就说没读完,不把两头的计数报成确定的总数。
         "humanSeen": human,
         "partial": partial,
@@ -243,21 +220,13 @@ def read_one(path: Path, now: float | None = None) -> dict:
 
 
 def _write_cache_atomically(cpath: Path, data: dict) -> None:
-    """Publish a complete cache; preserve staging evidence on failure.
-
-    Each concurrent writer owns a unique exclusive staging file. Scan reports
-    failures separately from its independently available transcript results.
-    """
+    """Write to a unique staging file, then replace the cache in one step."""
     tmp = cpath.with_name(cpath.name + ".tmp-" + uuid.uuid4().hex)
     cpath.parent.mkdir(parents=True, exist_ok=True)
     with tmp.open("x", encoding="utf-8") as stream:
-        opened = os.fstat(stream.fileno())
         stream.write(json.dumps(data, ensure_ascii=False))
         stream.flush()
         os.fsync(stream.fileno())
-    current = tmp.stat()
-    if (current.st_dev, current.st_ino) != (opened.st_dev, opened.st_ino):
-        raise ValueError("conversation cache staging identity changed")
     os.replace(tmp, cpath)
 
 
@@ -305,9 +274,7 @@ def _cursor_for(row, group, query, human_only):
     return base64.urlsafe_b64encode(raw).decode().rstrip("=")
 
 
-def scan(root: str | None = None, cache: str | None = None,
-         now: float | None = None, limit_per_group: int = 40, *,
-         group: str | None = None, cursor: str | None = None,
+def scan(limit_per_group: int = 40, *, group: str | None = None, cursor: str | None = None,
          query: str = "", human_only: bool = False) -> dict:
     """Read current metadata; a project page scopes counts and locations to that project."""
     if isinstance(limit_per_group, bool) or not isinstance(limit_per_group, int) or not 1 <= limit_per_group <= 200:
@@ -319,7 +286,7 @@ def scan(root: str | None = None, cache: str | None = None,
         raise ValueError("invalid project identifier")
     query = query.strip().casefold()
     after = _cursor_key(cursor, group, query, human_only)
-    raw = root if root is not None else os.environ.get("TASK_CONSOLE_SESSIONS")
+    raw = os.environ.get("TASK_CONSOLE_SESSIONS")
     if not raw:
         return {"available": False,
                 "reason": "没有设 TASK_CONSOLE_SESSIONS,对话历史这一栏是「未检查」。"}
@@ -327,10 +294,9 @@ def scan(root: str | None = None, cache: str | None = None,
     if not base.is_dir():
         return {"available": False, "reason": f"目录不存在: {base}"}
 
-    now = time.time() if now is None else now
-    cpath = Path(os.path.expanduser(cache)) if cache else (
-        Path(os.path.expanduser(os.environ["TASK_CONSOLE_CONVO_CACHE"]))
-        if os.environ.get("TASK_CONSOLE_CONVO_CACHE") else None)
+    now = time.time()
+    cache = os.environ.get("TASK_CONSOLE_CONVO_CACHE")
+    cpath = Path(os.path.expanduser(cache)) if cache else None
     cache_error = None
     try:
         if cpath:
@@ -339,7 +305,7 @@ def scan(root: str | None = None, cache: str | None = None,
     except (OSError, ValueError, RuntimeError, ImportError) as error:
         cache_error = f"Conversation cache unavailable ({type(error).__name__}): {error}"
         cached = {}
-    fresh, hits, misses = {}, 0, 0
+    fresh = {}
     if group is not None:
         # A page refresh owns only this directory's cache entries. Other projects
         # are revalidated on the next full scan, not discarded by pagination.
@@ -376,18 +342,13 @@ def scan(root: str | None = None, cache: str | None = None,
                 failed += 1
                 continue
             key = str(f)
-            # 缓存只在 mtime 和大小都没变时算命中。只看 mtime 会漏掉同秒内的改写。
+            # 缓存只在 mtime 和大小都没变、而且记录形状对(见 _CACHE_KEYS)时算命中。
+            # 只看 mtime 会漏掉同秒内的改写。
             prev = cached.get(key)
-            # 命中判据除了 mtime 和大小,还要看这条记录的**形状**对不对。
-            # 只比那两样的话,一份跨版本的旧缓存(字段改过名、少一个键)会逐条命中,
-            # 然后在下游拼字符串时抛 KeyError,整个会话面板 500 :
-            # 缓存本来是性能优化,却成了可用性单点。形状不对就当一次 miss 重读,
-            # 那是这个函数本来就会做的事,代价只是慢一点。
             if prev and prev.get("_m") == st.st_mtime and prev.get("bytes") == st.st_size \
                     and _CACHE_KEYS <= prev.keys():
                 rec = dict(prev)
                 rec["ageHours"] = round((now - st.st_mtime) / 3600.0, 1)
-                hits += 1
             else:
                 try:
                     rec = read_one(f, now)
@@ -395,7 +356,6 @@ def scan(root: str | None = None, cache: str | None = None,
                     failed += 1
                     continue
                 rec["_m"] = st.st_mtime
-                misses += 1
             fresh[key] = rec
             rows.append(rec)
             projects[d.name][1].append(rec)
@@ -428,7 +388,7 @@ def scan(root: str | None = None, cache: str | None = None,
             if query and query not in " ".join(str(v or "") for v in
                     (info["cwd"], project_id, row["title"], row.get("preview"), row["file"])).casefold():
                 continue
-            eligible.append({**row, "sourceCwd": row["cwd"], "cwd": info["cwd"], "storageDir": project_id})
+            eligible.append({**row, "cwd": info["cwd"]})
         eligible.sort(key=lambda row: (-row["mtime"], row["id"]))
         matched += len(eligible)
         # Browsing lists conversations; empty directories remain move destinations.
@@ -438,11 +398,11 @@ def scan(root: str | None = None, cache: str | None = None,
         shown = remaining[:limit_per_group]
         has_more = len(remaining) > len(shown)
         out.append({**info,
-            "count": len(eligible), "totalCount": len(items),
+            "count": len(eligible),
             "humanish": sum(1 for x in eligible if x["humanSeen"] >= 2),
             "bytes": sum(x["bytes"] for x in eligible),
             "newest": eligible[0]["mtime"] if eligible else 0,
-            "shown": shown, "truncated": has_more, "hasMore": has_more,
+            "shown": shown, "hasMore": has_more,
             "nextCursor": _cursor_for(shown[-1], project_id, query, human_only) if has_more else None,
         })
     out.sort(key=lambda g: -g["newest"])
@@ -459,8 +419,6 @@ def scan(root: str | None = None, cache: str | None = None,
             "groups": len(out),
             "humanish": sum(r["humanSeen"] >= 2 for r in rows),
             "bytes": sum(r["bytes"] for r in rows),
-            "cacheHits": hits,
-            "cacheMisses": misses,
             "cached": bool(cpath) and cache_error is None,
             "cacheError": cache_error,
             # 读不动的文件要报出来。悄悄跳过会让「没有这些对话」和「我没读到」变成同一个数字。

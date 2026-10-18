@@ -1,6 +1,6 @@
 """给一场会话起一个中文名字的建议。只建议,不写:保存仍然走 /api/convo/rename。
 
-三步,各自可测:
+三步:
 
   collect_digest   从转录里挑出人亲手打的字,裁成一份有上限的摘要
   build_prompt     摘要加上现在的名字,拼成给模型的一句话
@@ -9,13 +9,11 @@
 「人亲手打的字」照 convo_chain 判 human 的同一组条件:typed_text 取文本、looks_injected 拒注入,
 再加上两个记录标志:isMeta(skill 正文、框架消息)和 isCompactSummary(/compact 之后助手写的摘要)。
 convo_chain 没有把这组条件导出成一个函数,文本部分用的是它导出的两个函数;两个标志在 _is_human
-里照抄,并有测试拿这两种记录形状钉住。skill 正文、工具结果、提醒块、命令回显和压缩摘要都不进摘要。
+里照抄。skill 正文、工具结果、提醒块、命令回显和压缩摘要都不进摘要。
 
 转录可以有几十上百兆。这里逐行流式读完整份文件,只解析可能是用户消息或名字记录的行,
 内存里只留头几条和尾几条;起名要的是「这场对话从什么开始、最后在做什么」。
 不能只读头尾两段:真实转录开头常是几百 KB 的系统提示快照和压缩摘要,那样会一条人打的字都找不到。
-
-调用方可以注入:suggest(..., caller=fn)。测试一律注入假的,永远不碰真模型。
 """
 
 from __future__ import annotations
@@ -103,9 +101,8 @@ def _entries(fh, titles: dict):
             yield (uuid if isinstance(uuid, str) and uuid else index), text
 
 
-def collect_digest(path, *, head_messages: int = HEAD_MESSAGES, tail_messages: int = TAIL_MESSAGES,
-                   message_chars: int = MESSAGE_CHARS, total_chars: int = DIGEST_CHARS) -> dict:
-    """转录里人打的字的摘要:头几条加尾几条,每条裁短,合计不超过 total_chars。
+def collect_digest(path) -> dict:
+    """转录里人打的字的摘要:头几条加尾几条,每条裁短,合计不超过 DIGEST_CHARS。
 
     返回 {"messages": [...], "skipped": 中间没进摘要的条数, "text": 拼好的摘要,
     "title": 最后一个名字(改过的名字优先,其次自动标题,都没有是 None)}。
@@ -113,15 +110,15 @@ def collect_digest(path, *, head_messages: int = HEAD_MESSAGES, tail_messages: i
     只留头几条和一个尾部窗口,所以消息再多,内存里也只有这么多条。
     """
     titles, seen = {}, set()
-    first, last, total = [], deque(maxlen=tail_messages), 0
+    first, last, total = [], deque(maxlen=TAIL_MESSAGES), 0
     with open(Path(path), "rb") as fh:
         for key, text in _entries(fh, titles):
             if key in seen:
                 continue
             seen.add(key)
             total += 1
-            text = _clip(text, message_chars)
-            if len(first) < head_messages:
+            text = _clip(text, MESSAGE_CHARS)
+            if len(first) < HEAD_MESSAGES:
                 first.append(text)
             else:
                 last.append(text)
@@ -134,8 +131,8 @@ def collect_digest(path, *, head_messages: int = HEAD_MESSAGES, tail_messages: i
             lines.append(marker)
             used += len(marker) + 1
         line = f"{n}. {text}"
-        if used + len(line) + 1 > total_chars:
-            room = total_chars - used - 1
+        if used + len(line) + 1 > DIGEST_CHARS:
+            room = DIGEST_CHARS - used - 1
             if room > 20:
                 lines.append(_clip(line, room))
             break
@@ -188,21 +185,16 @@ def normalize_title(text):
     return title
 
 
-def _llm_caller(prompt: str, extract, timeout: float):
-    """真的调模型。只在这里 import llmcall:测试注入假的 caller,这一行永远不会跑到。"""
-    from llmcall import call
-    return call(prompt, mode="judge", timeout=timeout, extract=extract)
-
-
-def suggest(digest: dict, current_title: str | None = None, *, caller=None,
-            timeout: float = LLM_TIMEOUT) -> dict:
+def suggest(digest: dict, current_title: str | None = None) -> dict:
     """返回 {"title", "provider"}。起不出来抛 SuggestError。"""
     if not digest.get("messages"):
         raise SuggestError("这场会话里没有找到用户亲手输入的内容，无法生成名称", "no_content", 422)
-    run = caller or _llm_caller
     try:
-        result = run(build_prompt(digest["text"], current_title), normalize_title, timeout)
-    except Exception as error:  # noqa: BLE001  llmcall 本身不抛;注入的 caller 抛了也按不可用答
+        # 在这里才 import:服务器启动时导入本模块不必把 llmcall 一起拉进来。
+        from llmcall import call
+        result = call(build_prompt(digest["text"], current_title), mode="judge",
+                      timeout=LLM_TIMEOUT, extract=normalize_title)
+    except Exception as error:  # noqa: BLE001  llmcall 缺失或抛错都按不可用答
         raise SuggestError(f"模型调用失败，未生成名称：{type(error).__name__}", "llm_unavailable", 503) from error
     if not result:
         reason = getattr(result, "error", None)
