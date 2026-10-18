@@ -12,13 +12,6 @@ OBSERVATION series, not a run series, and the difference matters enough to name 
                     and useful quantity, but it is NOT a per-run success rate and must never be
                     labelled as one.
 
-  visible runs      distinct LastRunTime values seen across polls. Those ARE real runs. But a task
-                    that runs more often than the poll interval is UNDERCOUNTED, because two polls
-                    an hour apart see only the most recent run between them. Measured on this
-                    machine: a five-minute task showed 967 visible runs where the schedule implies
-                    roughly 13800. The undercount is not a rounding error, it is an order of
-                    magnitude, and any chart built on this number has to say so.
-
 ONE OBSERVATION PER TASK PER HOUR. Some tasks are written to the log more than once per poll (a
 multi-layer job reports per layer), which would silently give them a two or three times larger
 denominator than everything else and make their health percentage incomparable. Observations are
@@ -38,7 +31,6 @@ from datetime import date, timedelta
 from pathlib import Path
 
 LINE = re.compile(r"^\[(\d{4})-(\d{2})-(\d{2}) (\d{2}):\d{2}:\d{2}\]\s{2,}(\S[^:]*?) : (.+)$")
-LASTRUN = re.compile(r"last (\d{1,2}/\d{1,2}/\d{4} \d{1,2}:\d{2}:\d{2} [AP]M)")
 
 
 def classify(verdict: str) -> str:
@@ -66,7 +58,6 @@ def load(path: str | os.PathLike | None, days: int = 45) -> dict:
     cutoff = date.today() - timedelta(days=days - 1)
     seen: set[tuple[str, str, str]] = set()          # (task, day, hour) dedup, see the header
     per: dict[str, dict[str, Counter]] = defaultdict(lambda: defaultdict(Counter))
-    runs: dict[str, set[str]] = defaultdict(set)
     matched = skipped = 0
 
     try:
@@ -99,9 +90,6 @@ def load(path: str | os.PathLike | None, days: int = 45) -> dict:
             seen.add(key)
             matched += 1
             per[task][day][classify(verdict)] += 1
-            lr = LASTRUN.search(verdict)
-            if lr:
-                runs[task].add(lr.group(1))
 
     if not matched:
         # An empty result and a broken parser look identical from the outside, so say which.
@@ -135,11 +123,6 @@ def load(path: str | os.PathLike | None, days: int = 45) -> dict:
             # 判据里凡有兜底桶,兜底桶就必须能被看见。
             "other": tot.get("other", 0),
             "health": round(100.0 * tot["ok"] / judged, 1) if judged else None,
-            # 口径要跟着数字一起走。同一个键在数据库那条通路上是运行日志里的**真实启动数**,
-            # 在这里是**轮询看得见的 LastRunTime 去重数**(见文件开头:967 对 13800)。
-            # 两个量差一个数量级、共用一个名字,而消费方拿到的是哪一个,以前只能靠猜。
-            "visibleRuns": len(runs[task]),
-            "visibleRunsScope": "poll",
             "byDay": {d: {"ok": c["ok"], "bad": c["bad"], "stale": c["stale"],
                           "neutral": c["neutral"], "n": sum(c.values())}
                       for d, c in days_map.items()},
@@ -161,6 +144,5 @@ def load(path: str | os.PathLike | None, days: int = 45) -> dict:
                    "failed": [],
                    "why": "当前走的是直接解析监控日志的回落通路,不经过摄入器,"
                           "所以没有摄入新鲜度这件事。数据新鲜度看日志本身的最后一行。"},
-        "caveat": ("检查通过率按巡检记录统计，同一任务可被重复检查。"
-                   "这里的运行次数按巡检读到的不同 LastRunTime 计数，运行间隔短于巡检间隔时会漏计。"),
+        "caveat": "检查通过率按巡检记录统计，同一任务可被重复检查。",
     }
