@@ -16,8 +16,6 @@
 
 审阅计划用 ls-remote 只读核对实际推送目标,不自动 fetch。fetch 和 push 都由人显式触发,
 所以它是两步的:先出审核计划,执行时必须带回绑定内容、HEAD 和索引的快照。
-「push 绝不自动」这句仍然成立,而且现在由 commit_push 那段注释和它的用例守着;
-这里不再复述它的规则,免得同一条约束有两份会各自漂的说法。
 """
 
 from __future__ import annotations
@@ -29,10 +27,7 @@ import subprocess
 import time
 from pathlib import Path
 
-if __package__:
-    from . import git_ops
-else:
-    import git_ops
+import git_ops
 
 # 在 pythonw(GUI 子系统)下,每个控制台子程序都要新分配一个控制台。那次分配很慢,
 # 而且并发时根本不成立:实测同一条 git 命令,普通 python 下几毫秒,pythonw 下单次
@@ -122,8 +117,7 @@ def _has_skill_manifest(repo: Path) -> bool:
 _SEV = {CLEAN: 0, DETACHED: 1, DIRTY: 2, UNPUSHED: 3, ERROR: 4}
 
 
-def _git(repo: Path, *args: str, timeout: int = 20, env=None) -> tuple[int | None, str]:
-    return git_ops.run_git(repo, *args, timeout=timeout, env=env)
+_git = git_ops.run_git
 
 
 def _owner_repo(url: str | None) -> str | None:
@@ -148,6 +142,20 @@ def _owner_repo(url: str | None) -> str | None:
     return (parts[-2] + "/" + parts[-1]).lower()
 
 
+def _table_entry(remote: str | None, table: dict) -> tuple[str, object] | None:
+    """按 `owner/repo` 在可见性表里找一条:先精确匹配,再不分大小写(表里有混合大小写的键)。
+    返回 (小写键, 值),找不到是 None。"""
+    key = _owner_repo(remote)
+    if not key or not table:
+        return None
+    if key in table:
+        return key, table[key]
+    for k, v in table.items():
+        if isinstance(k, str) and k.lower() == key:
+            return key, v
+    return None
+
+
 def _web_url(remote: str | None, table: dict) -> str | None:
     """浏览器里打开这个仓的地址,**只在能确定的时候才给**。
 
@@ -160,42 +168,15 @@ def _web_url(remote: str | None, table: dict) -> str | None:
     出现在里面,本身就是「这确实是 GitHub 上的仓」的证据,不是推测。查不到就返回 None,
     页面据此把按钮整个隐掉并说明原因。
     """
-    key = _owner_repo(remote)
-    if not key or not table:
-        return None
-    if key in table or any(isinstance(k, str) and k.lower() == key for k in table):
-        return "https://github.com/" + key
-    return None
+    entry = _table_entry(remote, table)
+    return "https://github.com/" + entry[0] if entry else None
 
 
 def _visibility(remote: str | None, table: dict) -> str | None:
-    """这个仓是公开还是私有。查不到就是 None,页面显示「未知」而不是猜 PRIVATE。
-
-    ⚠ 这个函数以前拿仓库的**文件系统路径**去比表里的键,而表的键是 `owner/repo`
-    (实测绝大多数是这个形状,含路径分隔符的一条都没有)。
-    于是它把 `owner/name` 这种键当成一个相对路径 expanduser + abspath,
-    结果永远匹配不上 —— **整个公开/私有视图从来没有工作过**:
-    每一行都不显示 PUB/PRI 徽章,而 visibilityReason 是 None,页面一句话都不说。
-
-    屏幕上「表里没登记这几个仓」和「匹配逻辑压根不对」长得一模一样,
-    而这个模块自己的注释早就写过这句话:**一个静默变空的可见性视图,
-    比没有这个视图更危险** —— 可见性正是判断一个仓能不能装真实数据的依据。
-    所以现在除了修匹配,scan() 还会数「表里 N 条、匹配上 M 条」,M 为 0 时明说。
-    """
-    if not table:
-        return None
-    key = _owner_repo(remote)
-    if not key:
-        return None
-    v = table.get(key)
-    if v is None:
-        for k, vv in table.items():
-            if isinstance(k, str) and k.lower() == key:
-                v = vv
-                break
-    if v is None:
-        return None
-    return v if isinstance(v, str) else (v or {}).get("visibility")
+    """这个仓是公开还是私有(表里每个值是 PUBLIC 或 PRIVATE)。查不到就是 None,
+    页面显示「未知」而不是猜 PRIVATE。"""
+    entry = _table_entry(remote, table)
+    return entry[1] if entry and isinstance(entry[1], str) else None
 
 
 def scan_one(repo: Path, vis_table: dict, now: float) -> dict:
@@ -279,17 +260,9 @@ def scan_one(repo: Path, vis_table: dict, now: float) -> dict:
                 fetchedAt=fetched_at,
                 fetchAgeHours=(round((now - fetched_at) / 3600.0, 1)
                                if fetched_at else None),
-                # behind 可不可信,由这里说了算,不让前端各自去推。
-                # ⚠ 没有 upstream 时 behind 本来就是 None(未知),那一档不受这条影响。
-                # ⚠ 两边都要是小时。第一版拿 `now - fetched_at`(秒)直接比
-                # BEHIND_TRUST_HOURS(24),于是任何超过 24 秒的缓存都被判成过期,
-                # 于是每一个仓都会显示「落后未知」。这个错的方向是「安全」的,
-                # 所以光读代码看不出来;而一个永远在喊的提示等于没有提示,
-                # 它还会顺带把真正该看的那几个一起淹掉。
-                # 抓到它的是那条负对照用例:刚 fetch 过就必须是可信的。
+                # behind 只在 BEHIND_TRUST_HOURS 小时内 fetch 过时才可信,由这里说了算。
                 behindKnown=(behind is not None and fetched_at is not None
                              and (now - fetched_at) / 3600.0 <= BEHIND_TRUST_HOURS),
-                lastCommit=last,
                 ageDays=round((now - last) / 86400.0, 1) if last else None,
                 visibility=_visibility(remote, vis_table),
                 webUrl=_web_url(remote, vis_table),
@@ -307,9 +280,6 @@ def _classify(rows: list[dict]) -> None:
       * 被别的仓在 .gitmodules 里引用 -> 共享组件。
       * 有 SKILL.md -> skill 仓。
 
-    `companionInScan` 刻意只说「这次扫描里」:一个仓的伴生仓完全可以在扫描根之外
-    (真实存在的形态),那时这里是 False,而它**不表示缺口**。
-    缺口由 data_boundary 判,这里不抢那个答案。
     """
     by_name: dict[str, dict] = {}
     for r in rows:
@@ -336,7 +306,6 @@ def _classify(rows: list[dict]) -> None:
         if host is not None:
             r["kind"] = KIND_COMPANION
             r["companionOf"] = host.get("name")
-            host["companionInScan"] = r.get("name")
         elif rn in shared:
             r["kind"] = KIND_SHARED
         elif r.get("hasSkillManifest"):
@@ -345,7 +314,6 @@ def _classify(rows: list[dict]) -> None:
             r["kind"] = KIND_OTHER
 
     for r in rows:
-        r.setdefault("companionInScan", None)
         # 共享组件被多少个仓用。这是关系的另一半 : 「谁被谁引用」在页面上原来只有
         # 一个类型标签在说,而「被 25 个仓用」和「被 1 个仓用」是完全不同的两件东西,
         # 前者改一行会波及整片,后者基本是私事。
@@ -388,21 +356,6 @@ def _identity_counts(rows: list[dict]) -> dict:
     return out
 
 
-def _group_counts(rows: list[dict]) -> dict:
-    """每个组标题下实际显示多少个仓。伴生仓归到它宿主所在的组。
-
-    不变量:各组之和 == 仓总数。
-    """
-    host_kind = {r.get("name"): r.get("kind") for r in rows}
-    counts = {k: 0 for k in KIND_ORDER}
-    for r in rows:
-        k = r.get("kind")
-        if k == KIND_COMPANION:
-            k = host_kind.get(r.get("companionOf")) or KIND_OTHER
-        counts[k] = counts.get(k, 0) + 1
-    return counts
-
-
 def _load_visibility() -> tuple[dict, str | None]:
     """可见性表,外加「为什么没有」。
 
@@ -436,27 +389,6 @@ def scan(root: str | None = None, now: float | None = None, workers: int = 10) -
 
     repos = [d for d in sorted(base.iterdir())
              if d.is_dir() and (d / ".git").exists()]
-    if not repos:
-        # summary 的形状必须和正常分支一致。少给几个键不会报错,只会让前端把
-        # `undefined` 拼进副标题(实测:「无上游 undefined」),
-        # 一个 undefined 印在屏幕上比一个说不出来的空更糟,因为它看起来像一个值。
-        return {"available": True, "root": str(base), "repos": [],
-                "summary": {"total": 0, "counts": {}, "attention": 0,
-                            "unknownUpstream": 0,
-                            # 没有仓时这三个都是 0,但键必须在, 见上面那段注释,
-                            # 缺一个键的后果是前端把 undefined 拼进副标题。
-                            "staleBehind": 0,
-                            "neverFetched": 0,
-                            "behindTrustHours": BEHIND_TRUST_HOURS,
-                            "attentionStates": ["unpushed", "dirty", "error"],
-                            "kinds": {k: 0 for k in (KIND_SKILL, KIND_SHARED,
-                                                     KIND_COMPANION, KIND_OTHER)},
-                            "kindOrder": list(KIND_ORDER),
-                            "visibilityReason": None,
-                            "identityReason": None,
-                            "identityCounts": {}},
-                "note": "这个根目录下没有 git 仓"}
-
     vis, vis_reason = _load_visibility()
     # 身份表和可见性表同一个形态:仓外文件、走环境变量、读不到时带着原因一起下发。
     # 读不到绝不能静默:那会让每一行都显示「未检查」而页面说不出为什么。
@@ -523,30 +455,31 @@ def scan(root: str | None = None, now: float | None = None, workers: int = 10) -
                                and not x.get("behindKnown")),
             "neverFetched": sum(1 for x in out if x.get("fetchedAt") is None),
             "behindTrustHours": BEHIND_TRUST_HOURS,
-            # 每组实际会显示多少个仓。页面用它画分组标题,而不是自己再数一遍,
-            # 前端数一遍就是同一个事实的第二个来源。
-            #
-            # ⚠ 伴生仓算进**它宿主所在的那个组**,因为它就画在那里。
-            # 按 kind 直接数的话,三个组标题加起来会比「共 N」少掉伴生仓的数目,
-            # 而屏幕上没有任何一处解释那个差, 两个都自称权威的数字,
-            # 读的人只能自己去猜哪个漏了什么。加起来等于总数,就不需要解释。
-            "kinds": _group_counts(out),
             "kindOrder": list(KIND_ORDER),
         },
     }
 
 
-def fetch(name: str) -> dict:
-    """对一个仓跑 fetch。只读网络动作,不改工作树,不推任何东西。"""
-    from maint import Refused, SAFE_NAME, _child   # 复用同一道参数闸,不另造一个
+def _repo_for(name: str, require_git: bool = True) -> Path:
+    """把仓名解析成路径,并过 maint 那道参数闸。所有按仓名的动作共用这一份。"""
+    from maint import Refused, SAFE_NAME, _child
     raw = os.environ.get("TASK_CONSOLE_REPOS")
     if not raw:
         raise Refused("没有配 TASK_CONSOLE_REPOS", "no_config")
     if not SAFE_NAME.match(name or ""):
         raise Refused(f"仓名不合法: {name!r}", "bad_name")
     repo = _child(Path(os.path.expanduser(raw)), name)
-    if not (repo / ".git").exists():
+    if require_git and not (repo / ".git").exists():
         raise Refused(f"不是 git 仓: {name}", "missing_src")
+    if not repo.is_dir():
+        raise Refused(f"目录不存在: {name}", "missing_src")
+    return repo
+
+
+def fetch(name: str) -> dict:
+    """对一个仓跑 fetch。只读网络动作,不改工作树,不推任何东西。"""
+    from maint import Refused
+    repo = _repo_for(name)
     rc, out = _git(repo, "fetch", "--prune", timeout=120)
     if rc != 0:
         raise Refused(f"fetch 退出 {rc}: {out.strip()[:200]}", "fetch_failed")
@@ -559,15 +492,8 @@ def reveal(name: str) -> dict:
     只接受**仓名**,路径由这里解析 —— 一个接受路径的接口迟早会被喂进另一条路径,
     而这个接口会把参数交给外壳。复用 maint 那道参数闸,不另造一个。
     """
-    from maint import Refused, SAFE_NAME, _child
-    raw = os.environ.get("TASK_CONSOLE_REPOS")
-    if not raw:
-        raise Refused("没有配 TASK_CONSOLE_REPOS", "no_config")
-    if not SAFE_NAME.match(name or ""):
-        raise Refused(f"仓名不合法: {name!r}", "bad_name")
-    repo = _child(Path(os.path.expanduser(raw)), name)
-    if not repo.is_dir():
-        raise Refused(f"目录不存在: {name}", "missing_src")
+    from maint import Refused
+    repo = _repo_for(name, require_git=False)
     if os.name != "nt":
         raise Refused("只在 Windows 上支持", "unsupported")
     # 不经 shell。explorer 的参数是一个已经解析好的绝对路径,不是拼出来的命令行。
@@ -582,15 +508,8 @@ def status(name: str) -> dict:
     面板上那个 `~12` 只说得出「有 12 个」,说不出是哪 12 个,而「别的自动化正在里面干活」
     和「我自己改了没提交」要靠文件名才分得开。只读。
     """
-    from maint import Refused, SAFE_NAME, _child
-    raw = os.environ.get("TASK_CONSOLE_REPOS")
-    if not raw:
-        raise Refused("没有配 TASK_CONSOLE_REPOS", "no_config")
-    if not SAFE_NAME.match(name or ""):
-        raise Refused(f"仓名不合法: {name!r}", "bad_name")
-    repo = _child(Path(os.path.expanduser(raw)), name)
-    if not (repo / ".git").exists():
-        raise Refused(f"不是 git 仓: {name}", "missing_src")
+    from maint import Refused
+    repo = _repo_for(name)
     rc, out = _git(repo, "status", "--porcelain=v1", "-b", timeout=30)
     if rc != 0:
         raise Refused(f"git status 退出 {rc}: {out.strip()[:200]}", "status_failed")
@@ -605,12 +524,8 @@ def status(name: str) -> dict:
 # ---------------------------------------------------------------------------------------
 # 提交并推送。这是这块面板上**唯一一个把东西送出这台机器**的动作。
 #
-# ⚠ 这个文件上面写过「push 永远不进动作表:它是对外动作,撤不回来,而一个能一键推送的
-# 按钮迟早会在没人看的时候被点到」。那句话没有错,错的是把它读成「所以永远别做」。
-# 真正要防的是**一次误击就把东西发出去**,而不是「人明确决定之后还要手工敲六条命令」。
-# 所以它是两步的:先出一份只读计划,把要提交哪些文件、要推到哪个 ref、那个 remote 是
-# 公开还是私有全部摆出来;执行时带回完整审核快照,内容、HEAD 或索引变化就拒绝。
-# 一次误击只会打开一份计划。
+# 它是两步的:先出一份只读计划,把要提交哪些文件、要推到哪个 ref、那个 remote 是公开还是
+# 私有全部摆出来;执行时带回完整审核快照,内容、HEAD 或索引变化就拒绝。一次误击只会打开一份计划。
 #
 # 为什么值得做:伴生仓按设计天天在长数据,于是「有未提交改动」长期挂着十几条。
 # 那十几条每一条的处理方式逐字相同,而它们占着「要人管的事」清单里最大的一块,
@@ -621,54 +536,21 @@ def status(name: str) -> dict:
 # 迟早会被别处读出来再执行。
 _MSG_BAD = set('\r\n\x00`$')
 _MSG_MAX = 200
-_REVIEW_MAX_COMMITS = 1000
-_REVIEW_MAX_BYTES = 128000
-
-
-def _repo_for(name: str):
-    """把仓名解析成路径,并过同一道参数闸。三个动作共用,不各写一份。"""
-    from maint import Refused, SAFE_NAME, _child
-    raw = os.environ.get("TASK_CONSOLE_REPOS")
-    if not raw:
-        raise Refused("没有配 TASK_CONSOLE_REPOS", "no_config")
-    if not SAFE_NAME.match(name or ""):
-        raise Refused(f"仓名不合法: {name!r}", "bad_name")
-    repo = _child(Path(os.path.expanduser(raw)), name)
-    if not (repo / ".git").exists():
-        raise Refused(f"不是 git 仓: {name}", "missing_src")
-    return repo
-
-
-def _porcelain_paths(repo: Path) -> tuple[list[str], list[str]]:
-    """Compatibility adapter; Git status parsing belongs to git_ops."""
-    from maint import Refused
-    try:
-        paths, _ = git_ops.status_paths(repo, runner=_git)
-        return paths, []
-    except git_ops.GitError as exc:
-        raise Refused(str(exc), exc.code) from exc
 
 
 def commit_push_plan(name: str) -> dict:
     """Review plan: preserve worktree/index/refs, pin content and target."""
+    from maint import Refused
     repo = _repo_for(name)
     rc, br = _git(repo, "rev-parse", "--abbrev-ref", "HEAD", timeout=20)
     branch = br.strip() if rc == 0 else None
     rc, up = _git(repo, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}", timeout=20)
     upstream = up.strip() if rc == 0 else None
 
-    paths, skipped = _porcelain_paths(repo)
-
-    rc, rem = _git(repo, "remote", "get-url", "origin", timeout=20)
-    remote = rem.strip() if rc == 0 else None
-    # ⚠ _visibility 收的是 remote URL,不是 slug, 它自己再算 owner/repo。
-    # 传 slug 进去会让它二次解析、永远匹配不上,而那正是这个视图历史上
-    # 「从来没有工作过」的原因,症状是每一行都安静地显示「未知」。
-    vis = None
     try:
-        vis = _visibility(remote, _load_visibility()[0]) if remote else None
-    except OSError:
-        vis = None
+        paths = git_ops.status_paths(repo)[0]
+    except git_ops.GitError as exc:
+        raise Refused(str(exc), exc.code) from exc
 
     # 拦下来的理由各自单独说。合并成一句「不能推」会让人不知道该去修哪一个。
     blocked = []
@@ -683,16 +565,15 @@ def commit_push_plan(name: str) -> dict:
     # Resolve configuration even when the cached upstream ref is absent. No ref
     # or URL is guessed. Only the exact push ref can bound outgoing history.
     try:
-        target = git_ops.push_target(repo, runner=_git)
+        target = git_ops.push_target(repo)
     except git_ops.GitError as exc:
         blocked.append("无法确定 upstream 推送目标: " + str(exc))
         error, code = str(exc), exc.code
     try:
-        snapshot = git_ops.snapshot(repo, paths, runner=_git)
+        snapshot = git_ops.snapshot(repo, paths)
         if target is None:
             raise git_ops.GitError(error or "Exact push target unavailable", code or "no_upstream")
-        history = git_ops.review_history(repo, snapshot["head"], target=target, runner=_git,
-                                         max_commits=_REVIEW_MAX_COMMITS, max_bytes=_REVIEW_MAX_BYTES)
+        history = git_ops.review_history(repo, snapshot["head"], target=target)
         ahead_count = history["count"]
         ahead = history["summaries"]
         ahead_known = True
@@ -711,11 +592,14 @@ def commit_push_plan(name: str) -> dict:
             diff = history["diff"]
     if target:
         remote = target["url"]
-        vis = _visibility(remote, _load_visibility()[0])
+    else:
+        rc, rem = _git(repo, "remote", "get-url", "origin", timeout=20)
+        remote = rem.strip() if rc == 0 else None
+    vis = _visibility(remote, _load_visibility()[0])
     history_truncated = bool(history and history["truncated"])
     ahead_truncated = ahead_count is not None and ahead_count > len(ahead)
     diff_bytes = diff.encode("utf-8")
-    diff_truncated = history_truncated or len(diff_bytes) > _REVIEW_MAX_BYTES
+    diff_truncated = history_truncated or len(diff_bytes) > git_ops.MAX_BYTES
     if len(paths) > 200 or diff_truncated or ahead_truncated:
         blocked.append("计划太大,无法完整显示;请缩小提交范围")
     # ⚠ 公开仓不在这里放行也不在这里拦死:拦死会让一个合法的公开仓改不动,
@@ -726,8 +610,6 @@ def commit_push_plan(name: str) -> dict:
                     "提交与推送都会过 pii_guard 与数据边界闸,由它们裁决。")
     if vis is None:
         warn.append("可见性问不出来。闸门对未知 remote 是按公开拦的,这里照样提醒。")
-    if skipped:
-        warn.append(f"{len(skipped)} 条被 .gitignore 忽略的路径不会提交。")
     warn.append("下方包含相对实际推送目标的全部待发布提交和逐提交差异；远端变化后需重新审阅。")
 
     ok = expected is not None and not blocked
@@ -743,7 +625,7 @@ def commit_push_plan(name: str) -> dict:
             "historyTruncated": history_truncated,
             "blocked": blocked, "warn": warn,
             "pushTarget": target,
-            "diff": diff_bytes[:_REVIEW_MAX_BYTES].decode("utf-8", errors="ignore"),
+            "diff": diff_bytes[:git_ops.MAX_BYTES].decode("utf-8", errors="ignore"),
             "diffTruncated": diff_truncated,
             "nothing": ok and not paths and ahead_count == 0}
     if ok:
@@ -753,9 +635,8 @@ def commit_push_plan(name: str) -> dict:
     return plan
 
 
-def commit_push(name: str, message: str, expect: dict | None = None,
-                push: bool = True) -> dict:
-    """Execute reviewed evidence. A retry receipt invokes only publication."""
+def commit_push(name: str, message: str, expect: dict | None = None) -> dict:
+    """Execute reviewed evidence, then push. A retry receipt invokes only publication."""
     from maint import Refused
     repo = _repo_for(name)
     msg = (message or "").strip()
@@ -768,20 +649,20 @@ def commit_push(name: str, message: str, expect: dict | None = None,
 
     if not isinstance(expect, dict):
         raise Refused("需要完整的审核快照;只有文件名不能授权提交", "no_plan")
-    if "retry" in expect and (not push or not isinstance(expect["retry"], dict)):
-        raise Refused("重试仅用于明确请求的推送", "bad_args")
+    if "retry" in expect and not isinstance(expect["retry"], dict):
+        raise Refused("重试回执格式不对", "bad_args")
     target = expect.get("target")
     retry_safe = False
     committed_result = None
     reviewed = expect.get("history")
     created = expect.get("created")
     try:
-        if push and (not target or git_ops.push_target(repo, runner=_git) != target):
+        if not target or git_ops.push_target(repo) != target:
             raise git_ops.GitError("Push target changed or is missing", "plan_stale")
         if "retry" in expect:
             retry = expect["retry"]
             result = git_ops.publish(repo, retry.get("commit"), retry.get("tree"), target,
-                                     history=reviewed, created=created, runner=_git)
+                                     history=reviewed, created=created)
             committed, count = False, 0
             retry_safe = True
         else:
@@ -790,20 +671,18 @@ def commit_push(name: str, message: str, expect: dict | None = None,
                 raise git_ops.GitError("Complete history review is required", "no_plan")
             if reviewed.get("head") != snapshot.get("head"):
                 raise git_ops.GitError("Snapshot and history HEAD differ", "plan_stale")
-            git_ops.verify_history(repo, reviewed, target, runner=_git)
-            result = git_ops.commit(repo, snapshot, msg, runner=_git)
+            git_ops.verify_history(repo, reviewed, target)
+            result = git_ops.commit(repo, snapshot, msg)
             committed = result["committed"]
             count = len(snapshot["changed_paths"])
             created = ({"commit": result["commit"], "tree": result["tree"], "message": msg}
                        if result["state"] == "committed" else None)
-            if push and result["state"] != "unknown":
+            if result["state"] != "unknown":
                 committed_result = result
                 published = git_ops.publish(repo, result["commit"], result["tree"], target,
-                                            history=reviewed, created=created, runner=_git)
+                                            history=reviewed, created=created)
                 published["out"] = "\n".join(filter(None, [result["out"], published["out"]]))
                 result = published
-                retry_safe = True
-            elif result["state"] == "committed":
                 retry_safe = True
     except git_ops.GitError as exc:
         if committed_result is None:

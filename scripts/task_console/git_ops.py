@@ -1,8 +1,8 @@
 """Git snapshots and publication, independent of UI and authorization policy.
 
-Callers own repository access, approval, identity/credential environment, message
-policy and durable receipts. Snapshots leave the worktree, real index and refs
-unchanged; constructing the reviewed tree can add unreachable Git objects.
+Callers own repository access, approval, message policy and durable receipts.
+Snapshots leave the worktree, real index and refs unchanged; constructing the
+reviewed tree can add unreachable Git objects.
 """
 from __future__ import annotations
 
@@ -62,11 +62,9 @@ _TOPOLOGY_ENV = {"GIT_DIR", "GIT_COMMON_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE",
                  "GIT_SHALLOW_FILE", "GIT_GRAFT_FILE", "GIT_REPLACE_REF_BASE"}
 _STATE_KEYS = ("head", "branch", "index", "status", "content", "changed_paths", "gitlinks")
 
-
-def _caller_env(env):
-    if any(key.upper() in _TOPOLOGY_ENV for key in (env or {})):
-        raise GitError("Caller environment cannot redirect repository storage", "bad_environment")
-    return dict(env or {})
+# Review limits shared by the plan and every later re-verification of it.
+MAX_COMMITS = 1000
+MAX_BYTES = 128000
 
 
 def run_git(repo: Path, *args: str, timeout: int = 20, env=None) -> tuple[int | None, str]:
@@ -101,8 +99,9 @@ def run_git(repo: Path, *args: str, timeout: int = 20, env=None) -> tuple[int | 
         return None, f"{type(exc).__name__}: {exc}"
 
 
-def _checked(repo, *args, runner, env=None, timeout=30):
-    rc, out = runner(repo, *args, timeout=timeout, env=env)
+def _checked(repo, *args, env=None, timeout=30):
+    """Run Git and require exit 0. `env` only carries a temporary GIT_INDEX_FILE."""
+    rc, out = run_git(repo, *args, timeout=timeout, env=env)
     if rc != 0:
         raise GitError(f"git {args[0]} failed: {out}")
     return out
@@ -127,29 +126,28 @@ def _path_list(paths):
     return sorted(set(paths))
 
 
-def _git_path(repo, name, runner, env):
-    path = Path(_checked(repo, "rev-parse", "--git-path", name, runner=runner, env=env).strip())
+def _git_path(repo, name):
+    path = Path(_checked(repo, "rev-parse", "--git-path", name).strip())
     return path if path.is_absolute() else repo / path
 
 
-def _index_bytes(repo, runner, env):
-    path = _git_path(repo, "index", runner, env)
+def _index_bytes(repo):
+    path = _git_path(repo, "index")
     return path.read_bytes() if path.exists() else b""
 
 
-def _repository_root(repo, runner, env):
+def _repository_root(repo):
     repo = Path(repo).resolve()
-    actual = _checked(repo, "rev-parse", "--show-toplevel", runner=runner, env=env).strip()
+    actual = _checked(repo, "rev-parse", "--show-toplevel").strip()
     if Path(actual).resolve() != repo:
         raise GitError("Expected the repository root, not a nested directory", "bad_repo")
     return repo
 
 
-def status_paths(repo, *, runner=run_git, env=None):
+def status_paths(repo):
     """NUL-delimited, rename-disabled status keeps every path literal."""
     out = _checked(repo, "status", "--porcelain=v1", "-z", "--no-renames",
-                   "--untracked-files=all", "--ignore-submodules=none",
-                   runner=runner, env=env, timeout=60)
+                   "--untracked-files=all", "--ignore-submodules=none", timeout=60)
     records = [record for record in out.split("\x00") if record]
     if any(len(record) < 4 or record[2] != " " for record in records):
         raise GitError("Unrecognized Git status", "status_failed")
@@ -181,11 +179,11 @@ def _file_evidence(repo, path):
     return [path, stat.S_IMODE(info.st_mode), digest]
 
 
-def _gitlink_paths(repo, head, runner, env):
+def _gitlink_paths(repo, head):
     # HEAD finds staged deletions/type changes; the index finds new gitlinks.
     # Filesystem directory checks cannot identify an absent submodule.
-    index = _checked(repo, "ls-files", "--stage", "-z", runner=runner, env=env)
-    tree = _checked(repo, "ls-tree", "-r", "--full-tree", "-z", head, runner=runner, env=env)
+    index = _checked(repo, "ls-files", "--stage", "-z")
+    tree = _checked(repo, "ls-tree", "-r", "--full-tree", "-z", head)
     return _path_list([record.split("\t", 1)[1] for record in (index + tree).split("\x00")
                        if record.startswith("160000 ")])
 
@@ -197,15 +195,14 @@ def _reject_gitlinks(paths, gitlinks):
                        "unsupported_submodule")
 
 
-def _state(repo, runner, env):
-    head = _checked(repo, "rev-parse", "--verify", "HEAD", runner=runner, env=env).strip()
-    branch = _checked(repo, "rev-parse", "--abbrev-ref", "HEAD", runner=runner, env=env).strip()
-    index = _digest(_index_bytes(repo, runner, env))
-    paths, status = status_paths(repo, runner=runner, env=env)
-    gitlinks = _gitlink_paths(repo, head, runner, env)
+def _state(repo):
+    head = _checked(repo, "rev-parse", "--verify", "HEAD").strip()
+    branch = _checked(repo, "rev-parse", "--abbrev-ref", "HEAD").strip()
+    index = _digest(_index_bytes(repo))
+    paths, status = status_paths(repo)
+    gitlinks = _gitlink_paths(repo, head)
     _reject_gitlinks(paths, gitlinks)
-    listed = _checked(repo, "ls-files", "-z", "--cached", "--others", "--exclude-standard",
-                      runner=runner, env=env)
+    listed = _checked(repo, "ls-files", "-z", "--cached", "--others", "--exclude-standard")
     files = _path_list([path for path in listed.split("\x00") if path])
     content = _json_digest([_file_evidence(repo, path) for path in files])
     return {"head": head, "branch": branch, "index": index, "status": status,
@@ -213,8 +210,8 @@ def _state(repo, runner, env):
 
 
 @contextmanager
-def _temporary_index(repo, runner, env, initial=None):
-    directory = _git_path(repo, "index", runner, env).parent
+def _temporary_index(repo, initial=None):
+    directory = _git_path(repo, "index").parent
     fd, name = tempfile.mkstemp(prefix="publish-index-", dir=directory)
     os.close(fd)
     path = Path(name)
@@ -223,7 +220,7 @@ def _temporary_index(repo, runner, env, initial=None):
     else:
         path.unlink()
     try:
-        yield path, dict(env or {}, GIT_INDEX_FILE=str(path))
+        yield path, {"GIT_INDEX_FILE": str(path)}
     finally:
         path.unlink(missing_ok=True)
         Path(str(path) + ".lock").unlink(missing_ok=True)
@@ -238,28 +235,27 @@ def _scope(repo, paths, changed, gitlinks):
         raise GitError("Directory and submodule changes need a separate publisher", "bad_paths")
 
 
-def snapshot(repo, allowed_paths, *, runner=run_git, env=None):
+def snapshot(repo, allowed_paths):
     """Capture review evidence and the exact prospective commit tree.
 
     Includes raw worktree bytes, real index bytes, HEAD and all visible changes.
     Changed gitlinks and dirty paths outside the explicit allowed set are refused.
     """
-    env = _caller_env(env)
-    repo = _repository_root(repo, runner, env)
+    repo = _repository_root(repo)
     paths = _path_list(allowed_paths)
-    before = _state(repo, runner, env)
+    before = _state(repo)
     _scope(repo, paths, before["changed_paths"], before["gitlinks"])
-    head_tree = _checked(repo, "rev-parse", "HEAD^{tree}", runner=runner, env=env).strip()
-    with _temporary_index(repo, runner, env, _index_bytes(repo, runner, env)) as (_, stage_env):
-        if not _index_bytes(repo, runner, env):
-            _checked(repo, "read-tree", before["head"], runner=runner, env=stage_env)
-        index_tree = _checked(repo, "write-tree", runner=runner, env=stage_env).strip()
+    head_tree = _checked(repo, "rev-parse", "HEAD^{tree}").strip()
+    with _temporary_index(repo, _index_bytes(repo)) as (_, stage_env):
+        if not _index_bytes(repo):
+            _checked(repo, "read-tree", before["head"], env=stage_env)
+        index_tree = _checked(repo, "write-tree", env=stage_env).strip()
         if paths:
-            _checked(repo, "add", "--", *paths, runner=runner, env=stage_env, timeout=120)
-        tree = _checked(repo, "write-tree", runner=runner, env=stage_env).strip()
-    if _state(repo, runner, env) != before:
+            _checked(repo, "add", "--", *paths, env=stage_env, timeout=120)
+        tree = _checked(repo, "write-tree", env=stage_env).strip()
+    if _state(repo) != before:
         raise GitError("Repository changed while preparing review", "plan_stale")
-    return {"schemaVersion": 1, "repo": str(repo), **before, "paths": paths,
+    return {"repo": str(repo), **before, "paths": paths,
             "head_tree": head_tree, "index_tree": index_tree, "tree": tree}
 
 
@@ -274,10 +270,10 @@ def _exact_oid(value):
     return isinstance(value, str) and re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", value)
 
 
-def _observe_target(repo, target, runner, env):
+def _observe_target(repo, target):
     """An exact ref advertisement, never a tracking-ref or hidden fetch."""
-    rc, output = runner(repo, "ls-remote", "--refs", "--exit-code", "--",
-                        target["url"], target["ref"], timeout=30, env=env)
+    rc, output = run_git(repo, "ls-remote", "--refs", "--exit-code", "--",
+                        target["url"], target["ref"], timeout=30)
     if rc == 2 and not output.strip():
         return None
     fields = output.strip().split()
@@ -286,87 +282,80 @@ def _observe_target(repo, target, runner, env):
     raise GitError("Cannot observe exact push ref: " + output, "remote_unavailable")
 
 
-def _review_at_base(repo, head, target, base, max_commits, max_bytes, runner, env):
-    if not isinstance(head, str) or not re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", head):
+def _review_at_base(repo, head, target, base):
+    if not _exact_oid(head):
         raise GitError("Exact reviewed HEAD required", "no_plan")
-    shallow = _checked(repo, "rev-parse", "--is-shallow-repository", runner=runner, env=env).strip()
-    replaced = _checked(repo, "for-each-ref", "--format=%(refname)", "refs/replace/",
-                        runner=runner, env=env).strip()
-    if shallow != "false" or replaced or _git_path(repo, "info/grafts", runner, env).exists():
+    shallow = _checked(repo, "rev-parse", "--is-shallow-repository").strip()
+    replaced = _checked(repo, "for-each-ref", "--format=%(refname)", "refs/replace/").strip()
+    if shallow != "false" or replaced or _git_path(repo, "info/grafts").exists():
         raise GitError("Complete history unavailable in a shallow, replaced or grafted repository",
                        "history_unavailable")
     if base is not None:
         if not _exact_oid(base):
             raise GitError("Invalid observed base", "no_plan")
-        rc, value = runner(repo, "rev-parse", "--verify", base + "^{commit}", timeout=30, env=env)
+        rc, value = run_git(repo, "rev-parse", "--verify", base + "^{commit}", timeout=30)
         if rc != 0 or value.strip() != base:
             raise GitError("Exact push base is missing locally; explicitly refresh from the selected "
                            "push URL/ref and request a new review. " + value, "refresh_required")
-        rc, value = runner(repo, "merge-base", "--is-ancestor", base, head, timeout=30, env=env)
+        rc, value = run_git(repo, "merge-base", "--is-ancestor", base, head, timeout=30)
         if rc != 0:
             raise GitError("Push base is not a proven ancestor of reviewed HEAD; reconcile locally "
                            "and request a new review. " + value, "non_fast_forward")
     revision = f"{base}..{head}" if base else head
-    raw_count = _checked(repo, "rev-list", "--count", revision, "--", runner=runner, env=env).strip()
+    raw_count = _checked(repo, "rev-list", "--count", revision, "--").strip()
     if not raw_count.isdigit():
         raise GitError("Invalid history count", "history_unavailable")
     count = int(raw_count)
-    listed = _checked(repo, "log", f"--max-count={max_commits}", "--format=%H %s",
-                      "--no-decorate", "--no-color", "--no-show-signature", revision, "--",
-                      runner=runner, env=env).splitlines()
+    listed = _checked(repo, "log", f"--max-count={MAX_COMMITS}", "--format=%H %s",
+                      "--no-decorate", "--no-color", "--no-show-signature", revision, "--").splitlines()
     commits = [line.split(" ", 1)[0] for line in listed]
-    if len(commits) != min(count, max_commits) or not all(_exact_oid(oid) for oid in commits):
+    if len(commits) != min(count, MAX_COMMITS) or not all(_exact_oid(oid) for oid in commits):
         raise GitError("Incomplete outgoing commit list", "history_unavailable")
-    diff = _checked(repo, "log", f"--max-count={max_commits}", "--format=fuller",
+    diff = _checked(repo, "log", f"--max-count={MAX_COMMITS}", "--format=fuller",
                     "--no-decorate", "--no-notes", "--no-color", "--no-show-signature",
                     "--date=iso-strict", "--root", "--diff-merges=separate", "--binary", "--full-index",
                     "--ignore-submodules=none", "--submodule=short",
-                    "--no-renames", "--no-ext-diff", "--no-textconv", revision, "--",
-                    runner=runner, env=env)
+                    "--no-renames", "--no-ext-diff", "--no-textconv", revision, "--")
     encoded = diff.encode("utf-8")
-    truncated = count > max_commits or len(encoded) > max_bytes
+    truncated = count > MAX_COMMITS or len(encoded) > MAX_BYTES
     return {"head": head, "target": target, "base": base,
             "scope": "exact_remote_outgoing" if base else "new_ref_ancestry", "count": count,
             "commits": commits, "summaries": listed,
             "truncated": truncated,
             "digest": _json_digest([target, base, commits, _digest(encoded)]),
-            "diff": encoded[:max_bytes].decode("utf-8", errors="ignore")}
+            "diff": encoded[:MAX_BYTES].decode("utf-8", errors="ignore")}
 
 
-def review_history(repo, head, *, target, max_commits=1000, max_bytes=128000,
-                   runner=run_git, env=None):
+def review_history(repo, head, *, target):
     """Review complete outgoing history against an observed exact push ref.
 
     Only a verified local ancestor may bound the review. A missing advertised
     base requires an explicit refresh; absence of the remote ref requires root
     ancestry review. No fetch or tracking-ref assumption is made.
     """
-    env = _caller_env(env)
     repo = Path(repo).resolve()
-    if push_target(repo, runner=runner, env=env) != target:
+    if push_target(repo) != target:
         raise GitError("Push target changed", "plan_stale")
-    base = _observe_target(repo, target, runner, env)
-    return _review_at_base(repo, head, target, base, max_commits, max_bytes, runner, env)
+    base = _observe_target(repo, target)
+    return _review_at_base(repo, head, target, base)
 
 
-def verify_history(repo, history, target, *, runner=run_git, env=None, observe=True):
+def verify_history(repo, history, target, *, observe=True):
     """Revalidate frozen approval; never broaden it to match a changed remote."""
-    env = _caller_env(env)
     repo = Path(repo).resolve()
     if not isinstance(history, dict) or history.get("target") != target or "base" not in history:
         raise GitError("Exact-target history approval is required", "no_plan")
-    if push_target(repo, runner=runner, env=env) != target:
+    if push_target(repo) != target:
         raise GitError("Push target changed", "plan_stale")
-    if observe and _observe_target(repo, target, runner, env) != history["base"]:
+    if observe and _observe_target(repo, target) != history["base"]:
         raise GitError("Remote tip changed; request a new review", "plan_stale")
-    current = _review_at_base(repo, history.get("head"), target, history["base"],
-                              1000, 128000, runner, env)
+    current = _review_at_base(repo, history.get("head"), target, history["base"])
     current.pop("diff")
     if current["truncated"] or current != history:
         raise GitError("History review changed or is incomplete", "plan_stale")
 
 
-def commit(repo, expected, message, *, runner=run_git, env=None):
+def commit(repo, expected, message):
     """Commit a reviewed snapshot with normal hooks; never retry a commit.
 
     The real index lock excludes cooperating Git writers. A private index holds
@@ -374,36 +363,33 @@ def commit(repo, expected, message, *, runner=run_git, env=None):
     evidence is reported unknown and is never automatically published.
     """
     repo = Path(repo).resolve()
-    env = _caller_env(env)
-    if not isinstance(expected, dict) or expected.get("schemaVersion") != 1:
+    if not isinstance(expected, dict):
         raise GitError("A reviewed snapshot is required", "no_plan")
     try:
-        current = snapshot(repo, expected["paths"], runner=runner, env=env)
+        current = snapshot(repo, expected["paths"])
     except (KeyError, OSError) as exc:
         raise GitError("Invalid or unreadable reviewed snapshot", "plan_stale") from exc
     if current != expected:
         raise GitError("Repository changed after review", "plan_stale")
     if expected["tree"] == expected["head_tree"]:
         return _receipt("noop", expected["head"], expected["tree"], committed=False)
-    index_path = _git_path(repo, "index", runner, env)
+    index_path = _git_path(repo, "index")
     lock_path = Path(str(index_path) + ".lock")
     try:
         lock = lock_path.open("xb")
     except FileExistsError as exc:
         raise GitError("Git index is busy", "busy") from exc
     try:
-        with _temporary_index(repo, runner, env) as (index, stage_env):
-            _checked(repo, "read-tree", expected["tree"], runner=runner, env=stage_env)
-            if _state(repo, runner, env) != {key: expected[key] for key in _STATE_KEYS}:
+        with _temporary_index(repo) as (index, stage_env):
+            _checked(repo, "read-tree", expected["tree"], env=stage_env)
+            if _state(repo) != {key: expected[key] for key in _STATE_KEYS}:
                 raise GitError("Repository changed before commit", "plan_stale")
-            rc, output = runner(repo, "commit", "-m", message, timeout=300, env=stage_env)
+            rc, output = run_git(repo, "commit", "-m", message, timeout=300, env=stage_env)
             try:
-                oid = _checked(repo, "rev-parse", "HEAD", runner=runner, env=env).strip()
-                tree = _checked(repo, "rev-parse", "HEAD^{tree}", runner=runner, env=env).strip()
-                parents = _checked(repo, "log", "-1", "--no-show-signature", "--format=%P",
-                                   runner=runner, env=env).strip()
-                actual_message = _checked(repo, "log", "-1", "--no-show-signature", "--format=%B",
-                                          runner=runner, env=env).strip()
+                oid = _checked(repo, "rev-parse", "HEAD").strip()
+                tree = _checked(repo, "rev-parse", "HEAD^{tree}").strip()
+                parents = _checked(repo, "log", "-1", "--no-show-signature", "--format=%P").strip()
+                actual_message = _checked(repo, "log", "-1", "--no-show-signature", "--format=%B").strip()
             except GitError:
                 return _receipt("unknown", None, expected["tree"], output, committed=None)
             if oid == expected["head"]:
@@ -412,7 +398,7 @@ def commit(repo, expected, message, *, runner=run_git, env=None):
                 raise GitError(f"git commit failed: {output}", "commit_failed")
             if tree != expected["tree"] or parents != expected["head"] or actual_message != message.strip():
                 return _receipt("unknown", oid, tree, output, committed=None)
-            if _digest(_index_bytes(repo, runner, env)) != expected["index"]:
+            if _digest(_index_bytes(repo)) != expected["index"]:
                 return _receipt("unknown", oid, tree, output, committed=True)
             # Publish the committed index under the lock; worktree edits are not touched.
             try:
@@ -430,30 +416,28 @@ def commit(repo, expected, message, *, runner=run_git, env=None):
         lock_path.unlink(missing_ok=True)
 
 
-def push_target(repo, *, runner=run_git, env=None):
+def push_target(repo):
     """Resolve the configured upstream and its sole push URL without networking."""
-    env = _caller_env(env)
-    repo = _repository_root(repo, runner, env)
-    branch = _checked(repo, "symbolic-ref", "-q", "HEAD", runner=runner, env=env).strip()
+    repo = _repository_root(repo)
+    branch = _checked(repo, "symbolic-ref", "-q", "HEAD").strip()
     short = branch.removeprefix("refs/heads/")
-    remote = _checked(repo, "config", "--get", f"branch.{short}.remote", runner=runner, env=env).strip()
-    ref = _checked(repo, "config", "--get", f"branch.{short}.merge", runner=runner, env=env).strip()
+    remote = _checked(repo, "config", "--get", f"branch.{short}.remote").strip()
+    ref = _checked(repo, "config", "--get", f"branch.{short}.merge").strip()
     if remote.startswith("-") or remote == "." or not ref.startswith("refs/heads/"):
         raise GitError("Unsupported push target", "no_upstream")
-    _checked(repo, "check-ref-format", ref, runner=runner, env=env)
-    urls = _checked(repo, "remote", "get-url", "--push", "--all", remote,
-                    runner=runner, env=env).splitlines()
+    _checked(repo, "check-ref-format", ref)
+    urls = _checked(repo, "remote", "get-url", "--push", "--all", remote).splitlines()
     if len(urls) != 1 or not urls[0] or urls[0].startswith("-"):
         raise GitError("Publication requires exactly one push URL", "bad_remote")
     # Explicit URLs still undergo Git's transport-specific rewrite rules. Until
     # they can be resolved identically for both commands, do not claim that a
     # read advertisement and a push using the same string address the same repo.
-    rc, rewrites = runner(repo, "config", "--get-regexp", r"^url\..*\.(insteadof|pushinsteadof)$",
-                          timeout=20, env=env)
+    rc, rewrites = run_git(repo, "config", "--get-regexp", r"^url\..*\.(insteadof|pushinsteadof)$",
+                           timeout=20)
     if rc != 1:
         raise GitError("Exact-target publication requires URLs without insteadOf/pushInsteadOf "
                        "rules; configure a direct URL before review. " + rewrites, "bad_remote")
-    names = _checked(repo, "remote", runner=runner, env=env).splitlines()
+    names = _checked(repo, "remote").splitlines()
     if urls[0] in names:
         raise GitError("Push URL must be a direct location, not another remote name", "bad_remote")
     return {"branch": branch, "remote": remote, "ref": ref, "url": urls[0]}
@@ -469,31 +453,26 @@ def publication_evidence(history, commit):
             "reviewDigest": history["digest"]}
 
 
-def publish(repo, expected_commit, expected_tree, target, *, history=None, created=None,
-            runner=run_git, env=None):
+def publish(repo, expected_commit, expected_tree, target, *, history=None, created=None):
     """Push only the expected commit/ref. Retry this API, never upstream work.
 
     A lost response is reconciled only by observing that exact remote ref at the
     expected commit. Failed/unavailable reconciliation remains unknown.
     """
     repo = Path(repo).resolve()
-    env = _caller_env(env)
-    if not all(isinstance(oid, str) and re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", oid)
-               for oid in (expected_commit, expected_tree)):
+    if not (_exact_oid(expected_commit) and _exact_oid(expected_tree)):
         raise GitError("Exact commit and tree IDs required", "no_plan")
-    head = _checked(repo, "rev-parse", "HEAD", runner=runner, env=env).strip()
-    tree = _checked(repo, "rev-parse", "HEAD^{tree}", runner=runner, env=env).strip()
-    if head != expected_commit or tree != expected_tree or push_target(repo, runner=runner, env=env) != target:
+    head = _checked(repo, "rev-parse", "HEAD").strip()
+    tree = _checked(repo, "rev-parse", "HEAD^{tree}").strip()
+    if head != expected_commit or tree != expected_tree or push_target(repo) != target:
         raise GitError("HEAD, tree or push target changed", "plan_stale")
-    verify_history(repo, history, target, runner=runner, env=env, observe=False)
+    verify_history(repo, history, target, observe=False)
     if head != history["head"]:
         if (not isinstance(created, dict) or created.get("commit") != head
                 or created.get("tree") != tree or not isinstance(created.get("message"), str)):
             raise GitError("New commit must be bound to the reviewed tree and message", "no_plan")
-        parents = _checked(repo, "log", "-1", "--no-show-signature", "--format=%P", head,
-                           runner=runner, env=env).strip()
-        message = _checked(repo, "log", "-1", "--no-show-signature", "--format=%B", head,
-                           runner=runner, env=env).strip()
+        parents = _checked(repo, "log", "-1", "--no-show-signature", "--format=%P", head).strip()
+        message = _checked(repo, "log", "-1", "--no-show-signature", "--format=%B", head).strip()
         if parents != history["head"] or message != created["message"]:
             raise GitError("Publication commit differs from approved parent/message", "plan_stale")
     elif created is not None:
@@ -508,21 +487,21 @@ def publish(repo, expected_commit, expected_tree, target, *, history=None, creat
         return _receipt(state, head, tree, output, history=history, created=created,
                         publication=publication, **extra)
 
-    observed = _observe_target(repo, target, runner, env)
+    observed = _observe_target(repo, target)
     if observed == head:
         return receipt("pushed", reconciled=True)
     if observed != history["base"]:
         raise GitError("Remote tip changed; request a new review", "plan_stale")
     lease = "--force-with-lease=" + target["ref"] + ":" + (history["base"] or "")
-    rc, output = runner(repo, "push", "--porcelain", "--no-force", "--no-mirror",
-                        "--no-follow-tags", "--recurse-submodules=no", lease, "--", target["url"],
-                        expected_commit + ":" + target["ref"], timeout=600, env=env)
+    rc, output = run_git(repo, "push", "--porcelain", "--no-force", "--no-mirror",
+                         "--no-follow-tags", "--recurse-submodules=no", lease, "--", target["url"],
+                         expected_commit + ":" + target["ref"], timeout=600)
     if rc == 0:
         return receipt("pushed", output)
     if rc is not None and _push_rejected_before_update(output, target["ref"]):
         return receipt("push_failed", output)
     try:
-        if _observe_target(repo, target, runner, env) == head:
+        if _observe_target(repo, target) == head:
             return receipt("pushed", output, reconciled=True)
     except GitError:
         pass  # Failed reconciliation cannot turn interrupted delivery into failure.
