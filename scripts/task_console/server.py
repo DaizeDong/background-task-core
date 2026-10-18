@@ -3,14 +3,6 @@
 What the console is and how to configure it: `README.md` next to this file. What the whole repo
 refuses to do and why: the root `README.md`. Before changing anything here: `docs/changing-this.md`.
 
-This docstring keeps only what belongs beside this code, because everything else it used to carry
-had drifted: it described the tool as a view of scheduled tasks after four other kinds of source
-were added, it listed four verbs after the action table had grown well past four, and it repeated
-four environment variables out of the twenty the code actually reads. **A second copy of a list is
-not documentation, it is a promise that ages without telling anyone.** The lists live in one place
-each, and the environment table is the only one with a reconciliation test, because its second copy
-is a launcher outside this repo and cannot be deleted.
-
 Three controls make the write endpoints safe to have at all. Each is load-bearing, none is
 decorative, and all three are implemented in this file:
 
@@ -24,14 +16,13 @@ decorative, and all three are implemented in this file:
      to the fixed root-folder COM transport, never as PowerShell source.
 
 Usage:
-    python server.py [--port 8787] [--no-browser]
+    python -m task_console.launch_server [--port 8787] [--no-browser]
 """
 from __future__ import annotations
 
 import argparse
 import json
 import os
-import re
 import secrets
 import subprocess
 import sys
@@ -46,8 +37,6 @@ from urllib.parse import parse_qs, urlparse, unquote
 
 import allowlist
 import codexinfo
-import component_status
-import work_status
 import work_actions
 import integrations
 import console_store
@@ -56,33 +45,24 @@ import convo_chain
 from convo_chain import session_ops
 import evtlog
 import freshness
+from health import RC_NOT_RUN, RC_RUNNING, declared_ok_codes, ok_codes
 import history
 import llmstats
 import maint
 import deletion
-import memops
 import repos as repos_mod
-import retire as retire_mod
 import controller as task_control
 import task_delete
 import task_repair
-import selfcheck
 import source_reads
-import sysinfo
 import timeline
 import title_suggest
-# 这里原来是 `import norm_rc as _norm_rc_unused`,而下面又抄了一份同名实现,于是渲染侧和
-# 写入侧是两份代码。它们当时逐位等价(20 个输入含各边界实测过),但任何一侧改了边界条件
-# 另一侧不会跟着变,而症状是**同一个退出码在两个面板上一个算成功一个算失败**,不报警。
-# 别名里那个 unused 更糟:它让读代码的人以为共享那份已经在用了。
+# 退出码归一化只有 rcnorm 这一份,渲染侧和写入侧共用。
 from rcnorm import norm_rc
 
 # 在 pythonw(GUI 子系统)下,每个控制台子程序都要新分配一个控制台。那次分配很慢,
 # 而且并发时根本不成立:实测同一条 git 命令,普通 python 下几毫秒,pythonw 下单次
 # 4.5 秒,四个并发全部 15 秒超时。加上这个标志之后单次降到 0.08 秒。
-#
-# 这个坑只在生产形态下出现,而开发期测试都是用普通 python 跑的:探针必须复现真实的
-# 调用形状,否则测的是另一个程序。
 _NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
 
@@ -93,18 +73,9 @@ PAGE = HERE / "console.html"
 ICON = HERE / "icon.svg"
 VENDOR = HERE / "vendor"
 STATIC = HERE / "static"
-STATIC_FILES = {
-    "app.js", "api.js", "events.js", "theme.js", "operations.js", "styles.css", "review.css",
-    "panels/tasks.js", "panels/skills.js", "panels/plugins.js", "panels/integrations.js",
-    "panels/profile.js", "panels/repositories.js", "panels/storage.js",
-    "panels/overview.js", "panels/conversations.js", "panels/calls.js",
-    "panels/conversation-actions.js", "conversations.css",
-    "panels/pipelines.js", "panels/review.js", "panels/convchain.js", "convchain.css",
-    "navigation.js", "actions.js", "work-model.js", "workbench.js", "workbench.css", "work-actions.js", "work-actions.css",
-    "task-operations.js",
-    # 每个页面区一份样式表,页面包各写各的(见 static/page-*.css 开头的说明)。
-    "page-automation.css", "page-diagnostics.css", "page-work.css", "page-llm.css", "page-resources.css",
-}
+# 允许下发的静态文件就是随包发布的那些 .js / .css,启动时列一次目录得出。
+STATIC_FILES = frozenset(p.relative_to(STATIC).as_posix() for p in STATIC.rglob("*")
+                         if p.suffix in (".js", ".css"))
 
 # 对话链唯一的 POST(分叉)的正文只有几个 id,几百字节。
 CONVO_BODY_MAX = 8192
@@ -153,19 +124,12 @@ def _convo_refused(e, root):
     msg = CONVO_ROOT_UNSET if e.code == "unavailable" and root is None else str(e)
     return {"error": msg, "code": e.code}
 
-NOT_RUN, RUNNING = 0x41303, 0x41301
 VERBS = ("enable", "disable", "run", "stop")
 
 
-def _home(*parts: str) -> Path:
-    return Path(os.path.expanduser("~")).joinpath(*parts)
-
-
-def cfg_path(env: str, *default: str) -> Path | None:
-    v = os.environ.get(env)
-    if v:
-        return Path(os.path.expanduser(v))
-    return _home(*default) if default else None
+def _env_path(name: str) -> Path | None:
+    v = os.environ.get(name)
+    return Path(os.path.expanduser(v)) if v else None
 
 
 # 解释器解析只有一份,在 winps.py。这里原来是三份手写中的一份。
@@ -319,7 +283,7 @@ def load_runlog() -> dict:
             f"(日志只回溯到 {str(_oldest)[:10]})" if _oldest else "")
     return {"available": True, "reason": None, "since": raw.get("since"),
             "oldest": raw.get("oldest"), "count": raw.get("count", len(evs)),
-            "windowDays": (None if truncated else RUNLOG_DAYS), "countScope": scope,
+            "countScope": scope,
             "truncated": truncated,
             # 读到一半失败、以及解析不了的条数,两个都要带出去。
             # ⚠ 这句以前写的是「读取器一直在数它们」, **只有快路(evtlog)在数**。
@@ -384,11 +348,6 @@ def load_from_db():
     all_days = sorted({d for t in by_day.values() for d in t})
     htasks = {}
     for task, c in totals.items():
-        # ⚠ 同名不同义。这条通路上的 visibleRuns 是**运行日志里的真实启动数**(runs_by_day 求和),
-        # 而慢路上的同名字段是「轮询看得见的 LastRunTime 去重数」,严重低估,
-        # history.py 记过 967 对 13800,差一个数量级。两个量共用一个名字,而随数据下发的
-        # caveat 文案只描述其中一种,所以 /api 的消费方按哪一种读都可能是错的。
-        # 这里显式声明本条通路的口径,让读的人不必去猜自己拿到的是哪一个。
         htasks[task] = {
             "obs": c.get("obs", 0), "judged": c.get("judged", 0),
             "ok": c.get("ok", 0), "bad": c.get("bad", 0),
@@ -400,8 +359,6 @@ def load_from_db():
             # 而数据库这条主通路一直没有, 于是那次修复在实际走的通路上完全没生效。
             "other": c.get("other", 0),
             "health": c.get("health"),
-            "visibleRuns": sum((runs_by_day.get(task) or {}).values()),
-            "visibleRunsScope": "runlog",  # 慢路给的是 "poll"
             "byDay": by_day.get(task, {}),
         }
     # available 原来硬编码成 True,和库里有没有行无关。文本那条路的同一个判断是相反的
@@ -451,7 +408,7 @@ def load_from_db():
         "since": cov["runs"]["from"], "oldest": cov["runs"]["from"],
         "count": cov["runs"]["rows"], "tasks": rtot,
         # 数据库那条路的 count 是全表行数,不限日期,和上面回落路径那条不是一个量。
-        "windowDays": None, "countScope": "库里全部",
+        "countScope": "库里全部",
         # ⚠ 这句里**不要再写排班**。它写错过两次、方向相反,理由见 load_from_db 的
         # docstring;而这一句在 RUNLOG_OUT 的导出白名单里,会真的经 /api 到达页面,
         # 一个关于机器配置的断言从这里下发出去,就成了对外契约的一部分,
@@ -468,7 +425,7 @@ def load_from_db():
 # --------------------------------------------------------------------------- merge
 def categories_path() -> Path | None:
     """分类配置在哪。页面读它、删除任务时改它,两边必须是同一个文件,所以位置只在这里算一次。"""
-    explicit = cfg_path("TASK_CONSOLE_CATEGORIES")
+    explicit = _env_path("TASK_CONSOLE_CATEGORIES")
     if explicit is not None:
         return explicit
     root = console_store.companion_root()
@@ -494,25 +451,22 @@ def load_categories() -> tuple[list[dict], str | None]:
     return cats, None
 
 
-class HealthDeclarations(dict):
-    """Old name lookup plus every raw declaration for coverage accounting."""
+def load_health() -> tuple[dict, list, str | None]:
+    """Return (merged declaration per task name, raw declarations, warning).
 
-    def __init__(self, groups, declarations):
-        super().__init__(groups)
-        self.declarations = declarations
-
-
-def load_health() -> tuple[dict, str | None]:
-    """No default path. Unset means NOT CHECKED, which the page renders as unknown, not as a pass."""
-    p = cfg_path("TASK_CONSOLE_HEALTH")
+    No default path. Unset means NOT CHECKED, which the page renders as unknown, not as a pass.
+    The merged map feeds the task table (one row per task); the raw list feeds artifact freshness,
+    which judges every declaration on its own.
+    """
+    p = _env_path("TASK_CONSOLE_HEALTH")
     if not p:
-        return {}, "没有设 TASK_CONSOLE_HEALTH,健康监控覆盖这一列是「未检查」,不是通过。"
+        return {}, [], "没有设 TASK_CONSOLE_HEALTH,健康监控覆盖这一列是「未检查」,不是通过。"
     if not p.exists():
-        return {}, f"健康监控清单不存在: {p}"
+        return {}, [], f"健康监控清单不存在: {p}"
     try:
         d = json.loads(p.read_text(encoding="utf-8-sig"))
     except Exception as e:
-        return {}, f"健康监控清单解析失败({p}): {e}"
+        return {}, [], f"健康监控清单解析失败({p}): {e}"
     # ⚠ 这一行以前会**静默吃掉**两种条目:漏写 name 的直接丢,重名的后者覆盖前者,
     # 两种都不计数、不产生任何 warning。而「产物新鲜度覆盖率」这个数
     # (freshness.py 里 coverage = judged/total)算的是**过滤之后**那份列表,
@@ -543,7 +497,7 @@ def load_health() -> tuple[dict, str | None]:
                         + ", ".join(f"{n}x{k}" for n, k in sorted(multi.items())[:5]))
         warn = (f"健康监控清单声明了 {len(raw_tasks)} 条,归到 {len(out)} 个任务名 —— "
                 + ";".join(bits) + "。")
-    return HealthDeclarations(out, raw_tasks), warn
+    return out, raw_tasks, warn
 
 
 # 同一个任务名在清单里可以有多条声明:一个任务把几件事折叠进来之后,
@@ -570,17 +524,6 @@ def _merge_decls(decls: list[dict]) -> dict:
                 out[k] = bool(out.get(k)) or bool(v)
             elif k not in out or out[k] in (None, ""):
                 out[k] = v
-    out["declCount"] = len(decls)
-    # 原始那几条也留着。合并出来的这一份是给任务表用的(一个任务一行,取更严的一侧),
-    # 而产物新鲜度必须逐条评估, 一个任务把几件事折叠进来时,合并成一条就意味着
-    # 坏了哪一件在屏幕上说不出来,而这正是折叠本身带来的那个盲区。
-    # ⚠ 下划线开头:它不进页面载荷(下面那段是逐个字段取的),只给 build_freshness 用。
-    out["_decls"] = list(decls)
-    # 产物全列出来:合并之后只显示一个,会让另外那些「监控器确实在盯」的文件
-    # 从界面上整个消失。
-    arts = [d.get("artifact") for d in decls if d.get("artifact")]
-    if len(set(arts)) > 1:
-        out["artifacts"] = arts
     labels = [d.get("label") for d in decls if d.get("label")]
     if labels:
         out["label"] = " / ".join(dict.fromkeys(labels))
@@ -590,25 +533,23 @@ def _merge_decls(decls: list[dict]) -> dict:
 def load_allowlist() -> tuple[set[str] | None, str | None]:
     """None means NOT CHECKED. An empty set would read as 'nothing is backed up', which is a
     different and much louder claim, so the two are never collapsed."""
-    v = os.environ.get("TASK_CONSOLE_ALLOWLIST")
-    if not v:
+    p = _env_path("TASK_CONSOLE_ALLOWLIST")
+    if p is None:
         return None, None
-    p = Path(os.path.expanduser(v))
     if not p.exists():
         return None, f"备份 allow-list 指向的文件不存在: {p}"
     try:
         txt = p.read_text(encoding="utf-8-sig", errors="replace")
     except Exception as e:
         return None, f"读不了备份 allow-list: {e}"
-    # 解析器只有一份(allowlist.py)。这里以前有自己的一份正则,**要求收尾括号顶格**,
-    # 而 retire.py 那份允许它缩进, 同一个文件,一边说读不到,一边照常改写它。
+    # 解析器只有一份(allowlist.py)。
     names, why = allowlist.parse_names(txt)
     if names is None:
         return None, f"{p}: {why}"
     return names, None
 
 
-def status_of(t: dict) -> tuple[str, str]:
+def status_of(t: dict, okset: set[int]) -> tuple[str, str]:
     if t["state"] == "Disabled":
         return "disabled", "已停用"
     # ⚠ 读不到任务信息**不是**「失败」。collect.ps1 以前把 Get-ScheduledTaskInfo 的异常
@@ -618,11 +559,11 @@ def status_of(t: dict) -> tuple[str, str]:
     if t.get("infoError"):
         return "unknown", "信息读不到"
     rc = t.get("rcRaw")
-    if rc == RUNNING or t["state"] == "Running":
+    if rc == RC_RUNNING or t["state"] == "Running":
         return "running", "常驻中"
-    if rc == NOT_RUN:
+    if rc == RC_NOT_RUN:
         return "pending", "尚未首跑"
-    return ("ok", "正常") if rc in _okset(t) else ("bad", "失败 " + (t.get("rcHex") or "?"))
+    return ("ok", "正常") if rc in okset else ("bad", "失败 " + (t.get("rcHex") or "?"))
 
 
 def issues_of(t: dict, allow: set[str] | None) -> list[list[str]]:
@@ -661,28 +602,15 @@ def _epoch(stamp: str | None) -> float | None:
         return None
 
 
-def _okset(t: dict) -> set[int]:
-    """把 t["okCodes"] 那个逗号串解回集合。**整个文件只有这一处解。**
-
-    ⚠ 这里原来有两份手写的解析(status_of 里一份、真实运行率那段一份),
-    而且各自 hand-add 一次 {0}。也就是说「0 永远算成功」这条规则有三个副本:
-    freshness 一份,这里两份。三份手写的同一条规则,没有任何东西对账 ——
-    而它决定的是一个任务算不算失败。
-    现在只剩这一处解,{0} 那条规则借自 freshness,不再自己写:
-    两边不可能给出不同答案,因为根本没有两边了。
-    """
-    codes = [int(x) for x in str(t.get("okCodes") or "").split(",") if x.strip()]
-    return freshness._ok_codes({"ok_codes": codes})
-
-
-def build_freshness(tasks: dict, health: dict, health_reason: str | None = None) -> dict:
+def build_freshness(tasks: dict, merged: dict, declarations: list,
+                    health_reason: str | None = None) -> dict:
     """Artifact freshness for every task the health manifest declares.
 
     The manifest is the input, not the task list: a task nobody declared an artifact for cannot be
     judged on freshness, and saying so is the point. When the manifest itself is missing, coverage
     is 0 and the page says NOT CHECKED instead of drawing an empty green board.
     """
-    if not health and not getattr(health, "declarations", None):
+    if not merged and not declarations:
         # 把 load_health 给出的**具体**原因透传上去,不要在这里换成一句笼统的话。
         # 「清单解析失败(JSON 坏了)」和「压根没设环境变量」是两件事:前者是需要修的故障,
         # 后者是没启用。压成同一句之后,页面上没有任何办法把它们分开。
@@ -700,26 +628,17 @@ def build_freshness(tasks: dict, health: dict, health_reason: str | None = None)
             "missed_runs": t.get("missedRuns") or 0,
             "observations": t.get("observations") or {},
         }
-    # 逐条评估,不是逐个任务名。同名多条在这里要展开回去:
-    # 合并那一份是任务表的口径(一行一个任务),而新鲜度问的是「每一件声明过的事
-    # 是不是都还在跑」,把折叠进一个任务的几件事合成一条,等于把盲区原样保留。
-    decls = []
-    if isinstance(health, HealthDeclarations):
-        decls = health.declarations
-    else:
-        for v in health.values():
-            decls.extend(v.get("_decls") or [v])
-    return freshness.evaluate(decls, rows, time.time())
+    # 逐条评估,不是逐个任务名:合并那一份是任务表的口径(一行一个任务),而新鲜度问的是
+    # 「每一件声明过的事是不是都还在跑」,把折叠进一个任务的几件事合成一条,等于把盲区原样保留。
+    return freshness.evaluate(declarations, rows, time.time())
 
 
-# 导出给页面的字段,以及**刻意不导出**的那些。两个集合加起来必须覆盖 hist / runs 里
-# 写下的每一个键;新增一个字段时要归到其中一个集合,否则那个字段会安静地到不了页面。
+# 导出给页面的字段。新增一个字段时要加进这里,否则它到不了页面。
+# tasks 很大且已并进每一行,所以不导出。
 HISTORY_OUT = ("available", "reason", "days", "caveat", "matched", "source", "lastIngest",
                "ingest")
-HISTORY_DROP = ("tasks", "skipped")          # tasks 很大且已并进每一行;skipped 页面用不到
 RUNLOG_OUT = ("available", "reason", "since", "oldest", "count", "note",
-              "partial", "dropped", "truncated", "windowDays", "countScope")
-RUNLOG_DROP = ("tasks",)                      # 同上,已并进每一行
+              "partial", "dropped", "truncated", "countScope")
 
 TASK_INFO_FIELDS = frozenset({"title", "summary", "cadence", "status", "advice", "verdict", "asOf"})
 TASK_INFO_VERDICTS = frozenset({"keep", "fix", "urgent", "adjust", "decide", "remove", "disabled"})
@@ -732,7 +651,7 @@ def build_payload() -> dict:
     raw = json.loads(out)
 
     cats, warn_cat = load_categories()
-    health, warn_health = load_health()
+    health, declarations, warn_health = load_health()
     allow, warn_allow = load_allowlist()
     warnings = [w for w in (warn_cat, warn_health, warn_allow) if w]
 
@@ -808,6 +727,7 @@ def build_payload() -> dict:
                         f"{listed(bad_verdicts)}。")
 
     tasks: dict[str, dict] = {}
+    oksets: dict[str, set[int]] = {}
     for t in raw["tasks"]:
         e = health.get(t["name"], {})
         t["inAllow"] = (allow is not None and t["name"] in allow)
@@ -824,13 +744,14 @@ def build_payload() -> dict:
         # 这里以前是 `e.get("ok_codes", [])`,只认一个名字:声明成 ok_exit_codes 的任务
         # 在这条渲染通路上被静默丢掉,而 freshness 那条认全, 同一个退出码,
         # 任务表判红、新鲜度判绿,同一屏两个自称权威的结论,没有任何一处对账。
-        t["okCodes"] = ",".join(str(x) for x in freshness.declared_ok_codes(e)) or None
+        t["okCodes"] = ",".join(str(x) for x in declared_ok_codes(e)) or None
+        oksets[t["name"]] = ok_codes(e)
         t["artifact"] = e.get("artifact")
         t["artifactMax"] = e.get("artifact_max_age_hours")
         t["elsewhere"] = e.get("watched_elsewhere")
         t["cannotProve"] = bool(e.get("artifact_cannot_prove_success"))
         t["authoritative"] = bool(e.get("exit_code_is_authoritative"))
-        k, lbl = status_of(t)
+        k, lbl = status_of(t, oksets[t["name"]])
         t["sk"], t["sl"] = k, lbl
         t["issues"] = issues_of(t, allow)
         tasks[t["name"]] = t
@@ -884,7 +805,7 @@ def build_payload() -> dict:
             rr = dict(rr)
             # Apply the task's own declared ok_codes, the same set the health monitor honours. A run
             # whose exit code is a declared verdict counts as a run that did its job.
-            okset = _okset(t)
+            okset = oksets[t["name"]]
             total = sum(rr["rcs"].values())
             good = sum(v for k, v in rr["rcs"].items()
                        if (lambda z: z is not None and z in okset)(norm_rc(k)))
@@ -928,27 +849,15 @@ def build_payload() -> dict:
     # Today's schedule, expanded from the structured triggers. Actual runs recorded today are
     # attached alongside the planned ones so the two can be compared on the same axis: a planned
     # mark with no actual run beside it is the thing worth seeing.
-    today = date.today().isoformat()
-    for name, t in tasks.items():
-        rr = t.get("runs")
-        if rr and rr.get("byDay"):
-            t["todayRunCount"] = rr["byDay"].get(today, 0)
     tl = timeline.build(tasks, runs.get("tasks") or {})
 
     n_issue = sum(1 for t in tasks.values() for i in t["issues"] if i[0] in ("bad", "warn"))
-    fresh = build_freshness(tasks, health, warn_health)
+    fresh = build_freshness(tasks, health, declarations, warn_health)
     return {
         "groups": groups,
         "freshness": fresh,
         "warnings": warnings,
-        # ⚠ 这一层是字段白名单,它已经吃掉过三次字段:reason(空库那条判定生效了而页面上
-        # 只有一个没有原因的 False)、lastIngest、countScope。每一次的表现都一样:
-        # 后端算对了,页面上什么都没有,而没有任何东西报错。
-        #
-        # 所以现在是**显式两分**:HISTORY_OUT / RUNLOG_OUT 是导出的,
-        # 对应的 _DROP 是刻意不导出的(体积大、页面用不到)。
-        # 两边加起来必须覆盖生产者写下的每一个键,由 tests 断言 :
-        # 新增字段忘了归类,测试会红,而不是它安静地到不了页面。
+        # 字段白名单:生产者新增的键要加进 HISTORY_OUT / RUNLOG_OUT 才会到页面。
         "history": {k: hist[k] for k in HISTORY_OUT if k in hist},
         "runlog": {k: runs[k] for k in RUNLOG_OUT if k in runs},
         "scores": scores,
@@ -1060,14 +969,14 @@ class Handler(BaseHTTPRequestHandler):
     # fail-closed:空集合什么都不匹配,所以一个没走过 main() 的 Handler 会拒绝每一个请求。
     # 默认成 "*" 会让「忘了设置」和「明确允许一切」变成同一件事,而那正是这份代码
     # 在别处一直拒绝的形状。
-    allowed_hosts: object = frozenset()
+    allowed_hosts: frozenset = frozenset()
     # 同样是 fail-closed,而且理由和上面那三行逐字相同。
     # ⚠ 这里以前是 `token = ""`,做的正好是上面那段注释否定的那件事:
     # `_authed` 是 `compare_digest(请求头 or "", self.token)`,token 还是 "" 时,
     # 一个**根本不带这个头**的请求会得到 compare_digest("", "") → True,直接过鉴权。
     # 今天没被利用,只是因为 Host 闸恰好先开火(空集合拒掉一切), 也就是说令牌这道控制
     # 在「没初始化」状态下靠的是另一道控制兜底,而两道控制的默认值方向相反。
-    # 任何设好 allowed_hosts 却漏设 token 的用法(测试 fixture、复用 Handler、
+    # 任何设好 allowed_hosts 却漏设 token 的用法(复用 Handler、
     # 将来在 main() 之外多一条启动路径)都会让 /api/ 全线免鉴权,而页面表现完全正常。
     # None 是一个不可能匹配的哨兵:「忘了设置」和「明确允许」永远不会是同一件事。
     token: str | None = None
@@ -1106,9 +1015,7 @@ class Handler(BaseHTTPRequestHandler):
     def _drain(self):
         """把请求体读掉再回复,哪怕这次回复是拒绝。
 
-        不读就直接关连接,客户端还在发 body 的那一侧会收到 ECONNRESET 而不是那个 403。
-        表现出来就是一条偶发失败的安全测试:而一条偶发失败的安全测试比没有测试更糟:
-        它会训练人把红色当噪音。
+        不读就直接关连接,客户端还在发 body 的那一侧会收到 ECONNRESET 而不是那个 4xx。
         """
         try:
             n = int(self.headers.get("Content-Length") or 0)
@@ -1125,34 +1032,11 @@ class Handler(BaseHTTPRequestHandler):
             except OSError:
                 pass
 
-    def _retire_plan(self):
-        """只读预览:这次退役会改哪几处。写之前先让人看见要改什么。"""
-        if not self._authed():
-            self._drain()
-            return self._json(403, {"error": "bad token"})
-        try:
-            n = int(self.headers.get("Content-Length") or 0)
-            body = json.loads(self.rfile.read(n) or b"{}")
-        except Exception as e:
-            return self._json(400, {"error": f"bad request: {e}"})
-        try:
-            if not isinstance(body, dict):
-                return self._json(400, {"error": "request must be an object"})
-            return self._json(200, task_control.retire_plan(str(body.get("name") or ""),
-                                                          str(body.get("reason") or "x")))
-        except task_control.ContractError as e:
-            return self._json(400, task_control.error_result(e))
-        except maint.Refused as e:
-            return self._json(400, {"error": str(e), "code": e.code})
-        except Exception as e:
-            return self._json(500, {"error": f"{type(e).__name__}: {e}"})
-
     def _repo_plan(self):
-        """只读预览:这次提交推送会送出去什么。
+        """只读预览:这次提交推送会送出去什么。写之前先让人看见要写什么。
 
-        和 /api/retire/plan 同一个形状,理由也同一个:写之前先让人看见要写什么。
-        这一个还多一层 —— 它是唯一会把东西送出这台机器的动作,
-        所以计划里除了文件清单,还要说清推到哪个 ref、那个 remote 是公开还是私有。
+        它是唯一会把东西送出这台机器的动作,所以计划里除了文件清单,
+        还要说清推到哪个 ref、那个 remote 是公开还是私有。
         """
         if not self._authed():
             self._drain()
@@ -1496,10 +1380,8 @@ class Handler(BaseHTTPRequestHandler):
         try:
             if not isinstance(body, dict):
                 return self._json(400, {"error": "request must be an object"})
-            result = maint.act(str(body.get("action") or ""),
-                               str(body.get("name") or ""), body.get("arg"))
-            status = 500 if body.get('action') == 'task.retire' and result.get('ok') is False else 200
-            return self._json(status, result)
+            return self._json(200, maint.act(str(body.get("action") or ""),
+                                             str(body.get("name") or ""), body.get("arg")))
         except task_control.ContractError as e:
             return self._json(400, task_control.error_result(e))
         except maint.Refused as e:
@@ -1520,18 +1402,10 @@ class Handler(BaseHTTPRequestHandler):
         the attack that matters here: the token is substituted into the page at '/', so anything
         that can make a SAME-ORIGIN request to '/' simply reads the token out of the HTML and then
         has full access to the action endpoints. A Host allowlist is what closes that, because a
-        rebound name never matches one of the loopback literals.
-
-        '*' is a separate branch, not an entry in the list, so no hostname can ever be spelled in a
-        way that turns the check off. A missing Host header is rejected too: absent is not allowed.
+        rebound name never matches one of the loopback literals. A missing Host header is rejected.
         """
-        allowed = self.allowed_hosts
-        if allowed == "*":
-            return True
         host = self.headers.get("Host")
-        if not host:
-            return False
-        return host.lower() in allowed
+        return bool(host) and host.lower() in self.allowed_hosts
 
     # 两个入口都套一层兜底。没有它时,任何一个逃出去的异常由 socketserver 的
     # handle_error 打印 traceback 然后**直接关连接**, 而 log_message 被置空,
@@ -1611,22 +1485,6 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(200, task_repair.orders())
             except Exception as e:
                 return self._json(500, {"error": f"{type(e).__name__}: {e}"[:400]})
-        if path == "/api/hours":
-            if not self._authed():
-                return self._json(403, {"error": "bad token"})
-            q = parse_qs(urlparse(self.path).query)
-            a = (q.get("from") or [""])[0]
-            b = (q.get("to") or [""])[0]
-            if not a or not b:
-                return self._json(400, {"error": "need from and to as YYYY-MM-DD"})
-            con, st = console_store.connect_ro()
-            if st:
-                return self._json(200, {"available": False, "reason": st.message})
-            try:
-                return self._json(200, {"available": True, "from": a, "to": b,
-                                        "tasks": console_store.health_by_hour(con, a, b)})
-            finally:
-                con.close()
         if path == "/api/codex/list":
             if not self._authed():
                 return self._json(403, {"error": "bad token"})
@@ -1802,8 +1660,6 @@ class Handler(BaseHTTPRequestHandler):
             except (ValueError, UnicodeError):
                 return self._json(400, {'error': 'invalid JSON request'})
             return self._json(200, work_actions.submit(request, stop=self.path.split('?', 1)[0].endswith('/stop')))
-        if self.path.split("?", 1)[0] == "/api/retire/plan":
-            return self._retire_plan()
         # 四条分开写:路由通扫的正则对 `in (...)` 只认得第一个字面量,写成一组会让后面几条逃过扫描。
         if self.path.split("?", 1)[0] == "/api/task/delete/plan":
             return self._task_delete()
@@ -1888,16 +1744,7 @@ def main() -> int:
 
     Handler.token = secrets.token_urlsafe(24)
     # Three loopback spellings a browser can legitimately send for this port, and nothing else.
-    # TASK_CONSOLE_ALLOWED_HOSTS adds names (comma separated); the single value "*" disables the
-    # check entirely and is deliberately awkward to reach.
-    extra = os.environ.get("TASK_CONSOLE_ALLOWED_HOSTS", "").strip()
-    if extra == "*":
-        Handler.allowed_hosts = "*"
-        print("  ⚠ Host 校验已关闭 (TASK_CONSOLE_ALLOWED_HOSTS=*),DNS rebinding 防护失效。")
-    else:
-        hosts = {f"localhost:{a.port}", f"127.0.0.1:{a.port}", f"[::1]:{a.port}"}
-        hosts |= {h.strip().lower() for h in extra.split(",") if h.strip()}
-        Handler.allowed_hosts = hosts
+    Handler.allowed_hosts = frozenset((f"localhost:{a.port}", f"127.0.0.1:{a.port}", f"[::1]:{a.port}"))
     srv = ThreadingHTTPServer(("127.0.0.1", a.port), Handler)
     url = f"http://127.0.0.1:{a.port}/"
     print(f"task-console: {url}")

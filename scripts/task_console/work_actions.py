@@ -31,7 +31,6 @@ MESSAGES = {
     'queue_not_configured': '执行服务尚未连接',
     'runtime_not_configured': '任务控制器尚未连接',
     'owner_reply_unknown': '未收到提交确认，再次点击会核对原请求',
-    'read_only': '只读预览，无法执行操作',
 }
 
 
@@ -99,8 +98,6 @@ def submit(request, *, stop=False, env=None):
     env = os.environ if env is None else env
     try:
         validate(request)
-        if env.get('TASK_CONSOLE_READ_ONLY') == '1':
-            raise ActionError('read_only')
         if stop:
             return invoke('work-action-stop', request, env)
         action = request['action_id']

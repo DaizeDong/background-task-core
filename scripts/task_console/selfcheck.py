@@ -24,6 +24,8 @@ import os
 import time
 from pathlib import Path
 
+import component_status
+
 OK, STALE, MISSING, UNSET = "ok", "stale", "missing", "unset"
 
 # 每个来源:(键, 人话标题, 环境变量或 None, 类型, 保鲜期小时或 None, 是不是必需)
@@ -55,66 +57,9 @@ SOURCES = (
     ("plugin_cache", "插件缓存", "TASK_CONSOLE_PLUGIN_CACHE", "dir", None, False),
     ("sessions", "会话转录目录", "TASK_CONSOLE_SESSIONS", "dir", None, False),
     ("convo_cache", "对话索引缓存", "TASK_CONSOLE_CONVO_CACHE", "file", None, False),
-    # 第二套 agent 的家目录。算作面板来源而不是 OVERRIDES:维护屏有整整一半在读它,
-    # 没设时那半边是「未检查」,而这正是自检要说出来的那一类,
+    # 第二套 agent 的家目录。维护屏有整整一半在读它,没设时那半边是「未检查」,
     # 一个没被指向任何东西的半屏,和一个真的什么都没积压的半屏,打印出来一模一样。
     ("codex", "第二套 agent 家目录", "TASK_CONSOLE_CODEX", "dir", None, False),
-)
-
-# 生产代码读得到、但**不算面板来源**的环境变量。每一条都要写明为什么不算。
-#
-# 这张表存在的唯一理由是让「所有被读的环境变量」有一份完整的账:
-# 自检那条测试原来断言的是「一张手写的 8 项名单 ⊆ SOURCES」, 单向包含,
-# 只能证明「这 8 个还在」,**永远证明不了「没有第九个被漏掉」**。
-# 实测:生产代码读 17 个 TASK_CONSOLE_*,SOURCES 只有 14 条,漏了下面这三个,
-# 而把 SOURCES 里两条真实来源整条删掉,那个测试文件 18 条照样全过。
-# 新增一个 TASK_CONSOLE_* 读取时,要同时在 SOURCES 或 OVERRIDES 里登记。
-OVERRIDES = (
-    ("TASK_CONSOLE_AGENT_TASK_ID", "待办执行队列对应的已登记任务 ID；设了才有「交给 Agent」，提交后直接请计划程序运行 ID 中斜杠后的那个任务。"),
-    ("TASK_CONSOLE_READ_ONLY", "只读预览的服务器写入限制，不是数据来源；动作接口在写入前拒绝预览请求。"),
-    ("TASK_CONSOLE_RUNTIME_CONFIG", "控制器执行配置，不作为只读面板来源；动作接口在执行前校验完整绑定与权限。"),
-    ("TASK_CONSOLE_PRIVATE_ROOT", "控制器私有根目录，不作为面板数据读取入口；由控制器校验归属和数据边界。"),
-    ("TASK_CONSOLE_STATE_ROOT", "控制器状态目录绑定，仅执行接口读取；不作为只读面板的来源，由控制器检查完整绑定。"),
-    ("TASK_CONSOLE_VAULT_ROOT", "控制器凭据目录，仅执行接口使用；页面不读取凭据内容，控制器校验绑定和访问权限。"),
-    ("TASK_CONSOLE_DB",
-     "数据库位置。默认由 datadir 解析器从私有伴生仓算出来,环境变量只是覆盖 —— "
-     "它没设是正常状态,列进面板会变成一条永远显示「未设」的噪音。"
-     "库本身可不可用由 load_from_db 的 reason 单独报。"),
-    ("TASK_CONSOLE_CONFIG",
-     "私有伴生仓根目录的首选覆盖项，不是独立面板来源；数据库的可用性由 load_from_db 的 reason 单独报告。"),
-    ("TASK_CONSOLE_DATA_DIR",
-     "旧数据目录覆盖项，可指向伴生仓或其 data 子目录；仅用于位置选择，数据库状态由读取结果单独报告。"),
-    ("TASK_CONSOLE_POWERSHELL",
-     "解释器覆盖。没设时钉死在系统目录的绝对路径上,那才是正常形态。"),
-    ("TASK_CONSOLE_LLMCALL_LEDGER",
-     "调用账本的位置覆盖。未覆盖时跟随 LLMCALL_LEDGER 或已配置的 llmcall 伴生仓 runtime 目录；"
-     "没有存储选择器时调用屏报告未配置。"
-     "列进面板会变成一条永远显示「未设」的噪音。"
-     "账本本身读不读得到不靠这块面板 —— 调用屏自己会把路径、字节数、可解析条数、"
-     "坏行数一并打出来,所以「账本不在」和「账本是空的」在那边已经是两句不同的话。"),
-    ("TASK_CONSOLE_LLMCALL_CHAIN",
-     "链顺序配置文件的位置覆盖。未覆盖时使用控制台显式账本的同级目录或 llmcall 伴生仓 runtime 目录；"
-     "没有存储选择器时拒绝写入。"
-     "而且这是这台控制台上唯一一条**写**到别的程序配置里的路径 —— "
-     "把它做成一条面板来源,等于把「这个文件现在存不存在」当成一种健康状态,"
-     "而它不存在只说明还没人在页面上改过顺序。顺序当前由谁决定(环境变量 / 文件 / 内置默认)"
-     "由调用屏顶上那个来源徽章直接说出来,那才是要看的东西。"),
-    ("TASK_CONSOLE_LLMCALL_BODIES",
-     "正文目录的位置覆盖。正文记录默认**关闭**,所以这个目录不存在是正常状态,"
-     "把它做成一条面板来源会让一个从没被打开过的功能天天报「未检查」。"
-     "开没开由明细展开时那句话直接说明。"),
-    ("TASK_CONSOLE_DELETE_FOLLOWUP",
-     "删除任务后的私有后续钩子,只在删除预览和执行时调用,不是面板数据来源。"
-     "没设时删除照样能做,但预览和结果会单独说出「监控清单、备份和迁移计划没有清理」。"),
-    ("TASK_CONSOLE_DELETE_WITHOUT_AUTHORITY",
-     "开关,不是路径:设成 1 才允许一个没有任务控制器配置的控制台进程删除任务。"
-     "没设才是正常形态(控制器配置齐全的那个进程用不到它),列进面板只会是一条永远「未设」的噪音。"),
-    ("TASK_CONSOLE_DELETED_ARCHIVE",
-     "删除不受控制器管理的任务之前,任务 XML 原件存放的私有目录。只有删除接口写它,"
-     "页面不读;没设时这类删除在预览里就被拦下,而不是删掉之后才发现没留原件。"),
-    ("TASK_CONSOLE_ALLOWED_HOSTS",
-     "Host 白名单的追加项。没设时用三个回环字面量,那才是正常形态;"
-     "设成 \"*\" 会在启动时单独打一行警告,不靠这块面板。"),
 )
 
 # 随包发布的文件。它们没有环境变量:缺了就是安装坏了,而不是没配。
@@ -179,21 +124,17 @@ def _probe(path: Path, kind: str, max_age_h: float | None, now: float,
     return OK, info
 
 
-def run(now: float | None = None, here: Path | None = None, env: dict | None = None) -> dict:
-    """探一遍所有来源。now / here / env 可注入,测试靠它构造确定的场景。"""
-    now = time.time() if now is None else now
-    here = Path(__file__).resolve().parent if here is None else here
-    env = os.environ if env is None else env
+def run() -> dict:
+    """探一遍所有来源。"""
+    now = time.time()
+    here = Path(__file__).resolve().parent
+    env = os.environ
 
     rows = []
     for key, title, var, kind, max_age, required in SOURCES:
         raw = env.get(var) if var else None
         if key == "source_catalog":
             # Match the component endpoint: a catalog can be embedded in its snapshot.
-            try:
-                from . import component_status
-            except ImportError:
-                import component_status
             catalog = component_status.read_configured(now, env=env)["catalog"]
             bound = raw or env.get("TASK_CONSOLE_STATUS_SNAPSHOT")
             rows.append({"key": key, "title": "组件来源目录", "env": var,

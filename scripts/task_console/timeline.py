@@ -208,7 +208,7 @@ def build(tasks: dict, runs_by_task: dict | None = None, now: datetime | None = 
                                 and not e["eventDriven"] and not unknown and not actual):
             continue
         rows.append({
-            "name": name, "cat": t.get("cat"),
+            "name": name,
             "points": e["points"], "spans": e["spans"],
             "eventDriven": e["eventDriven"], "unknownTriggers": unknown,
             "actual": actual,
@@ -216,14 +216,10 @@ def build(tasks: dict, runs_by_task: dict | None = None, now: datetime | None = 
         })
     rows.sort(key=lambda r: (r["points"][0] if r["points"]
                              else (r["spans"][0]["from"] if r["spans"] else "zz")))
-    n_unknown = sum(len(r["unknownTriggers"]) for r in rows)
     return {
         "date": today,
         "now": now.strftime("%H:%M"),
         "rows": rows,
-        # 认不出的触发器总数。给页面一个能印在标题上的数:
-        # 一个只存在于某一行 tooltip 里的信号,和没有这个信号差别不大。
-        "unknownTriggerCount": n_unknown,
         "note": ("按触发器展开的今日计划。事件驱动的触发器(登录/开机/空闲/事件)没有时钟时间,"
                  "单独标出而不是丢掉。分钟级任务画成条带加次数,288 个点连成一条实线反而什么也没说。"
                  "已停用的任务不画:它有触发器但不会触发,画上去就是对今天做了一个假陈述。"),
