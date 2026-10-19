@@ -80,7 +80,7 @@ Real requests and returned plans contain machine data and belong in private stor
 
 ## Where the data lives
 
-The database and the run-event export live in a private companion resolved by `fleet_guards.runtime`. The database (`data/background-task-core/console.sqlite3`) is local state there and is not versioned; the versioned history is the monthly text export `data/background-task-core/run-events/YYYY-MM.jsonl`. If no companion resolves, the console reports UNINITIALISED; writes never fall back to this repository.
+The database and the run-event export live in a private companion resolved by `fleet_guards.runtime`. The database (`data/background-task-core/console.sqlite3`), the DPAPI vault and other files every run rewrites are local state there and are not versioned; the versioned history is the monthly text export `data/background-task-core/run-events/YYYY-MM.jsonl`. If no companion resolves, the console reports UNINITIALISED; writes never fall back to this repository.
 
 ## Limitations
 
