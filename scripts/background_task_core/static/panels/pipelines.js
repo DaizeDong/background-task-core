@@ -18,29 +18,10 @@ function reasonLabel(code){
   if(/_observed$/.test(raw)) return "已观测到";
   return "其他原因";
 }
-const CATALOG_LABELS={yes:"是",no:"否",unknown:"未检查",not_applicable:"不适用",
-  checked:"已检查",partial:"部分检查",unchecked:"未检查",complete:"完整",zero:"无检查项",
-  healthy:"正常",degraded:"需留意",unhealthy:"异常",completed:"已完成",running:"运行中",
-  repository:"仓库",blocked:"受阻",unsupported:"尚不支持",skill:"技能",plugin:"插件",mcp_binding:"MCP 连接",app_connector:"App 连接",agent_template:"角色模板",
-  skill_roots:"技能目录",plugin_registries:"插件登记",declared:"已登记",enabled:"已启用",cached:"已缓存",
-  installed:"已安装",resolved:"路径有效",discovered:"客户端可见",compatible:"兼容",
-  external_skill_repos:"外部技能仓",repo_roots:"仓库目录",private_bindings:"私有绑定",runtime_discovery:"运行时发现",workflow_roots:"工作流",plugin_descriptors:"插件描述",native_discovery:"原生发现",skills:"技能",agents:"角色",hooks:"钩子",memory:"记忆",mcp:"MCP"};
-const catalogLabel=value=>CATALOG_LABELS[value] || value || "未检查";
-function catalogCoverageText(coverage){
-  const c=coverage||{};
-  if(c.status) return catalogLabel(c.status);
-  return Object.entries(c).map(([name,part])=>{
-    if(!part || typeof part!=="object") return `${catalogLabel(name)}: ${catalogLabel(part)}`;
-    const count=part.checked!=null && part.expected!=null?` ${part.checked}/${part.expected}`:"";
-    return `${catalogLabel(name)} ${catalogLabel(part.status)}${count}`;
-  }).join(" · ") || "未检查";
-}
 
 
-let COMPONENTS = null, PIPELINE_QUERY="";
+let COMPONENTS = null;
 const PIPELINE_DEFS = {
-  sync: {title:"Claude → Codex 配置同步", name:"SyncClaudeToCodex",
-    purpose:"查看配置是否写入，以及哪些能力仍需处理。"},
   backup: {title:"每日备份与整理", name:"SyncClaudeConfig",
     purpose:"查看备份、记忆整理、日志归档和维护检查的证据。"}
 };
@@ -50,19 +31,6 @@ const pipeTime = value => {
   return Number.isNaN(date.getTime()) ? "时间无法识别" : date.toLocaleString("zh-CN", {hour12:false});
 };
 const pipeState = state => ({healthy:"正常",unhealthy:"异常",degraded:"部分可用",failed:"失败",success:"完成",ok:"完成",completed:"完成",running:"运行中",unknown:"待验证"}[state] || "待验证");
-// 同步写进收据的是原因码。页面上给人看中文,原码留在悬停提示里;认不出的原因码照原样显示。
-const PIPELINE_REASONS = {
-  managed_block_modified_by_user:"同步管理的配置段被手动改过，没有覆盖",
-  managed_role_or_entry_modified_missing_or_unowned:"同步管理的 agent 条目被改过、缺失或不归同步管",
-  managed_agents_dependency_conflict:"agent 配置的依赖关系冲突",
-  skill_routing_ownership_or_layout_conflict:"技能路由的归属或目录结构冲突",
-  source_command_not_reviewed_for_native_adapter:"钩子命令还没审核，没有转成 Codex 原生钩子",
-  external_installer_required:"由外部安装程序管理，需另行安装"
-};
-const pipelineReason = code => Object.hasOwn(PIPELINE_REASONS, code) ? PIPELINE_REASONS[code] : code;
-// 收据里的运行模式同样是英文代号。认不出的照原样显示,不猜。
-const PIPELINE_MODES = {apply:"正式写入", preview:"预览", plan:"预览"};
-const pipelineMode = mode => mode == null || mode === "" ? "未记录" : Object.hasOwn(PIPELINE_MODES, mode) ? PIPELINE_MODES[mode] : mode;
 // 运行记录来自一份采集好的快照,不是打开页面时现查的。采集停了以后,「最近运行」和各环节结果
 // 会一直停在那一刻,而它们看起来和刚采集的记录一模一样,所以快照多旧必须说出来。
 // 两条流水线都至少每天跑一次,超过一天没更新的快照一定已经过时。
@@ -86,46 +54,9 @@ function pipelineTask(key, components){
 
 function pipelineSteps(key, components){
   const task = pipelineTask(key, components);
-  const receipt = task && task.last_run_v1;
   const unknown = (title, purpose, detail) => ({title,purpose,label:"待验证",tone:"idle",detail,evidence:[]});
   const evidence = task ? [["任务",task.name],["任务标识",task.task_id],["运行标识",task.run_id || "未提供"],
     ["开始时间",pipeTime(task.execution && task.execution.started_at)]] : [];
-  if(key === "sync"){
-    const catalog = components && components.catalog;
-    const source = unknown("读取来源", "汇集配置、技能和插件", "目录单独读取，不能据此确认本次同步结果。");
-    if(catalog && catalog.available){
-      source.label="已读取"; source.tone="muted"; source.symbol="✓"; source.evidence=[["来源数",(catalog.records||[]).length],["读取时间",pipeTime(catalog.observed_at)],
-        ["检查范围",catalogCoverageText(catalog.coverage)]];
-    }
-    const files = unknown("写入配置", "应用差异并复查", "还没有可读取的同步结果。");
-    // A preview, unfinished or failed apply cannot prove alignment, even at zero changes.
-    const applied = receipt && receipt.version===1 && receipt.mode==="apply" && receipt.finished_at &&
-      ["ok","success","healthy","degraded"].includes(receipt.status);
-    if(receipt){
-      files.evidence=[...evidence,["同步结果",pipeState(receipt.status)],["运行模式",pipelineMode(receipt.mode)],
-        ["完成时间",pipeTime(receipt.finished_at)],["本次改动",receipt.change_count ?? "未记录"],
-        ["剩余差异",receipt.remaining_changes ?? "未记录"]];
-      if(applied && receipt.remaining_changes===0){
-        files.label="文件已对齐"; files.tone="ok";
-        files.detail="文件已同步，剩余差异为 0；功能是否可用仍需验证。";
-      }else{
-        files.label=receipt.status==="failed"?"写入失败":"待核对";
-        files.tone=receipt.status==="failed"?"bad":"warn";
-        files.detail="当前记录不能确认同步后已无差异。";
-      }
-    }
-    const findings = receipt && Array.isArray(receipt.findings) ? receipt.findings : null;
-    const capability = unknown("核对能力", "检查技能、连接和钩子", "还没有技能、连接和钩子的独立检查结果。");
-    const memory = unknown("导入记忆", "归档并投递授权增量", "尚未验证 Codex 能否在会话中调用这些记忆。");
-    if(findings){
-      const rest=findings.filter(f=>f.area!=="memory"), mem=findings.filter(f=>f.area==="memory");
-      capability.findings=rest; memory.findings=mem;
-      if(rest.length){capability.label=`${rest.length} 项待处理`;capability.tone="warn";capability.detail="仍有功能受限，具体原因见下方。";}
-      if(mem.length){memory.label="有待处理项";memory.tone="warn";}
-      capability.evidence=memory.evidence=evidence;
-    }
-    return [source,files,capability,memory];
-  }
   const checks = task && task.checks || [];
   const checkStep = (title,purpose,ids,detail) => {
     const step=unknown(title,purpose,detail), selected=checks.filter(c=>ids.includes(c.check_id));
@@ -171,7 +102,7 @@ function pipelineRows(){
 // 卡片开头一句合起来的结论。以前三种信号各说各的、还会互相打架:任务行上绿色的「已启用」、
 // 快照「9 天前」、运行记录「× 异常」。现在按最坏的那一个定颜色,几件事用「·」连成一句,
 // 例如「× 备份异常 · 记录停在 9 天前」;计划程序的状态退到任务行上的小字里。
-const PIPELINE_SHORT = {sync:"同步", backup:"备份"};
+const PIPELINE_SHORT = {backup:"备份"};
 const PIPELINE_TONE_RANK = {bad:0, warn:1, pending:2, idle:3, active:4, ok:5, muted:6};
 function pipelineVerdict(key, row, task, snap){
   const parts=[], tones=[];
@@ -216,7 +147,6 @@ function renderPipelines(){
         <div class="pipeline-metrics"><span>最近运行 <b>${esc(pipeTime(task && task.execution && task.execution.started_at))}</b></span>
           <span>运行标识 <b>${esc(task && task.run_id || "未提供")}</b></span>
           <span>任务标识 <b>${esc(task && task.task_id || "未关联")}</b></span>
-          ${receipt?`<span>模式 <b title="${esc(receipt.mode || "")}">${esc(pipelineMode(receipt.mode))}</b></span><span>本次改动 <b>${esc(receipt.change_count ?? "未记录")}</b></span><span>剩余差异 <b>${esc(receipt.remaining_changes ?? "未记录")}</b></span>`:""}
         </div>
         <div class="ops-scroll pipeline-steps"><table class="ops-table pipeline-table"><thead><tr><th>环节</th><th>结果</th><th>检查记录</th></tr></thead><tbody>
         ${steps.map((step,i)=>`<tr><th scope="row"><span class="step-index">${i+1}</span>${esc(step.title)}</th><td data-label="结果">${statusBadge(step.label,step.tone,step.symbol,'review-status')}</td>
@@ -224,45 +154,13 @@ function renderPipelines(){
             ${(step.checks||[]).map(check=>`<span class="check-chip">${esc(check.check_id)} ${statusBadge(pipeState(check.state),componentTone(check.state))}</span>`).join("")}
             <div class="pipeline-evidence">${(step.evidence||[]).filter(([label])=>!["任务","任务标识","运行标识","开始时间"].includes(label)).map(([label,value])=>`<span>${esc(label)} <b>${esc(value ?? "未记录")}</b></span>`).join("")}</div>
           </td></tr>`).join("")}</tbody></table></div></div>`;
-    }).join("")+
-    `<div class="card"><div class="card-header"><h2 class="card-title">同步中发现的问题 <span id="pipeline-issue-count" class="n"></span></h2>
-    <div class="catalog-tools"><input id="pipeline-search" type="search" aria-label="搜索流水线问题" placeholder="搜索对象、类型或原因" value="${esc(PIPELINE_QUERY)}"></div></div>
-    <div id="pipeline-issues" class="ops-scroll"></div></div>`;
-  $("pipeline-search").addEventListener("input",event=>{PIPELINE_QUERY=event.target.value;renderPipelineIssues();});
+    }).join("");
   restoreTaskControlFocus(box,focused);
-  renderPipelineIssues();
   const links=$("overview-pipelines");
   if(links) links.innerHTML=Object.entries(PIPELINE_DEFS).map(([key,def])=>{
     const task=pipelineTask(key,COMPONENTS), state=task && (task.last_run_v1 && task.last_run_v1.status || task.verdict);
     return `<button data-open-pipeline="${key}"><strong>${esc(def.title)}</strong>${statusBadge(task?pipeState(state):'待验证',task?componentTone(state):'idle',undefined,'review-status')}</button>`;
   }).join("");
-}
-function renderPipelineIssues(){
-  const task=pipelineTask("sync",COMPONENTS), findings=task && task.last_run_v1 && task.last_run_v1.findings;
-  const query=PIPELINE_QUERY.trim().toLowerCase();
-  // 中文说法也要搜得到,原因码照旧能搜。
-  const rows=(Array.isArray(findings)?findings:[]).filter(f=>!query ||
-    (JSON.stringify(f)+" "+(f.reason?pipelineReason(f.reason):"")).toLowerCase().includes(query));
-  $("pipeline-issue-count").textContent=Array.isArray(findings)?matchCount(rows.length,findings.length):"尚无问题清单";
-  // 按原因分组:一组一个标题行,写原因和这一组有几项,下面逐行列出对象。以前 54 行里大半是同一句「受阻」,
-  // 一行行重复同一个原因,看不出一共有几种问题。每一行照旧都在,不折叠,也不用 details。
-  // 原因码认得的写中文,原码进悬停;认不出的照原样显示。没有原因码的按状态分组。
-  const groups=new Map();
-  rows.forEach(f=>{
-    const key=f.reason?"reason:"+f.reason:"status:"+(f.status ?? "");
-    if(!groups.has(key)) groups.set(key,{finding:f,rows:[]});
-    groups.get(key).rows.push(f);
-  });
-  const groupHead=({finding,rows:items})=>{
-    const label=finding.reason?pipelineReason(finding.reason):catalogLabel(finding.status);
-    const title=finding.reason && label!==finding.reason?` title="原因码 ${esc(finding.reason)}"`:"";
-    return `<tr class="issue-group"><th colspan="2" scope="rowgroup"><span${title}>${esc(label)}</span><span class="n">${items.length} 项</span></th></tr>`;
-  };
-  // 项数多的原因排在前面;一样多的保持清单里的先后。
-  const ordered=[...groups.values()].sort((a,b)=>b.rows.length-a.rows.length);
-  $("pipeline-issues").innerHTML=rows.length?`<table class="ops-table pipeline-issue-table"><thead><tr><th>类型</th><th>对象</th></tr></thead>${ordered.map(group=>
-    `<tbody>${groupHead(group)}${group.rows.map(f=>`<tr><td>${esc(catalogLabel(f.area))}</td><th scope="row">${esc(f.name || "未命名")}</th></tr>`).join("")}</tbody>`).join("")}</table>`:
-    `<p class="review-empty">${Array.isArray(findings)?findings.length?"没有符合筛选条件的问题":"本次同步记录未列出问题":"尚未读到问题清单，无法确认功能是否可用"}</p>`;
 }
 function pipelineClick(event){
   const link=event.target.closest("[data-open-pipeline]");
