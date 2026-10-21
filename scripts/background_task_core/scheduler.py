@@ -238,6 +238,23 @@ def text(parent, name, value):
     node(parent, name).text = str(value).lower() if isinstance(value, bool) else str(value)
 
 
+_ACCOUNTS = {}
+
+
+def _stored_account(value):
+    """DOMAIN\\name for a SID the local authority resolves; anything else is returned unchanged."""
+    if os.name != 'nt' or not isinstance(value, str) or not re.fullmatch(r'S-1-\d+(-\d+)+', value.strip()):
+        return value
+    if value not in _ACCOUNTS:
+        try:
+            import win32security
+            name, domain, _ = win32security.LookupAccountSid(None, win32security.ConvertStringSidToSid(value.strip()))
+            _ACCOUNTS[value] = domain + '\\' + name if domain else name
+        except Exception:
+            _ACCOUNTS[value] = value
+    return _ACCOUNTS[value]
+
+
 def _representation(root):
     """Only fixed-length duration spellings and unambiguous action context.
 
@@ -261,6 +278,10 @@ def _representation(root):
                     context.prec = max(28, len(item.text) + 12)
                     seconds = sum(Decimal(v or '0') * factor for v, factor in zip(match.groups(), (24 * 60 * 60, 60 * 60, 60, 1)))
                     item.text = 'PT' + format(seconds.normalize(), 'f') + 'S'
+    # Registration stores a trigger's account as DOMAIN\name even when the definition names it
+    # by SID, so a SID and the name the Scheduler would store for it are one value here.
+    for item in root.findall('t:Triggers/*/t:UserId', ns):
+        item.text = _stored_account(item.text)
     principals = root.findall('t:Principals/t:Principal', ns)
     actions = root.find('t:Actions', ns)
     if actions is not None and 'Context' not in actions.attrib and len(principals) == 1 and principals[0].get('id'):
@@ -338,7 +359,16 @@ def same_candidate(current, expected):
     candidate = expected.get('candidate_identity')
     if not isinstance(candidate, str) or not re.fullmatch(r'task-definition:[a-f0-9]{64}', candidate):
         return False
-    if current.get('candidate_identity') != candidate:
+    candidates = {candidate}
+    # A stored prepared candidate is re-derived from its own prepared XML, so one recorded
+    # before a representation rule changed still matches its readback.
+    name = expected.get('value', {}).get('spec', {}).get('name')
+    if expected.get('prepared') is True and isinstance(name, str):
+        try:
+            candidates.add(observation(name, expected['value'])['identity'])
+        except Conflict:
+            pass
+    if current.get('candidate_identity') not in candidates:
         return False
     def rest(snapshot):
         value = deepcopy(snapshot)
