@@ -1,8 +1,8 @@
 
 """The HTTP layer: routing, auth, the host allowlist, and the write endpoints.
 
-What the console is and how to configure it: `README.md` next to this file. What the whole repo
-refuses to do and why: the root `README.md`. Before changing anything here: `docs/changing-this.md`.
+Console configuration and component layout: the root `README.md` and `CONFIG.md`.
+Before changing anything here: `docs/changing-this.md`.
 
 Three controls make the write endpoints safe to have at all. Each is load-bearing, none is
 decorative, and all three are implemented in this file:
@@ -36,6 +36,7 @@ from pathlib import Path
 from urllib.parse import unquote
 
 from . import integrations
+from .component_routes import ComponentRoutes, _CONVO_ACCESS, CONVO_UNLOCKED_POSTS
 # The aliases name the part of each module a call belongs to.
 from . import registry as allowlist
 from . import integrations as source_reads, integrations as work_actions
@@ -735,7 +736,7 @@ def task_facts(name: str) -> dict:
     return task_repair.facts_from_payload(build_payload(), name)
 
 
-class Handler(BaseHTTPRequestHandler):
+class Handler(ComponentRoutes, BaseHTTPRequestHandler):
     server_version = "background-task-core"
     # fail-closed:空集合什么都不匹配,所以一个没走过 main() 的 Handler 会拒绝每一个请求。
     # 默认成 "*" 会让「忘了设置」和「明确允许一切」变成同一件事,而那正是这份代码
@@ -914,11 +915,17 @@ class Handler(BaseHTTPRequestHandler):
                 return None
 
     def do_GET(self):
+        if self.path.split("?", 1)[0].startswith("/api/convo"):
+            with _CONVO_ACCESS:
+                return self._guard(self._do_GET, "GET " + self.path.split("?", 1)[0])
         return self._guard(self._do_GET, "GET " + self.path.split("?", 1)[0])
 
     def do_POST(self):
         route = self.path.split("?", 1)[0]
         try:
+            if route.startswith("/api/convo/") and route not in CONVO_UNLOCKED_POSTS:
+                with _CONVO_ACCESS:
+                    return self._guard(self._do_POST, "POST " + route)
             return self._guard(self._do_POST, "POST " + route)
         finally:
             # Every authenticated POST, whatever its outcome: a lost response is not proof of no change.
@@ -951,6 +958,8 @@ class Handler(BaseHTTPRequestHandler):
             if not self._authed():
                 return self._json(403, {"error": "bad token"})
             return self._json(200, integrations.read_configured())
+        if path in self.component_get_routes or path.startswith("/api/llmcall/call/"):
+            return self.component_get(path)
         if path in integrations.ROUTES:
             if not self._authed():
                 return self._json(403, {"error": "bad token"})
@@ -1013,6 +1022,9 @@ class Handler(BaseHTTPRequestHandler):
         if os.environ.get('BACKGROUND_TASK_CORE_READ_ONLY') == '1':
             self._drain()
             return self._json(403, {'error': '只读预览，无法执行操作'})
+        route = self.path.split("?", 1)[0]
+        if route in self.component_post_routes:
+            return self.component_post(route)
         if self.path.split('?', 1)[0] in ('/api/work/action', '/api/work/stop'):
             if not self._authed():
                 self._drain()

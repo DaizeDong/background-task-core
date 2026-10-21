@@ -378,7 +378,7 @@ class Adapter:
 
     def read(self, local=None):
         # Resolve at call time: no process launch or external discovery at import.
-        return read(self.id, self.resolve(local))
+        return read(self.id, lambda: self.resolve(local)())
 
     def resolve(self, local=None):
         if self.module == 'server' and local is not None:
@@ -393,6 +393,27 @@ ADAPTERS = (
             '计划任务、运行状态与启动说明', '由控制器校验后启用、停用、运行、停止', 'shared'),
     Adapter('components', '组件观测', 'runs', 'read_configured', '/api/components', 'pipelines',
             '声明的检查结果与来源目录', '查看检查证据', 'shared', ('tasks',)),
+    Adapter('skills', '技能目录', 'maint', 'read_skills', '/api/skills', 'resources',
+            '技能清单与加载预算', '归档、恢复、预览删除'),
+    Adapter('plugins', 'Claude 插件清单', 'maint', 'read_plugins', '/api/plugins', 'resources',
+            '客户端插件安装与启用状态', '启用、停用、预览卸载'),
+    Adapter('memory', '记忆管理', 'memops', 'read', '/api/mem', 'resources',
+            '记忆池状态与诊断', '查看及管理记忆'),
+    Adapter('codex', 'Codex 本地资源', 'codexinfo', 'read', '/api/codex', 'storage',
+            '本地会话与资源占用', '预览清理'),
+    Adapter('llm', '模型调用账本', 'component_routes', 'llm_overview', '/api/llmcall', 'llm',
+            '用量、调用结果与当前路由', '查看调用、管理允许的配置'),
+    Adapter('system', '系统资源', 'sysinfo', 'read', '/api/sys', 'storage',
+            '磁盘与目录占用', '预览清理'),
+    Adapter('conversations', '本地会话', 'convos', 'scan', '/api/convos', 'convos',
+            '会话记录与存储位置', '搜索、连续加载、重命名与迁移'),
+    Adapter('repositories', '代码仓库', 'repos', 'scan', '/api/repos', 'repos',
+            '仓库状态与变更', '查看差异及经确认的仓库操作'),
+    Adapter('selfcheck', '配置自检', 'selfcheck', 'run', '/api/selfcheck', 'diagnostics',
+            '读取路径与配置检查', '查看配置问题'),
+    Adapter('convo-chain', '对话链库 convo-chain', 'convo_chain', '__version__', '', 'convos',
+            '对话链、导出、分叉与会话文件管理', '在会话页打开对话链；修改经受保护的 POST',
+            'library', ('conversations',)),
 )
 ROUTES = {adapter.endpoint: adapter for adapter in ADAPTERS if adapter.endpoint}
 
@@ -415,6 +436,12 @@ def read_configured():
         row = asdict(adapter)
         row.pop('module'); row.pop('reader')
         row['connection'] = observations.get(adapter.id, {'state': 'unchecked'})
+        if adapter.layer == 'library':
+            try:
+                version = getattr(importlib.import_module(adapter.module), adapter.reader)
+                row['connection'] = {'state': 'ready', 'reason': f'Installed {version}'}
+            except ImportError as error:
+                row['connection'] = {'state': 'unavailable', 'reason': str(error)}
         if adapter.id == 'components':
             row['coverage'] = components.get('coverage')
             row['catalog'] = {key: components.get('catalog', {}).get(key) for key in ('available', 'reason', 'coverage')}

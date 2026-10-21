@@ -1,6 +1,6 @@
 # background-task-core
 
-单台 Windows 机器的本地控制台，只监听环回地址，管这台机器的计划任务、它们的运行历史和健康状况，以及这些任务所服务的工作记录（待办和 agent 工作）。
+单台 Windows 机器的本地控制台，只监听环回地址，管理计划任务、运行历史、工作记录，以及独立接入的会话、仓库和资源组件。
 
 Windows 计划任务负责触发；background-task-core 保管任务声明、登记权威和受控操作。每个来源都说明自己查了多少：来源读不到不会显示成一张空的成功列表，完成摘要也不能顶替执行证据。
 
@@ -22,7 +22,7 @@ Windows 计划任务负责触发；background-task-core 保管任务声明、登
 
 ## 模块
 
-`scripts/background_task_core/` 一共八个模块：
+`scripts/background_task_core/` 的任务核心保持以下分工：
 
 | 模块 | 负责 |
 | --- | --- |
@@ -35,9 +35,13 @@ Windows 计划任务负责触发；background-task-core 保管任务声明、登
 | `server.py` + `console.html` + `static/` | HTTP 服务和页面 |
 | `__main__.py` | 命令行 |
 
+会话、调用账本、仓库、技能、插件、记忆和存储分别有自己的数据模块与 `static/panels/` 面板。`integrations.ADAPTERS` 登记读取接口，`component_routes.py` 承接组件的查询参数与操作。组件按需加载，某个组件缺依赖或读不到数据时，任务核心仍可启动。
+
 ## 页面
 
-五个分区：工作台、工作记录、自动化（任务开关、同步与备份、运行详情）、接入（控制台读的来源）、诊断（失败的任务、过期的输出、摄入状态和文件更新灯板）。任务行可以启用、停用、运行、停止、开修复工单和删除；删除先出预览，受控制器管理的任务经权威退役。见[任务控制](docs/task-control.md)和[工作平台](docs/work-platform.md)。
+页面包含工作台、工作记录与模型调用、自动化、会话、仓库、技能与记忆、存储、接入和诊断。按当前页面读取数据，使用紧凑图标操作和统一刷新。
+
+会话支持搜索、连续加载、重命名、实际迁移文件、确认删除、分叉和消息链查看。Markdown 可导出当前链或选中范围，并选择包含工具调用与思考内容；页面 JSON 导出保存当前已加载的数据。任务行保留启用、停用、运行、停止、修复和删除。见[任务控制](docs/task-control.md)和[工作平台](docs/work-platform.md)。
 
 ## 安装
 
@@ -50,7 +54,7 @@ pip install -e . -e "$(git config --get fleet.guards)"
 git config core.hooksPath .githooks
 ```
 
-依赖见 `pyproject.toml`：`fleet-guards`、`llmcall`、`pywin32`。
+依赖见 `pyproject.toml`：`fleet-guards`、`llmcall`、`convo-chain`、`pywin32`。
 
 ## 运行
 

@@ -1,9 +1,9 @@
 // Navigation composes projections by user intent, independently of backend modules.
 const VIEW_GROUPS={
   overview:{label:'工作台',views:{overview:'工作台'}},
-  work:{label:'工作记录',views:{work:'工作与结果'}},
+  work:{label:'工作记录',views:{work:'工作与结果',convos:'会话',llm:'模型调用'}},
   automations:{label:'自动化',views:{automations:'任务开关',pipelines:'同步与备份',tasks:'运行详情'}},
-  resources:{label:'接入',views:{integrations:'控制台接入'}},
+  resources:{label:'资源',views:{integrations:'控制台接入',resources:'客户端技能与记忆',repos:'代码仓库',storage:'存储清理'}},
   diagnostics:{label:'诊断',views:{diagnostics:'技术问题与数据来源'}}
 };
 const VIEWS=Object.values(VIEW_GROUPS).flatMap(group=>Object.keys(group.views));
@@ -24,8 +24,9 @@ const viewGroup=key=>Object.keys(VIEW_GROUPS).find(group=>key in VIEW_GROUPS[gro
 //
 // 每一枚只数它所在那一屏上看得见、能处理的东西。记忆索引在「客户端技能与记忆」那一屏(#membox),
 // 所以记在 resources 上;记到存储清理上的话,人跟着徽章点进去,那一页上找不到任何能处理的东西。
-const BADGE_SOURCES={tasks:['/api/tasks'],diagnostics:['/api/tasks']};
-const BADGE_NAMES={tasks:'计划任务',diagnostics:'技术问题清单'};
+const BADGE_SOURCES={tasks:['/api/tasks'],repos:['/api/repos'],storage:['/api/sys'],resources:['/api/mem'],llm:['/api/llmcall'],
+  diagnostics:['/api/tasks','/api/repos','/api/sys','/api/mem']};
+const BADGE_NAMES={tasks:'计划任务',repos:'代码仓库',storage:'磁盘',resources:'记忆索引',llm:'模型调用账本',diagnostics:'技术问题清单'};
 const BADGE_COUNTS={};
 // 至少读完过一次的来源(成功和失败都算)。API_READS 只留最新一条,刷新时那一条变回「读取中」,
 // 拿它判断「第一次还没回来」的话,每点一次刷新所有徽章都会闪回「…」。
@@ -94,7 +95,7 @@ function noteRead(path,state){
 // 当前这一屏读完以后,把便宜的徽章来源补读一遍,让侧栏在人点进去之前就有数。
 // 仓库扫描(/api/repos)和计划任务(/api/tasks)不在这里:前者要对每个仓库跑一串 git,后者要起 PowerShell,
 // 它们的徽章等人打开那一屏时随那一屏的读取填上。读过的(哪怕失败了)不再重复读,刷新归刷新按钮。
-const BADGE_LOADERS={};
+const BADGE_LOADERS={'/api/sys':()=>loadSys(),'/api/mem':()=>loadMem(),'/api/llmcall':()=>loadLLM()};
 function prefetchBadgeSources(){
   return Promise.allSettled(Object.entries(BADGE_LOADERS).filter(([path])=>!API_READS.has(path)).map(([,loader])=>loader()));
 }
@@ -117,7 +118,7 @@ function groupEntry(group){
 // 不加区分地「Esc 就后退」的话,关掉对话框之后紧跟的那一下 Esc 会把人带离这一页。
 // 正文里换屏的链接(工作台「要处理」的芯片、「全部技术问题 →」、诊断的「查看进度」)也是下钻:
 // 芯片认 data-attention-filter,别的链接带 data-drill。标签栏的 [data-open-view] 不带它,点标签不算下钻。
-const DRILL_TARGETS='[data-task],[data-fr],[data-work-filter],[data-integration-open],[data-goto]:not([data-goto^="#"]),[data-attention-filter],[data-drill]';
+const DRILL_TARGETS='[data-task],[data-fr],[data-review-repo],[data-work-filter],[data-integration-open],[data-goto]:not([data-goto^="#"]),[data-fix="commitpush"],[data-attention-filter],[data-drill]';
 let DRILL_FROM=null, VIEW_ORIGIN=null;
 // 点击的捕获阶段调这里:这一下要是下钻,就记下点之前在哪一屏,由紧接着的那次 showView 取走。
 function markDrill(target){
@@ -145,10 +146,16 @@ function returnToOrigin(){
 }
 
 function showView(key,push,options){
-  // 地址里 / 之后的部分没有分区使用,只按第一个 / 切,后面的忽略。
+  // 会话屏有一级下钻:#convos/<会话 id>[/<子代理 id>][/leaf=<uuid>],由可选面板 convchain 接。
+  // 仓库屏带选中的仓:#repos/<仓名>,由 repositories.js 的 repoRoute 接,浏览器后退就回到上一个选中的仓。
+  // 只按第一个 / 切;别的分区后面跟了东西就当没跟,照旧落到那一屏。
+  let arg=null;
   const slash=typeof key==='string'?key.indexOf('/'):-1;
-  if(slash>0) key=key.slice(0,slash);
+  if(slash>0){arg=key.slice(slash+1);key=key.slice(0,slash);}
   if(!VIEWS.includes(key)) key='overview';
+  if(key!=='convos' && key!=='repos') arg=null;
+  // 同一屏里换一个仓(后退、前进)不是换页,不把人送回页顶。
+  const sameRepos=key==='repos' && CURVIEW==='repos';
   // 下钻顺手设在目的屏上的筛选只管这一趟(review.js / workbench.js 不把它存进本机浏览器)。
   // 人离开那一屏(侧栏、标签、浏览器后退、Esc 回来源)时放回人自己上次选的;
   // 离开本身又是一次下钻时不放回:从那里 Esc 回来,这一屏还该是刚才的样子。
@@ -181,10 +188,14 @@ function showView(key,push,options){
   if(key==='automations') renderAutomations();
   // 修复进度每次进入自动化的任一标签都重读,不只第一次:工单在别处(工作记录、Discord)推进,这里没有别的消息来源。
   if(group==='automations') loadRepairs();
-  if(push && location.hash.slice(1)!==key) location.hash=key;
+  // 对话链开着时地址写成带 id 的那个:写成裸 #convos 的话,紧跟着的 hashchange
+  // 会把它读成「后退回列表」而关掉对话链。面板没载入就照旧只写分区名。
+  const want=key==='convos' && typeof convoChainRoute==='function' ? convoChainRoute(arg,push)
+    : key==='repos' ? repoRoute(arg) : key;
+  if(push && location.hash.slice(1)!==want) location.hash=want;
   // 批量操作条只属于运行详情:换到别的分区就收起来,选中的任务留着,回来还在。
   renderBulk();
-  window.scrollTo(0,0);
+  if(!sameRepos) window.scrollTo(0,0);
 }
 
 // ── 键盘约定 ──
@@ -200,7 +211,12 @@ const ESC_STEPS={
     return false;
   },
   // 任务开关:收起就地展开的明细。
-  automations:()=>collapseAutomationDetail()
+  automations:()=>collapseAutomationDetail(),
+  llm:()=>closeCall(),
+  // 手机上仓库详情盖着列表时,Esc 回到列表;宽屏上没有这一层。
+  repos:()=>repoEscape(),
+  // 对话链是可选面板,没载入时这一屏没有可退的层。
+  convos:()=>typeof convoChainEscape==='function' && convoChainEscape()
 };
 // 能打字的控件。勾选框、单选、下拉和按钮不算:焦点停在勾选框上按 Esc,该退的是页面上那一层,
 // 以前把所有 INPUT 都当成文本框,于是刚勾完一个任务按 Esc 只是让勾选框失焦,要按第二次才清掉选择。
@@ -246,6 +262,8 @@ function handleEscape(event){
   const dropdown=closeStrayDropdown(event);
   if(dropdown==='inside') return false;
   if(dropdown){ event.preventDefault(); return true; }
+  // 就地改名的编辑器是一层:Esc 取消它,而不是像搜索框那样清空里面的字(conversation-actions.js)。
+  if(typeof cvInlineEscape==='function' && cvInlineEscape()){ event.preventDefault(); return true; }
   const el=document.activeElement;
   if(isTextEntry(el)){
     // 搜索框里有字:先清空,再按一次才离开。清空后自己发一次 input 事件,
@@ -274,10 +292,24 @@ function openOnlyWorkRecord(){
   const rows=selectedWorkRows();
   if(rows.length===1) openWorkRecord(rows[0].id);
 }
+// 仓库列表里伴生仓会把宿主一起带出来,所以「第一个」取第一个**自己匹配**的仓,不取第一行。
+function selectFirstRepo(){
+  if(!REPOS || !REPOS.available) return;
+  const q=($('rpq').value || '').trim().toLowerCase();
+  const acc=$('rpacc').value, kind=$('rpkind').value, vis=$('rpvis').value;
+  const listed=[...$('rplist').querySelectorAll('[data-rp]')].map(row=>row.dataset.rp);
+  const first=listed.map(name=>REPOS.repos.find(repo=>repo.name===name))
+    .find(repo=>repo && rpMatches(repo,q,acc,kind,vis));
+  if(!first) return;
+  RP_SEL=first.name;renderRepoList();
+}
 const SEARCH_ENTER={
+  lmq:()=>commitCallSearch(),
+  'cv-search':()=>loadConvos(),
   q:()=>openOnlyTask(),
   'review-search':()=>openOnlyReview(),
   'work-search':()=>openOnlyWorkRecord(),
+  rpq:()=>selectFirstRepo(),
   'automation-search':()=>openOnlyAutomation()
 };
 function handleSearchEnter(event){

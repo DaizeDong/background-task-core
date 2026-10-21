@@ -1,6 +1,6 @@
 # background-task-core
 
-A loopback-only console for one Windows machine: its scheduled tasks, their run history and health, and the shared work records (todos and agent work) that the tasks serve.
+A loopback-only console for one Windows machine: its scheduled tasks, their run history and health, shared work records, and optional conversation, repository and resource components.
 
 Windows Task Scheduler supplies triggers; background-task-core keeps the task declarations, the registration authority and the guarded controls. Every source reports its coverage: an unavailable source does not render as an empty successful one, and a completion summary does not stand in for execution evidence.
 
@@ -22,7 +22,7 @@ Windows Task Scheduler supplies triggers; background-task-core keeps the task de
 
 ## Layout
 
-The package `scripts/background_task_core/` has eight modules:
+The task core in `scripts/background_task_core/` keeps these responsibilities:
 
 | Module | Owns |
 | --- | --- |
@@ -35,9 +35,13 @@ The package `scripts/background_task_core/` has eight modules:
 | `server.py` + `console.html` + `static/` | the HTTP server and the page |
 | `__main__.py` | the command line |
 
+Optional components have separate providers (`convos`, `llmstats`, `repos`, `maint`, `memops`, `codexinfo`, `sysinfo`, `selfcheck`) and panel scripts under `static/panels/`. `integrations.ADAPTERS` connects each reader to its endpoint and view. `component_routes.py` owns parameterized reads and component actions, including the `convo-chain` library. Providers load on request; missing component data does not prevent task-core startup.
+
 ## What the page shows
 
-Five areas: 工作台 (overview), 工作记录 (work records), 自动化 (task switches, sync and backup pipelines, run details), 接入 (the sources the console reads) and 诊断 (failed tasks, stale outputs, ingest state and the file freshness board). Task rows offer enable, disable, run, stop, a repair order and deletion; deletion previews first and retires Controller-owned tasks through the authority. See [task control](docs/task-control.md) and [the work platform](docs/work-platform.md).
+The page groups work records and model calls, automation and run history, conversations, repositories, skills/plugins/memory, storage, integrations and diagnostics. Views load their data when opened, use compact icon controls and share page refresh and operation feedback.
+
+Conversations support search, continuous paging, rename, physical move, confirmed deletion and branch inspection. Markdown export includes a selected message range, with optional tool calls and thinking; page JSON export remains a separate snapshot of loaded data. Task rows retain enable, disable, run, stop, repair and deletion through the current authority. See [task control](docs/task-control.md) and [the work platform](docs/work-platform.md).
 
 ## Install
 
@@ -50,7 +54,7 @@ pip install -e . -e "$(git config --get fleet.guards)"
 git config core.hooksPath .githooks
 ```
 
-Dependencies (see `pyproject.toml`): `fleet-guards`, `llmcall`, `pywin32`.
+Dependencies (see `pyproject.toml`): `fleet-guards`, `llmcall`, `convo-chain`, `pywin32`.
 
 ## Run
 

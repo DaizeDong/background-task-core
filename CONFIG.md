@@ -29,6 +29,21 @@ The ingester appends the normalized run-event export to `run-events/YYYY-MM.json
 | `BACKGROUND_TASK_CORE_DELETE_WITHOUT_AUTHORITY` | `1` lets a process without Controller settings delete tasks as unmanaged | such a process refuses every delete |
 | `BACKGROUND_TASK_CORE_READ_ONLY` | `1` disables every write route | guarded writes are available |
 
+| `BACKGROUND_TASK_CORE_SKILLS` | a skills directory | unset means the skills panel reads NOT CHECKED |
+| `BACKGROUND_TASK_CORE_SKILL_ARCHIVE` | where archived skills go | unset means the archive button is not offered at all |
+| `BACKGROUND_TASK_CORE_MEMORY` | a memory directory | unset means the memory panel reads NOT CHECKED |
+| `BACKGROUND_TASK_CORE_MEMORY_ARCHIVER` | the existing archiver script | unset means the archive button is not offered |
+| `BACKGROUND_TASK_CORE_REPOS` | a directory holding git repos | unset means the repository panel reads NOT CHECKED |
+| `BACKGROUND_TASK_CORE_VISIBILITY` | a JSON object keyed by `owner/repo` (lowercase), each value `PUBLIC` or `PRIVATE` | unset means every repo's visibility reads unknown and no badge is drawn, which is deliberately hard to tell apart from a repo the table has no row for, so the panel also reports the table it loaded and how many rows matched |
+| `BACKGROUND_TASK_CORE_CODEX` | a second agent CLI's home directory, holding its instruction file, config, session store, logs and cache | no default; unset means that whole half of the maintenance view reads NOT CHECKED, which is deliberately not the same as reading zero bytes |
+| `BACKGROUND_TASK_CORE_PLUGIN_CACHE` | a plugin cache directory | unset means the cache row reads NOT CHECKED and nothing can be deleted |
+| `BACKGROUND_TASK_CORE_SESSIONS` | a session transcript directory; also the `root` the console passes to the `convo-chain` library for the conversation chain | unset means that row reads NOT CHECKED, the chain reads NOT CHECKED, and export and fork refuse with `unavailable` |
+| `BACKGROUND_TASK_CORE_CLAUDE` | the CLI used for plugin actions | falls back to PATH; not found means the plugin panel reads NOT CHECKED |
+| `BACKGROUND_TASK_CORE_IDENTITIES` | a table of `login\|display name\|commit email`, one per line, `#` for comments, saying which identity each repository owner should be committed under | unset means the account-match column reads NOT CHECKED for every repository, which is deliberately not the same as saying they match; no address from this file is ever rendered, only the account name and the verdict |
+| `BACKGROUND_TASK_CORE_CONVO_CACHE` | `data/user-state/convo-cache.json` in the PRIVATE companion; a path inside this source tree, or an unreadable cache, is reported as `summary.cacheError` | unset means the first scan of every page load walks every transcript again; correctness is unaffected, the page is just slower |
+| `BACKGROUND_TASK_CORE_LLMCALL_LEDGER` | the append-only JSONL ledger the LLM-call primitive writes, one line per call | uses `LLMCALL_LEDGER` when set (empty, `0`, `off` or `false` disables it); otherwise `runtime/ledger.jsonl` under the llmcall data directory that the installed llmcall's own `fleet_guards` companion resolver selects. No configured root or missing file is reported as uninitialized or NOT CHECKED, not zero calls |
+| `BACKGROUND_TASK_CORE_LLMCALL_CHAIN` | the file the call view writes a fallback-chain order into | uses `chain.txt` under the same producer runtime root as above. Missing configuration blocks a write. `LLMCALL_CHAIN` still overrides the file's order, and the page reports that override |
+
 Each optional capability reports its own unavailable state. Category writes refuse a path inside this source tree.
 
 ## Initialize and switch

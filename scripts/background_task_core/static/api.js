@@ -81,9 +81,10 @@ let API_READ_EPOCH=0;
 // 正在清点「这一屏的读取发出了哪几路」的集合,由 operations.js 的 readPage 在同步调用读取函数时挂上。
 // 只靠序号区间数的话,两屏同时在刷新时,另一屏读失败的那一路会被算到这一屏头上。
 const API_READ_COLLECTORS=new Set();
-// 按路径登记的「200 加 available:false = 没在查」来源。现在没有这样的来源:别的来源回 available:false
-// 可能是真坏了(工作记录的 work_reader_failed),不能一概当成没在查,所以按路径登记,不按形状猜。
-const API_UNCHECKED_WHEN_UNAVAILABLE=[];
+// 这几路的约定是「200 加 available:false = 没在查」:没设仓库根目录、没设记忆池、没设会话目录
+// (后端的原因里自己写着「未检查」)。别的来源回 available:false 可能是真坏了(工作记录的 work_reader_failed),
+// 不能一概当成没在查,所以按路径登记,不按形状猜。
+const API_UNCHECKED_WHEN_UNAVAILABLE=['/api/repos','/api/mem','/api/convos'];
 function apiError(payload,status){
   const detail=payload?.error;
   const code=detail?.code || payload?.code;
@@ -257,6 +258,7 @@ function countCell(state,n,reason=""){
 // 筛选后的计数只有一种说法:「显示 N / 共 M 项」。
 const matchCount=(n,m,unit="项")=>`显示 ${fmtNum(n)} / 共 ${fmtNum(m)} ${unit}`;
 
+function mtUnset(el,reason){ el.innerHTML=`<div class="mt-note">${esc(reason)}</div>`; }
 
 // 按钮不可用时,提示里先说它是哪个动作,再说为什么不能点。只写原因的话,一排图标按钮
 // 悬停上去句句相同,分不出哪个是暂停、哪个是删除;只写动作名又等于没解释为什么灰着。
@@ -302,5 +304,32 @@ function setIconControl(button,icon,label){
   button.classList.add('icon-only');button.title=label;button.setAttribute('aria-label',label);
   button.innerHTML=`<svg class="ic" aria-hidden="true"><use href="#${esc(icon)}"/></svg>`;
 }
+
+async function maintAct(action,name){
+  const label=action.split(".")[1];
+  // 唯一会删东西的维护动作先确认;不管从哪里调到这里,没点「清理」就不发请求。
+  if(action==="clean.tempgit" && !(await confirmTempgitCleanup())) return;
+  try{
+    const r=await api("/api/maint/act",{method:"POST",body:JSON.stringify({action,name})});
+    if(r.error || r.ok===false) throw new Error(apiError(r,500));
+    // ⚠ 这句原来的兜底是「启用」:凡是不认识的动作后半段一律说「已启用」,
+    // 于是 repo.fetch 报「已启用」、clean.tempgit 也报「已启用」——
+    // **一个报告了它没做的事的成功提示,比不报告更糟**:人会据此以为某个东西被打开了。
+    // 现在只对认识的动作说具体做了什么,不认识的就说动作名本身。
+    const DONE = {archive: "归档", restore: "还原", disable: "禁用", enable: "启用"};
+    const what = DONE[label];
+    toast(r.message || (what ? `${name} 已${what}` : `${name}: ${action} 完成`),'ok');
+  }catch(e){ toast(`${name}: ${e.message}`,"bad"); }
+  finally{
+    // Re-read the affected source even after failure, which may have been partial.
+    if(action.startsWith("repo.")) await loadRepos();
+    else if(action.startsWith("clean.")) await loadSys();
+    else if(action.startsWith("memory.")) await loadMem();
+    else await loadMaint();
+  }
+}
+
+// 自检条。整页的信任前提:下面每一块面板都建立在这些路径读得到之上,
+// 所以它排在最前面,而且读不到时说的是「读不到」,不是一个更小的绿数字。
 
 const toneOf = verdict => verdict && verdict.tone || "warn";

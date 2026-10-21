@@ -7,6 +7,8 @@ document.addEventListener("click", e=>{
   const target=e.target.closest('button') || e.target;
   const launch=e.target.closest('[data-launch]');
   if(launch){e.preventDefault();e.stopImmediatePropagation();openTaskLaunch(launch.dataset.launch);return;}
+  const deletion=e.target.closest('[data-delete]');
+  if(deletion){e.preventDefault();e.stopImmediatePropagation();if(!deletion.disabled) previewDeletion(deletion.dataset);return;}
   // 任务行上的修复、删除和修复进度。这三样长在运行详情的行里,而那一行本身点了会展开明细
   // (下面第二个监听的最后一段):不在这里先接走,点「删除」会同时把明细展开或收起。
   const repairOrder=e.target.closest('[data-repair-order]');
@@ -29,13 +31,34 @@ document.addEventListener("click", e=>{
   const fx = e.target.closest("[data-fix]");
   if(fx){
     const a = fx.dataset.arg;
+    if(fx.dataset.fix === "commitpush"){ showView("repos"); RP_SEL = a; renderRepoList();
+                                         repoPublishPlans([a]); }
     // ⚠ act 的签名是 (names, verb),两个都是位置参数而且顺序反直觉。
     // 写成 act("run", a) 会把动词当成任务名去跑,而那种调用不报错,只会静默什么都不做。
-    if(fx.dataset.fix === "run"){ act([a], "run"); }
+    else if(fx.dataset.fix === "run"){ act([a], "run"); }
     return;
   }
-  // 明细里的「收起」。明细行本身不带 data-name / data-i,不会被下面的行展开处理器接走。
+  // 调用屏。和上面那几段同理,这些挂点必须留在**先注册的**这个监听里:
+  // 明细表的行同时是可点开的,而下面那个监听里有若干 closest 会先把点击接走。
+  // 明细里的「收起」。明细行本身不带 data-name / data-i,不会被下面的行展开处理器接走,
+  // 但放在这里和其余调用屏挂点一起,读的人不用去两个监听里找。
   if(e.target.closest("[data-detail-close]")){ collapseTaskDetail(); return; }
+  if(e.target.closest("[data-call-close]")){ closeCall(); return; }
+  const mv = e.target.closest("[data-mv]");
+  if(mv){ lcMove(Number(mv.dataset.i), mv.dataset.mv === "up" ? -1 : 1); return; }
+  if(target.id === "lmprev"){ LMQ.offset = Math.max(0, LMQ.offset - LMQ.limit); loadCalls(); return; }
+  if(target.id === "lmnext"){ LMQ.offset += LMQ.limit; loadCalls(); return; }
+  const lr = e.target.closest(".l-calls tr.lrow");
+  if(lr){ openCall(Number(lr.dataset.i)); return; }
+  const jp = e.target.closest("[data-jump]");
+  if(jp){ jumpToCalls(Number(jp.dataset.jump)); return; }
+
+  const fa = e.target.closest("[data-fixall]");
+  if(fa){
+    const names = fa.dataset.args.split(String.fromCharCode(1)).filter(Boolean);
+    if(fa.dataset.fixall === "commitpush") repoPublishPlans(names);
+    return;
+  }
   const tk = e.target.closest("[data-task]");
   if(tk){ focusTask(tk.dataset.task); return; }
   const tl = e.target.closest("[data-goto]");
@@ -98,7 +121,7 @@ document.addEventListener("keydown", e=>{
   // [data-jump] 是调用屏里那些「连续降级段」,它们自带 tabindex="0"。
   // 加在这里而不是只给个 tabindex:一个能用 Tab 停上去、按回车却没反应的元素,
   // 比一个根本停不上去的元素更糟 —— 前者看起来是可操作的。
-  const act = e.target.closest("[data-fr]");
+  const act = e.target.closest("[data-fr],[data-jump]");
   if(act){ e.preventDefault(); e.stopPropagation(); act.click(); return; }
   const th = e.target.closest("#tbl th[data-k]");
   if(!th) return;
@@ -125,6 +148,25 @@ document.addEventListener("click",e=>{
     renderBulk(); $("cnt") && render();
     return;
   }
+  const mt=e.target.closest("button[data-mt]");
+  if(mt){ e.stopPropagation(); maintAct(mt.dataset.mt, mt.dataset.name); return; }
+  // 仓库详情里的动作。放在 data-mt 之后,因为 fetch 仍然走那条通用路;
+  // 这三个各有各的回显,所以单独接。
+  const ra=e.target.closest("button[data-rpact]");
+  if(ra){ e.stopPropagation();
+          if(ra.dataset.rpact==="commitpush"){ repoPublishPlans([RP_SEL]); return; }
+          repoAct(ra.dataset.rpact); return; }
+  // 选中一个仓。整行可点 —— 之前整块面板只有每行末尾一个 fetch 按钮可以点,
+  // 而卡片本身看着像能点、实际不能,那种「看起来可点却不可点」比没有交互更糟。
+  // 状态条的一段。再点同一段是取消,所以这个过滤永远有路回到「全部」——
+  // 一个只能进不能出的过滤器,会让人以为仓库列表里的东西不见了。
+  // ⚠ 走 renderRepos() 而不是 renderRepoList():条本身是在 renderRepos() 里拼的,
+  // 只重画列表的话选中那一段的高亮永远不会出现 —— 过滤生效了但看不出在按什么过滤。
+  const rs=e.target.closest("[data-rpstate]");
+  if(rs){ RP_STATE = (RP_STATE===rs.dataset.rpstate) ? "" : rs.dataset.rpstate;
+          renderRepos(); return; }
+  const rr=e.target.closest("[data-rp]");
+  if(rr){ RP_SEL=rr.dataset.rp; renderRepoList(); return; }
   const b=e.target.closest("button[data-act]");
   if(b){ e.stopPropagation(); act([b.dataset.name], b.dataset.act); return; }
   const bl=e.target.closest("button[data-bulk]");
@@ -149,6 +191,10 @@ document.addEventListener("keydown",e=>{
 });
 
 startTimeline();
+startStorage();
+startRepositories();
+startCalls();
+// The full call ledger is loaded when the user opens that workspace.
 $("sidetoggle").addEventListener("click",()=>{
   const n=$("side").classList.toggle("navbar-folded");
   setIconControl($("sidetoggle"),'i-sidebar',n?'展开侧栏':'收起侧栏');
@@ -166,13 +212,18 @@ $('page-export').addEventListener('click',()=>{
   try{ $('page-menu').hidePopover(); }catch(error){}
   exportPage();
 });
+startConvos();
+if(typeof startConversationActions==='function') startConversationActions();
+startResources();
 ConsoleActions.start();
+startDeletionControls();
 startTaskOperations();
 $('launch-close').addEventListener('click',()=>$('launch-dialog').close());
 $('launch-copy').addEventListener('click',()=>copyText($('launch-copy').dataset.command,'启动命令已复制'));
 startWorkPlatform();
 startWorkActions();
 if(typeof startIntegrations==='function') startIntegrations();
+if(typeof startConvoChain==='function') startConvoChain();
 showView(location.hash.slice(1) || VIEWS[0], false);
 // 徽章要在人点进各分区之前就有数:当前这一屏读完后,把徽章还没读过的来源补读一遍。
 loadPageOnce(CURVIEW).then(prefetchBadgeSources);

@@ -2,7 +2,7 @@
 let REVIEW_FILTER="all", REVIEW_QUERY="";
 // 清单的总数和其中判为异常(红)的对象数,侧栏徽章按它定颜色。筛选不改它:徽章说的是全部。
 let REVIEW_TOTALS={objects:0,bad:0};
-const REVIEW_SCOPES={tasks:"任务与产物",failed:"任务失败",outputs:"输出过期",ingest:"运行日志摄入"};
+const REVIEW_SCOPES={tasks:"任务与产物",failed:"任务失败",outputs:"输出过期",ingest:"运行日志摄入",repos:"仓库",storage:"存储与记忆"};
 // 「任务与产物」底下再分三个范围,各对应清单行的一类(attentionRows 的 key)。工作台「要处理」的芯片
 // 按类各一枚,点哪一枚就落在哪一类上:都落在「任务与产物」时,失败的任务、输出过期和摄入混在一张清单里,
 // 芯片上的数和清单的条数哪一个都对不上。一个对象只要带着这一类的一条检查就算在这个范围里。
@@ -17,7 +17,7 @@ function attentionObject(row){
 function reviewInScope(row,scope){
   if(scope==="all") return true;
   if(REVIEW_SCOPE_KEYS[scope]) return row.keys.includes(REVIEW_SCOPE_KEYS[scope]);
-  return row.v===scope;
+  return row.v===scope || scope==="storage" && row.v==="resources";
 }
 // 范围筛选记在本机浏览器里,下次打开还是这个范围;搜索词不记:一个上次留下的搜索词会让清单
 // 悄悄少掉几条,而人回来时不会想到去看搜索框。存不进去(隐私窗口、禁用存储)就照旧从「全部」开始。
@@ -78,9 +78,9 @@ function humanReason(raw){
 // 而那正是这张清单本来要替他省掉的事。
 // ⚠ 只有真的有通路的才给按钮。给一条其实没办法的行配一个按钮,
 // 比不给更糟 —— 它承诺了一个不存在的出口。
-const FIX_LAB = {run:"跑一次"};
+const FIX_LAB = {commitpush:"提交并推送", run:"跑一次"};
 
-// 按钮是带字的「跑一次」,排在「查看详情」前面。点击由 events.js 第一个监听里的 [data-fix] 接走,
+// 按钮是带字的「跑一次」「提交并推送」,排在「查看详情」前面。点击由 events.js 第一个监听里的 [data-fix] 接走,
 // 它排在整行跳转之前,所以点按钮只做这件事、不会顺带把人带去别的页;只读预览里由 ConsoleActions 灰掉并说明原因。
 function fixBtn(fix, arg){
   if(!fix) return "";
@@ -136,7 +136,7 @@ function renderReviewQueue(rows,status){
     +(failed.length?` · <span class="bad">${esc(failed.join("/"))}读取失败</span>`:"");
   box.innerHTML=selected.map(row=>{
     const when=row.info?(row.info.lastRun?`${row.failed?"上次失败":"上次运行"} ${timeTag(row.info.lastRun)}`:"从未运行"):"";
-    const open=row.task?`data-task="${esc(row.task)}"`:`data-goto="${esc(row.v)}"`;
+    const open=row.task?`data-task="${esc(row.task)}"`:row.v==="repos"?`data-review-repo="${esc(row.nm)}"`:`data-goto="${esc(row.v)}"`;
     return `<article class="review-row">
     ${statusBadge(row.sev>=3?'异常':'提示',row.sev>=3?'bad':'warn',undefined,'review-status')}
     <div class="review-object"><h3>${esc(row.title)}</h3>${row.task && row.title!==row.task?`<code class="review-id">${esc(row.task)}</code>`:""}
@@ -163,6 +163,8 @@ function reviewClick(event){
   const scope=event.target.closest("[data-review-filter]");
   if(scope){setReviewFilter(scope.dataset.reviewFilter);return;}
   if(event.target.closest("[data-review-retry]")){load();renderTodo();return;}
+  const repo=event.target.closest("[data-review-repo]");
+  if(repo){showView("repos",true);RP_SEL=repo.dataset.reviewRepo;renderRepoList();return;}
   // 整行都能点,去处和行尾的「查看详情」一样。行里的按钮(跑一次、提交并推送、查看详情)各走各的,
   // 选中了一段文字也不算点击:人可能只是想复制那个任务名。
   const row=event.target.closest("#todod .review-row");
@@ -179,7 +181,7 @@ function openOnlyReview(){
 }
 
 // ── 技术问题与数据来源这一屏的挂点和渲染,由 events.js 调用 ──
-// 产物新鲜度灯板和数据那一行都只画在诊断这一屏上。
+// 数据来源自检、产物新鲜度灯板和数据那一行都只画在诊断这一屏上。
 function startDiagnostics(){
   let stored=null;
   try{ stored=localStorage.getItem(REVIEW_FILTER_KEY); }catch(e){}
@@ -187,10 +189,71 @@ function startDiagnostics(){
   REVIEW_FILTER_SAVED=REVIEW_FILTER;
   $('review-search').addEventListener('input',event=>{REVIEW_QUERY=event.target.value;renderTodo();});
   $("review-filter").addEventListener("change",event=>applyReviewFilter(event.target.value));
+  $("scktog").addEventListener("click",()=>{
+    SCK_OPEN=!sckOpen();
+    try{ localStorage.setItem("tc.sck",SCK_OPEN?"open":"closed"); }catch(e){}
+    syncSckPanel();
+  });
+  syncSckPanel();
   // 第一份数据回来之前就把「读取中」画出来。不画的话格子和清单是几秒钟的空白卡片,
   // 而空白读起来既像「没有问题」也像「坏了」。
   renderTiles();renderTodo();
 }
+let SCK=null;
+// 数据来源自检默认收起:三十行路径是排查时才看的东西,不该天天占着这一屏。
+// 有来源读不到时自动展开,那时它正是要看的东西;人在这一次访问里自己开合过,就听人的。
+// 开合记在本机浏览器里(tc.sck),只在一切正常时生效。读不到的来源同时写在上面那行红字里,收起时也看得见。
+let SCK_OPEN=null;
+function sckTrouble(){ return !!SCK && (!SCK.ok || (SCK.rows||[]).some(r=>r.state==="missing")); }
+function sckOpen(){
+  if(SCK_OPEN!=null) return SCK_OPEN;
+  if(sckTrouble()) return true;
+  try{ return localStorage.getItem("tc.sck")==="open"; }catch(e){ return false; }
+}
+function syncSckPanel(){
+  const open=sckOpen();
+  $("sckd").className=open?"on":"";
+  setIconControl($("scktog"),open?'i-up':'i-down',open?'收起检查':'展开检查');
+  $("scktog").setAttribute("aria-expanded",String(open));
+}
+async function loadSelfcheck(){
+  try{ SCK=await api("/api/selfcheck"); }
+  catch(e){ $("scksum").innerHTML=`<span class="bad">数据来源检查失败：${esc(e.message)}</span>`; return; }
+  renderSelfcheck();
+  updateBadges();
+}
+// 自检行的名字。后端有几行还是英文,和旁边的中文名排在一起像两套东西,这里统一成中文;没列的照用后端的。
+const SCK_LABEL={component_status:"组件运行观察",source_catalog:"组件来源目录",allowlist:"备份白名单",
+  skills:"技能目录",skill_archive:"技能归档区"};
+const SCK_STATE={ok:"正常",stale:"未更新",missing:"读不到",unset:"未配置"};
+function renderSelfcheck(){
+  if(!SCK) return;
+  const label=r=>SCK_LABEL[r.key] || r.title;
+  const c=SCK.counts||{};
+  const parts=[`读到 ${SCK.probed}/${SCK.total}`];
+  if(c.unset) parts.push(`未配 ${c.unset}`);
+  if(c.stale) parts.push(`未更新 ${c.stale}`);
+  const name=key=>{const r=SCK.rows.find(row=>row.key===key);return r?label(r):key;};
+  $("scksum").innerHTML = SCK.ok
+    ? `<span>${parts.join(" · ")}</span>`
+    : `<span class="bad">${SCK.broken.length?("读不到 "+esc(SCK.broken.map(name).join("、"))):"必需来源不可用"}</span>`
+      +` <span>· ${parts.join(" · ")}</span>`;
+  // 路径只进悬停:三十行从左边截断的完整路径,读的人只能看到一串目录名的尾巴。
+  // 不正常的行把原因写出来(为什么读不到),那才是排查时要看的。
+  $("sckd").innerHTML=SCK.rows.map(r=>{
+    const ok=r.state==="ok"||r.state==="stale";
+    const facts=ok
+      ? [r.ageHours!=null?hoursText(r.ageHours)+"前更新":"",r.entries!=null?`${fmtNum(r.entries)} 项`:"",
+         r.state==="stale"?"未更新":""].filter(Boolean).join(" · ")
+      : (SCK_STATE[r.state] || r.state);
+    return `<div class="r" title="${esc(r.path || r.why || "")}">
+    <i class="d ${r.state}"></i>
+    <span>${esc(label(r))}</span>
+    <span class="w">${esc(facts)}</span>${!ok && r.why?`<span class="p">${esc(r.why)}</span>`:""}</div>`;
+  }).join("");
+  syncSckPanel();
+}
+
 // 诊断屏底部「数据」那一块和计划任务的读取警告。数据取自 /api/tasks,所以由 tasks.js 的 render() 调用。
 // 它原来是顶栏的一行字,搬下来以后样式还挂在 #bar 底下,于是名字和值挤成一串
 // 「数据2026-… 观察45d 最后摄入 … 运行日志279921」。现在是一张两列的小表:左边名字,右边值。

@@ -1,25 +1,4 @@
 // Read-only projections of existing component observations. No execution or state store.
-// 机器代号换成人话。原代号仍放在悬停里,排查时照样查得到。不认识的代号按形状猜一个大类,
-// 不把 missing_workload_observer 这种字直接摆给人看。
-const REASON_LABELS={stale:"记录过期",observed:"已观测到",workload_observed:"观测到工作进程",
-  local_process_observed:"观测到本机进程",local_listener_observed:"观测到本机监听端口",
-  missing_workload_observer:"缺少观测器",observer_stale:"观测器记录过期",observer_unknown:"观测器状态未知",
-  missing_observer_timestamp:"观测器没有时间戳",clock_skew:"时间戳在未来",terminated:"进程已退出",
-  disabled:"已停用",query_failed:"查询失败",never_run:"从未运行",skipped_busy:"上次因忙碌跳过",deferred:"已推迟",
-  missing_source:"缺少数据来源",invalid_declaration:"声明无效",missing_check:"缺少检查项",missing_field:"缺少字段",
-  launch_failed:"启动失败",exit_failed:"退出码失败",execution_failed:"执行失败",receipt_missing:"缺少运行回执",
-  listener_missing:"监听端口不在",missing_external_observation:"缺少外部观测"};
-function reasonLabel(code){
-  const raw=String(code ?? "");
-  if(REASON_LABELS[raw]) return REASON_LABELS[raw];
-  if(/^missing_/.test(raw) || /_missing$/.test(raw)) return "缺少必要记录";
-  if(/_failed$/.test(raw)) return "某一步失败";
-  if(/_stale$/.test(raw)) return "记录过期";
-  if(/_observed$/.test(raw)) return "已观测到";
-  return "其他原因";
-}
-
-
 let COMPONENTS = null;
 const PIPELINE_DEFS = {
   backup: {title:"每日备份与整理", name:"SyncClaudeConfig",
@@ -81,7 +60,7 @@ async function loadComponents(){
   try{COMPONENTS=await api("/api/components");}
   // 读失败要和「读到了、没有配置」分得开:资源页的锚点前者画「!」,后者画「—」。
   catch(error){COMPONENTS={available:false,reason:error.message,tasks:[],readFailed:true};}
-  renderPipelines();
+  renderPipelines(); renderCatalog();
   renderPlatformSignals();
 }
 

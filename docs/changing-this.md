@@ -265,13 +265,8 @@ Tabler 的布局类不要用在 `<table>/<tr>/<td>/<th>` 上。
 
 按顺序。标星的是**漏了不会报错**的。
 
-0. 先问这一屏是不是控制台核心要的。2026-10 把模型调用、会话、仓库、记忆、Codex 存储、
-   系统资源、技能与插件、配置自检这些面板整块删了:控制台只管计划任务、运行历史与健康、
-   工作记录。和这些无关的面板不要加回来。
-1. 后端读侧放进八个模块里归属的那一个(见 `README.md` 的模块表),纯读、不 import 被观察的那个仓。
-   **库依赖不算被观察的仓**:`llmcall`、`fleet_guards` 是 `pyproject.toml` 里钉了版本的依赖,
-   按固定名在进程内导入;被观察的生产者(reminder 的 work-feed、SMITH 目录)只走它们的 CLI 或快照。
-   判据是控制台借的是对方的**规则**(库),还是读的是对方的**产物**(生产者)。
+0. Keep task authority in the core and optional capabilities in their component providers. Simplifying internals must preserve the existing controls, content and exports unless the user explicitly retires them.
+1. Register component reads in `integrations.ADAPTERS`; parameterized reads and component actions belong in `component_routes.py`. Load optional providers on request. Library dependencies (`llmcall`, `fleet_guards`, `convo_chain`) supply rules; observed producers supply their CLI or snapshot data.
 2. `server.py`:GET 路由、必要时 POST 路由与它的 `Refused` 处理。
    **每条 `/api/` 分支都要 `_authed()`**。
 3. 前端是模块化的,不再是一个 `console.html` 里的大脚本:

@@ -8,7 +8,7 @@ const ConsoleActions={
   reason:'只读预览，请用正式控制台',
   // 只在本页改草稿的几样也在这里:调用顺序的上下移、放弃修改,清理列表的全选和清空。
   // 它们自己不发请求,可在只读预览里点了只会攒出一份永远存不下来的草稿。
-  selector:'[data-work-action],[data-work-stop],[data-act],[data-task-repair],[data-task-delete],[data-fix],[data-bulk]:not([data-bulk="clear"]),#task-delete-preview,#task-delete-confirm,#repair-submit',
+  selector:'[data-work-action],[data-work-stop],[data-act],[data-task-repair],[data-task-delete],[data-mt],[data-delete],[data-rpact]:not([data-rpact="copy"]):not([data-rpact="web"]),[data-fix],[data-fixall],[data-bulk]:not([data-bulk="clear"]),[data-ctfork],[data-cvdelete],[data-cvrename],[data-cvquick],[data-cvquick-chain],[data-cvinline-save],[data-cvinline-ai],[data-cvmove],[data-cvdrag],[data-mv],#cv-submit,#cv-suggest,#lcsave,#lcreset,#cxall,#cxnone,#cxdel,#delete-confirm,#task-delete-preview,#task-delete-confirm,#repair-submit',
   // 页面自己的禁用原因走这里:只读预览的原因压过它,因为那时按钮无论如何都点不了。
   gate(button,reason){setDisabled(button,this.readOnly?this.reason:reason,this.readOnly?'console-mode':undefined);},
   allowWrite(){if(!this.readOnly) return true;toast(this.reason,'bad');return false;},
@@ -121,10 +121,13 @@ function syncStickyOffsets(){
 function operationLabel(path,body){
   // 删除任务的预览排在通用的 /plan 之前:操作记录里要看得出这是一次删除,而不只是「某个预览」。
   if(path==='/api/task/delete/plan') return '准备删除预览'+(body.name?' · '+body.name:'');
-  if(path.endsWith('/plan')) return '准备操作预览';
+  if(path.endsWith('/plan') || path==='/api/convo/delete-plan') return '准备操作预览';
   if(path==='/api/work/action' && body.action_id==='complete') return '标记完成';
-  const labels={run:'运行一次',stop:'停止本次',enable:'启用定时',disable:'停用定时'};
-  const endpoints={'/api/work/action':'提交工作','/api/work/stop':'停止工作',
+  const labels={run:'运行一次',stop:'停止本次',enable:'启用定时',disable:'停用定时',
+    'skill.archive':'归档技能','skill.restore':'恢复技能','plugin.enable':'启用插件','plugin.disable':'禁用插件',
+    'memory.archive':'归档记忆','memory.restore':'恢复记忆','clean.tempgit':'清理临时目录',
+    'repo.fetch':'获取远程更新','repo.reveal':'打开目录','repo.status':'查看改动','repo.commitpush':'提交并推送'};
+  const endpoints={'/api/codex/delete':'删除所选转录','/api/maintenance/delete':'删除或卸载','/api/llmcall/chain':'保存调用顺序','/api/work/action':'提交工作','/api/work/stop':'停止工作','/api/convo/fork':'分叉会话','/api/convo/rename':'重命名会话','/api/convo/suggest-title':'生成名称建议','/api/convo/move':'迁移会话文件','/api/convo/delete':'永久删除会话',
     '/api/task/delete/apply':'删除任务','/api/task/repair/preview':'读取任务事实','/api/task/repair':'提交修复工单'};
   return (labels[body.action || body.verb] || endpoints[path] || '执行操作')+(body.name?' · '+body.name:'');
 }
@@ -153,8 +156,14 @@ function operationOutcome(path,body,reply,error){
     return {tone:'warn',message:result.message || messages[result.status] || '请求已受理，执行结果尚未确认'};
   }
   if(path==='/api/task/delete/plan' && result?.applicable===false) return {tone:'warn',message:'预览已就绪，但有不能删除的原因'};
-  if(path.endsWith('/plan')) return {tone:'ok',message:'预览已就绪，等待确认'};
+  if(path.endsWith('/plan') || path==='/api/convo/delete-plan') return {tone:'ok',message:'预览已就绪，等待确认'};
   if(path==='/api/task/repair/preview') return {tone:'ok',message:result?.existing?'已读取任务事实；这个任务已有修复工单':'已读取任务事实，尚未提交'};
+  if(path==='/api/convo/fork') return {tone:'ok',message:'已新建会话 '+String(result?.newId || '').slice(0,8)+'，原会话未改动'};
+  if(path==='/api/convo/delete') return {tone:result.deleted===true?'ok':'warn',message:result.deleted===true?'会话及关联文件已永久删除':'删除结果尚未确认'};
+  if(path==='/api/convo/rename') return {tone:'ok',message:'已保存会话名称'};
+  // 名称建议照理以 inspect 发出,不进这张表;万一进了,也只说「建议」,不说成一次保存。
+  if(path==='/api/convo/suggest-title') return {tone:'ok',message:'已生成名称建议，尚未保存'};
+  if(path==='/api/convo/move') return {tone:'ok',message:result.unchanged?'会话已在目标目录':'已迁移会话文件和关联记录'};
   return {tone:'ok',message:result?.message || (result?.deleted!=null?`已删除 ${result.deleted} 项`:'操作已完成')};
 }
 const taskStateLabel=state=>({Ready:'已启用',Disabled:'已停用',Running:'正在运行',Queued:'已排队'}[state] || '状态未确认');
@@ -359,4 +368,59 @@ function askConfirm({title,body='',items=[],more='',confirmLabel='确认',danger
     // 危险的确认停在「取消」上:手滑多按一下 Enter 不能把东西删掉。
     (danger?$('confirm-cancel'):ok).focus();
   });
+}
+
+// ================= 技能与插件的删除 =================================================
+let DELETE_PLAN=null, DELETE_BUSY=false;
+async function previewDeletion(data){
+  if(!ConsoleActions.allowWrite() || DELETE_BUSY) return;
+  DELETE_BUSY=true;DELETE_PLAN=null;
+  $('delete-title').textContent=data.name+' · '+(data.delete==='plugin'?'卸载预览':'删除预览');
+  $('delete-body').textContent='正在核对目标和删除范围…';$('delete-state').textContent='';
+  $('delete-name').value='';$('delete-expected').hidden=true;$('delete-expected').innerHTML='';
+  syncDeleteConfirm();$('delete-dialog').showModal();
+  try{
+    const plan=await api('/api/maintenance/plan',{method:'POST',body:JSON.stringify({kind:data.delete,name:data.name,location:data.location})});
+    if(!$('delete-dialog').open) return;
+    DELETE_PLAN=plan;
+    $('delete-body').innerHTML=`<p>${esc(plan.message)}</p><dl class="launch-facts"><dt>名称</dt><dd>${esc(plan.name)}</dd><dt>位置</dt><dd>${esc(plan.location)}</dd><dt>路径</dt><dd><code>${esc(plan.path || '由插件管理器管理')}</code></dd>${plan.files!=null?`<dt>范围</dt><dd>${plan.files} 个文件，${plan.links} 个联接，${kb(plan.bytes)}（不含联接目标）</dd>`:''}${plan.target?`<dt>保留的目标</dt><dd><code>${esc(plan.target)}</code></dd>`:''}</dl><p>预览 5 分钟内有效。内容发生变化后必须重新预览。</p>`;
+    $('delete-confirm').textContent=plan.kind==='plugin'?'确认卸载':'确认删除';
+    $('delete-expected').innerHTML=confirmNameHtml(plan.name);$('delete-expected').hidden=false;
+  }catch(error){$('delete-state').textContent=error.message;}
+  finally{
+    DELETE_BUSY=false;syncDeleteConfirm();
+    // 预览到了就把光标放进名称框,省得再去点一下;人已经点到别处(比如复制按钮)就不抢。
+    const active=document.activeElement;
+    if(DELETE_PLAN && $('delete-dialog').open && (!active || active===$('delete-cancel') || active===$('delete-dialog'))) $('delete-name').focus();
+  }
+}
+function deleteConfirmReason(){
+  if(DELETE_BUSY) return DELETE_PLAN?'正在执行':'正在读取删除范围';
+  if(!DELETE_PLAN) return '没有可用的删除预览，请关闭后重新打开';
+  return nameMismatchReason($('delete-name').value,DELETE_PLAN.name);
+}
+function syncDeleteConfirm(){
+  const reason=deleteConfirmReason();
+  ConsoleActions.gate($('delete-confirm'),reason);
+  $('delete-hint').textContent=DELETE_PLAN && !reason?'名称一致，可以确认':reason;
+  syncDialogDismiss($('delete-dialog'),DELETE_BUSY,$('delete-name').value!=='');
+}
+// 确认按钮是表单的提交按钮:点它和在名称框里按 Enter 都走这里。按钮灰着时浏览器不会隐式提交,
+// 这里再按同样的条件核一遍,因为提交也可能从别的路径来。
+async function confirmDeletion(){
+  if(DELETE_BUSY || !DELETE_PLAN || $('delete-name').value!==DELETE_PLAN.name || !ConsoleActions.allowWrite()) return;
+  const plan=DELETE_PLAN;DELETE_BUSY=true;syncDeleteConfirm();$('delete-state').textContent='正在执行，请勿重复提交…';
+  try{
+    const result=await api('/api/maintenance/delete',{method:'POST',body:JSON.stringify({token:plan.token})});
+    $('delete-state').textContent=result.message || result.error || '未收到结果说明';
+    toast($('delete-state').textContent,result.ok?'ok':'bad');
+    if(result.ok) $('delete-dialog').close();
+  }catch(error){$('delete-state').textContent=error.message;}
+  finally{DELETE_PLAN=null;DELETE_BUSY=false;syncDeleteConfirm();await loadMaint();}
+}
+function startDeletionControls(){
+  $('delete-name').addEventListener('input',syncDeleteConfirm);
+  $('delete-cancel').addEventListener('click',()=>{if(!DELETE_BUSY){DELETE_PLAN=null;$('delete-dialog').close();}});
+  $('delete-dialog').addEventListener('cancel',event=>{if(DELETE_BUSY) event.preventDefault();else DELETE_PLAN=null;});
+  $('delete-form').addEventListener('submit',event=>{event.preventDefault();confirmDeletion();});
 }

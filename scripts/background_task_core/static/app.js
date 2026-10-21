@@ -3,7 +3,16 @@ const CONSOLE_MODULES = [
   "api.js",
   "actions.js",
   "panels/tasks.js",
+  "panels/skills.js",
+  "panels/plugins.js",
   "panels/integrations.js",
+  "panels/codex-storage.js",
+  "panels/repositories.js",
+  "panels/storage.js",
+  "panels/conversations.js",
+  "panels/conversation-actions.js",
+  "panels/convchain.js",
+  "panels/calls.js",
   "panels/overview.js",
   "panels/pipelines.js",
   "panels/review.js",
@@ -18,7 +27,10 @@ const CONSOLE_MODULES = [
 // These panels have guarded entrypoints and no core initialization side effects.
 // The remaining classic modules still form the core's shared dependency graph.
 const OPTIONAL_PANELS = {
-  'panels/integrations.js': 'integration-list'
+  'panels/plugins.js': 'mt-plugins',
+  'panels/integrations.js': 'integration-list',
+  'panels/convchain.js': 'chbox',
+  'panels/conversation-actions.js': 'cv-action-error'
 };
 (async function startConsole(){
   const failure = document.getElementById("module-error");

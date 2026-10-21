@@ -1,12 +1,23 @@
 // Shared page controls use existing loaders and in-memory snapshots only.
-// 正在刷新的是哪几屏。按屏记,不是一个全局的「忙」:一屏在刷新时,别的屏的刷新按钮照样能点。
+// 正在刷新的是哪几屏。按屏记,不是一个全局的「忙」:在代码仓库点了刷新(扫一遍要十几秒)再切到模型调用,
+// 模型调用那一屏没在读,它的刷新按钮就该能点,不能灰着说「正在读取这一页」。
 const PAGE_REFRESHING_VIEWS=new Set();
 // Each panel owns its filters. This shared control only calls their existing renderers.
 function resetFilters(scope){
   const clear=ids=>ids.forEach(id=>$(id).value='');
   if(scope==='tasks'){clear(['q','cat','task-verdict']);TASK_STATUS='';$('hideoff').checked=false;if(DATA) render();else syncTaskStatus(null);}
+  if(scope==='repos'){clear(['rpq','rpacc','rpkind','rpvis','rpissue']);RP_STATE='';RP_ISSUE='';renderRepos();}
+  // 资源页只有一个搜索框,同时筛技能、插件和资源目录;它旁边的清除按钮清整页。
+  // 两块各自的清除按钮只清自己那几个下拉,不动共用的搜索词:在一块里点清除,另一块的结果不该跟着变。
+  if(scope==='catalog'||scope==='resources'){CATALOG_KIND='';CATALOG_CLIENT='';CATALOG_STATE='';HEALTH_STATE='';}
+  if(scope==='runtime'||scope==='resources'){clear(['runtime-state']);RUNTIME_STATE='';}
+  if(scope==='resources'){clear(['resources-search']);RUNTIME_QUERY='';CATALOG_QUERY='';}
+  if(scope==='catalog'||scope==='resources') renderCatalog();
+  if(scope==='runtime'||scope==='resources'){renderSkills();renderClientPlugins();}
+  if(scope==='convos'){clear(['cv-search']);CV_QUERY='';CV_HUMAN_ONLY=false;loadConvos();}
+  if(scope==='llm'){clearTimeout(LMQT);clear(['lmq','lmprov','lmcaller','lmok']);Object.assign(LMQ,{q:'',provider:'',caller:'',ok:'',offset:0});LMOPEN=null;loadCalls();}
   if(scope==='diagnostics'){clear(['review-search']);REVIEW_QUERY='';applyReviewFilter('all');}
-  if(scope==='pipelines'){PIPELINE_QUERY='';clear(['pipeline-task-search','pipeline-verdict']);renderPipelines();}
+  if(scope==='pipelines'){clear(['pipeline-task-search','pipeline-verdict']);renderPipelines();}
   if(scope==='work') setWorkFilters();
   if(scope==='automations'){AUTO_QUERY='';AUTO_STATE='';clear(['automation-search','automation-state','automation-verdict']);renderAutomations();}
   syncResetFilters();
@@ -15,15 +26,21 @@ function resetFilters(scope){
 // 才跟上,而按钮该在敲下第一个字时就亮。没有控件的筛选(仓库状态条、只看人类消息)读状态变量。
 const RESET_FILTER_COUNTS={
   tasks:value=>[value('q'),value('cat'),value('task-verdict'),TASK_STATUS,!!$('hideoff')?.checked],
+  repos:value=>[value('rpq'),value('rpacc'),value('rpkind'),value('rpvis'),value('rpissue'),RP_STATE],
+  catalog:()=>[CATALOG_KIND,CATALOG_CLIENT,CATALOG_STATE,HEALTH_STATE],
+  runtime:value=>[value('runtime-state')],
+  resources:value=>[value('resources-search'),value('runtime-state'),CATALOG_KIND,CATALOG_CLIENT,CATALOG_STATE,HEALTH_STATE],
+  convos:value=>[value('cv-search'),CV_HUMAN_ONLY],
+  llm:value=>[value('lmq'),value('lmprov'),value('lmcaller'),value('lmok')],
   diagnostics:value=>[value('review-search'),value('review-filter')!=='all' && value('review-filter')],
-  pipelines:value=>[PIPELINE_QUERY,value('pipeline-task-search'),value('pipeline-verdict')],
+  pipelines:value=>[value('pipeline-task-search'),value('pipeline-verdict')],
   // 工作记录的默认状态随类别变:「全部记录」默认看全部状态,其余默认只看未结束的。
   work:()=>[WORK_ROLE!=='work',WORK_STATE!==(WORK_ROLE==='all'?'':'unfinished'),WORK_SOURCE,WORK_QUERY],
   automations:value=>[AUTO_QUERY,AUTO_STATE,value('automation-verdict')]
 };
 // 清除之后按钮随即变灰、焦点跟着丢掉,所以把焦点交给这个范围的搜索框,接着就能输入新的条件。
 // 两块各自的清除按钮旁边没有搜索框,焦点交给它那一块的第一个下拉,不跳回页顶。
-const RESET_FILTER_SEARCH={tasks:'q',
+const RESET_FILTER_SEARCH={tasks:'q',repos:'rpq',catalog:'catalog-kind',runtime:'runtime-state',resources:'resources-search',convos:'cv-search',llm:'lmq',
   diagnostics:'review-search',pipelines:'pipeline-task-search',work:'work-search',automations:'automation-search'};
 function activeFilterCount(scope){
   const value=id=>String($(id)?.value || '').trim();
@@ -43,8 +60,11 @@ const PAGE_READS={
   overview:[loadWork,load,loadComponents],
   work:[loadWork],automations:[load,loadRepairs],
   integrations:[()=>typeof loadIntegrations==='function'?loadIntegrations():Promise.reject(new Error('接入面板加载失败'))],
-  diagnostics:[load,loadComponents],
-  pipelines:[loadComponents,load,loadRepairs],tasks:[load,loadRepairs]
+  resources:[loadComponents,loadMaint,loadMem],
+  diagnostics:[load,loadComponents,loadSelfcheck,loadRepos,loadSys,loadMem,loadConvos],
+  pipelines:[loadComponents,load,loadRepairs],tasks:[load,loadRepairs],repos:[loadRepos],
+  storage:[loadComponents,loadMaint,loadMem,loadSys,loadCodex,loadCxList],
+  convos:[loadConvos,()=>typeof reloadConvoChain==='function'?reloadConvoChain():undefined],llm:[loadLLM]
 };
 const PAGE_INITIAL_READS=new Map();
 // 每一屏上次读完的时刻,和那一次的清点结果(readPage 的 failed / unchecked / text)。
@@ -123,13 +143,19 @@ function pageSnapshot(view){
     // 导出的 filters 要和屏幕上实际在用的筛选一一对上,少记一个,导出的列表就解释不了。
     automations:()=>({tasks:DATA,repairs:REPAIRS,filters:{query:AUTO_QUERY,state:AUTO_STATE,verdict:value('automation-verdict')}}),
     integrations:()=>({integrations:typeof INTEGRATIONS==='undefined'?null:INTEGRATIONS}),
-    diagnostics:()=>({tasks:DATA,components:COMPONENTS}),
-    pipelines:()=>({components:COMPONENTS,tasks:DATA,repairs:REPAIRS,filters:{query:value('pipeline-task-search'),verdict:value('pipeline-verdict'),issueQuery:PIPELINE_QUERY}}),
+    resources:()=>({components:catalogComponents(),maintenance:MAINT,memory:MEM,
+      filters:{query:RUNTIME_QUERY,runtimeState:RUNTIME_STATE,runtimeSort:RUNTIME_SORT,catalogKind:CATALOG_KIND,catalogClient:CATALOG_CLIENT,catalogState:CATALOG_STATE,healthState:HEALTH_STATE}}),
+    diagnostics:()=>({tasks:DATA,components:COMPONENTS,selfcheck:SCK,repositories:REPOS,system:SYS,memory:MEM}),
+    pipelines:()=>({components:COMPONENTS,tasks:DATA,repairs:REPAIRS,filters:{query:value('pipeline-task-search'),verdict:value('pipeline-verdict')}}),
     tasks:()=>({tasks:DATA,repairs:REPAIRS,visibleTaskNames:VIEW.map(row=>row.name),
       filters:{query:value('q'),category:value('cat'),verdict:value('task-verdict'),status:TASK_STATUS,hideDisabled:!!$('hideoff')?.checked}}),
+    repos:()=>({repositories:REPOS,filters:{query:value('rpq'),account:value('rpacc'),kind:value('rpkind'),visibility:value('rpvis'),state:RP_STATE,issue:RP_ISSUE}}),
+    storage:()=>({components:catalogComponents(),maintenance:MAINT,memory:MEM,system:SYS,codex:CODEX,cleanup:CXL,cleanupLibrary:value('cxwhich')}),
+    convos:()=>({conversations:CONVOS,filters:{query:CV_QUERY,humanOnly:CV_HUMAN_ONLY,sort:CV_SORT},chain:typeof convoChainSnapshot==='function'?convoChainSnapshot():null}),
+    llm:()=>({usage:LLM,calls:LMROWS,total:LMTOTAL,query:{...LMQ}})
   };
   return {schemaVersion:1,view,exportedAt:new Date().toISOString(),scope:'loaded_snapshot',
-    limitation:'loaded_data',
+    limitation:view==='llm'?'calls_current_page':view==='convos'?'server_delivered_records':'loaded_data',
     reads:[...API_READS.values()],data:snapshots[view]()};
 }
 function exportPage(){
