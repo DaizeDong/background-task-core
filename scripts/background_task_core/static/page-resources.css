@@ -8,6 +8,17 @@
 #resources .resources-anchors button:not(:disabled):hover{text-decoration:underline;background:none;color:var(--cyan)}
 #resources .resources-anchors .count-cell{margin-left:2px;color:var(--dim);font-size:var(--fs-meta)}
 #resources .runtime-section:has(#mt-skills),#resources .runtime-section:has(#mt-plugins),#resources #catalog-box,#resources #catalog-health{scroll-margin-top:120px}
+#resources .runtime-section{border:0;border-radius:0;overflow:visible;background:none}
+#resources .runtime-section>h3{min-height:32px;padding:4px 0;background:none;border:0}
+#resources .runtime-section>.mt-col{padding:0}
+#resources .mt-grid{gap:var(--space-4)}
+#resources .mt-grid>.runtime-section+.runtime-section{border-left:1px solid var(--line2);padding-left:var(--space-4)}
+@media(max-width:767px){
+  #resources .resources-toolbar{display:grid;grid-template-columns:minmax(0,1fr) auto}
+  #resources .resources-toolbar input{width:100%}
+  #resources .resources-anchors{grid-column:1 / -1;margin-left:0}
+  #resources .mt-grid>.runtime-section+.runtime-section{border-left:0;border-top:1px solid var(--line2);padding:var(--space-2) 0 0}
+}
 
 /* 技能与插件、记忆、目录、检查结果都不再有内部滚动框:页面本身有的是地方,
    一个截在 320px / 440px 里的列表要人去找第二根滚动条,而且看不出下面还有没有东西。
@@ -70,7 +81,7 @@
 #resources .coverage-chip{display:inline-flex}
 #resources .reason-tag{white-space:nowrap}
 
-/* 窄屏:目录和检查结果改成一行一张卡片,每格前面写上列名。名字可以折行。 */
+/* 窄屏按记录堆叠,用分隔线区分记录,字段保留列名。 */
 @container workspace (max-width:37.5rem){
   #resources .mt-r .n{white-space:normal;overflow-wrap:anywhere}
   #resources #mt-skills:has(.skill-budget[open]) .skill-row{grid-template-columns:minmax(0,1fr) auto;row-gap:2px}
@@ -81,7 +92,7 @@
   #resources .catalog-table thead,#resources .health-table thead,#integrations .integration-table thead{display:none}
   #resources .catalog-table tbody,#resources .health-table tbody,#integrations .integration-table tbody,
   #resources .catalog-table tr,#resources .health-table tr,#integrations .integration-table tr{display:block}
-  #resources .catalog-table tr,#resources .health-table tr,#integrations .integration-table tr{box-sizing:border-box;max-width:100%;margin:0 0 8px;padding:6px 10px;border:1px solid var(--line);border-radius:var(--card-radius)}
+  #resources .catalog-table tr,#resources .health-table tr,#integrations .integration-table tr{box-sizing:border-box;max-width:100%;margin:0;padding:8px 0;border:0;border-bottom:1px solid var(--line2);border-radius:0}
   #resources .catalog-table th,#resources .catalog-table td,#resources .health-table th,#resources .health-table td,
   #integrations .integration-table th,#integrations .integration-table td{display:block;width:auto;padding:3px 0;border:0;text-align:left}
   #resources .catalog-table td[data-label]::before,#resources .health-table td[data-label]::before,
@@ -168,7 +179,7 @@
 /* 详情里的五个动作带字;窄到 30rem 以下只剩图标。主按钮(提交并推送)是实心的。 */
 #repos .rp-act{display:inline-flex;align-items:center;gap:5px;min-height:30px;padding:3px 10px;font-size:var(--fs-meta)}
 #repos .rp-act .ic{margin:0}
-#repos .rp-changes-list{max-height:260px;margin-top:8px;padding:6px 8px;border:1px solid var(--line2);border-radius:var(--card-radius)}
+#repos .rp-changes-list{max-height:260px;margin-top:8px;padding:6px 0;border:0;border-top:1px solid var(--line2);border-radius:0}
 #repos .rp-changes-box{margin-top:8px}
 #repos .rp-changes-note{margin:8px 0 0;color:var(--dim);font-size:var(--fs-meta)}
 #repos .rp-back{display:none}

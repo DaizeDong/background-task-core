@@ -22,15 +22,15 @@
 .ch-head .ch-more{display:inline-flex;align-items:center;gap:4px;margin-left:auto}
 .ch-head .ch-more>.ic{width:15px;height:15px}
 .ch-more-menu .menu-facts{line-height:1.6}
-.ch-split{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);gap:1px;
-  background:var(--line2);border:1px solid var(--line2);height:max(320px, calc(100vh - 260px));overflow:hidden}
+.ch-split{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);gap:var(--space-3);
+  height:max(320px, calc(100vh - 260px));overflow:hidden}
 /* ⚠ contain:strict 和行上的 content-visibility 是量出来的:一条上万节点的链展开一轮几百步后,
    右栏换内容会触发整个网格连同左栏重新排版,每按一次 j 都要几十毫秒。两栏各自隔离之后
    只重排自己。strict 含尺寸隔离,所以两栏的高度必须来自外面的网格;
    窄屏改成上下排、高度跟内容走时要把它放松,否则两栏会塌成零高。 */
 .ch-list{background:var(--panel);overflow:auto;overflow-anchor:none;min-width:0;min-height:0;outline:none;contain:strict}
 .ch-list:focus-visible{box-shadow:inset 0 0 0 2px var(--cyan)}
-.ch-side{background:var(--panel);overflow:auto;min-width:0;min-height:0;padding:0 10px 10px;contain:strict}
+.ch-side{background:var(--panel);overflow:auto;min-width:0;min-height:0;padding:0 0 10px 12px;border-left:1px solid var(--line2);contain:strict}
 .ch-short .ch-split{height:auto;min-height:140px}
 .ch-short .ch-list,.ch-short .ch-side{contain:layout paint;max-height:60vh}
 /* 「导出与新建会话」是工作区不是菜单:默认展开,标题按小节标题画,只留开合的三角。 */
@@ -41,7 +41,7 @@
   /* 高度跟内容走、封顶 55vh:两轮的短会话不该在手机上留出半屏空白。 */
   .ch-list{height:auto;min-height:120px;max-height:45vh;contain:layout paint}
   .ch-t .rp{grid-column:2 / -1}
-  .ch-side{contain:none}
+  .ch-side{contain:none;border-left:0;border-top:1px solid var(--line2);padding:0 0 10px}
   .ch-t{grid-template-columns:12px minmax(0,auto) minmax(0,1fr) auto}
   .ch-t .ts{display:none}
 }
@@ -116,7 +116,7 @@
 .ch-row{display:flex;gap:6px;flex-wrap:wrap;align-items:center;min-width:0}
 .ch-row code,.ch-det code,.ch-fres code{font-family:var(--mono);overflow-wrap:anywhere}
 .ch-row label{display:inline-flex;gap:4px;align-items:center;cursor:pointer}
-.ch-fres{border:1px solid var(--line);background:var(--panel2);padding:6px 8px;
+.ch-fres{border-left:2px solid var(--line);padding:6px 8px;
   display:flex;flex-direction:column;gap:4px;min-width:0}
 .ch-fres.bad{border-color:var(--bad);color:var(--bad)}
 .ch-det{padding-top:8px;font-size:var(--fs-meta);min-width:0}
@@ -128,9 +128,9 @@
 /* 盒子尺寸(圆角、高度、内距、字号)用 workbench.css 里统一的芯片规则,这里只管颜色和描边。 */
 .ch-flags span{border:1px solid var(--line);color:var(--dim)}
 .ch-pre{white-space:pre-wrap;overflow-wrap:anywhere;font-family:var(--mono);font-size:var(--fs-meta);
-  color:var(--ink);background:var(--panel2);border:1px solid var(--line2);padding:6px 8px;margin:2px 0 6px;
+  color:var(--ink);background:none;border:0;padding:6px 0;margin:2px 0 6px;
   max-height:60vh;overflow:auto}
-.ch-pre.bad{border-color:var(--bad)}
+.ch-pre.bad{border-left:2px solid var(--bad);padding-left:8px}
 /* 每段原文右上角的「复制」。按钮压在原文的右上角,原文右边留出它的宽度,第一行字不被盖住。 */
 .ch-prew{position:relative;min-width:0}
 .ch-prew .ch-copy{position:absolute;top:4px;right:4px;z-index:1;display:inline-flex;align-items:center;gap:3px;background:var(--panel)}

@@ -44,7 +44,7 @@
 .cv-handle[draggable="true"]{cursor:grab}
 .cv-handle[draggable="true"]:active{cursor:grabbing}
 .cv-menu .cv-location{font-size:var(--fs-meta)}
-.cv-detail-body{display:flex;flex-wrap:wrap;align-items:center;gap:6px 16px;padding:8px 10px;border-left:2px solid var(--line);background:var(--panel2);color:var(--dim);font-size:var(--fs-meta);min-width:0;overflow-wrap:anywhere}
+.cv-detail-body{display:flex;flex-wrap:wrap;align-items:center;gap:6px 16px;padding:8px 0;color:var(--dim);font-size:var(--fs-meta);min-width:0;overflow-wrap:anywhere}
 .cv-detail-body .cv-location{flex:1 0 100%}
 .cv-detail-body button{flex:none}
 #cvbox summary{cursor:pointer}

@@ -46,10 +46,8 @@ input::placeholder{color:var(--dim);opacity:1}
 input[type=search]{background:var(--panel);color:var(--ink);border:1px solid var(--line);padding:4px 8px;min-width:0}
 button:focus-visible,a:focus-visible,summary:focus-visible,input:focus-visible,select:focus-visible,[tabindex]:focus-visible{outline:2px solid var(--cyan);outline-offset:2px}
 summary{cursor:pointer}
-.module-section{min-width:0;margin:0 0 var(--section-gap)}
-.module-section>.card{margin-bottom:0}
 section[data-view]{gap:var(--section-gap)}
-section[data-view]>.card,section[data-view]>.module-section{margin-bottom:0}
+section[data-view]>.card{margin-bottom:0}
 .review-caption{font-size:var(--fs-meta);color:var(--dim);margin:0;padding:6px 12px}
 .status-chip{display:inline-flex;align-items:center;justify-content:center;gap:5px;min-height:24px;padding:2px 7px;border:1px solid transparent;border-radius:4px;font-size:var(--fs-meta);font-weight:500;line-height:1.4;white-space:nowrap;vertical-align:middle;color:var(--dim);background:var(--idleb)}
 .status-chip.ok{color:var(--ok);background:var(--okb)}
@@ -72,13 +70,13 @@ section[data-view]>.card,section[data-view]>.module-section{margin-bottom:0}
 #overview-pipelines>button{border:0;border-radius:0;background:none;display:flex;text-align:left;gap:10px;justify-content:space-between;align-items:center;padding:12px;color:var(--ink)}
 #overview-pipelines>button+button{border-left:1px solid var(--line2)}
 #overview-pipelines strong{font-size:var(--fs-body)}
-#sck{margin-bottom:8px;padding:8px 12px;border-radius:4px;flex-wrap:wrap;gap:8px}
+#sck{margin-bottom:8px;padding:8px 12px;border:0;border-bottom:1px solid var(--line2);border-radius:0;flex-wrap:wrap;gap:8px}
 #sck .lab{font-weight:600}#sck .sum{font-size:var(--fs-meta)}
 #sckd{font-size:var(--fs-meta);max-height:180px;overflow:auto;margin-bottom:12px}
 .task-summary{display:flex;gap:var(--space-2);flex-wrap:wrap;margin:0 0 var(--section-gap);color:var(--dim)}
 .task-summary b{margin-left:4px;color:var(--ink);font-variant-numeric:tabular-nums}
 .task-summary b.bad,.task-summary b.warn{color:inherit}
-#tools{padding:var(--space-2);margin-bottom:var(--section-gap);gap:var(--space-2);border:1px solid var(--line);border-radius:var(--card-radius)}
+#tools{padding:var(--space-2) 0;margin-bottom:var(--section-gap);gap:var(--space-2);border:0;background:none}
 #tools #q{flex:1 1 18rem;min-width:0;width:0}
 table.g td,table.g th{padding:8px 10px;vertical-align:middle}
 #tbl th{padding:8px 10px}
@@ -106,7 +104,7 @@ table.g th.num{text-align:right}
 .catalog-heading h2{font-size:var(--fs-lead);margin:0}.catalog-heading span{color:var(--dim);font-size:var(--fs-meta)}
 .health-heading{margin-top:16px;padding-top:12px;border-top:1px solid var(--line)}
 .catalog-tools{display:flex;gap:var(--space-2);align-items:center;flex-wrap:wrap;margin:var(--space-3) 0;min-width:0}
-.catalog-tools:has(input,select,button),.rp-filters{padding:var(--space-2);background:var(--panel2);border:1px solid var(--line);border-radius:var(--card-radius)}
+.catalog-tools:has(input,select,button),.rp-filters{padding:0;background:none;border:0}
 .card-header .catalog-tools{margin:0;padding:0;background:none;border:0}
 .catalog-tools input{flex:1;min-width:180px}
 #catalog-count,#health-count{font-size:var(--fs-meta);color:var(--dim)}
@@ -125,10 +123,13 @@ table.g th.num{text-align:right}
 .rp-r.on{background:var(--cur);border-left-color:var(--cyan)}
 .rp-detail{padding:var(--section-inset) var(--space-4)}.rp-acts{gap:var(--space-2)}
 .lc-list{max-width:none;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--space-2)}
-.lc-list li{min-width:0;min-height:40px;padding:6px 10px;border-radius:4px;gap:var(--space-2)}
+.lc-list li{min-width:0;min-height:40px;padding:6px 0;border:0;border-bottom:1px solid var(--line2);border-radius:0;gap:var(--space-2)}
+.lc-list li.over{box-shadow:inset 0 -2px var(--cyan)}
 .lc-list li .ord{width:22px;height:22px;display:inline-flex;align-items:center;justify-content:center;border-radius:50%;background:var(--cur);color:var(--cyan)}
 .lc-list li .mv button{min-width:32px;min-height:32px}.lc-list li .nm{overflow-wrap:anywhere}
-.l-wins{gap:var(--section-gap)}.l-win{padding:var(--space-3);border-radius:var(--card-radius)}
+.l-wins{gap:var(--section-gap)}.l-win{padding:4px var(--space-3);border:0;border-left:1px solid var(--line2);border-radius:0}
+.l-win:first-child{border-left:0;padding-left:0}
+.l-win.l-unk{border-left:2px dashed var(--dim);padding-left:var(--space-3)}
 .l-win .big{font-size:var(--fs-title);line-height:1.3}.l-win .sub{line-height:1.7}
 .l-rung{width:100%}.l-rung th,.l-rung td,.l-calls th,.l-calls td{padding:8px 12px}
 .l-rung th,.l-calls th{background:var(--panel2)}.l-rung tbody tr:hover{background:var(--cur)}
@@ -138,7 +139,7 @@ table.g th.num{text-align:right}
 .diagnostic-layout{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(340px,1fr);gap:var(--section-gap);align-items:start}
 .diagnostic-layout>#todo{margin:0;position:sticky;top:calc(var(--sticky-stack,54px) + 12px)}
 .diagnostic-context{min-width:0;display:grid;gap:var(--section-gap)}
-.diagnostic-context>.card,.diagnostic-context>.module-section{margin:0}
+.diagnostic-context>.card{margin:0}
 .diagnostic-context #overview-pipelines{grid-template-columns:1fr}
 .diagnostic-context #overview-pipelines>button{padding:8px 12px}
 .diagnostic-context #overview-pipelines>button+button{border-left:0;border-top:1px solid var(--line2)}
@@ -146,17 +147,14 @@ table.g th.num{text-align:right}
 .diagnostic-context #sckd .r .p{grid-row:2;grid-column:2/-1}
 .diagnostic-layout #todod{max-height:640px}
 #mt-catalog>.catalog-tools:first-child{margin-top:0;padding:0;border:0;background:none}
-#mtbox>.card-header>.card-title{flex:0 1 auto}
-#mtbox .runtime-tools{flex:1;justify-content:flex-end}
+#mtbox>.card-header{border-bottom:0}
+#mtbox .runtime-tools{flex:1;justify-content:flex-start}
 #mt-memory{display:grid;grid-template-columns:minmax(240px,1fr) minmax(320px,1.4fr);gap:12px 24px;align-items:start}
 #mt-memory>.mem-top,#mt-memory>.mem-grps,#mt-memory>.warn-line{grid-column:1;margin:0}
 #mt-memory>.mem-grps{grid-template-columns:1fr}
 #mt-memory>.mem-big{grid-column:2;grid-row:1 / span 3;max-width:none}
 .llm-summary{display:grid;grid-template-columns:minmax(280px,1fr) minmax(0,1.5fr);gap:var(--section-gap);align-items:start}
-.llm-summary>.module-section,.llm-summary>.card{margin:0}
-.llm-summary>.module-section:has(#lchain){grid-column:1;grid-row:1}
-.llm-summary>#luse{grid-column:1 / -1;grid-row:2}
-.llm-summary>.module-section:has(#lrungs){grid-column:2;grid-row:1}
+.llm-summary>.card{margin:0}
 .llm-summary .lc-list{grid-template-columns:1fr}
 .llm-summary .l-win{padding:8px}
 .llm-summary .l-wins{gap:8px}
@@ -165,7 +163,6 @@ table.g th.num{text-align:right}
 @media(max-width:1100px){
   .diagnostic-layout,.llm-summary{grid-template-columns:1fr}
   .diagnostic-layout>#todo{position:static}
-  .llm-summary>.module-section:has(#lchain),.llm-summary>#luse,.llm-summary>.module-section:has(#lrungs){grid-column:auto;grid-row:auto}
   .llm-summary .lc-list{grid-template-columns:repeat(2,minmax(0,1fr))}
   #storage:not([hidden]){grid-template-columns:1fr}
   #storage>.mt-grid{grid-template-columns:1fr 1fr}
@@ -198,9 +195,9 @@ table.g th.num{text-align:right}
 @media(prefers-reduced-motion:reduce){*,*:before,*:after{scroll-behavior:auto!important;animation:none!important;transition:none!important}}
 
 /* Group independent records by the room available inside the workspace. */
-.rp-split{grid-template-columns:minmax(0,1.7fr) minmax(0,1fr);height:auto;align-items:start;background:none;gap:var(--section-gap);overflow:visible}
-.rp-list{container:repositories / inline-size;max-height:calc(100dvh - 310px);border:1px solid var(--line);border-radius:var(--card-radius)}
-.rp-detail{position:sticky;top:calc(var(--sticky-stack,54px) + 12px);border:1px solid var(--line);border-radius:var(--card-radius)}
+.rp-split{grid-template-columns:minmax(0,1.7fr) minmax(0,1fr);height:auto;align-items:start;background:none;gap:var(--space-4);overflow:visible;border:0}
+.rp-list{container:repositories / inline-size;max-height:calc(100dvh - 310px);border:0;border-radius:0}
+.rp-detail{position:sticky;top:calc(var(--sticky-stack,54px) + 12px);border:0;border-left:1px solid var(--line);border-radius:0}
 .rp-r{grid-template-columns:8px minmax(0,1fr) 7rem 11rem 2rem 1rem;column-gap:10px}
 .rp-r .rp-state,.rp-r .rp-changes{font-size:var(--fs-meta);color:var(--dim);font-variant-numeric:tabular-nums}
 .rp-r.sub{border-left:2px solid var(--line);margin-left:14px;padding-left:8px}
@@ -218,7 +215,6 @@ table.g th.num{text-align:right}
 .l-run .bar{display:block}
 @container workspace (min-width:100rem){
   .llm-summary{grid-template-columns:minmax(0,.8fr) minmax(0,1.2fr) minmax(0,1.5fr)}
-  .llm-summary>#luse{grid-column:3;grid-row:1}
   .diagnostic-context{grid-template-columns:repeat(2,minmax(0,1fr))}
   .diagnostic-context>.review-pipelines{grid-column:1 / -1}
 }
@@ -227,6 +223,6 @@ table.g th.num{text-align:right}
   #mt-memory>.mem-grps{margin:12px 0}
   .rp-split{display:block;height:auto;overflow:visible}
   .rp-list{max-height:38dvh}
-  .rp-detail{max-height:none;position:static;margin-top:var(--section-gap)}
+  .rp-detail{max-height:none;position:static;margin-top:var(--section-gap);border-left:0}
   #tools #q,.rp-filters input{flex-basis:100%;width:100%}
 }

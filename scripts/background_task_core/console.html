@@ -218,7 +218,7 @@
   <!-- 磁盘最急,排第一;Codex 那张卡的名字只在标题上写一次,总量跟在标题后面。#storage-alert 留给磁盘告警横幅。 -->
   <div id="storage-alert" class="storage-alert" role="alert" hidden></div>
   <div class="mt-grid"><div class="runtime-section"><h3>系统存储</h3><div class="mt-col" id="mt-sys"></div></div><div class="runtime-section"><h3>Codex 存储<b class="runtime-total" id="codex-total"></b></h3><div class="mt-col" id="mt-codex"></div></div></div>
-  <div class="module-section"><div class="card" id="cxbox">
+  <div class="card" id="cxbox">
     <div class="card-header"><h3 class="card-title">会话存储清理<span class="n" id="cxnote">等待扫描</span></h3>
       <div class="card-actions">
         <select id="cxwhich" aria-label="选一个会话库">
@@ -230,11 +230,11 @@
       </div></div>
     <p id="cxstate" class="cx-state" role="status" hidden></p>
     <div class="pad" id="cxbody"><div class="mt-note">正在读取会话存储</div></div>
-  </div></div>
+  </div>
 </section>
 
   <section id="diagnostics" data-view="diagnostics" data-label="技术诊断" hidden>
-<div class="module-section"><div class="tiles" id="tiles"></div></div>
+<div class="tiles" id="tiles"></div>
 <div class="diagnostic-layout">
 <div class="card" id="todo"><div class="card-header"><h2 class="card-title">技术问题 <span class="sub" id="todon"></span></h2>
   <div class="catalog-tools"><input id="review-search" type="search" placeholder="搜索任务、仓库或问题" aria-label="搜索任务、仓库或问题"><select id="review-filter" aria-label="问题范围"><option value="all">全部对象</option><option value="tasks">任务与产物</option><option value="failed">任务与产物：任务失败</option><option value="outputs">任务与产物：输出过期</option><option value="ingest">任务与产物：运行日志摄入</option><option value="repos">仓库</option><option value="storage">存储与记忆</option></select><button class="icon-only" data-reset-filters="diagnostics" title="清除筛选"><svg class="ic" aria-hidden="true"><use href="#i-filter-clear"/></svg><span class="control-label">清除筛选</span></button></div></div>
@@ -243,7 +243,7 @@
 
 <aside class="diagnostic-context">
 <div class="card review-pipelines"><div class="card-header"><h2 class="card-title">同步与备份</h2><a href="#pipelines" data-open-view="pipelines" data-drill>查看进度</a></div><div id="overview-pipelines">正在读取同步与备份记录</div></div>
-<div class="module-section"><div class="card" id="frbox">
+<div class="card" id="frbox">
     <div class="card-header"><h3 class="card-title">文件更新</h3></div>
     <div class="fr-head">
       <div class="fr-stack" id="frstack"></div>
@@ -252,7 +252,6 @@
     <div class="fr-key" id="frkey"></div>
     <div class="fr-board" id="frboard"></div>
     <div class="fr-list" id="frlist"></div>
-  </div>
   </div>
 <div class="card"><div id="sck"><span class="lab">数据来源</span><span class="sum" id="scksum">读取中</span><button class="icon-only" id="scktog" title="收起检查"><svg class="ic" aria-hidden="true"><use href="#i-up"/></svg><span class="control-label">收起检查</span></button></div>
 <div id="sckd" class="on"></div>
@@ -295,7 +294,7 @@
     <div class="card-header"><h3 class="card-title">任务列表 </h3><div class="card-actions task-sort"><span id="task-sort-state" class="faint" role="status"></span><button type="button" class="mini" id="task-sort-severity" title="改回按严重程度排序：失败在前">按严重程度</button></div></div>
     <div class="pad task-table-scroll"><table class="g" id="tbl"></table></div>
   </div>
-<div class="module-section"><div class="card" id="tlbox">
+<div class="card" id="tlbox">
     <div class="card-header"><h3 class="card-title">今日时间轴
       <span class="n" id="tlnote"></span></h3><div class="card-actions"><span class="faint" id="tlrange"></span>
         <button class="icon-only" id="tlout" title="缩小"><svg class="ic" aria-hidden="true"><use href="#i-minus"/></svg><span class="control-label">缩小</span></button>
@@ -313,7 +312,7 @@
 
       </div>
     </div>
-  </div></div>
+  </div>
 <details class="card panel-disclosure" id="hmbox"><summary>历史检查<span class="n" id="hmnote"></span></summary><div class="pad"><table class="hm" id="heat"></table></div></details>
 <details class="card panel-disclosure" id="scbox"><summary>分类汇总</summary><div class="pad"><table class="g" id="scores"></table></div></details>
   </section>
@@ -358,7 +357,7 @@
   <nav class="resources-anchors" aria-label="跳到本页的某一块"><button type="button" data-goto="#mt-skills">技能</button><span aria-hidden="true">·</span><button type="button" data-goto="#mt-plugins">插件</button><span aria-hidden="true">·</span><button type="button" data-goto="#membox">记忆</button><span aria-hidden="true">·</span><button type="button" data-goto="#catalog-box">目录</button><span aria-hidden="true">·</span><button type="button" data-goto="#catalog-health">检查结果</button></nav>
 </div>
 <div class="card" id="mtbox">
-    <div class="card-header"><h3 class="card-title" title="更改在下次会话生效">技能与插件<span class="n" id="mtnote">读取中</span></h3>
+    <div class="card-header"><span class="faint panel-read-state" id="mtnote" role="status">读取中</span>
   <div class="catalog-tools runtime-tools">
     <select id="runtime-state" aria-label="技能和插件状态"><option value="">全部状态</option><option value="active">启用中</option><option value="inactive">归档 / 停用</option></select>
     <select id="runtime-sort" aria-label="技能排序"><option value="name">按名称</option><option value="budget">按描述大小</option></select><button class="icon-only" data-reset-filters="runtime" title="清除筛选"><svg class="ic" aria-hidden="true"><use href="#i-filter-clear"/></svg><span class="control-label">清除筛选</span></button>
@@ -367,10 +366,10 @@
       <div class="runtime-section"><h3>Claude 插件</h3><div class="mt-col" id="mt-plugins"></div></div>
     </div>
   </div>
-  <div class="module-section"><div class="card" id="membox">
+  <div class="card" id="membox">
     <div class="card-header"><h3 class="card-title">Claude 记忆与索引<span class="n" id="memnote">读取中</span></h3></div>
     <div class="pad" id="mt-memory"></div>
-  </div></div>
+  </div>
 <div class="card catalog-card" id="catalog-box"><div class="card-header"><h2 class="card-title">资源目录</h2></div><div class="pad" id="mt-catalog">正在读取技能和插件</div></div>
   </section>
   <section id="convos" data-view="convos" data-label="会话记录" hidden>
@@ -457,13 +456,13 @@
     </div>
   </div>
   <div class="llm-summary llm-config">
-  <div class="module-section"><div class="card" id="lrungs">
+  <div class="card" id="lrungs">
     <div class="card-header"><h3 class="card-title">服务统计<span class="n" id="lrnote"></span></h3></div>
     <div class="pad"><table class="l-rung" id="lrtab"></table>
       <div id="lrverify"></div>
       </div>
-  </div></div>
-  <div class="module-section"><div class="card" id="lchain">
+  </div>
+  <div class="card" id="lchain">
     <div class="card-header"><h3 class="card-title">调用顺序<span class="n" id="lcnote">读取中</span></h3></div>
     <div class="pad">
       <div id="lcwarn"></div>
@@ -475,7 +474,7 @@
         <span class="faint" id="lcpath"></span>
       </div>
     </div>
-  </div></div>
+  </div>
   </div>
   </section>
 </div>
