@@ -4,6 +4,10 @@ All notable changes to this project are documented here (Keep a Changelog style)
 
 ## [Unreleased]
 
+### Windows entrypoints and own tasks live in this repository
+- The console launcher, its shortcut installer, the hourly health monitor, the daily run-log ingest, the task registry check and their shared helpers moved into `windows/`. They read machine values only from the companion named by `BACKGROUND_TASK_CORE_CONFIG` and refuse when it is unset; the registry check reads the backup allow-list from the authority's `TaskNames.ps1` projection.
+- `automation/tasks.json` declares `TaskHealthMonitor` (now with a 1800 s limit, because the observation pass alone takes about nine minutes) and `RefreshConsoleRunlog`; `install-skill` installs them. The run-log task keeps its ID; the monitor's old ID named a private repository, so it was retired and the task re-created as `background-task-core/taskhealthmonitor` under the same Scheduler name. The root `.console.json` that declared the run-log task is deleted.
+
 ### Tasks that ship with a skill
 - `python -m background_task_core install-skill --skill-root <skill>` reads the skill's `automation/tasks.json` and its companion's `automation/tasks.local.json`, writes the declarations and launchers into the authority's desired files, and runs the creation check, plan and apply for exactly that skill's tasks. Tasks the manifest drops are retired; re-running changes nothing. `--enable keep|hold|declared` chooses how enabled state is set, `--dry-run` prints the declarations without writing. Contract in `docs/skill-tasks.md`.
 - `apply` can create a declared task that has no ownership proof while the Scheduler holds no task of that name; the receipt records its first proof.

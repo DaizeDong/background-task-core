@@ -71,6 +71,21 @@ python -m background_task_core <authority command> ...      # plan, registration
 
 The server generates a token at each start and never writes it to disk. Ingestion runs out of band, so page loads never read the Windows event log.
 
+### Windows entrypoints
+
+`windows/` holds the PowerShell side. Every script finds its machine values through the private companion named by `BACKGROUND_TASK_CORE_CONFIG` (its `data/launcher-binding.json`) and refuses when that variable is unset.
+
+| Script | Does |
+| --- | --- |
+| `background-task-core.ps1` | Starts the installed console as a hidden process and opens it (`-Tab`, `-NoBrowser`, `-Stop`, `-Status`) |
+| `install-background-task-core-shortcut.ps1` | Desktop and Start-menu shortcuts to that launcher, with the companion's `data/assets/icon.ico` (`-Remove` deletes them) |
+| `task-health-monitor.ps1` | The hourly health pass run by `TaskHealthMonitor` |
+| `console-runlog-ingest.ps1` | The daily full ingest run by `RefreshConsoleRunlog` |
+| `task-registry-check.ps1` | Task-creation conformance: every active task is in the backup allow-list projection and the health watch list; the monitor runs it |
+| `background-task-core-binding.ps1`, `lib/task-health-observations.ps1` | Shared helpers the others dot-source |
+
+This repository's own two tasks are declared in [automation/tasks.json](automation/tasks.json) and installed with `install-skill` like any skill's.
+
 ## Tasks that ship with a skill
 
 A skill declares its scheduled tasks in `automation/tasks.json` (public, variables only) and keeps machine choices in its private companion's `automation/tasks.local.json`. `install-skill` turns both into authority declarations and creates, updates or retires exactly that skill's tasks; re-running it changes nothing. Contract and example: [docs/skill-tasks.md](docs/skill-tasks.md).
@@ -81,7 +96,7 @@ All settings are environment variables; the owner launcher sets them from the pr
 
 ## Read-only declaration producer
 
-`background_task_core.registry.plan(request)` and `python -m background_task_core plan` compile component `.console.json` declarations, private bindings, machine overrides and a legacy snapshot into field comparisons and generated content, without writing files or touching the Scheduler.
+`background_task_core.registry.plan(request)` and `python -m background_task_core plan` compile component declarations in the `.console.json` shape (the format of the authority's desired file), private bindings, machine overrides and a legacy snapshot into field comparisons and generated content, without writing files or touching the Scheduler.
 
 ```text
 python -m background_task_core plan --component examples/console/.console.json --bindings examples/console/bindings.example.json --machine examples/console/machine.console.example.json --baseline examples/console/baseline.example.json

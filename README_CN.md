@@ -69,6 +69,21 @@ python -m background_task_core <权威命令> ...                # plan、regist
 
 服务每次启动生成新令牌，从不落盘。摄入在页面之外跑，打开页面不会去读 Windows 事件日志。
 
+### Windows 入口
+
+`windows/` 放 PowerShell 这一侧。每个脚本都从 `BACKGROUND_TASK_CORE_CONFIG` 指向的私有伴生仓（它的 `data/launcher-binding.json`）取本机的值，这个变量没设就拒绝运行。
+
+| 脚本 | 做什么 |
+| --- | --- |
+| `background-task-core.ps1` | 以隐藏进程启动已安装的控制台并打开（`-Tab`、`-NoBrowser`、`-Stop`、`-Status`） |
+| `install-background-task-core-shortcut.ps1` | 给这个启动器建桌面和开始菜单快捷方式，图标用伴生仓的 `data/assets/icon.ico`（`-Remove` 删掉） |
+| `task-health-monitor.ps1` | `TaskHealthMonitor` 每小时跑的健康巡检 |
+| `console-runlog-ingest.ps1` | `RefreshConsoleRunlog` 每天跑的全量摄入 |
+| `task-registry-check.ps1` | 建任务规范的对账：每个活跃任务都要在备份 allow-list 投影和健康监控清单里；由巡检调用 |
+| `background-task-core-binding.ps1`、`lib/task-health-observations.ps1` | 其余脚本 dot-source 的共用函数 |
+
+本仓自己的两个任务声明在 [automation/tasks.json](automation/tasks.json)，和任何 skill 一样用 `install-skill` 安装。
+
 ## 随 skill 来的计划任务
 
 skill 在自己仓里的 `automation/tasks.json` 声明它要的计划任务（公开，只写变量），本机的取舍放在它私有伴生仓的 `automation/tasks.local.json`。`install-skill` 把两者合成登记权威的声明，只建、改、退役这个 skill 的任务；重跑不改任何东西。契约与示例见 [docs/skill-tasks.md](docs/skill-tasks.md)。
@@ -79,7 +94,7 @@ skill 在自己仓里的 `automation/tasks.json` 声明它要的计划任务（�
 
 ## 只读的声明生成
 
-`background_task_core.registry.plan(request)` 和 `python -m background_task_core plan` 把组件 `.console.json` 声明、私有绑定、机器覆盖和旧快照编译成字段对照和生成内容，不写文件，也不碰计划程序。
+`background_task_core.registry.plan(request)` 和 `python -m background_task_core plan` 把 `.console.json` 形状的组件声明（登记权威 desired 文件的格式）、私有绑定、机器覆盖和旧快照编译成字段对照和生成内容，不写文件，也不碰计划程序。
 
 ```text
 python -m background_task_core plan --component examples/console/.console.json --bindings examples/console/bindings.example.json --machine examples/console/machine.console.example.json --baseline examples/console/baseline.example.json

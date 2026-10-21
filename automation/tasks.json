@@ -1,0 +1,58 @@
+{
+  "schemaVersion": 1,
+  "skill": "background-task-core",
+  "tasks": [
+    {
+      "id": "background-task-core/taskhealthmonitor",
+      "name": "TaskHealthMonitor",
+      "purpose": "Hourly health pass: publishes the passive observation snapshot, judges every watched task, ingests health into the console database, and pushes the digest and its own heartbeat.",
+      "enabled": true,
+      "trigger": {"type": "interval", "minutes": 60},
+      "argv": [
+        "%SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+        "-NoProfile", "-WindowStyle", "Hidden", "-ExecutionPolicy", "Bypass",
+        "-File", "${SKILL_ROOT}/windows/task-health-monitor.ps1"
+      ],
+      "power": {"disallow_start_on_batteries": true, "stop_on_batteries": true},
+      "timeout_seconds": 1800,
+      "checks": [
+        {
+          "id": "self",
+          "required": true,
+          "health": {
+            "label": "the monitor itself (hourly)",
+            "max_age_hours": 100000,
+            "watched_elsewhere": "schedule-reminder",
+            "artifact_note": "Declared exception, not a gap. The monitor cannot meaningfully watch itself, so every run upserts its own dead-man item into schedule-reminder under the idempotency key task-health:monitor-watchdog, and the reminder tick surfaces it when its due time stops advancing."
+          }
+        }
+      ]
+    },
+    {
+      "id": "background-task-core/refreshconsolerunlog",
+      "name": "RefreshConsoleRunlog",
+      "purpose": "Daily full console ingest: the run-event half that the hourly health pass skips. The Windows Operational log is a circular buffer of about five days, so a missed window is permanent.",
+      "enabled": true,
+      "trigger": {"type": "daily", "at": "04:20"},
+      "argv": [
+        "%SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+        "-NoProfile", "-ExecutionPolicy", "Bypass",
+        "-File", "${SKILL_ROOT}/windows/console-runlog-ingest.ps1"
+      ],
+      "timeout_seconds": 1800,
+      "checks": [
+        {
+          "id": "runlog",
+          "required": true,
+          "health": {
+            "label": "background-task-core run-event ingest (daily 04:20)",
+            "max_age_hours": 30,
+            "artifact": "${COMPANION_ROOT}/data/background-task-core/runlog-ingest-ok.txt",
+            "artifact_max_age_hours": 30,
+            "artifact_written_only_on_success": "The ingester writes this stamp on the run-log path only, after the commit, so a rolled-back ingest leaves no stamp. The database and the monthly export are written on failed runs too, so neither can prove success."
+          }
+        }
+      ]
+    }
+  ]
+}
