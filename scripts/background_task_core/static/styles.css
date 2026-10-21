@@ -1,15 +1,16 @@
 /* 外壳用 Tabler v1.5.0(MIT,随仓发在 vendor/ 下)。密度靠它的 --tblr-* 变量压回来,配色把 Tabler 的表面色接到本页这套变量上。 */
 :root{
-  /* 两档字体。外壳(侧栏、顶栏、卡头、标签)用比例字体,数据用等宽。 */
-  --ui:system-ui,"Segoe UI","Microsoft YaHei",sans-serif;
+  /* Interface text uses the system face; identifiers retain a monospace face. */
+  --ui:"Segoe UI Variable Text","Segoe UI","Microsoft YaHei UI","Microsoft YaHei",sans-serif;
   --mono:"Cascadia Mono",Consolas,NSimSun,"Courier New",monospace;
-  --bg:#EEF1F2;
+  --bg:#F3F5F8;
   /* 颜色只写一份:rgb 三元组给 Tabler,本页的十六进制用 rgb(var(--x-rgb)) 从它派生。 */
   --tblr-danger-rgb:171,49,35; --tblr-success-rgb:35,105,73;
-  --tblr-warning-rgb:140,98,16; --tblr-primary-rgb:14,107,117;
- --panel:#FFFFFF; --panel2:#F6F8F9; --line:#D3DBDF; --line2:#E4EAED;
-  --ink:#141C22; --dim:#5C6B75; --faint:#8797A1;
-  --sel:#0E6B7522; --cur:#0E6B7514;
+  --tblr-warning-rgb:140,98,16; --tblr-primary-rgb:40,95,143;
+  --panel:#FFFFFF; --panel2:#F7F9FB; --line:#DDE3EB; --line2:#E9EDF2;
+  --ink:#223247; --dim:#596B80; --faint:var(--dim);
+  --sel:rgba(var(--tblr-primary-rgb),.14); --cur:rgba(var(--tblr-primary-rgb),.06);
+  --nav-bg:#203248; --nav-ink:#C8D3E0; --nav-active:#FFFFFF; --nav-accent:#99CAEF;
   --amber:#9A6B0F; --cyan:rgb(var(--tblr-primary-rgb));
   --ok:rgb(var(--tblr-success-rgb)); --bad:rgb(var(--tblr-danger-rgb));
   --warn:rgb(var(--tblr-warning-rgb)); --idle:#6A757E;
@@ -27,11 +28,11 @@
   --fs-meta:12px;   /* 次要说明、计数、芯片、表头 */
 }
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
-  --bg:#0B0F12; --panel:#11171B; --panel2:#151D22; --line:#212C33; --line2:#1A242A;
-  --ink:#C7D3DB; --dim:#7E8E99; --faint:#5C6B75;
-  --sel:#3FA9B433; --cur:#3FA9B41A;
+  --bg:#111A25; --panel:#192535; --panel2:#1E2C3D; --line:#344358; --line2:#2A384B;
+  --ink:#DEE6EF; --dim:#A2B2C5;
+  --nav-bg:#152131;
   --tblr-danger-rgb:226,124,111; --tblr-success-rgb:95,175,127;
-  --tblr-warning-rgb:208,160,71; --tblr-primary-rgb:79,176,189;
+  --tblr-warning-rgb:208,160,71; --tblr-primary-rgb:135,190,232;
   --amber:#D9A441; --cyan:rgb(var(--tblr-primary-rgb));
   --ok:rgb(var(--tblr-success-rgb)); --bad:rgb(var(--tblr-danger-rgb));
   --warn:rgb(var(--tblr-warning-rgb)); --idle:#7E8E99;
@@ -41,11 +42,11 @@
   --h0:#1A242A; --h1:#2A5744; --h2:#3C8663; --h3:#87692E; --h4:#985B3B; --h5:#A54A3F;
 }}
 :root[data-theme="dark"]{
-  --bg:#0B0F12; --panel:#11171B; --panel2:#151D22; --line:#212C33; --line2:#1A242A;
-  --ink:#C7D3DB; --dim:#7E8E99; --faint:#5C6B75;
-  --sel:#3FA9B433; --cur:#3FA9B41A;
+  --bg:#111A25; --panel:#192535; --panel2:#1E2C3D; --line:#344358; --line2:#2A384B;
+  --ink:#DEE6EF; --dim:#A2B2C5;
+  --nav-bg:#152131;
   --tblr-danger-rgb:226,124,111; --tblr-success-rgb:95,175,127;
-  --tblr-warning-rgb:208,160,71; --tblr-primary-rgb:79,176,189;
+  --tblr-warning-rgb:208,160,71; --tblr-primary-rgb:135,190,232;
   --amber:#D9A441; --cyan:rgb(var(--tblr-primary-rgb));
   --ok:rgb(var(--tblr-success-rgb)); --bad:rgb(var(--tblr-danger-rgb));
   --warn:rgb(var(--tblr-warning-rgb)); --idle:#7E8E99;
@@ -600,10 +601,11 @@ td.ops .mini{font:inherit;font-size:var(--fs-meta);line-height:1;padding:2px 5px
      卡片式面板调的;这页的任务表是 36 行 19 列,按默认值要多滚两屏。
      用它自己的变量压,不覆盖它的规则,所以升级不会把这些冲掉。 */
   --tblr-body-font-size:var(--fs-body);
+  --tblr-body-font-family:var(--ui);
   --tblr-font-size-h1:var(--fs-title); --tblr-font-size-h2:var(--fs-lead); --tblr-font-size-h3:var(--fs-body);
   /* Tabler 的标题默认是它自己的近黑色,和本页的 --ink 差一点点:同一屏两种黑,看着像两套样式。 */
   --tblr-heading-color:var(--ink);
-  --tblr-border-radius:3px;
+  --tblr-border-radius:6px;
   --tblr-table-cell-padding-y:2px;
   --tblr-table-cell-padding-x:6px;
   --tblr-card-spacer-y:6px;
@@ -646,7 +648,7 @@ body{font-size:var(--fs-body)}
 /* 侧栏和标签共用的徽章。红是失败、琥珀是警告,都是实心;第一次读取还没回来是一个淡色的「…」,
    读不到是虚线框里的「?」,后端说这一路没在查是淡色虚线框里的「—」:几种样子不靠颜色也分得开。 */
 .nav-badge{display:inline-flex;align-items:center;justify-content:center;min-width:20px;min-height:18px;padding:0 5px;
-  border:1px solid transparent;border-radius:9px;font:600 var(--fs-meta)/1 var(--mono);font-variant-numeric:tabular-nums;flex:none}
+  border:1px solid transparent;border-radius:5px;font:600 var(--fs-meta)/1 var(--ui);font-variant-numeric:tabular-nums;flex:none}
 .nav-badge[hidden]{display:none}
 .nav-badge.bad{background:var(--bad);color:var(--panel)}
 .nav-badge.warn{background:var(--warn);color:var(--panel)}
@@ -666,7 +668,7 @@ button.mini{padding:0 5px;font-size:var(--fs-meta);white-space:nowrap;
    以前还有一套 .mini.ib 的 24px,同一排里两种方块大小并存。 */
 /* 图标本身。stroke 用 currentColor,所以按钮的颜色规则一行都不用改。 */
 .ic{width:14px;height:14px;flex:none;vertical-align:-2px;
-  fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+  fill:none;stroke:currentColor;stroke-width:1.75;stroke-linecap:round;stroke-linejoin:round}
 /* 带文字的按钮里,图标和字之间留一点气 */
 button.mini .ic{margin-right:3px}
 /* 归档 / 禁用 / 停用都是可逆的,常态不该是全页最红的东西 —— 22 个红按钮排成一竖排
@@ -939,8 +941,8 @@ html {scroll-padding-top:var(--sticky-stack,54px)}
    灰掉时两者都退回统一的不可用样式(那条规则在本文件末尾,带 !important)。 */
 dialog.console-dialog{box-sizing:border-box;width:min(820px,calc(100vw - 32px));max-height:min(85vh,calc(100dvh - 32px));
   margin:auto;padding:0;overflow:auto;overscroll-behavior:contain;background:var(--panel);color:var(--ink);
-  border:1px solid var(--line);border-radius:8px;box-shadow:0 10px 40px rgb(0 0 0 / 25%)}
-dialog.console-dialog::backdrop{background:rgb(0 0 0 / 45%)}
+  border:1px solid var(--line);border-radius:10px;box-shadow:0 16px 48px rgb(15 30 48 / 22%)}
+dialog.console-dialog::backdrop{background:rgb(15 25 40 / 42%)}
 .console-dialog form{margin:0}
 .dialog-head{position:sticky;top:0;z-index:2;display:flex;align-items:center;flex-wrap:wrap;gap:6px;
   padding:8px 10px 8px 16px;background:var(--panel);border-bottom:1px solid var(--line)}
@@ -973,7 +975,7 @@ button.primary:not(:disabled):focus-visible,.dialog-foot button.danger:not(:disa
    点别处、按 Esc 由浏览器收起,同一时间只开一个。 */
 .pop-menu{margin:2px 0 2px 8px;position-area:bottom span-left;position-try-fallbacks:flip-block;min-width:200px;
   max-width:min(420px,calc(100vw - 16px));max-height:min(70vh,520px);overflow:auto;padding:4px;
-  background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:6px;box-shadow:0 6px 24px rgb(0 0 0 / 22%);
+  background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:8px;box-shadow:0 8px 24px rgb(15 30 48 / 16%);
   font-size:var(--fs-body)}
 .pop-menu .menu-item{display:flex;align-items:center;gap:8px;width:100%;min-height:32px;padding:4px 10px;border:0;border-radius:4px;
   background:transparent;color:var(--ink);text-align:left;white-space:normal}

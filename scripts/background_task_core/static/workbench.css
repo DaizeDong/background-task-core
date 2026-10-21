@@ -35,15 +35,14 @@
 .work-empty{padding:var(--space-3) var(--section-inset);margin:0;color:var(--dim);font-size:var(--fs-body)}
 .work-row{display:grid;grid-template-columns:minmax(0,1fr);gap:8px 12px;padding:8px var(--section-inset);border-top:1px solid var(--line2);align-items:center}
 .work-row:has(>.work-actions){grid-template-columns:minmax(0,1fr) 180px}
-#overview .work-row:has(>.work-actions){grid-template-columns:minmax(0,1fr) 90px}
-.work-row-heading{display:flex;align-items:baseline;gap:8px;min-width:0}
+.work-row-heading{display:flex;align-items:flex-start;gap:8px;min-width:0}
 .work-row-heading>.work-state{flex:none}
 
 .work-row:hover{background:var(--cur)}
 .work-row[data-state="failed"]{box-shadow:inset 3px 0 var(--bad)}
 .work-row[data-state="blocked"],.work-row[data-state="stalled"],.work-row[data-state="reconcile"]{box-shadow:inset 3px 0 var(--warn)}
 .work-row:first-child{border-top:0}
-.work-subject{min-width:0}.work-subject .record-link{font-weight:600;color:var(--ink);line-height:1.5;overflow-wrap:anywhere}
+.work-subject{min-width:0}.work-subject .record-link{font-weight:500;color:var(--ink);line-height:1.5;overflow-wrap:anywhere}
 .work-subject .record-link{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}
 #overview .work-subject p{-webkit-line-clamp:1}
 .work-subject p{margin:3px 0;color:var(--dim);font-size:var(--fs-meta);display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}
@@ -187,10 +186,10 @@ dialog#work-detail{width:min(760px,calc(100vw - 32px))}#work-detail h3{font-size
 
 /* Share tracks between headings and records; only the subject absorbs extra width. */
 .work-record.work-row,.work-list-heading{display:grid;grid-template-columns:7rem minmax(0,1fr) 11rem 15rem;gap:10px 16px;align-items:start;padding:10px var(--section-inset)}
-.work-list-heading{position:sticky;top:0;z-index:1;background:var(--panel2);border-bottom:1px solid var(--line);font-size:var(--fs-meta);color:var(--dim)}
+.work-list-heading{position:sticky;top:0;z-index:1;background:var(--panel2);border-bottom:1px solid var(--line);padding-block:8px;font-size:var(--fs-meta);font-weight:500;line-height:1.5;color:var(--dim)}
 .work-record .work-subject .record-link{display:-webkit-box;overflow:hidden;font-size:var(--fs-lead);line-height:1.5}
 .work-record .work-subject p{font-size:var(--fs-body);line-height:1.6;margin:4px 0;overflow-wrap:anywhere}
-.work-record .work-when{display:grid;gap:4px;padding-top:3px;font-variant-numeric:tabular-nums}
+.work-record .work-when{display:grid;gap:4px;padding-top:3px;font-variant-numeric:tabular-nums;min-width:0;overflow-wrap:anywhere}
 .work-record>.work-actions{margin:0;grid-column:auto}
 @container workspace (max-width:72rem){
   .work-layout{grid-template-columns:minmax(0,1fr)}
@@ -264,8 +263,8 @@ dialog#work-detail{width:min(760px,calc(100vw - 32px))}#work-detail h3{font-size
 #side .navbar-brand{display:flex;align-items:center;justify-content:flex-start;gap:8px}
 #side .navbar-brand>span{margin-left:0!important;min-width:0;overflow:hidden;text-overflow:ellipsis}
 #side .navbar-brand img{flex-shrink:0}
-/* 深色下图标本身的深色格子会融进底色:给它垫一块浅底。 */
-:root[data-theme="dark"] #side .navbar-brand img{background:var(--ink);border-radius:4px;padding:2px;box-sizing:content-box}
+/* Keep the mark distinct from the navigation surface in either theme. */
+#side .navbar-brand img{background:#EEF3F8;border-radius:4px;padding:2px;box-sizing:content-box}
 /* 顶栏右侧:只读标识、刷新时间、刷新、「⋯」。 */
 .page-tools{display:inline-flex;align-items:center;gap:4px}
 #page-refresh-state{font-size:var(--fs-meta);white-space:nowrap;color:var(--dim)}
@@ -281,8 +280,6 @@ dialog#work-detail{width:min(760px,calc(100vw - 32px))}#work-detail h3{font-size
   .page-tools{position:absolute;top:4px;right:10px;z-index:31}
   #side .navbar-brand{padding-right:96px}
   #page-refresh-state{order:0;width:auto}
-  /* 横排的侧栏用下划线标出当前项,竖排时那道左边条在这里像一个错位的竖线。 */
-  #side .nav-link.active{box-shadow:inset 0 -2px var(--cyan)}
   /* 五项始终排成一行。曾经让它换行:徽章还是「…」时五项放得下,几秒后数字回来(「99+」「14」比「…」宽),
      「诊断」掉到第二行,导航高出 24px,下面整页往下一跳,人正要点的地方就换成了别的控件。
      现在收紧内距让 390px 宽在四枚都是「99+」时也放得下;再窄的屏放不下就在这一行里横向滑动,

@@ -4,6 +4,10 @@
 /* 工作台里「Agent 未完成 / 出错」那一张卡的标题符号是红的。 */
 #overview .section-symbol.bad{color:var(--bad);background:var(--badb)}
 
+/* A confirmed empty list keeps its message while the populated list gets the full row. */
+#overview[data-feed="ok"] .work-columns:has(#active-work>.state-empty):has(#tracked-work>.work-row),
+#overview[data-feed="ok"] .work-columns:has(#tracked-work>.state-empty):has(#active-work>.work-row){grid-template-columns:minmax(0,1fr)}
+
 /* ── 工作台顶上的技术问题摘要 ── 一枚芯片一类,失败红、警告琥珀;还在读、读坏了、没在查各有一种样子,
    不只靠颜色,也靠字和符号分开(读取中 ◷、读取失败 !、未检查是虚线框里的 —)。 */
 #overview .attention-strip{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px;padding:8px var(--section-inset);border:1px solid var(--line);border-radius:var(--card-radius);background:var(--panel)}
@@ -31,10 +35,10 @@
 #overview .work-subject .work-row-warning,#work .work-subject .work-row-warning{display:block;overflow:visible;font-size:var(--fs-body);color:var(--warn);white-space:pre-wrap}
 /* 行上的「查看进度」「查看原待办」是去看东西的,青色字,和真正改东西的动作分开。 */
 .work-action-controls .work-link:not(:disabled),.work-actions>.work-link:not(:disabled){color:var(--cyan)}
-/* 工作台的紧凑行原来给操作留 90px,只放得下图标;动作写成字以后按内容宽度,最多 13rem。 */
+/* Keep named actions together beside the subject, with room to wrap within the card. */
 @media(min-width:768px){
   #overview .work-row:has(>.work-actions){grid-template-columns:minmax(0,1fr) minmax(0,max-content)}
-  #overview .work-row>.work-actions{max-width:13rem;justify-items:end}
+  #overview .work-row>.work-actions{max-width:13rem;justify-items:end;align-self:start}
   #overview .work-row>.work-actions .work-action-controls{justify-content:flex-end}
 }
 

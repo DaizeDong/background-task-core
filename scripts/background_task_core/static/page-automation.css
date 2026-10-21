@@ -23,7 +23,7 @@
 /* ── 一行的构图 ──
    建议徽章紧跟在标题后面,不再被推到这一格的最右边(运行详情里两者隔着六百多像素)。
    摘要只占一行,完整内容在悬停里。 */
-#automations .task-heading strong,#pipelines .task-heading strong,#tasks #tbl .task-heading strong{flex:0 1 auto}
+#automations .task-heading strong,#pipelines .task-heading strong,#tasks #tbl .task-heading strong{flex:0 1 auto;font-weight:500}
 #tasks #tbl .task-heading .row-toggle{flex:0 1 auto}
 #automations .task-summary-text,#pipelines .task-summary-text{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .task-op-label,.task-menu .menu-item>span{white-space:nowrap}
@@ -72,7 +72,7 @@
 .task-technical-heading{margin:16px 0 8px;padding-top:12px;border-top:1px solid var(--line2);color:var(--dim);font-size:var(--fs-meta);font-weight:600}
 
 /* ── 任务开关的就地明细 ── 占满这一行的整宽,在标题、计划、状态、操作下面。 */
-#automations .automation-detail{grid-column:1 / -1;margin-top:4px;padding:14px 16px;background:var(--panel2);border:1px solid var(--line2);border-radius:4px;white-space:normal}
+#automations .automation-detail{grid-column:1 / -1;margin-top:var(--space-1);padding:var(--space-3) var(--space-4);background:var(--panel2);border:0;border-top:1px solid var(--line2);border-radius:0;white-space:normal}
 #automations .automation-detail .det-bar{top:calc(var(--sticky-stack,0px) + 8px)}
 
 /* ── 时间轴 ── 行高至少 20px,点得准;点一下轨道就打开那个任务。 */

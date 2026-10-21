@@ -1,22 +1,30 @@
 /* Compact operations shell. Semantic colors and table behavior live in styles.css. */
 :root{
-  --ui:"Microsoft YaHei UI","Microsoft YaHei","Segoe UI",sans-serif;
   /* 字号档位只在 styles.css 定义一份;这里以前另有一份,两份互相覆盖。 */
   --tblr-sidebar-width:11rem;
   --space-1:4px;--space-2:8px;--space-3:12px;--space-4:16px;
-  --control-height:32px;--section-gap:8px;--section-inset:12px;--card-radius:6px;
+  --control-height:32px;--section-gap:10px;--section-inset:12px;--card-radius:8px;
 }
 body{font-size:var(--fs-body);line-height:1.5}
-:root[data-theme]{--faint:var(--dim)}
-#side{--tblr-sidebar-width:11rem}
-#side .navbar-brand{font-size:var(--fs-lead);padding:16px 10px}
-#side .nav-link{padding:8px 12px;margin:2px 6px;min-height:36px;color:var(--dim)}
-#side .nav-link.active{color:var(--cyan);background:var(--cur);box-shadow:inset 3px 0 var(--cyan)}
+#side{--tblr-sidebar-width:11rem;background:var(--nav-bg);color:var(--nav-ink);border-right:0;box-shadow:none}
+#side .navbar-brand{font-size:var(--fs-lead);padding:16px 14px;color:var(--nav-active);letter-spacing:.01em}
+#side .nav-link{padding:8px 12px;margin:3px 8px;min-height:38px;color:var(--nav-ink);border-radius:6px}
+#side .nav-link:hover{color:var(--nav-active);background:rgb(255 255 255 / 6%)}
+#side .nav-link.active{color:var(--nav-active);background:rgb(255 255 255 / 10%);box-shadow:inset 2px 0 var(--nav-accent)}
+#side .nav-link-icon{color:inherit}
+#side .nav-link.active .nav-link-icon{color:var(--nav-accent)}
+#side .nav-badge.bad{background:#B64B4F;color:#FFFFFF}
+#side .nav-badge.warn{background:#886021;color:#FFFFFF}
+#side .nav-badge.pending,#side .nav-badge.unchecked{color:var(--nav-ink);border-color:#718196}
+#side .nav-badge.broken{color:#FFB8B8;border-color:currentColor}
+#side #sidetoggle{background:transparent;border-color:#61738A;color:var(--nav-ink)}
+#side #sidetoggle:not(:disabled):hover{color:var(--nav-active);border-color:var(--nav-accent);background:rgb(255 255 255 / 6%)}
+#side :focus-visible{outline-color:var(--nav-accent)}
 #side .nav-link-title{white-space:nowrap}
 #side:not(.navbar-folded) .nav-link .nav-badge{position:static;margin-left:auto;flex:none}
 #bar{white-space:normal;overflow:visible;padding:0 14px;min-height:48px}
 #bar .container-fluid{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;min-width:0}
-.view-heading{min-width:0}.view-heading h1{font-size:var(--fs-title);line-height:1.3;margin:0;font-weight:650;white-space:nowrap}
+.view-heading{min-width:0}.view-heading h1{font-size:var(--fs-title);line-height:1.3;margin:0;font-weight:600;white-space:nowrap}
 .page-actions,.review-actions,.card-actions{display:flex;align-items:center;gap:var(--space-2);flex-wrap:wrap}
 .card-actions{margin-left:auto;min-width:0}
 #view{width:100%;max-width:none;margin:0;padding:0 clamp(12px,1vw,24px) 20px;min-width:0;container:workspace / inline-size}
@@ -28,12 +36,13 @@ body{font-size:var(--fs-body);line-height:1.5}
 .card-header>.card-title{flex:1 1 180px}
 .card-title .n{font-size:var(--fs-meta);white-space:normal;flex:0 1 auto;overflow:visible;line-height:1.5}
 .pad{padding:var(--space-3) var(--section-inset)}
-button,input[type=text],input[type=search],select{min-height:var(--control-height);border-radius:4px;font-size:var(--fs-body);line-height:1.4}
+button,input[type=text],input[type=search],select{min-height:var(--control-height);border-radius:6px;font-size:var(--fs-body);line-height:1.4}
 button{padding:5px 10px}
 .page-actions button,.card-actions button,button.mini,button.fix{display:inline-flex;align-items:center;justify-content:center;gap:6px}
 button.mini,button.fix{min-height:var(--control-height);padding:5px 8px;font-size:var(--fs-meta)}
 input[type=text],input[type=search],select{padding:5px 8px}
 button:not(:disabled):hover{background:var(--cur)}
+input::placeholder{color:var(--dim);opacity:1}
 input[type=search]{background:var(--panel);color:var(--ink);border:1px solid var(--line);padding:4px 8px;min-width:0}
 button:focus-visible,a:focus-visible,summary:focus-visible,input:focus-visible,select:focus-visible,[tabindex]:focus-visible{outline:2px solid var(--cyan);outline-offset:2px}
 summary{cursor:pointer}
@@ -166,7 +175,11 @@ table.g th.num{text-align:right}
   #side{position:static;width:100%;max-width:none;min-height:0;display:block}#side .container-fluid{display:block;min-width:0}
   #side .navbar-brand{padding:9px 12px;margin:0;justify-content:start}
   #side .navbar-nav{display:flex;flex-direction:row;overflow:auto;flex-wrap:nowrap;padding:0 6px!important;max-width:100%}
-  #side .nav-item{flex:none}#side .nav-link{margin:0;padding:8px 10px;min-height:36px}#side .nav-link-icon{display:none}
+  #side .nav-item{flex:none}#side .nav-link{margin:0 1px 5px;padding:8px 10px;min-height:36px}#side .nav-link-icon{display:none}
+  #side .nav-link.active{box-shadow:inset 0 -2px var(--nav-accent)}
+  #bar .page-tools button{color:var(--nav-ink);background:transparent;border-color:#61738A}
+  #bar .page-tools button:not(:disabled):hover{color:var(--nav-active);background:rgb(255 255 255 / 6%);border-color:var(--nav-accent)}
+  #bar .page-tools button:focus-visible{outline-color:var(--nav-accent)}
   #side .mt-auto{display:none}.navbar-vertical.navbar-expand-sm~.page-wrapper{margin-left:0}
   #side .navbar-collapse{display:block}#side.navbar-folded .navbar-nav{display:flex}#side.navbar-folded .nav-link-title{display:block}
   #bar{padding:0 10px 6px;position:static}#bar .container-fluid{flex-wrap:wrap}.view-heading h1{font-size:var(--fs-title)}

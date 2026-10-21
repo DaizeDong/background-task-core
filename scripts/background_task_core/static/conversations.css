@@ -10,19 +10,19 @@
 .cv-gh:not(:disabled):hover,.cv-g.open>.cv-gh{background:var(--cur)}
 .cv-gh .caret{color:var(--dim);font-size:var(--fs-meta)}
 .cv-gh .dir{display:flex;align-items:baseline;gap:12px;min-width:0;text-align:left;overflow:hidden}
-.cv-gh .dn{font-weight:600;flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cv-gh .dn{font-weight:500;flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .cv-gh .n,.cv-gh .ag{color:var(--dim);font-size:var(--fs-meta);white-space:nowrap;text-align:right}
 .cv-list{padding:0 8px 4px 24px;max-height:min(65vh,640px);overflow:auto;overflow-anchor:none}
 .cv-g:not(.open)>.cv-list{display:none}
 .cv-g.open>.cv-list{display:block}
 .cv-project-details{margin:6px 0;color:var(--dim);font-size:var(--fs-meta)}
-.cv-r{display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:center;gap:6px 12px;padding:8px 0;border-top:1px solid var(--line2);font-size:var(--fs-body);min-width:0}
+.cv-r{display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:center;gap:var(--space-2) var(--space-3);padding:var(--space-2) 0;border-top:1px solid var(--line2);font-size:var(--fs-body);min-width:0}
 .cv-main{min-width:0}
 .cv-r .t{display:block;width:100%;min-width:0;min-height:28px;margin:0;padding:2px 0;border:0;border-radius:0;background:transparent;color:var(--ink);font:inherit;font-weight:500;line-height:1.45;text-align:left;white-space:normal;overflow-wrap:anywhere}
 .cv-r button.t:not(:disabled):hover{color:var(--cyan);text-decoration:underline}
 /* 标题和它后面的铅笔一行。铅笔平时淡出、悬停或焦点落进这一行时出现;触屏没有悬停,一直显示。
    用透明度而不是 display:none 藏:藏起来的铅笔仍然能用 Tab 走到,走到时整行 focus-within 让它现形。 */
-.cv-title-line{display:flex;align-items:flex-start;gap:4px;min-width:0}
+.cv-title-line{display:flex;align-items:baseline;gap:var(--space-1);min-width:0}
 .cv-title-line .t{width:auto;flex:0 1 auto}
 .cv-quick{flex:none;opacity:0;transition:opacity .12s}
 .cv-r:hover .cv-quick,.cv-r:focus-within .cv-quick{opacity:1}

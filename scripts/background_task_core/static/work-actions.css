@@ -2,8 +2,10 @@
 .work-action-controls{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
 .work-actions>button{justify-self:start;min-height:30px}
 .work-action-controls .mini{min-height:30px;white-space:normal;line-height:1.3;display:inline-flex;align-items:center;gap:4px}
-.work-action.primary:not(:disabled){color:var(--cyan);border-color:var(--cyan);background:var(--cur);font-weight:600}
-.work-action.complete:not(:disabled){color:var(--ok);border-color:var(--ok);background:var(--okb);font-weight:600}
+.work-action.primary:not(:disabled){color:var(--cyan);border-color:var(--line);background:var(--cur);font-weight:500}
+.work-action.primary:not(:disabled):hover{border-color:var(--cyan)}
+.work-action.complete:not(:disabled){color:var(--ok);border-color:var(--line);background:var(--panel)}
+.work-action.complete:not(:disabled):hover{border-color:var(--ok);background:var(--okb)}
 .work-action.stop:not(:disabled){color:var(--warn);border-color:var(--warn);background:var(--warnb)}
 .work-actions small{color:var(--dim);font-size:var(--fs-meta);overflow-wrap:anywhere}
 .work-action-note{white-space:pre-wrap}
