@@ -77,7 +77,7 @@ python -m background_task_core <权威命令> ...                # plan、regist
 | --- | --- |
 | `background-task-core.ps1` | 以隐藏进程启动已安装的控制台并打开（`-Tab`、`-NoBrowser`、`-Stop`、`-Status`） |
 | `install-background-task-core-shortcut.ps1` | 给这个启动器建桌面和开始菜单快捷方式，图标用伴生仓的 `data/assets/icon.ico`（`-Remove` 删掉） |
-| `task-health-monitor.ps1` | `TaskHealthMonitor` 每小时跑的健康巡检 |
+| `task-health-monitor.ps1` | `BackgroundTaskCoreHealth` 每小时跑的健康巡检 |
 | `console-runlog-ingest.ps1` | `RefreshConsoleRunlog` 每天跑的全量摄入 |
 | `task-registry-check.ps1` | 建任务规范的对账：每个活跃任务都要在备份 allow-list 投影和健康监控清单里；由巡检调用 |
 | `background-task-core-binding.ps1`、`lib/task-health-observations.ps1` | 其余脚本 dot-source 的共用函数 |

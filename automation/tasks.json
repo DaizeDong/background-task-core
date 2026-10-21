@@ -4,7 +4,7 @@
   "tasks": [
     {
       "id": "background-task-core/taskhealthmonitor",
-      "name": "TaskHealthMonitor",
+      "name": "BackgroundTaskCoreHealth",
       "purpose": "Hourly health pass: publishes the passive observation snapshot, judges every watched task, ingests health into the console database, and pushes the digest and its own heartbeat.",
       "enabled": true,
       "trigger": {"type": "interval", "minutes": 60},

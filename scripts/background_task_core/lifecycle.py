@@ -3467,19 +3467,14 @@ def _skill_declarations(manifest, overrides, paths, *, sid, existing):
     return result
 
 
-def _launcher_file(name, taken, runtime_doc, tombstones):
+def _launcher_file(name, taken):
     candidate = 'launchers/' + re.sub(r'[^A-Za-z0-9_.-]', '_', name) + '.vbs'
-    owner = taken.get(candidate.casefold())
-    if owner is not None:
-        if owner not in tombstones:
-            raise ContractError('launcher_path_taken', 'launchers')
-        # Retirement deleted that task's launcher; the task that replaces it under the same
-        # Scheduler name takes the path over.
-        del runtime_doc['launchers'][owner]
+    if candidate.casefold() in taken:
+        raise ContractError('launcher_path_taken', 'launchers')
     return candidate
 
 
-def _merge_skill(desired, runtime_doc, skill, declarations, retired, tombstones):
+def _merge_skill(desired, runtime_doc, skill, declarations, retired):
     """Write the declarations into the desired request and runtime configuration, in place.
 
     Returns the task IDs this skill installed earlier that its manifest no longer lists."""
@@ -3490,7 +3485,7 @@ def _merge_skill(desired, runtime_doc, skill, declarations, retired, tombstones)
     plain = [c for c in components if isinstance(c, dict) and 'manifest' not in c]
     owned = [c['component'] + '/' + entry['id'] for c in plain for entry in c.get('tasks', [])
              if entry.get('entrypoint') == owner]
-    taken = {path.casefold(): task_id for task_id, path in runtime_doc['launchers'].items() if task_id not in declarations}
+    taken = {path.casefold() for task_id, path in runtime_doc['launchers'].items() if task_id not in declarations}
     for task_id, item in declarations.items():
         if task_id in retired:
             continue
@@ -3513,9 +3508,9 @@ def _merge_skill(desired, runtime_doc, skill, declarations, retired, tombstones)
         bindings[task_id] = item['binding']
         overrides.pop(task_id, None)
         if task_id not in runtime_doc['launchers']:
-            path = _launcher_file(item['binding']['name'], taken, runtime_doc, tombstones)
+            path = _launcher_file(item['binding']['name'], taken)
             runtime_doc['launchers'][task_id] = path
-            taken[path.casefold()] = task_id
+            taken.add(path.casefold())
         runtime_doc['active_xml'].setdefault(task_id, None)
     removed = [task_id for task_id in owned if task_id not in declarations]
     for task_id in removed:
@@ -3625,7 +3620,7 @@ def install_skill(runtime_args, skill_root, *, companion_root=None, policy='keep
         item['binding']['enabled'] = _wanted_enabled(
             item, snapshot.get('value') if snapshot['state'] == 'present' else None, policy)
     merged, merged_config = deepcopy(desired), deepcopy(runtime_doc)
-    removed = [task_id for task_id in _merge_skill(merged, merged_config, skill, declarations, retired, tombstones)
+    removed = [task_id for task_id in _merge_skill(merged, merged_config, skill, declarations, retired)
                if task_id not in tombstones]
     report = {'schemaVersion': 1, 'skill': skill, 'skill_root': paths.references['SKILL_ROOT'],
               'companion_variable': paths.companion_variable if companion_root is not None else None,

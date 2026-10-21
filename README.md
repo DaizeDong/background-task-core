@@ -79,7 +79,7 @@ The server generates a token at each start and never writes it to disk. Ingestio
 | --- | --- |
 | `background-task-core.ps1` | Starts the installed console as a hidden process and opens it (`-Tab`, `-NoBrowser`, `-Stop`, `-Status`) |
 | `install-background-task-core-shortcut.ps1` | Desktop and Start-menu shortcuts to that launcher, with the companion's `data/assets/icon.ico` (`-Remove` deletes them) |
-| `task-health-monitor.ps1` | The hourly health pass run by `TaskHealthMonitor` |
+| `task-health-monitor.ps1` | The hourly health pass run by `BackgroundTaskCoreHealth` |
 | `console-runlog-ingest.ps1` | The daily full ingest run by `RefreshConsoleRunlog` |
 | `task-registry-check.ps1` | Task-creation conformance: every active task is in the backup allow-list projection and the health watch list; the monitor runs it |
 | `background-task-core-binding.ps1`, `lib/task-health-observations.ps1` | Shared helpers the others dot-source |
