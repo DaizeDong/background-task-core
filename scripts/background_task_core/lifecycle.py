@@ -702,7 +702,7 @@ def _validate_scheduler_snapshot(item, proof, snapshot, spec, *, launcher=None):
                 or [node.tag for node in actions[0] if isinstance(node.tag, str)] != ['{' + NS + '}Exec']
                 or [node.tag for node in principals[0] if isinstance(node.tag, str)] != ['{' + NS + '}Principal']):
             _fail('reviewed_scheduler_spec_mismatch')
-        if spec.get('timezone') != 'UTC':
+        if spec.get('timezone') not in ('UTC', 'local'):
             _fail('reviewed_scheduler_trigger_requires_xml')
         # Do not let an unchanged embedded trigger hide different executable XML.
         render_before = deepcopy(snapshot)
@@ -3252,3 +3252,445 @@ def observations_main(argv=None):
         print(json.dumps({"schemaVersion": 1, "published": False, "reason_code": reason}),
               file=sys.stdout if args.receipt_stdout else sys.stderr)
         return 2
+
+
+# ---- skill task manifests ----------------------------------------------------------------------
+# A skill ships the scheduled tasks it needs in <skill root>/automation/tasks.json: public, written
+# with ${SKILL_ROOT} / ${COMPANION_ROOT} placeholders and %NAME% references only. Machine choices
+# (enabled, a different time, a console category) live in the skill's private companion at
+# automation/tasks.local.json. install-skill merges both into the authority's desired declarations
+# and runs creation-check, registration-plan and apply for exactly that skill's tasks; a task the
+# manifest no longer lists is retired through the same authority. Re-running it changes nothing
+# when nothing changed.
+
+SKILL_MANIFEST = ('automation', 'tasks.json')
+SKILL_OVERRIDES = ('automation', 'tasks.local.json')
+SKILL_ENTRYPOINT = 'skill:'
+_SKILL_TASK_ID = re.compile(r'[A-Za-z0-9][A-Za-z0-9_.-]*/[A-Za-z0-9][A-Za-z0-9_.-]*\Z')
+_SKILL_NAME = re.compile(r'[A-Za-z0-9][A-Za-z0-9_.-]*\Z')
+_PLACEHOLDER = re.compile(r'\$\{([A-Z_]+)\}')
+_SKILL_TASK_FIELDS = {'id', 'name', 'purpose', 'kind', 'enabled', 'trigger', 'timezone', 'argv', 'cwd',
+                      'run_level', 'power', 'timeout_seconds', 'concurrency', 'backup', 'checks'}
+_SKILL_OVERRIDE_FIELDS = {'enabled', 'trigger', 'timezone', 'timeout_seconds', 'power', 'run_level',
+                          'category', 'description'}
+_SKILL_POWER = ('disallow_start_on_batteries', 'stop_on_batteries', 'wake_to_run')
+
+
+def _skill_json(path, field):
+    try:
+        document = json.loads(Path(path).read_text(encoding='utf-8-sig'))
+    except (OSError, ValueError) as exc:
+        raise ContractError('unreadable_input', field) from exc
+    return reg.versioned(document, field)
+
+
+def _skill_task(task, overrides):
+    """Validate one manifest task and apply its private override; returns a plain dict."""
+    if not isinstance(task, dict):
+        raise ContractError('invalid_type', 'tasks')
+    reg.fields(task, _SKILL_TASK_FIELDS, 'tasks')
+    task_id = reg.require(task, 'id', str)
+    if not _SKILL_TASK_ID.fullmatch(task_id):
+        raise ContractError('invalid_id', 'tasks.id')
+    override = overrides.get(task_id, {})
+    if not isinstance(override, dict):
+        raise ContractError('invalid_type', 'overrides.tasks')
+    reg.fields(override, _SKILL_OVERRIDE_FIELDS, 'overrides.tasks')
+    merged = {**task, **{k: v for k, v in override.items() if k not in ('category', 'description')}}
+    task_name(reg.require(merged, 'name', str))
+    reg.require(merged, 'purpose', str)
+    reg.require(merged, 'enabled', bool)
+    if merged.get('kind', 'oneshot') not in ('oneshot', 'daemon', 'dispatcher'):
+        raise ContractError('invalid_value', 'tasks.kind')
+    if merged.get('timezone', 'local') not in ('local', 'UTC'):
+        raise ContractError('invalid_value', 'tasks.timezone')
+    if 'trigger' not in merged:
+        raise ContractError('missing_field', 'trigger')
+    reg.validate_trigger_shape(merged['trigger'])
+    entries = merged['trigger'] if isinstance(merged['trigger'], list) else [merged['trigger']]
+    if any(entry.get('type') == 'xml' for entry in entries):
+        raise ContractError('unsupported_trigger', 'trigger.type')
+    argv = reg.require(merged, 'argv', list)
+    if not argv or any(not isinstance(arg, str) or not arg for arg in argv):
+        raise ContractError('invalid_argv', 'argv')
+    if merged.get('run_level', 'LeastPrivilege') not in ('LeastPrivilege', 'HighestAvailable'):
+        raise ContractError('invalid_value', 'run_level')
+    power = merged.get('power', {})
+    if not isinstance(power, dict) or set(power) - set(_SKILL_POWER) or any(type(v) is not bool for v in power.values()):
+        raise ContractError('invalid_value', 'power')
+    if type(merged.get('timeout_seconds')) is not int or merged['timeout_seconds'] < 0:
+        raise ContractError('invalid_value', 'timeout_seconds')
+    if merged.get('concurrency', 'IgnoreNew') not in ('IgnoreNew', 'Parallel', 'Queue', 'StopExisting'):
+        raise ContractError('invalid_value', 'concurrency')
+    if type(merged.get('backup', True)) is not bool:
+        raise ContractError('invalid_value', 'backup')
+    checks = merged.get('checks', [])
+    if not isinstance(checks, list):
+        raise ContractError('invalid_type', 'checks')
+    for check in checks:
+        if not isinstance(check, dict):
+            raise ContractError('invalid_type', 'checks')
+        reg.fields(check, {'id', 'required', 'health'}, 'checks')
+        if 'health' in check and (not isinstance(check['health'], dict) or not check['health']):
+            raise ContractError('invalid_monitor', 'checks.health')
+    for key in ('category', 'description'):
+        if key in override and not isinstance(override[key], str):
+            raise ContractError('invalid_type', 'overrides.' + key)
+    return {**merged, 'override': override}
+
+
+def _environment_value(name):
+    """The value a scheduled task will see: process, then user, then machine environment."""
+    value = os.environ.get(name)
+    if value:
+        return value
+    try:
+        import winreg
+    except ImportError:
+        return None
+    for hive, key in ((winreg.HKEY_CURRENT_USER, 'Environment'),
+                      (winreg.HKEY_LOCAL_MACHINE, r'SYSTEM\CurrentControlSet\Control\Session Manager\Environment')):
+        try:
+            with winreg.OpenKey(hive, key) as handle:
+                raw, _ = winreg.QueryValueEx(handle, name)
+        except OSError:
+            continue
+        if isinstance(raw, str) and raw:
+            return os.path.expandvars(raw)
+    return None
+
+
+def _current_user_sid():
+    import win32api
+    import win32security
+    token = win32security.OpenProcessToken(win32api.GetCurrentProcess(), win32security.TOKEN_QUERY)
+    return win32security.ConvertSidToStringSid(win32security.GetTokenInformation(token, win32security.TokenUser)[0])
+
+
+def _same_dir(left, right):
+    return os.path.normcase(os.path.realpath(left)) == os.path.normcase(os.path.realpath(right))
+
+
+class _SkillPaths:
+    """${SKILL_ROOT} and ${COMPANION_ROOT}: what a launcher names and what a health check reads."""
+
+    def __init__(self, skill, skill_root, companion_root):
+        home = _environment_value('USERPROFILE')
+        if not home:
+            raise ContractError('variable_unset', 'USERPROFILE')
+        self.home = Path(os.path.realpath(home))
+        self.skill_root = Path(os.path.realpath(skill_root))
+        try:
+            relative = self.skill_root.relative_to(self.home)
+        except ValueError as exc:
+            raise ContractError('skill_root_outside_profile', 'skill_root') from exc
+        self.companion_root = None if companion_root is None else Path(os.path.realpath(companion_root))
+        self.companion_variable = re.sub(r'[^A-Z0-9]', '_', skill.upper()) + '_CONFIG'
+        self.references = {'SKILL_ROOT': '%USERPROFILE%\\' + str(relative).replace('/', '\\')}
+        self.absolute = {'SKILL_ROOT': str(self.skill_root)}
+        if self.companion_root is not None:
+            self.references['COMPANION_ROOT'] = '%' + self.companion_variable + '%'
+            self.absolute['COMPANION_ROOT'] = str(self.companion_root)
+
+    def _substitute(self, text, table):
+        def replace(match):
+            if match.group(1) not in ('SKILL_ROOT', 'COMPANION_ROOT'):
+                raise ContractError('unknown_placeholder', match.group(1))
+            if match.group(1) not in table:
+                raise ContractError('companion_unresolved', 'COMPANION_ROOT')
+            return table[match.group(1)]
+        if '${' in _PLACEHOLDER.sub('', text):
+            raise ContractError('invalid_placeholder', 'text')
+        result = _PLACEHOLDER.sub(replace, text)
+        return result.replace('/', '\\') if _PLACEHOLDER.match(text) else result
+
+    def launch(self, text):
+        """A launch path: placeholders become %NAME% references the Scheduler expands at run time."""
+        result = self._substitute(text, self.references)
+        for name in reg.VARIABLE_REFERENCE.findall(result):
+            value = _environment_value(name)
+            if not value:
+                raise ContractError('variable_unset', name)
+            if name == self.companion_variable and not _same_dir(value, self.companion_root):
+                raise ContractError('companion_variable_mismatch', name)
+        return result
+
+    def health(self, value):
+        """A health-check value: placeholders become ~/ paths, as the monitor reads them."""
+        if isinstance(value, dict):
+            return {k: self.health(v) for k, v in value.items()}
+        if isinstance(value, list):
+            return [self.health(v) for v in value]
+        if not isinstance(value, str) or '${' not in value:
+            return value
+        path = Path(self._substitute(value, self.absolute))
+        try:
+            return '~/' + path.relative_to(self.home).as_posix()
+        except ValueError:
+            return str(path)
+
+
+def _skill_declarations(manifest, overrides, paths, *, sid, existing):
+    """Component task entries and private bindings for every manifest task."""
+    skill = manifest['skill']
+    result = {}
+    for task in manifest['tasks']:
+        merged = _skill_task(task, overrides)
+        task_id = merged['id']
+        if task_id in result:
+            raise ContractError('duplicate_task', 'tasks.id')
+        override = merged.pop('override')
+        checks = merged.get('checks', [])
+        entry = {'id': task_id.split('/', 1)[1], 'kind': merged.get('kind', 'oneshot'),
+                 'entrypoint': SKILL_ENTRYPOINT + skill, 'timeout_seconds': merged['timeout_seconds'],
+                 'concurrency_key': task_id,
+                 'checks': [{'id': c['id'], 'required': c.get('required', True)} for c in checks]}
+        previous = existing.get(task_id) or {}
+        binding = {
+            'name': merged['name'], 'enabled': merged['enabled'],
+            'argv': [paths.launch(arg) for arg in merged['argv']],
+            'cwd': paths.launch(merged.get('cwd', '${SKILL_ROOT}')),
+            'source_root': paths.references['SKILL_ROOT'],
+            'timezone': merged.get('timezone', 'local'), 'trigger': deepcopy(merged['trigger']),
+            'principal': {'user_id': sid, 'logon_type': 'InteractiveToken',
+                          'run_level': merged.get('run_level', 'LeastPrivilege')},
+            'power': {key: merged.get('power', {}).get(key, False) for key in _SKILL_POWER},
+            'timeout_seconds': merged['timeout_seconds'],
+            'concurrency': {'policy': merged.get('concurrency', 'IgnoreNew')},
+            'backup': merged.get('backup', True),
+            'category': override.get('category', previous.get('category', 'uncategorized')),
+            'checks': [{'id': c['id'], 'legacy': paths.health(c['health'])} for c in checks if 'health' in c],
+            'description': override.get('description', merged['purpose']),
+        }
+        result[task_id] = {'entry': entry, 'binding': binding, 'declared_enabled': merged['enabled'],
+                           'override_enabled': override.get('enabled')}
+    return result
+
+
+def _launcher_file(name, taken):
+    candidate = 'launchers/' + re.sub(r'[^A-Za-z0-9_.-]', '_', name) + '.vbs'
+    if candidate.casefold() in taken:
+        raise ContractError('launcher_path_taken', 'launchers')
+    return candidate
+
+
+def _merge_skill(desired, runtime_doc, skill, declarations, retired):
+    """Write the declarations into the desired request and runtime configuration, in place.
+
+    Returns the task IDs this skill installed earlier that its manifest no longer lists."""
+    owner = SKILL_ENTRYPOINT + skill
+    components = reg.require(desired, 'components', list)
+    bindings = reg.require(reg.require(desired, 'bindings', dict), 'tasks', dict)
+    overrides = reg.require(reg.require(desired, 'machine', dict), 'overrides', dict)
+    plain = [c for c in components if isinstance(c, dict) and 'manifest' not in c]
+    owned = [c['component'] + '/' + entry['id'] for c in plain for entry in c.get('tasks', [])
+             if entry.get('entrypoint') == owner]
+    taken = {path.casefold() for task_id, path in runtime_doc['launchers'].items() if task_id not in declarations}
+    for task_id, item in declarations.items():
+        if task_id in retired:
+            continue
+        name, local = task_id.split('/', 1)
+        component = next((c for c in plain if c.get('component') == name), None)
+        if component is None:
+            component = {'schemaVersion': 1, 'component': name,
+                         'read': 'background-task-core-status --configured', 'tasks': []}
+            components.append(component)
+            plain.append(component)
+        tasks = component['tasks']
+        index = next((i for i, entry in enumerate(tasks) if entry.get('id') == local), None)
+        if index is None:
+            tasks.append(item['entry'])
+        else:
+            current = tasks[index].get('entrypoint', '')
+            if current.startswith(SKILL_ENTRYPOINT) and current != owner:
+                raise ContractError('task_owned_by_other_skill', 'tasks.id')
+            tasks[index] = item['entry']
+        bindings[task_id] = item['binding']
+        overrides.pop(task_id, None)
+        if task_id not in runtime_doc['launchers']:
+            path = _launcher_file(item['binding']['name'], taken)
+            runtime_doc['launchers'][task_id] = path
+            taken.add(path.casefold())
+        runtime_doc['active_xml'].setdefault(task_id, None)
+    removed = [task_id for task_id in owned if task_id not in declarations]
+    for task_id in removed:
+        runtime_doc['active_xml'].setdefault(task_id, None)
+    return removed
+
+
+def _write_json(path, document):
+    fs.atomic_replace(Path(path), (json.dumps(document, indent=2, ensure_ascii=False) + '\n').encode('utf-8'))
+
+
+def _strip_enabled(spec):
+    return {k: v for k, v in spec.items() if k != 'enabled'}
+
+
+def _failure(result):
+    return (result.get('failure') or {}).get('code', result['status'])
+
+
+def _wanted_enabled(item, live, policy):
+    target = item['declared_enabled'] if item['override_enabled'] is None else item['override_enabled']
+    if policy == 'hold':
+        return False
+    if policy == 'declared' or live is None or item['override_enabled'] is not None:
+        return target
+    return live['enabled']  # keep: never silently enable or pause an existing task
+
+
+def _skill_apply(runtime, task_id, item, reason):
+    """Create or update one declared task; returns its report row."""
+    bundle = runtime.load()
+    spec = {s['task_id']: s for s in registration._compile(bundle)['task_specs']}[task_id]
+    before = registration._read(runtime.scheduler, spec['name'])
+    live = before.get('value') if before['state'] == 'present' else None
+    wanted = item['binding']['enabled']
+    row = {'task_id': task_id, 'name': spec['name'], 'enabled': wanted}
+    if live is None:
+        check = registration.creation_check(runtime, task_id)
+        if check['decision'] == 'reuse':
+            return {**row, 'action': 'refused', 'code': 'equivalent_task_exists',
+                    'matches': [match['task_id'] for match in check['matches']]}
+    migrate = task_id not in bundle['request']['machine']['migrated_tasks']
+    plan = registration.build_plan(runtime, [task_id], operation='apply', migrate=migrate,
+                                   approve_enable=bool(wanted and live is not None and not live['enabled']),
+                                   reason=reason)
+    action = 'unchanged'
+    if not (live is not None and not migrate and not plan['changes']['files']
+            and isinstance(live.get('spec'), dict) and _strip_enabled(live['spec']) == _strip_enabled(spec)):
+        result = registration.apply(plan, plan['input_revision'], runtime=runtime)
+        if result['status'] != 'committed' or not result.get('cleaned'):
+            return {**row, 'action': 'refused', 'code': _failure(result)}
+        action = 'created' if live is None else 'updated'
+    # The effective declaration keeps console enable/disable controls, so an enabled choice that
+    # the submitted file cannot express goes through the explicit control.
+    spec = {s['task_id']: s for s in registration._compile(runtime.load())['task_specs']}[task_id]
+    if spec['enabled'] != wanted:
+        operation = 'enable' if wanted else 'disable'
+        plan = registration.build_plan(runtime, [task_id], operation=operation, approve_enable=wanted, reason=reason)
+        result = registration.apply(plan, plan['input_revision'], runtime=runtime)
+        if result['status'] != 'committed' or not result.get('cleaned'):
+            return {**row, 'action': 'refused', 'code': _failure(result)}
+        action = operation + 'd' if action == 'unchanged' else action
+    return {**row, 'action': action}
+
+
+def install_skill(runtime_args, skill_root, *, companion_root=None, policy='keep', dry_run=False):
+    """Install, update or retire exactly the tasks one skill's manifest declares."""
+    skill_root = Path(skill_root)
+    if not skill_root.is_absolute() or not skill_root.is_dir():
+        raise ContractError('absolute_path_required', 'skill_root')
+    manifest_path = skill_root.joinpath(*SKILL_MANIFEST)
+    if not manifest_path.is_file():
+        return {'schemaVersion': 1, 'manifest': False, 'tasks': [], 'ok': True}
+    manifest = _skill_json(manifest_path, 'manifest')
+    reg.fields(manifest, {'schemaVersion', 'skill', 'tasks'}, 'manifest')
+    skill = reg.require(manifest, 'skill', str)
+    if not _SKILL_NAME.fullmatch(skill):
+        raise ContractError('invalid_id', 'skill')
+    if not reg.require(manifest, 'tasks', list):
+        raise ContractError('missing_tasks', 'tasks')
+    if companion_root is None:
+        from fleet_guards.runtime import companion_resolver
+        companion_root = companion_resolver(source_root=skill_root.resolve()).resolve_companion_root(skill)
+    elif not Path(companion_root).is_absolute() or not Path(companion_root).is_dir():
+        raise ContractError('companion_unresolved', 'companion_root')
+    overrides = {}
+    if companion_root is not None and Path(companion_root).joinpath(*SKILL_OVERRIDES).is_file():
+        document = _skill_json(Path(companion_root).joinpath(*SKILL_OVERRIDES), 'overrides')
+        reg.fields(document, {'schemaVersion', 'tasks'}, 'overrides')
+        overrides = reg.require(document, 'tasks', dict)
+        if set(overrides) - {task.get('id') for task in manifest['tasks'] if isinstance(task, dict)}:
+            raise ContractError('unknown_task', 'overrides.tasks')
+    paths = _SkillPaths(skill, skill_root, companion_root)
+    runtime = load_runtime(**runtime_args)
+    if runtime.journal.pending(['authority']):
+        raise ContractError('recovery_required', 'journal')
+    config = runtime.authority.config
+    desired, runtime_doc = read_json(config.desired), read_json(config.source_path)
+    tombstones = decode(registration._read(runtime.files, config.paths['tombstones'])['value'])
+    declarations = _skill_declarations(manifest, overrides, paths, sid=_current_user_sid(),
+                                       existing=desired['bindings']['tasks'])
+    retired = {task_id for task_id in declarations if task_id in tombstones}
+    live = {}
+    for task_id, item in declarations.items():
+        snapshot = registration._read(runtime.scheduler, item['binding']['name'])
+        live[task_id] = snapshot['state']
+        item['binding']['enabled'] = _wanted_enabled(
+            item, snapshot.get('value') if snapshot['state'] == 'present' else None, policy)
+    merged, merged_config = deepcopy(desired), deepcopy(runtime_doc)
+    removed = [task_id for task_id in _merge_skill(merged, merged_config, skill, declarations, retired)
+               if task_id not in tombstones]
+    report = {'schemaVersion': 1, 'skill': skill, 'skill_root': paths.references['SKILL_ROOT'],
+              'companion_variable': paths.companion_variable if companion_root is not None else None,
+              'policy': policy, 'dry_run': dry_run, 'manifest': True,
+              'tasks': [{'task_id': task_id, 'action': 'refused', 'code': 'retired_task'} for task_id in sorted(retired)]}
+    rows = report['tasks']
+    if dry_run:
+        # The same compilation registration runs, so a declaration it would refuse fails here.
+        reg.compile_tasks(merged['components'], merged['bindings'], {**merged['machine'], 'migrated_tasks': []})
+        for task_id, item in declarations.items():
+            if task_id in retired:
+                continue
+            state = live[task_id]
+            changed = (desired['bindings']['tasks'].get(task_id) != merged['bindings']['tasks'][task_id]
+                       or runtime_doc['launchers'].get(task_id) != merged_config['launchers'][task_id])
+            shown = {**item['binding'], 'principal': {k: v for k, v in item['binding']['principal'].items()
+                                                      if k != 'user_id'}}
+            rows.append({'task_id': task_id, 'name': item['binding']['name'], 'live': state,
+                         'action': 'create' if state == 'absent' else 'update' if changed else 'check',
+                         'launcher': merged_config['launchers'][task_id], 'declaration': shown})
+        rows.extend({'task_id': task_id, 'action': 'retire'} for task_id in removed)
+        report['ok'] = not retired
+        return report
+    if merged_config != runtime_doc:
+        _write_json(config.source_path, merged_config)
+    if merged != desired:
+        _write_json(config.desired, merged)
+    runtime = load_runtime(**runtime_args)
+    reason = 'install-skill ' + skill
+    for task_id, item in declarations.items():
+        if task_id in retired:
+            continue
+        try:
+            rows.append(_skill_apply(runtime, task_id, item, reason))
+        except ContractError as exc:
+            rows.append({'task_id': task_id, 'name': item['binding']['name'], 'action': 'refused', 'code': exc.code})
+    for task_id in removed:
+        try:
+            plan = registration.build_plan(runtime, [task_id], operation='retire',
+                                           reason=reason + ': removed from the manifest')
+            result = registration.apply(plan, plan['input_revision'], runtime=runtime)
+            committed = result['status'] == 'committed' and result.get('cleaned')
+            rows.append({'task_id': task_id, 'action': 'retired'} if committed else
+                        {'task_id': task_id, 'action': 'refused', 'code': _failure(result)})
+        except ContractError as exc:
+            rows.append({'task_id': task_id, 'action': 'refused', 'code': exc.code})
+    report['ok'] = all(row['action'] != 'refused' for row in rows)
+    return report
+
+
+def install_skill_main(argv=None):
+    parser = argparse.ArgumentParser(prog='background-task-core install-skill',
+                                     description="Install the scheduled tasks a skill declares in automation/tasks.json.")
+    parser.add_argument('--skill-root', required=True)
+    parser.add_argument('--companion-root')
+    parser.add_argument('--enable', choices=['keep', 'hold', 'declared'], default='keep')
+    parser.add_argument('--dry-run', action='store_true')
+    for flag in ('--runtime-config', '--private-root', '--state-root', '--vault-root'):
+        parser.add_argument(flag)
+    args = parser.parse_args(argv)
+    runtime_args = {'runtime_config': args.runtime_config, 'private_root': args.private_root,
+                    'state_root': args.state_root, 'vault_root': args.vault_root}
+    try:
+        result = install_skill(runtime_args, args.skill_root, companion_root=args.companion_root,
+                               policy=args.enable, dry_run=args.dry_run)
+    except ContractError as exc:
+        result = error_result(exc)
+    except Exception:
+        result = error_result(RuntimeError())
+    print(json.dumps(result, ensure_ascii=True, sort_keys=True, allow_nan=False))
+    if 'error' in result:
+        return 2
+    return 0 if result['ok'] else 3

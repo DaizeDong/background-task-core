@@ -93,7 +93,11 @@ python -m background_task_core registration-plan --task-id FULL_ID --migrate
 python -m background_task_core apply --request PLAN --expected-revision REVISION
 python -m background_task_core retire --task-id FULL_ID --reason TEXT --expected-revision REVISION
 python -m background_task_core recover --transaction-id ID
+python -m background_task_core install-skill --skill-root SKILL [--companion-root COMPANION] [--enable keep|hold|declared] [--dry-run]
 ```
+
+`install-skill` writes one skill's `automation/tasks.json` into the desired file and runs
+the creation check, plan and apply for each of its tasks; see [skill-tasks.md](skill-tasks.md).
 
 registration-plan supports --operation apply|enable|disable|retire,
 --approve-enable, --reason and --replace-identity. It selects one task; the Python API supports
@@ -190,14 +194,17 @@ Legacy argument observation uses native CommandLineToArgvW through the Windows
 boundary, including doubled literal quotes and empty arguments. Platforms without
 that parser refuse conversion instead of approximating it.
 
-Daily/weekly/interval/logon declarations, including lists, render for UTC.
+Daily/weekly/interval/logon declarations, including lists, render for UTC, or for
+machine-local wall-clock time when the binding's timezone is `local` (boundaries
+without an offset, which the Scheduler keeps across DST).
 Supported trigger dictionaries reject unrecognized fields before compilation or
 rendering. Daily accepts type/at; weekly adds unique days; interval accepts exactly
 one of seconds/minutes; logon accepts type. Extra Scheduler trigger semantics
 require reviewed XML passthrough, which retains the complete trigger collection.
-Non-UTC/DST schedules require reviewed full XML passthrough, retaining boundaries,
+Other named zones require reviewed full XML passthrough, retaining boundaries,
 triggers, settings and principal details. Initial adoption without an embedded spec
-also requires XML passthrough, preventing inferred schedule changes. Multiple
+also requires XML passthrough, preventing inferred schedule changes, unless the
+declaration states a structured trigger, which then replaces the live triggers. Multiple
 actions, unsupported principal shapes and ambiguous trigger forms refuse. Password
 and InteractiveTokenOrPassword principals return auth_pending even when a reference
 exists: a trusted credential-submission adapter is still needed. No account or

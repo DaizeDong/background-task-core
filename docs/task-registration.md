@@ -25,6 +25,8 @@ The Runtime load callback supplies a private bundle with these fields:
   by the migrated set. Identity must match the fresh Scheduler observation; an
   explicitly approved absent target uses null. Ownership evidence comes from a
   reviewed initial import or the previous committed receipt, not guessed names.
+  A declared task with no proof may be created by `apply` only while the Scheduler
+  observation of its name is absent; the receipt then records its first proof.
 - `paths`: exact adapter keys for bindings, machine, task-health.json,
   TaskNames.ps1, categories.json and tombstones. All six must exist and parse.
   Bindings/machine are the published generation; only selected bindings change.

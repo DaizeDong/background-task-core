@@ -1070,16 +1070,18 @@ def _assemble(runtime, intent):
         task_name(spec["name"])
         proof = require(bundle, "ownership", dict).get(task_id)
         writer = "declarations" if task_id in migrated else "legacy"
-        if proof is None and intent.get("replace_identity") is not None:
-            # Adopting an unmanaged task: the reviewed identity names the live definition, and
-            # the receipt gains its ownership proof when the transaction completes.
+        snapshot = _read(runtime.scheduler, spec["name"])
+        if proof is None and (intent.get("replace_identity") is not None
+                              or (intent["operation"] == "apply" and snapshot["state"] == "absent")):
+            # Adopting an unmanaged task (the reviewed identity names the live definition) or
+            # creating a declared task whose name the Scheduler verifiably does not hold: the
+            # receipt gains its ownership proof when the transaction completes.
             proof = {"name": spec["name"], "task_path": "\\", "epoch": epoch, "writer": writer, "identity": None}
         if not isinstance(proof, dict) or any(proof.get(k) != v for k, v in {
             "name": spec["name"], "task_path": "\\", "epoch": epoch, "writer": writer}.items()):
             raise Conflict("ownership_required", "ownership")
         if writer == "legacy" and not intent["migrate"] and not intent.get('legacy_transaction') and intent['operation'] != 'restore':
             raise Conflict("legacy_authority", "task_id")
-        snapshot = _read(runtime.scheduler, spec["name"])
         if proof.get("identity") != snapshot.get("identity") or "identity" not in proof:
             # A definition edited outside the authority may be replaced by the declaration when
             # the operator names the exact drifted definition they reviewed. Its before-image is

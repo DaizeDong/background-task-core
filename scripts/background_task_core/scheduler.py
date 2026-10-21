@@ -468,7 +468,10 @@ def render(spec, old, enabled, launcher=None):
         root = parse(xml)
     elif old['state'] == 'present':
         root = parse(old['value']['xml'])
-        if 'trigger' not in old['value']['spec']:
+        # A live definition without an embedded trigger keeps its schedule unless the declaration
+        # states one explicitly; only an xml trigger would have to be inferred from the old XML.
+        declared = spec['trigger'] if isinstance(spec['trigger'], list) else [spec['trigger']]
+        if 'trigger' not in old['value']['spec'] and any(t.get('type') == 'xml' for t in declared):
             raise Conflict('adoption_requires_xml_passthrough', 'scheduler')
     else:
         root = ET.Element('{' + NS + '}Task', {'version': '1.4'})
@@ -506,8 +509,11 @@ def render(spec, old, enabled, launcher=None):
     # Preserve complete triggers when unchanged or explicitly supplied as XML.
     previous = old.get('value', {}).get('spec', {})
     if not passthrough and (old['state'] == 'absent' or any(previous.get(k) != spec[k] for k in ('trigger', 'timezone'))):
-        if spec['timezone'] != 'UTC':
+        # 'local' writes boundaries without an offset, which the Scheduler runs at machine-local
+        # wall-clock time across DST; any other zone needs reviewed XML passthrough.
+        if spec['timezone'] not in ('UTC', 'local'):
             raise Conflict('timezone_requires_xml_passthrough', 'scheduler')
+        zone = 'Z' if spec['timezone'] == 'UTC' else ''
         triggers = node(root, 'Triggers')
         triggers.clear()
         entries = spec['trigger'] if isinstance(spec['trigger'], list) else [spec['trigger']]
@@ -516,7 +522,7 @@ def render(spec, old, enabled, launcher=None):
             if kind in ('daily', 'weekly'):
                 item = ET.SubElement(triggers, '{' + NS + '}CalendarTrigger')
                 at = trigger['at'] if len(trigger['at']) == 8 else trigger['at'] + ':00'
-                text(item, 'StartBoundary', '2000-01-01T' + at + 'Z')
+                text(item, 'StartBoundary', '2000-01-01T' + at + zone)
                 text(item, 'Enabled', True)
                 if kind == 'daily':
                     text(node(item, 'ScheduleByDay'), 'DaysInterval', 1)
@@ -532,7 +538,7 @@ def render(spec, old, enabled, launcher=None):
                 item = ET.SubElement(triggers, '{' + NS + '}TimeTrigger')
                 unit = 'seconds' if 'seconds' in trigger else 'minutes'
                 text(node(item, 'Repetition'), 'Interval', 'PT' + str(trigger[unit]) + ('S' if unit == 'seconds' else 'M'))
-                text(item, 'StartBoundary', '2000-01-01T00:00:00Z')
+                text(item, 'StartBoundary', '2000-01-01T00:00:00' + zone)
                 text(item, 'Enabled', True)
             elif kind == 'logon':
                 item = ET.SubElement(triggers, '{' + NS + '}LogonTrigger')

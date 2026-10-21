@@ -5,6 +5,7 @@
     python -m background_task_core ingest [--skip-runlog] ...       fill the console database
     python -m background_task_core status [--configured] ...        component status reader
     python -m background_task_core observations --periodic ...      one passive health collection pass
+    python -m background_task_core install-skill --skill-root ...    create/update/retire one skill's tasks
 
 Inputs remain private.
 """
@@ -40,7 +41,8 @@ def _read(path: str):
 
 
 JOBS = {"ingest": ("runs", "ingest_main"), "status": ("runs", "status_main"),
-        "observations": ("lifecycle", "observations_main"), "backup": ("store", "backup_main")}
+        "observations": ("lifecycle", "observations_main"), "backup": ("store", "backup_main"),
+        "install-skill": ("lifecycle", "install_skill_main")}
 
 
 def main(argv: list[str] | None = None, *, runtime=None) -> int:

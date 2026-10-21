@@ -65,10 +65,15 @@ python -m background_task_core status --configured          # component status r
 python -m background_task_core observations --periodic ...  # one passive health collection pass
 python -m background_task_core backup database              # complete private SQLite snapshot
 python -m background_task_core backup registration          # private registration recovery evidence
+python -m background_task_core install-skill --skill-root ... # create/update/retire the tasks a skill declares
 python -m background_task_core <authority command> ...      # plan, registration-plan, creation-check, apply, retire, control, ...
 ```
 
 The server generates a token at each start and never writes it to disk. Ingestion runs out of band, so page loads never read the Windows event log.
+
+## Tasks that ship with a skill
+
+A skill declares its scheduled tasks in `automation/tasks.json` (public, variables only) and keeps machine choices in its private companion's `automation/tasks.local.json`. `install-skill` turns both into authority declarations and creates, updates or retires exactly that skill's tasks; re-running it changes nothing. Contract and example: [docs/skill-tasks.md](docs/skill-tasks.md).
 
 ## Configuration
 

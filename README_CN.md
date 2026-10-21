@@ -63,10 +63,15 @@ python -m background_task_core.server --port 8787            # 页面,只绑 127
 python -m background_task_core ingest [--skip-runlog]       # 写控制台数据库
 python -m background_task_core status --configured          # 组件状态读取
 python -m background_task_core observations --periodic ...  # 一次被动健康观测
+python -m background_task_core install-skill --skill-root ... # 建、改、退役一个 skill 声明的任务
 python -m background_task_core <权威命令> ...                # plan、registration-plan、creation-check、apply、retire、control 等
 ```
 
 服务每次启动生成新令牌，从不落盘。摄入在页面之外跑，打开页面不会去读 Windows 事件日志。
+
+## 随 skill 来的计划任务
+
+skill 在自己仓里的 `automation/tasks.json` 声明它要的计划任务（公开，只写变量），本机的取舍放在它私有伴生仓的 `automation/tasks.local.json`。`install-skill` 把两者合成登记权威的声明，只建、改、退役这个 skill 的任务；重跑不改任何东西。契约与示例见 [docs/skill-tasks.md](docs/skill-tasks.md)。
 
 ## 配置
 
