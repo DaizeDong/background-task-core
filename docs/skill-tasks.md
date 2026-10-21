@@ -78,7 +78,7 @@ The four runtime arguments are the installed runtime's, from the companion's `da
 What it does, in order:
 
 1. Reads the manifest (no manifest: reports `"manifest": false` and changes nothing) and the companion override, and builds one component task entry and one private binding per task. The entry's `entrypoint` is `skill:<skill>`, which is how later runs know the task belongs to this skill.
-2. Refuses if a registration journal is pending. Writes the entries and bindings into the authority's desired file, gives each task a generated launcher `launchers/<Name>.vbs` in the runtime configuration, and drops the task's machine override so the binding is the single source.
+2. Refuses if a registration journal is pending. Writes the entries and bindings into the authority's desired file, gives each task a generated launcher `launchers/<Name>.vbs` in the runtime configuration (a path held only by a retired task is taken over, so a task re-created under a new ID keeps its Scheduler name), and drops the task's machine override so the binding is the single source.
 3. For each task: a missing task gets a creation check first (an equivalent declared action under another ID refuses with `equivalent_task_exists`); then `registration-plan` and `apply`, with `--migrate` until the task is declaration-owned. A task whose live definition, launcher and projections already match is left alone. Any refusal is reported for that task and the others continue.
 4. Retires, through the authority, every task this skill installed earlier that the manifest no longer lists. The declaration stays in the desired file with its tombstone, so the ID cannot come back.
 
