@@ -84,12 +84,6 @@ function workDue(item){
   const overdue=open && left<0, soon=open && left>=0 && left<86400000;
   return `<small class="work-due${overdue || soon?' due-warn':''}">${overdue?'已逾期 · ':''}截止 ${timeTag(item.due_at)}</small>`;
 }
-// 来源一栏。「Agent 工作单」是 Agent 工作的默认来源,每一行都写一遍等于没写,只有别的来源才值得占地方;
-// 原始来源代号留在悬停里。
-function workOrigin(item){
-  const parts=[item.source==='agent-center:work'?'':workSourceLabel(item.source),item.project].filter(Boolean);
-  return parts.length?`<small title="${esc(item.source || '')}">${esc(parts.join(' / '))}</small>`:'';
-}
 function workQueueNote(item){
   if(workState(item)!=='queued' || !item.execution?.queue_reason)return '';
   const text=item.execution.queue_reason==='cleanup_unconfirmed'?'前一任务的进程清理尚未确认，执行队列受阻。':'等待前一任务释放执行位置。';
@@ -101,20 +95,20 @@ function workQueueNote(item){
 function workItemRow(item,compact=false){
   const state=workState(item);
   const tone=({running:'active',doing:'active',queued:'pending',pending:'pending',done:'ok',failed:'bad',blocked:'warn',stalled:'warn',reconcile:'warn',review_unavailable:'idle',cancelled:'muted',stopped:'muted',snoozed:'muted',notified:'muted'})[state] || 'idle';
+  const warning=['failed','blocked','stalled','reconcile','review_unavailable'].includes(state) && item.summary
+    ?`<p class="work-row-warning">${esc(item.summary)}</p>`:'';
+  const when=item.due_at && workUnfinished(item)?workDue(item):workTimeTag(item.updated_at);
+  const title=`<button class="record-link" title="${esc(item.title)}" aria-label="${esc('查看详情：'+item.title)}" data-work-id="${esc(item.id)}">${esc(item.title)}</button>`;
   if(!compact){
-    // 标题本身就打开这条记录,行尾不再另放一只「查看详情」的眼睛:同一件事两个入口,还占掉操作列。
     return `<article class="work-row work-record" data-state="${esc(state)}">
       ${statusBadge(workLabel(item),tone,undefined,'work-state')}
-      <div class="work-subject"><button class="record-link" title="${esc(item.title)}" data-work-id="${esc(item.id)}">${esc(item.title)}</button>${workQueueNote(item)}
-      ${item.summary?`<p title="${esc(item.summary)}">${esc(item.summary)}</p>`:''}${item.latest_mail_summary?`<p>最新邮件：${esc(item.latest_mail_summary)}</p>`:''}<div class="work-meta">${workOrigin(item)}${(item.linked_work || []).map(work=>`<button class="record-link" data-work-id="${esc(work.id)}">关联执行 · ${esc(workLabel(work))}</button>`).join('')}</div>${workRelatedRecords(item)}</div>
-      <div class="work-when">${workTimeTag(item.updated_at)}${workDue(item)}</div>${workActionButtons(item)}</article>`;
+      <div class="work-subject">${title}${workQueueNote(item)}${warning}</div>
+      <div class="work-when">${when}</div>${workActionButtons(item,true)}</article>`;
   }
-  // 紧凑行整行可点(data-work-row),点行里的按钮不算:那些按钮各有自己的事。
   return `<article class="work-row" data-state="${esc(state)}" data-work-row="${esc(item.id)}">
-    <div class="work-subject"><div class="work-row-heading">${statusBadge(workLabel(item),tone,undefined,'work-state')}<button class="record-link" title="${esc(item.title)}" data-work-id="${esc(item.id)}">${esc(item.title)}</button></div>${workQueueNote(item)}
-    ${item.summary?`<p>${esc(item.summary)}</p>`:''}<div class="work-meta">${workOrigin(item)}
-    <div class="work-when">${workTimeTag(item.updated_at)}${workDue(item)}</div></div>
-    </div>${workActionButtons(item,compact)}</article>`;
+    <div class="work-subject"><div class="work-row-heading">${statusBadge(workLabel(item),tone,undefined,'work-state')}${title}</div>
+      ${workQueueNote(item)}${warning}<div class="work-when">${when}</div>
+    </div>${workActionButtons(item,true)}</article>`;
 }
 // 卡片标题旁的数:就是总数,截短了才补一句「显示前 N」。以前写「3 / 3」,读不出哪个是哪个。
 // 读取中和读坏了用计数格子那两种样子,不写一个看起来像结论的「—」。
@@ -134,12 +128,14 @@ function workCoverageText(coverage,stale){
   return parts.length?parts.join('，')+'。':'';
 }
 function renderWorkPlatform(){
+  const restoreDisclosures=['interrupted-work','active-work','recent-results','tracked-work','work-list']
+    .map(id=>captureDisclosures($(id)));
   const phase=workPhase(), present=phase==='ok', p=workProjection(WORK), coverage=WORK?.coverage || {};
   const stale=WORK_ERROR && present;
   // 读不到的时候只说一次:工作台一块、工作记录列表一块,带重试;原始代号只进悬停。
   // 以前同一句「暂时读不到工作记录」在一屏里出现四次,原因却一次也没说。
   const feedState=phase==='loading'?loadingBlock('工作记录'):phase==='broken'?errorBlock('工作记录',WORK?.reason,'data-work-retry'):'';
-  $('work-source-state').textContent=present?`${stale?'刷新失败，以下为上次读取的记录。':''}${WORK_LOADING?'正在刷新 · ':''}读取于 ${workTime(WORK.observed_at)}${coverage.omitted || coverage.invalid?' · 部分记录未读到':''}`:'';
+  $('work-source-state').textContent=present?[stale?'刷新失败，显示上次记录':'',WORK_LOADING?'刷新中':'',coverage.omitted || coverage.invalid?'部分记录未读到':''].filter(Boolean).join(' · '):'';
   $('overview-work-state').innerHTML=feedState;$('overview-work-state').hidden=present;
   $('work').dataset.feed=phase;
   $('overview').dataset.feed=phase;
@@ -148,7 +144,7 @@ function renderWorkPlatform(){
   if($('interrupted-card')) $('interrupted-card').hidden=!interrupted.length;
   $('interrupted-work').innerHTML=interrupted.slice(0,5).map(item=>workItemRow(item,true)).join('');
   setWorkCount('interrupted-count',phase,Math.min(5,interrupted.length),interrupted.length);
-  $('active-work').innerHTML=present?p.active.map(item=>workItemRow(item,true)).join('') || emptyBlock('工作单中没有正在执行或排队的任务'):'';
+  $('active-work').innerHTML=present?p.active.map(item=>workItemRow(item,true)).join('') || emptyBlock('暂无进行中的任务'):'';
   $('recent-results').innerHTML=present?p.results.slice(0,6).map(item=>workItemRow(item,true)).join('') || emptyBlock('还没有 Agent 完成记录'):'';
   $('tracked-work').innerHTML=present?p.tracked.slice(0,5).map(item=>workItemRow(item,true)).join('') || emptyBlock('没有待办事项'):'';
   setWorkCount('active-count',phase,p.active.length,p.active.length);
@@ -160,13 +156,13 @@ function renderWorkPlatform(){
   $('work-coverage').hidden=!coverageText;
   $('work-coverage').title=stale?'原始错误：'+WORK_ERROR:'';
   const rows=selectedWorkRows();
-  const columns='<div class="work-list-heading" aria-hidden="true"><span>状态</span><span>工作与摘要</span><span>更新 / 截止时间</span><span>可用操作</span></div>';
+  const columns='<div class="work-list-heading" aria-hidden="true"><span>状态</span><span>工作</span><span>时间</span><span>操作</span></div>';
   const filtered=activeFilterCount('work')?'work':'';
   $('work-list').innerHTML=!present?feedState:rows.length?columns+rows.map(item=>workItemRow(item)).join(''):emptyBlock('没有符合筛选条件的记录',{filtered});
   const grouped=rows.reduce((n,item)=>n+(item.linked_work?.length || 0)+(item.linked_records?.length || 0),0);
   const history=workRows(WORK,{role:WORK_ROLE,source:WORK_SOURCE,query:WORK_QUERY}).filter(item=>!workUnfinished(item)).length;
-  $('work-match').textContent=present?`${fmtNum(rows.length)} 项${grouped?' · 含关联 '+grouped+' 条':''}${WORK_STATE==='unfinished' && history?' · 另有 '+history+' 项已结束':''}`:'';
-  $('work-match').title=WORK_STATE==='unfinished' && history?'已结束记录可在「全部状态」查看':'';
+  $('work-match').textContent=present?`${fmtNum(rows.length)} 项`:'';
+  $('work-match').title=[grouped?`含 ${grouped} 条关联记录`:'',WORK_STATE==='unfinished' && history?`${history} 项已结束，可在「全部状态」查看`:''].filter(Boolean).join('；');
   // 读坏了的时候,搜索、三个下拉和工作台上的「查看… →」都做不了事:灰掉并说清为什么,而不是点了进一张空列表。
   const blocked=phase==='broken'?WORK_FAILED_REASON:'';
   ['work-search','work-role','work-state','work-source','work-context-toggle'].forEach(id=>setDisabled($(id),blocked));
@@ -184,7 +180,8 @@ function renderWorkPlatform(){
   const events=WORK?.events || [];
   const knownIds=new Set((WORK?.items || []).map(item=>item.id));
   $('work-activity').innerHTML=!present?'':events.slice(0,40).map(event=>`<li>${workTimeTag(event.ts)}<div>${knownIds.has(event.item_id)?`<button class="record-link" data-work-id="${esc(event.item_id)}">${esc(event.title)}</button>`:`<span>${esc(event.title)}</span><small>对应的工作记录未加载</small>`}<small>${esc(workEventLabel(event))}</small></div></li>`).join('') || emptyBlock('没有可显示的活动记录');
-  $('activity-coverage').textContent=present?coverage.events_available?`最近 ${Math.min(40,events.length)} 条，共 ${fmtNum(coverage.event_total)} 条`:'暂时读不到活动记录':'';
+  $('activity-coverage').textContent=present?coverage.events_available?`显示 ${Math.min(40,events.length)} 条 · 共 ${fmtNum(coverage.event_total)} 条`:'暂时读不到活动记录':'';
+  restoreDisclosures.forEach(restore=>restore());
   renderPlatformSignals();renderAutomations();
 }
 function renderPlatformSignals(){
@@ -263,11 +260,12 @@ function automationVerdictChips(rows,selected){
 }
 function renderAutomations(){
   if(!$('automation-list')) return;
+  const restoreDisclosures=captureDisclosures($('automation-list'));
   const verdict=$('automation-verdict').value;
   const candidates=automationRows(ROWS,AUTO_QUERY,AUTO_STATE);
   updateTaskVerdictFilter('automation-verdict',candidates,verdict);
   const rows=candidates.filter(row=>taskMatchesVerdict(row,verdict));
-  $('automation-count').textContent=DATA?`${rows.length}/${ROWS.length} 项`:'暂时读不到计划任务';
+  $('automation-count').textContent=DATA?matchCount(rows.length,ROWS.length,'项'):'暂时读不到计划任务';
   syncResetFilters();
   const groups=new Map();rows.forEach(row=>{if(!groups.has(row.cat))groups.set(row.cat,[]);groups.get(row.cat).push(row);});
   // 这张列表会被工作记录刷新、修复进度轮询顺带重画:焦点在某个按钮上时,重画之后要放回同一个按钮。
@@ -275,10 +273,11 @@ function renderAutomations(){
   $('automation-list').innerHTML=!DATA?workEmpty('暂时读不到计划任务'):rows.length?[...groups].map(([name,items])=>{
     const group=DATA.groups.find(g=>g.cat===name), all=ROWS.filter(row=>row.cat===name);
     return `<section class="card automation-group"><div class="card-header automation-group-header"><div><h3 class="card-title">${esc(name)} <span class="n">${items.length===all.length?all.length:items.length+'/'+all.length} 项计划</span></h3>
-      ${group?.desc?`<p>${esc(group.desc)}</p>`:''}</div><span class="automation-verdict-counts">${automationVerdictChips(all,verdict)}</span></div>
+      ${group?.desc?`<details data-disclosure-key="${esc(name)}"><summary>说明</summary><p>${esc(group.desc)}</p></details>`:''}</div><span class="automation-verdict-counts">${automationVerdictChips(all,verdict)}</span></div>
       <div class="automation-list-heading" aria-hidden="true"><span>任务与建议</span><span>运行计划</span><span>状态</span><span>操作</span></div>${items.map(row=>taskListRow(row)).join('')}</section>`;
   }).join(''):workEmpty('没有符合筛选条件的计划任务');
   restoreTaskControlFocus($('automation-list'),focused);
+  restoreDisclosures();
 }
 function openWorkRecord(id,keepOrder=false){
   const item=(WORK?.items || []).find(row=>row.id===id);
@@ -292,13 +291,15 @@ function openWorkRecord(id,keepOrder=false){
   WORK_DETAIL_ID=id;
   WORK_DETAIL_ITEM=item;
   const events=(WORK.events || []).filter(event=>event.item_id===id);
+  const related=groupWorkRows([item],WORK.items)[0];
   // 详情里的时间相对、绝对都写:这里是停下来细看的地方,不用再去悬停。
   const when=value=>value?`${timeTag(value)} <small>${esc(fullTime(value))}</small>`:'未记录';
   // 详情的主字段只放人读得懂的:记录 ID 和来源的原始代码放到最后的「技术信息」里,排查时还找得到。
   $('work-detail-title').textContent=item.title;
   $('work-detail-body').innerHTML=`<dl class="record-fields"><dt>类别</dt><dd>${esc(ROLE_LABELS[item.role])}</dd><dt>来源</dt><dd>${esc(workSourceLabel(item.source))}</dd><dt>记录状态</dt><dd>${esc(workLabel(item))}</dd><dt>更新时间</dt><dd>${when(item.updated_at)}</dd>${item.due_at?`<dt>截止时间</dt><dd>${when(item.due_at)}</dd>`:''}${item.project?`<dt>项目</dt><dd>${esc(item.project)}</dd>`:''}</dl>
     ${item.group_parent_id?`<p>已归入 <button type="button" class="link-button" data-work-id="${esc(item.group_parent_id)}">查看当前事项</button></p>`:''}${workActionButtons(item)}<h3>${workResult(item)?'完成摘要':'摘要'}</h3><p class="record-summary">${esc(item.summary || '没有摘要')}</p>${item.latest_mail_summary?`<p>最新邮件：${esc(item.latest_mail_summary)}</p>`:''}
-    ${workQueueNote(item)}<div id="work-source-context" hidden></div>
+    ${workQueueNote(item)}${workRelatedRecords(related)}
+    ${(related.linked_work || []).length?`<h3>关联执行</h3>${related.linked_work.map(work=>`<p><button class="record-link" data-work-id="${esc(work.id)}">${esc(work.title)}</button> · ${esc(workLabel(work))}</p>`).join('')}`:''}<div id="work-source-context" hidden></div>
     <h3>最近活动</h3><ul class="record-events">${events.map(event=>`<li>${workTimeTag(event.ts)} · ${esc(workEventLabel(event))}${event.actor?' · '+esc(event.actor):''}</li>`).join('') || '<li>本次读取的活动中没有这条记录</li>'}</ul>
     <h3>技术信息</h3><dl class="record-fields"><dt>记录 ID</dt><dd><code>${esc(item.id)}</code></dd><dt>来源代码</dt><dd><code>${esc(item.source || '未记录')}</code></dd></dl>`;
   if(sourceContext) $('work-source-context').replaceWith(sourceContext);

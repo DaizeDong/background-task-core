@@ -139,7 +139,7 @@ function renderReviewQueue(rows,status){
     const open=row.task?`data-task="${esc(row.task)}"`:row.v==="repos"?`data-review-repo="${esc(row.nm)}"`:`data-goto="${esc(row.v)}"`;
     return `<article class="review-row">
     ${statusBadge(row.sev>=3?'异常':'提示',row.sev>=3?'bad':'warn',undefined,'review-status')}
-    <div class="review-object"><h3>${esc(row.title)}</h3>${row.task && row.title!==row.task?`<code class="review-id">${esc(row.task)}</code>`:""}
+    <div class="review-object"><h3 title="${esc(row.task || row.nm)}">${esc(row.title)}</h3>
     <ul>${row.reasons.map(reason=>`<li${reason.raw?` title="${esc("原文："+reason.raw)}"`:""}>${esc(reason.text)}</li>`).join("")}</ul>
     ${when?`<p class="review-when">${when}</p>`:""}</div>
     <div class="review-actions">${fixBtn(row.fix,row.task || row.nm)}

@@ -6,7 +6,10 @@
 .work-action.complete:not(:disabled){color:var(--ok);border-color:var(--ok);background:var(--okb);font-weight:600}
 .work-action.stop:not(:disabled){color:var(--warn);border-color:var(--warn);background:var(--warnb)}
 .work-actions small{color:var(--dim);font-size:var(--fs-meta);overflow-wrap:anywhere}
-.work-action-note{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}
+.work-action-note{white-space:pre-wrap}
+.work-action-more{font-size:var(--fs-body);min-width:0}
+.work-action-more summary{cursor:pointer;color:var(--dim);padding:5px 0}
+.work-action-more[open]{flex-basis:100%}
+.work-action-more .work-action-controls{padding-top:4px}
 #work-detail-body>.work-actions{padding:10px 0 14px;border-bottom:1px solid var(--line2);margin-bottom:14px}
-#work-detail-body .work-action-note{-webkit-line-clamp:unset;white-space:pre-wrap}
 @media(max-width:620px){.work-actions{grid-column:1/-1}.work-action-controls .mini{min-height:34px}.work-aside .work-actions{grid-column:1/-1}}

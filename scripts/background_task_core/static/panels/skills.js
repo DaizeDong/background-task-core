@@ -238,7 +238,7 @@ function catalogRow(source){
   const dependencies=(source.dependencies||[]).map(d=>typeof d==="string"?d:d.name||d.id||d.kind||"未命名").join("、");
   const entryKinds=[...new Set(entries.map(entry=>catalogLabel(entry.kind)))].join("、");
   let html=`<tr class="catalog-row${open?" open":""}"><th scope="row" data-label="名称" title="${esc(source.source_id)}">
-      <button type="button" class="catalog-toggle" data-catalog-toggle="${esc(source.source_id)}" aria-expanded="${open}" title="${open?"收起":"展开"}七项检查${entries.length?`和 ${entries.length} 个入口`:""}"><span class="caret" aria-hidden="true">${open?"▾":"▸"}</span>${esc(catalogName(source))}</button>${entries.length?`<small>${entries.length} 个入口：${esc(entryKinds)}</small>`:""}</th>
+      <button type="button" class="catalog-toggle" data-catalog-toggle="${esc(source.source_id)}" aria-expanded="${open}" title="${open?"收起":"展开"}七项检查${entries.length?`和 ${entries.length} 个入口`:""}"><span class="caret" aria-hidden="true">${open?"▾":"▸"}</span>${esc(catalogName(source))}</button>${entries.length?`<small title="${esc(entryKinds)}">${entries.length} 个入口</small>`:""}</th>
     <td data-label="类型 / 客户端">${esc(catalogLabel(source.kind))}<small>${esc(catalogClients(source).map(catalogLabel).join(" / ") || "未记录")}</small></td>
     <td data-label="状态">${statusBadge(summary.text,summary.tone)}</td>
     <td data-label="同步 / 认证">${esc(catalogLabel(source.sync && source.sync.state))}

@@ -1,3 +1,30 @@
+// Capture only opted-in disclosures for the next synchronous render, without stored UI state.
+function captureDisclosures(root){
+  const selector='details[data-disclosure-key]', active=document.activeElement;
+  const controlKey=control=>JSON.stringify([control.tagName,control.id,
+    Object.entries(control.dataset).sort(([a],[b])=>a.localeCompare(b))]);
+  const states=[...root.querySelectorAll(selector)].map(details=>({
+    key:details.dataset.disclosureKey, open:details.open,
+    focused:details.contains(active)?(active===details.querySelector('summary')?'summary':controlKey(active)):null
+  }));
+  return ()=>{
+    const disclosures=[...root.querySelectorAll(selector)];
+    for(const details of disclosures){
+      const state=states.find(state=>state.key===details.dataset.disclosureKey);
+      if(!state) continue;
+      details.open=state.open;
+    }
+    const focused=states.find(state=>state.focused);
+    if(focused && !active.isConnected){
+      const summary=disclosures.find(details=>details.dataset.disclosureKey===focused.key)?.querySelector('summary');
+      // An offer can move out of extras into the primary actions after a refresh.
+      const control=focused.focused==='summary'?summary:[...root.querySelectorAll('button,a,input,select,textarea,[tabindex]')]
+        .find(control=>controlKey(control)===focused.focused);
+      (control && !control.disabled?control:summary)?.focus({preventScroll:true});
+    }
+  };
+}
+
 // Presentation hints never replace backend authorization or confirmation.
 const ConsoleActions={
   operations:[], timer:null, disabled:new WeakSet(),

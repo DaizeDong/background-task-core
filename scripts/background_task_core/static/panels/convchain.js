@@ -306,7 +306,7 @@ function chRenderHead(){
   hd.innerHTML=(proj ? `<span class="ch-proj" title="${esc(dir)}">项目 <b>${esc(proj)}</b></span>` : "")
     +`<span><b>${nT}</b> 轮</span>`
     +(CH.leafIsDefault ? "" : `<span class="alt">正在看一条非默认分支</span><button class="icon-only mini" data-chact="latest" title="回到最新分支"><svg class="ic" aria-hidden="true"><use href="#i-branch"/></svg><span class="control-label">回到最新分支</span></button>`)
-    +`<button type="button" class="mini ch-more" popovertarget="ch-more" title="更多操作与详情"><svg class="ic" aria-hidden="true"><use href="#i-more"/></svg>更多操作与详情</button>`
+    +ibtn('i-more','更多操作与详情','type="button" popovertarget="ch-more"','ch-more')
     +`<div class="pop-menu ch-more-menu" id="ch-more" popover aria-label="更多操作与详情">`
     +(manage?menuItem('i-edit','重命名',`data-cvrename="${esc(CH.id)}"${off} title="重命名"`)+menuItem('i-move','移动会话',`data-cvmove="${esc(CH.id)}"${off} title="移动会话"`)+'<div class="menu-sep" role="separator"></div>':'')
     // 一场长会话有上千个子代理:一个裸下拉框翻不动。加一个筛选框,每项前面写上派生它的那一轮。
@@ -558,7 +558,7 @@ function chRenderDet(n){
     [n.promptSource,"来源 "+n.promptSource]].filter(x=>x[0]).map(x=>`<span>${esc(x[1])}</span>`).join("");
   // 每段原文右上角一个「复制」:几万字的工具输出靠拖选复制,拖到一半就滚走了。
   // 按钮不带正文(几十万字的属性会让 DOM 翻倍),点的时候读旁边那段 pre 的文字。
-  const pre=(t, cls)=>`<div class="ch-prew"><button type="button" class="mini ch-copy" data-chcopy="" title="复制这一段"><svg class="ic" aria-hidden="true"><use href="#i-copy"/></svg>复制</button>`
+  const pre=(t, cls)=>`<div class="ch-prew">${ibtn('i-copy','复制这一段','type="button" data-chcopy=""','ch-copy')}`
     +`<pre class="ch-pre${cls ? " "+cls : ""}">${esc(t)}</pre></div>`;
   let h=`<h5>${k[0]} ${esc(k[2])}${n.role ? " · "+esc(n.role) : ""}</h5>`;
   if(n.truncated){
@@ -602,10 +602,8 @@ function chRenderAct(){
   // 选中的是一轮的标题行时,分叉点是这一轮的最后一步,不是屏上高亮的那句提问:按钮上写明作用范围。
   const fl=fe && CH_SEL && CH_SEL[0]==="h" ? "从本轮末尾新建会话" : "从这里新建会话";
   const pick="先在左侧选一条消息";
-  // 每个按钮都写字。以前全是图标(⇤ ⇥、漏斗、下载箭头、分支),要悬停才知道哪个是导出、哪个是新建会话;
-  // 不能点的时候悬停说为什么,而不是只重复一遍动作名。
-  const btn=(attrs,icon,label,reason,cls)=>`<button type="button" class="mini${cls ? " "+cls : ""}" ${attrs}${reason ? " disabled" : ""}`
-    +` title="${esc(reason ? disabledTitle(label, reason) : label)}"><svg class="ic" aria-hidden="true"><use href="#${icon}"/></svg>${label}</button>`;
+  // Icon controls retain full action names and unavailable reasons through the shared helper.
+  const btn=(attrs,icon,label,reason,cls)=>ibtn(icon,label,'type="button" '+attrs,cls,reason);
   const forkWhy=CH_SUB ? "子代理不能新建会话" : !su ? pick : CH_FBUSY ? "正在新建会话" : "";
   A.innerHTML=`<div class="ch-row ch-range"><span class="faint">范围</span>`
     +`<span>${esc(chPosLabel(a))} → ${esc(chPosLabel(b))}</span>`
@@ -614,13 +612,12 @@ function chRenderAct(){
     +`<div class="ch-row">`+btn('data-chact="from"', "i-range-start", "从这里开始", su ? "" : pick)
     +btn('data-chact="to"', "i-range-end", "到这里结束", su ? "" : pick)
     +btn('data-chact="clr"', "i-filter-clear", "清除范围", CH_FROM || CH_TO ? "" : "还没有设定范围")+`</div>`
-    +`<div class="ch-row">`+btn('data-chexport="full"', "i-fetch", "完整导出（含工具与思考）", CH_XBUSY ? "正在导出" : "", "primary")+`</div>`
-    +`<div class="ch-row"><label><input type="checkbox" id="chtools"${CH_XT ? " checked" : ""}> 含工具调用</label>`
-    +`<label><input type="checkbox" id="chthink"${CH_XK ? " checked" : ""}> 含思考</label>`
+    +`<div class="ch-row"><span class="faint">整场导出</span>`+btn('data-chexport="full"', "i-fetch", "完整导出（含工具与思考）", CH_XBUSY ? "正在导出" : "", "primary")+`</div>`
+    +`<div class="ch-row"><span class="faint">所选导出</span><label><input type="checkbox" id="chtools" aria-label="所选范围导出包含工具调用"${CH_XT ? " checked" : ""}> 工具</label>`
+    +`<label><input type="checkbox" id="chthink" aria-label="所选范围导出包含思考"${CH_XK ? " checked" : ""}> 思考</label>`
     +btn('data-chexport="md"', "i-fetch", "导出所选范围", bad ? "起点在终点之后" : CH_XBUSY ? "正在导出" : "")+`</div>`
-    +`<div class="ch-row"><button type="button" class="mini" data-ctfork="at"${forkWhy ? " disabled" : ""}`
-    +` title="${esc(forkWhy ? disabledTitle(fl, forkWhy) : fl+"：包含到消息 "+chU8(fe)+" 为止的历史")}"><svg class="ic" aria-hidden="true"><use href="#i-branch"/></svg>${esc(fl)}</button>`
-    +(CH_SUB ? `<span class="faint">子代理不能新建会话</span>` : su ? "" : `<span class="faint">${pick}</span>`)+`</div>`
+    +`<div class="ch-row"><button type="button" class="mini" data-ctfork="at"${forkWhy?' disabled':''} aria-label="${esc(fl)}" title="${esc(forkWhy?disabledTitle(fl,forkWhy):fl+'：包含到消息 '+chU8(fe)+' 为止的历史')}"><svg class="ic" aria-hidden="true"><use href="#i-branch"/></svg>${CH_SEL?.[0]==='h'?'从本轮分叉':'从此处分叉'}</button>`
+    +(CH_SUB ? `<span class="faint">子代理不能新建会话</span>` : !su?'<span class="faint">先选择消息</span>':"")+`</div>`
     +(!f ? "" : f.error
       ? `<div class="ch-fres bad">新建会话失败：${esc(f.error)}</div>`
       : `<div class="ch-fres"><div>${f.reused?'已创建的会话':'新会话'} ${esc(f.title || '')} <code>${esc(f.newId)}</code></div>`

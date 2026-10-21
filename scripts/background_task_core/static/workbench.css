@@ -1,11 +1,10 @@
 /* Work-centric composition over the existing theme and domain widgets. */
 #side .nav-item:last-child{margin-top:22px}
-/* 标签是这一屏的二级导航,不是正文链接:14px、500 字重、40px 高的点击区,带自己的徽章。
-   放不下就换行,不横向滚动:横向滚动的标签条在手机上把第四个标签切成半截,又不提示还能往右划。 */
-#view-tabs{display:flex;flex-wrap:wrap;align-items:flex-end;gap:0 4px;border-bottom:1px solid var(--line);margin:0 0 12px}
+/* One header holds page navigation and refresh controls. Tabs wrap on narrow screens. */
+#view-tabs{display:flex;flex:1;min-width:0;flex-wrap:wrap;align-items:center;gap:0 4px;margin:0}
 #view-tabs[hidden]{display:none}
-#view-tabs a{display:inline-flex;align-items:center;gap:6px;min-height:40px;padding:8px 12px 6px;color:var(--dim);text-decoration:none;
-  white-space:nowrap;border-bottom:2px solid transparent;margin-bottom:-1px;font-size:var(--fs-lead);font-weight:500}
+#view-tabs a{display:inline-flex;align-items:center;gap:6px;min-height:48px;padding:8px 10px 6px;color:var(--dim);text-decoration:none;
+  white-space:nowrap;border-bottom:2px solid transparent;font-size:var(--fs-lead);font-weight:500}
 #view-tabs a:hover{color:var(--ink);background:var(--cur)}
 #view-tabs a[aria-current]{color:var(--cyan);border-color:var(--cyan);font-weight:600}
 #view-tabs a:focus-visible{outline:2px solid var(--cyan);outline-offset:-2px}
@@ -15,6 +14,7 @@
 #view-tabs a.view-origin:hover{border-color:var(--cyan);background:var(--cur)}
 .mode-badge{color:var(--warn);background:var(--warnb);padding:3px 7px;border:1px solid var(--line);border-radius:4px;font-size:var(--fs-meta)}
 .workspace-meta{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;color:var(--dim);font-size:var(--fs-meta);margin:0}
+.workspace-meta:has(>span:empty):not(:has(>span:not(:empty))){display:none}
 .work-columns{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--section-gap);align-items:start}
 .work-main,.work-aside{min-width:0;display:grid;gap:var(--section-gap)}
 .work-section{border:1px solid var(--line);border-radius:var(--card-radius);background:var(--panel);min-width:0;overflow:hidden}
@@ -24,6 +24,12 @@
 .section-heading h2>span:not(.section-symbol){font-size:var(--fs-meta);font-weight:500;color:var(--dim);padding:1px 6px;border-radius:4px;background:var(--panel2);font-variant-numeric:tabular-nums}
 .section-heading>span{font-size:var(--fs-meta);color:var(--dim)}
 .section-heading>.record-link{margin-left:auto}
+.panel-disclosure>summary{padding:10px var(--section-inset);font-weight:600;cursor:pointer;color:var(--dim)}
+.panel-disclosure>summary .n{margin-left:8px;font-weight:400;font-size:var(--fs-meta)}
+.panel-disclosure[open]>summary{color:var(--ink);border-bottom:1px solid var(--line2)}
+.panel-disclosure>summary:focus-visible{outline:2px solid var(--cyan);outline-offset:-2px}
+.panel-read-state{display:block;padding:6px var(--section-inset)}
+.panel-read-state:empty{display:none}
 .record-link{border:0;background:none;padding:0;min-height:26px;text-align:left;color:var(--cyan);border-radius:2px;white-space:normal}
 .record-link:not(:disabled):hover{text-decoration:underline;background:none;color:var(--cyan)}
 .work-empty{padding:var(--space-3) var(--section-inset);margin:0;color:var(--dim);font-size:var(--fs-body)}
@@ -32,7 +38,7 @@
 #overview .work-row:has(>.work-actions){grid-template-columns:minmax(0,1fr) 90px}
 .work-row-heading{display:flex;align-items:baseline;gap:8px;min-width:0}
 .work-row-heading>.work-state{flex:none}
-.work-meta{display:flex;align-items:baseline;gap:2px 12px;flex-wrap:wrap;margin-top:4px}
+
 .work-row:hover{background:var(--cur)}
 .work-row[data-state="failed"]{box-shadow:inset 3px 0 var(--bad)}
 .work-row[data-state="blocked"],.work-row[data-state="stalled"],.work-row[data-state="reconcile"]{box-shadow:inset 3px 0 var(--warn)}
@@ -145,7 +151,7 @@ dialog#work-detail{width:min(760px,calc(100vw - 32px))}#work-detail h3{font-size
 /* 手机上工具条的下拉框从自己的字宽起步(flex-basis:auto),放不下就整个换到下一行,再把余下的宽度分掉。
    以前是 flex:1(起步宽度 0),清除按钮、计数和图标都挤在同一行时,两个下拉被压到 101px,
    「全部建议 (43)」的右括号藏在箭头底下,看不出正在按哪一项筛。 */
-@media(max-width:767px){#side .nav-item:last-child{margin-top:0}.workspace-meta{gap:3px}.work-row:has(>.work-actions),#overview .work-row:has(>.work-actions){grid-template-columns:minmax(0,1fr)}.work-context-panels{grid-template-columns:1fr}.work-row-heading{align-items:flex-start}.work-meta{gap:2px 8px}.work-toolbar input{width:100%}.work-toolbar select{max-width:100%;min-width:0;flex:1 1 auto}.automation-row{grid-template-columns:minmax(0,1fr);gap:10px}.automation-name,.automation-schedule,.automation-state,.automation-actions{grid-column:1;grid-row:auto}.activity-list li{grid-template-columns:1fr;gap:2px}.source-strip{gap:7px 12px}.source-strip a{margin-left:0}}
+@media(max-width:767px){#side .nav-item:last-child{margin-top:0}.workspace-meta{gap:3px}.work-row:has(>.work-actions),#overview .work-row:has(>.work-actions){grid-template-columns:minmax(0,1fr)}.work-context-panels{grid-template-columns:1fr}.work-row-heading{align-items:flex-start}.work-toolbar input{width:100%}.work-toolbar select{max-width:100%;min-width:0;flex:1 1 auto}.automation-row{grid-template-columns:minmax(0,1fr);gap:10px}.automation-name,.automation-schedule,.automation-state,.automation-actions{grid-column:1;grid-row:auto}.activity-list li{grid-template-columns:1fr;gap:2px}.source-strip{gap:7px 12px}.source-strip a{margin-left:0}}
 
 /* Fixed table tracks keep the default task list within a desktop panel. */
 #tasks,#automations,#pipelines,#dtbox,#pipeline-body{min-width:0;max-width:100%}
@@ -174,7 +180,7 @@ dialog#work-detail{width:min(760px,calc(100vw - 32px))}#work-detail h3{font-size
 .task-columns{position:relative;color:var(--dim);font-size:var(--fs-body)}
 #task-column-options{min-width:150px;padding:10px;background:var(--panel);border:1px solid var(--line);border-radius:var(--card-radius)}
 #task-column-options label{display:flex;gap:8px;align-items:center;padding:5px;white-space:nowrap}
-.pipeline-result{padding:8px var(--section-inset);display:flex;gap:8px;align-items:center;color:var(--dim);font-size:var(--fs-meta);border-top:1px solid var(--line2)}
+
 .pipeline-metrics>span{min-width:0;overflow-wrap:anywhere}
 #pipelines .pipeline-table{min-width:620px}
 @media(max-width:767px){.det .task-info-fields,.det .task-technical-fields{grid-template-columns:4.5rem minmax(0,1fr);gap:10px 12px}#tools>select{min-width:0;max-width:100%}.pipeline-toolbar #pipeline-sample{flex-basis:100%}}
@@ -182,10 +188,9 @@ dialog#work-detail{width:min(760px,calc(100vw - 32px))}#work-detail h3{font-size
 /* Share tracks between headings and records; only the subject absorbs extra width. */
 .work-record.work-row,.work-list-heading{display:grid;grid-template-columns:7rem minmax(0,1fr) 11rem 15rem;gap:10px 16px;align-items:start;padding:10px var(--section-inset)}
 .work-list-heading{position:sticky;top:0;z-index:1;background:var(--panel2);border-bottom:1px solid var(--line);font-size:var(--fs-meta);color:var(--dim)}
-.work-record .work-subject .record-link{display:block;overflow:visible;font-size:var(--fs-lead);line-height:1.5}
+.work-record .work-subject .record-link{display:-webkit-box;overflow:hidden;font-size:var(--fs-lead);line-height:1.5}
 .work-record .work-subject p{font-size:var(--fs-body);line-height:1.6;margin:4px 0;overflow-wrap:anywhere}
 .work-record .work-when{display:grid;gap:4px;padding-top:3px;font-variant-numeric:tabular-nums}
-.work-record .work-meta{margin-top:4px}
 .work-record>.work-actions{margin:0;grid-column:auto}
 @container workspace (max-width:72rem){
   .work-layout{grid-template-columns:minmax(0,1fr)}
@@ -205,8 +210,11 @@ dialog#work-detail{width:min(760px,calc(100vw - 32px))}#work-detail h3{font-size
   .work-toolbar input{flex-basis:100%;width:100%}
 }
 @container records (max-width:42rem){
-  .work-record.work-row{grid-template-columns:minmax(0,1fr);gap:6px}
-  .work-record>.work-state,.work-record>.work-subject,.work-record>.work-when,.work-record>.work-actions{grid-column:1;grid-row:auto}
+  .work-record.work-row{grid-template-columns:minmax(0,1fr) auto;gap:6px 10px}
+  .work-record>.work-state{grid-column:1;grid-row:1}
+  .work-record>.work-subject{grid-column:1 / -1;grid-row:2}
+  .work-record>.work-when{grid-column:1;grid-row:3;align-self:center}
+  .work-record>.work-actions{grid-column:2;grid-row:3}
   .work-record>.work-when{display:flex;flex-wrap:wrap;gap:4px 12px}
   .work-record .work-actions button{min-height:40px}
 }
@@ -283,7 +291,8 @@ dialog#work-detail{width:min(760px,calc(100vw - 32px))}#work-detail h3{font-size
   #side .navbar-nav::-webkit-scrollbar{display:none}
   #side .nav-link{padding:8px 3px;gap:2px}
   #side .nav-link .nav-badge{min-width:16px;padding:0 2px}
-  #view-tabs a{padding-inline:10px}
+  #view-tabs{flex-basis:100%}
+  #view-tabs a{padding-inline:8px;min-height:40px}
 }
 
 /* Source excerpts are shown only on request inside the work detail dialog. */

@@ -19,7 +19,7 @@
 #diagnostics #todo .review-row{cursor:pointer}
 #diagnostics #todo .review-row:hover{background:var(--cur)}
 /* 标题是中文名,机器名退到下面一行等宽小字,搜得到、认得出,但不抢标题。 */
-#diagnostics .review-id{display:block;margin:0 0 3px;padding:0;background:none;font-family:var(--mono);font-size:var(--fs-meta);color:var(--dim);overflow-wrap:anywhere}
+
 #diagnostics .review-when{margin:3px 0 0;font-size:var(--fs-meta);color:var(--dim)}
 #diagnostics #todo .review-actions{flex-wrap:nowrap}
 /* 一键处理是带字的按钮,和旁边只有图标的「查看详情」一样高。 */

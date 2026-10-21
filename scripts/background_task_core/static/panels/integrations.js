@@ -40,15 +40,16 @@ function integrationRow(row){
   const last=state.last_success?`<small>上次成功：${timeTag(state.last_success)}</small>`:'<small>上次成功：尚无成功记录</small>';
   const flash=row.endpoint && INTEGRATION_FLASH.get(row.endpoint);
   const flashHtml=flash?`<small class="integration-flash ${flash.ok?'ok':'bad'}" role="status">${esc(flash.text)}</small>`:'';
-  return `<tr data-integration-row="${esc(row.endpoint||'')}"><th scope="row" data-label="接入 / 依赖">${esc(row.label)}<small>${row.depends_on.length?'依赖：'+esc(row.depends_on.join('、')):'独立'}</small></th>
-    <td data-label="提供的内容">${esc(row.provides)}${row.record_count!=null?`<small>${esc(row.record_count)} 条来源记录</small>`:''}<small>${esc(row.actions)}</small></td>
-    <td data-label="读取状态">${statusBadge(INTEGRATION_STATES[state.state]||state.state||'未检查',tone)}${showLast?last:''}${integrationReason(state.reason)}${flashHtml}</td>
+  return `<tr data-integration-row="${esc(row.endpoint||'')}"><th scope="row" data-label="接入 / 依赖">${esc(row.label)}</th>
+    <td data-label="提供的内容">${esc(row.provides)}${row.record_count!=null?`<small>${esc(row.record_count)} 条来源记录</small>`:''}<details class="integration-detail" data-disclosure-key="${esc(row.id)}"><summary>接入详情</summary><small>${row.depends_on.length?'依赖：'+esc(row.depends_on.join('、')):'独立'}</small><small>${esc(row.actions)}</small>${showLast?last:''}</details></td>
+    <td data-label="读取状态">${statusBadge(INTEGRATION_STATES[state.state]||state.state||'未检查',tone)}${integrationReason(state.reason)}${flashHtml}</td>
     <td data-label="操作" class="integration-acts"><button class="icon-only" data-integration-open="${esc(row.view)}" data-integration-source="${esc(row.source||'')}" title="查看"><svg class="ic" aria-hidden="true"><use href="#i-eye"/></svg><span class="control-label">查看</span></button>${row.endpoint?` <button class="icon-only" data-integration-check="${esc(row.endpoint)}" title="重新读取这一项"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg><span class="control-label">重读</span></button>`:''}</td></tr>`;
 }
 // 一张表,各层是表里的分组标题行:以前每层一张表、各自定列宽,「读取状态」和「操作」两列在层与层之间左右跳。
 // 也不再有内部滚动框:页面本身有的是地方,九行的适配器表被截在 440px 里反而要人去找滚动条。
 function renderIntegrations(){
   if(!INTEGRATIONS) return;
+  const restoreDisclosures=captureDisclosures($('integration-list'));
   const body=Object.entries(INTEGRATION_LAYERS).map(([layer,label])=>{
     const rows=INTEGRATIONS.items.filter(row=>row.layer===layer)
       .map((row,index)=>({row,index,rank:INTEGRATION_ORDER[(row.connection||{}).state] ?? 3}))
@@ -63,6 +64,7 @@ function renderIntegrations(){
       :emptyBlock('暂无来源记录')}</td></tr>`;
   }).join('');
   $('integration-list').innerHTML=`<table class="ops-table integration-table"><thead><tr><th>接入 / 依赖</th><th>提供的内容</th><th>读取状态</th><th>操作</th></tr></thead><tbody>${body}</tbody></table>`;
+  restoreDisclosures();
 }
 function startIntegrations(){
   document.addEventListener('click',async event=>{

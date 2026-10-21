@@ -3,26 +3,26 @@ const WORK_ACTION_PENDING=new Map(), WORK_ACTION_INTENTS=new Map();
 const WORK_ACTION_STATES={preparing:['准备中','pending'],queued:['排队中','pending'],running:['正在处理','active'],
   done:['已完成','ok'],failed:['未完成','bad'],stalled:['已暂停','warn'],review_unavailable:['待复核','warn'],
   stopped:['已请求停止','muted'],reconcile:['结果待核实','warn'],dispatching:['正在提交','pending'],task_requested:['已提交任务','pending']};
-// 行上的每个动作都写出字来:以前一排图标里,▷ 是交给 Agent、圆圈勾是标记完成,
-// 而同一只眼睛图标在四个地方各指一件事。图标留着帮人扫,意思靠字说。
+// Keep handling and completion within reach; the detail dialog exposes every action.
 const workIcon=icon=>icon?`<svg class="ic" aria-hidden="true"><use href="#${icon}"/></svg>`:'';
 function workActionButtons(item,compact=false){
   const actions=item.actions;if(!actions) return item.origin_item_id?`<div class="work-actions"><button type="button" class="mini work-link" data-work-id="${esc(item.origin_item_id)}" title="打开这项工作由之而来的那条待办">查看原待办</button></div>`:'';
   const source=(actions.links || []).some(link=>link.kind==='session')
-    ?`<button type="button" class="mini icon-only" data-work-context="${esc(item.id)}" title="查看原对话与片段" aria-label="查看原对话与片段">${workIcon('i-link')}</button>`:'';
+    ?ibtn('i-link','查看原对话与片段',`type="button" data-work-context="${esc(item.id)}"`):'';
   if(!actions.available) return `<div class="work-actions">${source}${actions.reason?`<small>${esc(actions.reason)}</small>`:''}</div>`;
   const current=actions.current, pending=WORK_ACTION_PENDING.has(item.id), readOnly=ConsoleActions.readOnly;
-  const controls=(actions.offers || []).slice(0,3).map((offer,index)=>{
+  const controls=(actions.offers || []).map((offer,index)=>{
     const disabled=readOnly || pending || !offer.enabled;
     const reason=readOnly?ConsoleActions.reason:pending?'正在提交':offer.reason || offer.description || '';
     const complete=offer.kind==='complete';
     const icon={complete:'i-on',agent:'i-play',task:'i-play'}[offer.kind];
     const title=disabled?disabledTitle(offer.label,reason || '暂不可用'):offer.label+(reason?'：'+reason:'');
-    return `<button type="button" class="mini work-action${complete?' complete':index===0?' primary':''}" data-work-item="${esc(item.id)}" data-work-action="${esc(offer.id)}" ${disabled?'disabled':''} title="${esc(title)}" aria-label="${esc(offer.label)}">${workIcon(icon)}<span>${esc(offer.label)}</span></button>`;
+    const label={complete:'完成',agent:'处理',task:'运行'}[offer.kind] || offer.label;
+    return `<button type="button" class="mini work-action${compact && complete?' icon-only':''}${complete?' complete':index===0?' primary':''}" data-work-item="${esc(item.id)}" data-work-action="${esc(offer.id)}" ${disabled?'disabled':''} title="${esc(title)}" aria-label="${esc(offer.label)}">${workIcon(icon)}<span${compact && complete?' class="control-label"':''}>${esc(label)}</span></button>`;
   });
   if(current){
     const [label,tone]=WORK_ACTION_STATES[current.state] || ['状态待确认','idle'];
-    controls.unshift(statusBadge(label,tone));
+    if(!compact) controls.unshift(statusBadge(label,tone));
     // 「查看结果」和「查看进度」打开的是执行这件事的那条工作记录,不是这一行自己,所以字面上说清看的是什么。
     if(current.work_item_id) controls.push(`<button type="button" class="mini work-link" data-work-id="${esc(current.work_item_id)}" title="打开执行这件事的工作记录">${current.state==='done'?'查看结果':'查看进度'}</button>`);
     if(current.kind==='agent' && ['preparing','queued','running','reconcile'].includes(current.state)) controls.push(`<button type="button" class="mini work-action stop" data-work-item="${esc(item.id)}" data-work-stop="${esc(current.id)}" ${readOnly || pending?'disabled':''} title="${esc(readOnly?disabledTitle('停止',ConsoleActions.reason):pending?disabledTitle('停止','正在提交'):'停止这次处理，保留待办')}" aria-label="停止">${workIcon('i-stop')}<span>停止</span></button>`);
@@ -35,9 +35,14 @@ function workActionButtons(item,compact=false){
   }
   if(source) controls.push(source);
   const wakeup=current?.wakeup;
-  if(wakeup?.state==='failed' && ['preparing','queued'].includes(current.state)) controls.push(`<small class="work-wakeup-warning" role="status">${esc(wakeup.message)}</small>`);
+  const warning=wakeup?.state==='failed' && ['preparing','queued'].includes(current.state)?`<small class="work-wakeup-warning" role="status">${esc(wakeup.message)}</small>`:'';
   const note=current?.summary || (current?.state==='task_requested'?'运行请求已提交，完成结果尚未确认':'');
-  return controls.length || note?`<div class="work-actions${compact?' compact':''}"><div class="work-action-controls">${controls.join('')}</div>${note?`<small class="work-action-note" title="${esc(note)}">${esc(note)}</small>`:''}</div>`:'';
+  const needsAttention=['failed','stalled','review_unavailable','reconcile','task_requested'].includes(current?.state);
+  const summary=note && (!compact || needsAttention)?`<small class="work-action-note">${esc(note)}</small>`:'';
+  const primary=compact?controls.splice(0,2).join(''):'';
+  const extra=compact && controls.length?`<details class="work-action-more" data-disclosure-key="${esc(item.id)}"><summary title="更多工作操作" aria-label="更多工作操作">${workIcon('i-more')}</summary><div class="work-action-controls">${controls.join('')}</div></details>`:'';
+  const state=compact && current && current.state!==workState(item)?statusBadge((WORK_ACTION_STATES[current.state] || ['状态待确认'])[0],(WORK_ACTION_STATES[current.state] || ['', 'idle'])[1]):'';
+  return controls.length || primary || note || warning?`<div class="work-actions${compact?' compact':''}">${state}<div class="work-action-controls">${compact?primary+extra:controls.join('')}</div>${warning}${summary}</div>`:'';
 }
 // 页面只在有工作真的在动时自己重读:待办上的处理在准备、排队、运行,或者这条 Agent 工作本身在排队、执行。
 // reconcile、task_requested、review_unavailable 等的是人,轮询它们只会一直读下去;

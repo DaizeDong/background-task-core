@@ -102,6 +102,7 @@
 
 <header class="navbar sticky-top" id="bar"><div class="container-fluid">
   <div class="view-heading"><h1 id="view-title">工作台</h1></div>
+  <nav id="view-tabs" aria-label="当前工作区" hidden></nav>
   <!-- 顶栏只留两个控件:刷新(把这一屏的全部读取再跑一遍)和「⋯」。导出和外观不常用,收进菜单,不跟刷新抢位置。
        窄屏时 .page-tools 挪进最上面的品牌行,省出一整行。 -->
   <div class="page-actions"><span id="console-mode" class="mode-badge" hidden></span>
@@ -142,8 +143,8 @@
   <form id="task-delete-form" method="dialog">
   <div class="dialog-head"><h2 id="task-delete-title">删除计划任务</h2><button type="button" class="icon-only dialog-x" data-dismiss="task-delete-cancel" title="关闭"><svg class="ic" aria-hidden="true"><use href="#i-close"/></svg><span class="control-label">关闭</span></button></div>
   <div class="dialog-body"><div id="task-delete-subject"></div><div id="task-delete-alerts"></div>
-  <label for="task-delete-reason">删除原因（必填，会写进控制器墓碑或存档回执）</label>
-  <div class="task-op-row"><input id="task-delete-reason" type="text" form="task-delete-preview-form" maxlength="500" autocomplete="off" spellcheck="false" autofocus aria-describedby="task-delete-reason-hint"><button id="task-delete-preview" type="submit" form="task-delete-preview-form">生成删除预览</button></div>
+  <label for="task-delete-reason">删除原因（必填）</label>
+  <div class="task-op-row"><input id="task-delete-reason" type="text" form="task-delete-preview-form" maxlength="500" autocomplete="off" spellcheck="false" autofocus aria-describedby="task-delete-reason-hint"><button id="task-delete-preview" type="submit" form="task-delete-preview-form">预览删除</button></div>
   <p id="task-delete-reason-hint" class="field-hint"></p>
   <div id="task-delete-body"></div>
   <label for="task-delete-name">输入完整任务名确认</label><p class="confirm-name-line" id="task-delete-expected" hidden></p><input id="task-delete-name" type="text" autocomplete="off" spellcheck="false" disabled aria-describedby="task-delete-hint">
@@ -157,10 +158,10 @@
   <form id="repair-form" method="dialog">
   <div class="dialog-head"><h2 id="repair-title">修复工单</h2><button type="button" class="icon-only dialog-x" data-dismiss="repair-cancel" title="关闭"><svg class="ic" aria-hidden="true"><use href="#i-close"/></svg><span class="control-label">关闭</span></button></div>
   <div class="dialog-body"><div id="repair-body"></div>
-  <label for="repair-note">给 Agent 的备注（可选，只保留一行，最多 500 字）</label><input id="repair-note" type="text" maxlength="500" autocomplete="off" aria-describedby="repair-note-hint">
+  <label for="repair-note">备注（可选）</label><input id="repair-note" type="text" maxlength="500" autocomplete="off" aria-describedby="repair-note-hint">
   <p id="repair-note-hint" class="field-hint"></p>
   <p id="repair-state" role="status"></p></div>
-  <div class="dialog-foot"><button type="button" id="repair-cancel" autofocus>关闭</button><button type="submit" id="repair-submit" class="primary" disabled>提交修复工单</button></div>
+  <div class="dialog-foot"><button type="button" id="repair-cancel" autofocus>关闭</button><button type="submit" id="repair-submit" class="primary" disabled>提交修复</button></div>
   </form>
 </dialog>
 <!-- 页面内的确认框,替代浏览器自带的 confirm():样式和别的对话框一致,点遮罩、Esc、取消都等于「不」。 -->
@@ -174,31 +175,30 @@
 
 <div class="page-body">
 <div class="container-fluid" id="view">
-<nav id="view-tabs" aria-label="当前工作区" hidden></nav>
 <section id="overview" data-view="overview" data-label="工作台" hidden>
   <div class="workspace-meta"><span id="work-source-state">正在连接工作记录</span><span id="work-context"></span></div>
   <!-- 按急迫程度排:要人管的事(技术问题摘要)在最上;接着是 Agent 没做完或出错的工作;再是待办和正在做并排;
        完成记录最不急,放到最下面占满整行。手机上同一顺序排成一列。 -->
   <div id="attention-strip" class="attention-strip" role="status" hidden></div>
   <div id="overview-work-state"></div>
-  <div class="work-section interrupted-card" id="interrupted-card" hidden><div class="section-heading"><h2><span class="section-symbol bad" aria-hidden="true">×</span>Agent 未完成 / 出错 <span id="interrupted-count">—</span></h2></div><div id="interrupted-work"></div></div>
+  <div class="work-section interrupted-card" id="interrupted-card" hidden><div class="section-heading"><h2><span class="section-symbol bad" aria-hidden="true">×</span>需要处理 <span id="interrupted-count">—</span></h2></div><div id="interrupted-work"></div></div>
   <div class="work-columns">
-    <div class="work-aside"><div class="work-section"><div class="section-heading"><h2><span class="section-symbol pending" aria-hidden="true">◷</span>待办事项 <span id="tracked-count">—</span></h2><button class="icon-only record-link" data-work-filter="tracked_item" data-work-state="tracked_active" title="查看全部待办 →"><svg class="ic" aria-hidden="true"><use href="#i-right"/></svg><span class="control-label">查看全部待办 →</span></button></div><div id="tracked-work"></div></div></div>
-    <div class="work-main"><div class="work-section"><div class="section-heading"><h2><span class="section-symbol" aria-hidden="true">▶</span>Agent 正在做 <span id="active-count">—</span></h2><button class="icon-only record-link" data-work-filter="agent_work" data-work-state="active" title="查看进行中 →"><svg class="ic" aria-hidden="true"><use href="#i-right"/></svg><span class="control-label">查看进行中 →</span></button></div><div id="active-work"></div></div></div>
+    <div class="work-aside"><div class="work-section"><div class="section-heading"><h2><span class="section-symbol pending" aria-hidden="true">◷</span>待办 <span id="tracked-count">—</span></h2><button class="icon-only record-link" data-work-filter="tracked_item" data-work-state="tracked_active" title="查看全部待办 →"><svg class="ic" aria-hidden="true"><use href="#i-right"/></svg><span class="control-label">查看全部待办 →</span></button></div><div id="tracked-work"></div></div></div>
+    <div class="work-main"><div class="work-section"><div class="section-heading"><h2><span class="section-symbol" aria-hidden="true">▶</span>进行中 <span id="active-count">—</span></h2><button class="icon-only record-link" data-work-filter="agent_work" data-work-state="active" title="查看进行中 →"><svg class="ic" aria-hidden="true"><use href="#i-right"/></svg><span class="control-label">查看进行中 →</span></button></div><div id="active-work"></div></div></div>
   </div>
-  <div class="work-section"><div class="section-heading"><h2 title="Agent 记录的完成状态"><span class="section-symbol ok" aria-hidden="true">✓</span>Agent 完成记录 <span id="result-count">—</span></h2><button class="icon-only record-link" data-work-filter="agent_work" data-work-state="done" title="查看全部结果 →"><svg class="ic" aria-hidden="true"><use href="#i-right"/></svg><span class="control-label">查看全部结果 →</span></button></div><div id="recent-results"></div></div>
+  <details class="work-section panel-disclosure"><summary>已完成 <span class="n" id="result-count">—</span></summary><div id="recent-results"></div><div class="section-heading"><button class="record-link" data-work-filter="agent_work" data-work-state="done">查看全部结果</button></div></details>
   <div id="platform-sources" class="source-strip"></div>
 </section>
 <section id="work" data-view="work" data-label="工作记录" hidden>
   <div class="work-toolbar">
-    <input id="work-search" type="search" placeholder="搜索工作、摘要、项目" aria-label="搜索工作记录">
+    <input id="work-search" type="search" placeholder="搜索工作记录" aria-label="搜索工作记录">
     <select id="work-role" aria-label="记录类别"><option value="work">工作与待办</option><option value="agent_work">Agent 工作</option><option value="tracked_item">待办事项</option><option value="signal">通知与线索</option><option value="all">全部记录</option></select>
     <select id="work-state" aria-label="工作状态"><option value="unfinished">未结束</option><option value="">全部状态</option><option value="active">执行中 / 排队</option><option value="tracked_active">未完成待办</option><option value="pending">待办</option><option value="doing">进行中</option><option value="done">已完成</option><option value="blocked">遇到阻碍</option><option value="stalled">已停滞</option><option value="failed">执行失败</option><option value="cancelled">已取消</option><option value="stopped">已停止</option><option value="snoozed">已延后</option><option value="reconcile">结果待核实</option><option value="review_unavailable">无法复核</option><option value="notified">已提醒</option></select>
-    <select id="work-source" aria-label="记录来源"><option value="">全部来源</option></select><button class="icon-only" id="work-reset" data-reset-filters="work" title="清除筛选"><svg class="ic" aria-hidden="true"><use href="#i-filter-clear"/></svg><span class="control-label">清除筛选</span></button><span id="work-filter-restored" class="work-filter-restored" hidden>已应用上次的筛选</span><span id="work-match" role="status"></span><button class="icon-only" id="work-context-toggle" aria-controls="work-context-panels" aria-expanded="true" title="收起活动与来源"><svg class="ic" aria-hidden="true"><use href="#i-sidebar"/></svg><span class="control-label">收起活动与来源</span></button>
+    <select id="work-source" aria-label="记录来源"><option value="">全部来源</option></select><button class="icon-only" id="work-reset" data-reset-filters="work" title="清除筛选"><svg class="ic" aria-hidden="true"><use href="#i-filter-clear"/></svg><span class="control-label">清除筛选</span></button><span id="work-filter-restored" class="work-filter-restored" hidden>沿用筛选</span><span id="work-match" role="status"></span><button class="icon-only" id="work-context-toggle" aria-controls="work-context-panels" aria-expanded="false" title="显示活动与来源"><svg class="ic" aria-hidden="true"><use href="#i-sidebar"/></svg><span class="control-label">显示活动与来源</span></button>
   </div>
   <div class="work-layout">
   <div class="work-section"><p id="work-coverage" class="work-section-note"></p><div id="work-list" class="work-list"></div></div>
-  <div class="work-context-panels" id="work-context-panels">
+  <div class="work-context-panels" id="work-context-panels" hidden>
     <div class="work-section"><div class="section-heading"><h2>最近活动</h2><span id="activity-coverage"></span></div><ol id="work-activity" class="activity-list"></ol></div>
     <div class="work-section"><div class="section-heading"><h2>信息来源</h2></div><div id="source-volume" class="source-volume"></div></div>
   </div>
@@ -206,7 +206,7 @@
 </section>
 <section id="automations" data-view="automations" data-label="自动化" hidden>
   <div class="work-toolbar">
-    <input id="automation-search" type="search" placeholder="搜索标题、用途、建议或任务名" aria-label="搜索自动化">
+    <input id="automation-search" type="search" placeholder="搜索任务" aria-label="搜索自动化">
     <select id="automation-verdict" aria-label="按建议筛选"><option value="">全部建议</option></select>
     <select id="automation-state" aria-label="自动化状态"><option value="">全部状态</option><option value="enabled">已启用</option><option value="disabled">已停用</option><option value="running">正在运行</option></select>
     <button class="icon-only" id="automation-reset" data-reset-filters="automations" title="清除筛选"><svg class="ic" aria-hidden="true"><use href="#i-filter-clear"/></svg><span class="control-label">清除筛选</span></button><span id="automation-count" role="status"></span><span class="repair-read-state" data-repair-read></span>
@@ -225,7 +225,7 @@
         <select id="cxsort" aria-label="排序">
           <option value="size">按大小</option><option value="old">最旧在前</option>
           <option value="new">最新在前</option></select>
-        <button type="button" class="mini" id="cxload" title="只重新扫描所选的会话库，不重读页面上的其他内容">重新扫描</button>
+        <button type="button" class="mini" id="cxload" title="只重新扫描所选的会话库，不重读页面上的其他内容">扫描</button>
       </div></div>
     <p id="cxstate" class="cx-state" role="status" hidden></p>
     <div class="pad" id="cxbody"><div class="mt-note">正在读取会话存储</div></div>
@@ -261,7 +261,7 @@
 </section>
 <section id="pipelines" data-view="pipelines" data-label="流水线" hidden>
   <div class="pipeline-toolbar work-toolbar">
-    <input id="pipeline-task-search" type="search" placeholder="搜索标题、用途、建议或任务名" aria-label="搜索同步与备份任务">
+    <input id="pipeline-task-search" type="search" placeholder="搜索任务" aria-label="搜索同步与备份任务">
     <select id="pipeline-verdict" aria-label="按建议筛选同步与备份"><option value="">全部建议</option></select>
     <button class="icon-only" data-reset-filters="pipelines" title="清除筛选"><svg class="ic" aria-hidden="true"><use href="#i-filter-clear"/></svg><span class="control-label">清除筛选</span></button>
     <span id="pipeline-sample" class="faint"></span><span class="repair-read-state" data-repair-read></span>
@@ -279,7 +279,7 @@
   <button type="button" data-task-status="off" aria-pressed="false"><svg class="ic" aria-hidden="true"><use href="#i-toggle-off"/></svg>停用 <b id="s-off">-</b></button>
 </div>
 <div id="tools">
-  <input type="search" id="q" placeholder="搜索标题、用途、建议或任务名" aria-label="搜索运行详情" autocomplete="off">
+  <input type="search" id="q" placeholder="搜索任务" aria-label="搜索运行详情" autocomplete="off">
   <select id="cat" aria-label="按分类筛选"><option value="">全部分类</option></select>
   <select id="task-verdict" aria-label="按建议筛选运行详情"><option value="">全部建议</option></select>
   <label class="tg"><input type="checkbox" id="hideoff"> 隐藏停用</label>
@@ -313,14 +313,8 @@
       </div>
     </div>
   </div></div>
-<div class="module-section"><div class="card" id="hmbox">
-    <div class="card-header"><h3 class="card-title">历史检查结果 <span class="n" id="hmnote"></span></h3></div>
-    <div class="pad"><table class="hm" id="heat"></table></div>
-  </div></div>
-<div class="module-section"><div class="card" id="scbox">
-    <div class="card-header"><h3 class="card-title">按分类汇总 </h3></div>
-    <div class="pad" style="padding:0"><table class="g" id="scores"></table></div>
-  </div></div>
+<details class="card panel-disclosure" id="hmbox"><summary>历史检查<span class="n" id="hmnote"></span></summary><div class="pad"><table class="hm" id="heat"></table></div></details>
+<details class="card panel-disclosure" id="scbox"><summary>分类汇总</summary><div class="pad"><table class="g" id="scores"></table></div></details>
   </section>
   <section id="repos" data-view="repos" data-label="仓库" hidden>
 <div class="card" id="rpbox">
@@ -328,7 +322,7 @@
     <div class="pad">
       <div class="rp-head" id="rphead"></div>
       <div class="rp-filters">
-        <input id="rpq" type="search" placeholder="搜索名称、账号、路径或远程地址" aria-label="搜索仓库">
+        <input id="rpq" type="search" placeholder="搜索仓库" aria-label="搜索仓库">
         <select id="rpacc" aria-label="按账号过滤"><option value="">全部账号</option></select>
         <select id="rpkind" aria-label="按类型过滤"><option value="">全部类型</option></select>
 
@@ -347,7 +341,7 @@
   </section>
 
   <section id="integrations" data-view="integrations" data-label="控制台接入" hidden>
-    <div class="card"><div class="card-header"><h2 class="card-title">控制台接入</h2></div><div class="pad">
+    <div class="card"><div class="pad">
 
 
       <p id="integration-note" class="faint">尚未读取</p><div id="integration-list">正在读取接入信息</div>
@@ -358,7 +352,7 @@
      锚点是写着字的链接,不是三个图标:图标按钮看着像操作,点了却只是滚到别处。
      顺序按常用程度:技能与插件(归档、启停、删除都在这里)→ 记忆 → 资源目录。 -->
 <div class="work-toolbar resources-toolbar">
-  <input id="resources-search" type="search" placeholder="搜索技能、插件或资源目录" aria-label="搜索技能、插件和资源目录" autocomplete="off">
+  <input id="resources-search" type="search" placeholder="搜索技能与插件" aria-label="搜索技能、插件和资源目录" autocomplete="off">
   <button class="icon-only" data-reset-filters="resources" title="清除筛选"><svg class="ic" aria-hidden="true"><use href="#i-filter-clear"/></svg><span class="control-label">清除筛选</span></button>
   <nav class="resources-anchors" aria-label="跳到本页的某一块"><button type="button" data-goto="#mt-skills">技能</button><span aria-hidden="true">·</span><button type="button" data-goto="#mt-plugins">插件</button><span aria-hidden="true">·</span><button type="button" data-goto="#membox">记忆</button><span aria-hidden="true">·</span><button type="button" data-goto="#catalog-box">目录</button><span aria-hidden="true">·</span><button type="button" data-goto="#catalog-health">检查结果</button></nav>
 </div>
@@ -380,9 +374,9 @@
   </section>
   <section id="convos" data-view="convos" data-label="会话记录" hidden>
 <div class="card" id="cvbox">
-    <div class="card-header"><h3 class="card-title">会话<span class="n" id="cvnote">读取中</span></h3></div>
+    <span id="cvnote" class="faint panel-read-state" role="status">读取中</span>
     <div class="pad">
-      <div class="catalog-tools"><input id="cv-search" type="search" aria-label="搜索全部会话" placeholder="搜索会话名称、内容或项目"><button class="icon-only" data-reset-filters="convos" title="清除筛选"><svg class="ic" aria-hidden="true"><use href="#i-filter-clear"/></svg><span class="control-label">清除筛选</span></button></div>
+      <div class="catalog-tools"><input id="cv-search" type="search" aria-label="搜索全部会话" placeholder="搜索会话"><button class="icon-only" data-reset-filters="convos" title="清除筛选"><svg class="ic" aria-hidden="true"><use href="#i-filter-clear"/></svg><span class="control-label">清除筛选</span></button></div>
       <div class="cv-head" id="cvhead"></div>
 
       <span id="cv-match" class="faint"></span>
@@ -405,7 +399,7 @@
       <div class="ch-find" id="chfind" hidden><input type="search" id="chfindq" placeholder="在本会话中搜索提问或回复" aria-label="在本会话中搜索提问或回复" autocomplete="off"><span class="faint" id="chfindn" role="status" aria-live="polite"></span></div>
       <div class="ch-split">
         <div class="ch-list" id="chlist" tabindex="0" role="listbox" aria-label="对话链节点"></div>
-        <div class="ch-side"><details class="ch-actions-panel" open><summary>导出与新建会话</summary><div class="ch-act" id="chact"></div></details><div class="ch-det" id="chdet"></div></div>
+        <div class="ch-side"><details class="ch-actions-panel" open><summary>导出与分叉</summary><div class="ch-act" id="chact"></div></details><div class="ch-det" id="chdet"></div></div>
       </div>
     </div>
   </div>
@@ -443,11 +437,7 @@
     <div class="card-header"><h3 class="card-title">用量<span class="n" id="lunote"></span></h3></div>
     <div class="pad"><div class="l-wins" id="lwins"></div><div id="lledger" class="l-led"></div></div>
   </div>
-  <div class="module-section"><div class="card" id="lruns">
-    <div class="card-header"><h3 class="card-title">失败与回退<span class="n" id="lsnote"></span></h3></div>
-    <div class="pad"><div id="lstab"></div>
-      </div>
-  </div></div>
+  <details class="card panel-disclosure" id="lruns"><summary>失败与回退<span class="n" id="lsnote"></span></summary><div class="pad" id="lstab"></div></details>
   <div class="card" id="lcalls">
     <div class="card-header"><h3 class="card-title">调用记录<span class="n" id="lmnote"></span></h3>
       <div class="card-actions">

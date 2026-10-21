@@ -11,7 +11,6 @@
 .cv-gh .caret{color:var(--dim);font-size:var(--fs-meta)}
 .cv-gh .dir{display:flex;align-items:baseline;gap:12px;min-width:0;text-align:left;overflow:hidden}
 .cv-gh .dn{font-weight:600;flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.cv-gh .dp{flex:1 1 0;min-width:0;color:var(--dim);font-size:var(--fs-meta);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .cv-gh .n,.cv-gh .ag{color:var(--dim);font-size:var(--fs-meta);white-space:nowrap;text-align:right}
 .cv-list{padding:0 8px 4px 24px;max-height:min(65vh,640px);overflow:auto;overflow-anchor:none}
 .cv-g:not(.open)>.cv-list{display:none}
@@ -39,7 +38,6 @@
 .cv-title-row button{flex:none}
 .cv-delete-facts{display:flex;flex-wrap:wrap;gap:4px 16px;color:var(--dim);font-size:var(--fs-meta);overflow-wrap:anywhere}
 .cv-delete-facts code{color:var(--ink)}
-.cv-r .pv{display:block;max-width:100%;color:var(--dim);font-size:var(--fs-meta);line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .cv-updated{color:var(--dim);font-size:var(--fs-meta);white-space:nowrap}
 .cv-detail-body button,.cv-page button{min-height:32px;padding:4px 8px;line-height:1.3;white-space:normal}
 #cv-delete-field p{margin:0 0 10px}
@@ -59,14 +57,12 @@
   .cv-gh{grid-template-columns:10px minmax(0,1fr) auto;gap:6px}
   .cv-gh .ag{display:none}
   .cv-gh .dir{display:block}
-  .cv-gh .dn,.cv-gh .dp{display:block}
+  .cv-gh .dn{display:block}
   .cv-gh .dn{white-space:normal;overflow-wrap:anywhere}
-  .cv-gh .dp{margin-top:2px}
   .cv-list{padding-left:10px;max-height:65vh}
   .cv-r{grid-template-columns:minmax(0,1fr) auto;gap:4px 8px}
   .cv-updated{grid-column:1}
   .cv-more{grid-column:2;grid-row:1}
-  .cv-r .pv{white-space:normal;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2}
 }
 
 /* 外壳(圆角、遮罩、头部和底部)和别的对话框共用 styles.css 的 .console-dialog;这里只定宽度和字段。 */

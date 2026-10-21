@@ -1,10 +1,10 @@
 // Navigation composes projections by user intent, independently of backend modules.
 const VIEW_GROUPS={
   overview:{label:'工作台',views:{overview:'工作台'}},
-  work:{label:'工作记录',views:{work:'工作与结果',convos:'会话',llm:'模型调用'}},
+  work:{label:'工作记录',views:{work:'工作记录',convos:'会话',llm:'模型调用'}},
   automations:{label:'自动化',views:{automations:'任务开关',pipelines:'同步与备份',tasks:'运行详情'}},
-  resources:{label:'资源',views:{integrations:'控制台接入',resources:'客户端技能与记忆',repos:'代码仓库',storage:'存储清理'}},
-  diagnostics:{label:'诊断',views:{diagnostics:'技术问题与数据来源'}}
+  resources:{label:'资源',views:{integrations:'插件接入',resources:'技能与记忆',repos:'仓库',storage:'存储'}},
+  diagnostics:{label:'诊断',views:{diagnostics:'诊断'}}
 };
 const VIEWS=Object.values(VIEW_GROUPS).flatMap(group=>Object.keys(group.views));
 let CURVIEW=null;
@@ -180,8 +180,9 @@ function showView(key,push,options){
   $('view-tabs').hidden=tabs.length===1 && !back;
   $('view-tabs').innerHTML=(tabs.length>1?tabs.map(([id,label])=>`<a href="#${id}" data-open-view="${id}" ${key===id?'aria-current="page"':''}><span>${esc(label)}</span>${BADGE_SOURCES[id]?`<span class="nav-badge pending" data-badge-for="${id}">…</span>`:''}</a>`).join(''):'')+back;
   renderBadges();
-  // 标题说清在哪一个标签上:「自动化 · 运行详情」。只写分组名的话,侧栏亮着的是同一个词,标题等于没说。
-  $('view-title').textContent=tabs.length>1?`${definition.label} · ${definition.views[key]}`:definition.label;
+  // Tabs already name the current page; retain its heading for assistive navigation.
+  $('view-title').textContent=definition.views[key];
+  $('view-title').parentElement.classList.toggle('visually-hidden',tabs.length>1);
   document.title=definition.views[key]+' · Background Task Core';
   loadPageOnce(key);
   renderRefreshAge();
@@ -204,15 +205,32 @@ function showView(key,push,options){
 // Esc 一次只退一层,而且只退**看得见**的那一层。按分区登记:每一项返回 true 表示这次按键退掉了一层。
 // 不在表里的分区什么都不做 : 以前任何分区按 Esc 都会清空运行详情里的勾选,
 // 人在仓库页按一下,另一屏里那份看不见的选择就没了。
+function closePageDisclosure(selector){
+  const open=[...document.querySelectorAll(selector)];
+  const details=open.find(el=>el.contains(document.activeElement)) || open.at(-1);
+  if(!details) return false;
+  details.open=false;
+  details.querySelector('summary')?.focus({preventScroll:true});
+  return true;
+}
 const ESC_STEPS={
+  overview:()=>closePageDisclosure('#overview .work-action-more[open],#overview .panel-disclosure[open]'),
+  work:()=>{
+    if(closePageDisclosure('#work .work-action-more[open]')) return true;
+    if(!$('work-context-panels').hidden){$('work-context-toggle').click();$('work-context-toggle').focus({preventScroll:true});return true;}
+    return false;
+  },
   tasks:()=>{
     if(OPEN_DETAIL){ collapseTaskDetail(); return true; }
+    if(closePageDisclosure('#tasks .panel-disclosure[open]')) return true;
     if(sel.size){ sel.clear(); if(DATA) render(); else renderBulk(); return true; }
     return false;
   },
   // 任务开关:收起就地展开的明细。
-  automations:()=>collapseAutomationDetail(),
-  llm:()=>closeCall(),
+  automations:()=>collapseAutomationDetail() || closePageDisclosure('#automations .automation-group-header details[open]'),
+  pipelines:()=>closePageDisclosure('#pipelines .pipeline-record[open]'),
+  integrations:()=>closePageDisclosure('#integrations .integration-detail[open]'),
+  llm:()=>closeCall() || closePageDisclosure('#llm .panel-disclosure[open]'),
   // 手机上仓库详情盖着列表时,Esc 回到列表;宽屏上没有这一层。
   repos:()=>repoEscape(),
   // 对话链是可选面板,没载入时这一屏没有可退的层。

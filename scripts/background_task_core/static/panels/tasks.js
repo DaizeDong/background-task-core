@@ -219,12 +219,12 @@ function taskHealthBadge(row){
 }
 // toggle=true 只给运行详情那张表用:标题做成一个真按钮,展开和点整行是同一件事。
 // 键盘上没有了 j/k,这个按钮就是走到一行、打开它的那条路;另外两处列表的标题照旧是文字。
-function taskIdentityHtml(row,{toggle=false}={}){
+function taskIdentityHtml(row,{toggle=false,compact=true}={}){
   const text=taskText(row);
   const title=toggle?`<button type="button" class="row-toggle" data-row-toggle="${esc(row.name)}" aria-expanded="${OPEN_DETAIL===row.name}"><strong>${esc(text.title)}</strong></button>`:`<strong>${esc(text.title)}</strong>`;
-  return `<div class="automation-name"><div class="task-heading">${title}${taskVerdictBadge(row)}</div>`+
-    (text.summary?`<p class="task-summary-text" title="${esc(text.summary)}">${esc(text.summary)}</p>`:'')+
-    `<small class="task-machine-name">${esc(row.name)}</small></div>`;
+  return `<div class="automation-name"><div class="task-heading" title="${esc(row.name)}">${title}${taskVerdictBadge(row)}</div>`+
+    (!compact && text.summary?`<p class="task-summary-text">${esc(text.summary)}</p>`:'')+
+    (!compact && row.name!==text.title?`<small class="task-machine-name">${esc(row.name)}</small>`:'')+'</div>';
 }
 // relative=true 是表格那一窄列用的短说法,完整说法进 title。几种情况的短说法也必须互不相同。
 function taskNextRun(row,relative=false){
@@ -256,7 +256,7 @@ function taskListRow(row,{controls=taskActionButtons(row,{scope:'auto'}),state=n
   const details=!showDetails?'':inline
     ?`<button type="button" class="mini task-peek" data-task-peek="${esc(row.name)}" aria-expanded="${open}" title="${open?'收起这个任务的明细':'在这一行下面展开明细'}"><svg class="ic" aria-hidden="true"><use href="#${open?'i-up':'i-eye'}"/></svg><span class="task-op-label">${open?'收起':'详情'}</span></button>`
     :`<button class="icon-only record-link" data-task="${esc(row.name)}" title="在运行详情里查看"><svg class="ic" aria-hidden="true"><use href="#i-eye"/></svg><span class="control-label">在运行详情里查看</span></button>`;
-  return `<article class="automation-row${row.sk==='bad'?' is-failing':''}">${taskIdentityHtml(row)}
+  return `<article class="automation-row${row.sk==='bad'?' is-failing':''}">${taskIdentityHtml(row,{compact:showDetails})}
     <div class="automation-schedule" title="${esc(taskSchedule(row,true))}">${esc(taskSchedule(row))}${taskNextRunLine(row)}</div>
     <div class="automation-state">${badge}${scheduler}${taskRepairChip(row.name)}</div><div class="automation-actions">${controls}
     ${details}</div>${open?`<div class="automation-detail det">${taskDetailBody(row,{close:`data-task-peek="${esc(row.name)}"`})}</div>`:''}</article>`;
@@ -639,6 +639,7 @@ function taskDetailBody(r,{close='data-detail-close'}={}){
   ];
   // 命令、工作目录、身份、电池是排查时才看的,放到最后一块「技术细节」。
   const technical=[
+   ["任务标识",esc(r.name)],
    ["命令",`<code>${esc(r.exec)} ${esc(r.args)}</code>`],
    ["工作目录",esc(r.cwd || '未设置')],
    ["身份",`${esc(r.userId)} · ${esc(r.runLevel)} · ${esc(r.multi)}`],

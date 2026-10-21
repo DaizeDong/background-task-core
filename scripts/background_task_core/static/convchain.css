@@ -135,7 +135,7 @@
 .ch-prew{position:relative;min-width:0}
 .ch-prew .ch-copy{position:absolute;top:4px;right:4px;z-index:1;display:inline-flex;align-items:center;gap:3px;background:var(--panel)}
 .ch-prew .ch-copy .ic{width:13px;height:13px}
-.ch-prew .ch-pre{padding-right:68px}
+.ch-prew .ch-pre{padding-right:42px}
 /* 范围那一行是一句话:「范围 #3 06-30 20:43 → #10 06-30 22:20 · 共 n 条」。 */
 .ch-range{column-gap:6px}
 .ch-det details>summary{cursor:pointer;color:var(--dim);margin:6px 0 2px}

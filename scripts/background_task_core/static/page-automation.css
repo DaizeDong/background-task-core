@@ -79,12 +79,14 @@
 #tasks .tlrow{height:20px}
 
 /* ── 修复进度读不到时只是一个小「!」,整句在悬停里 ── */
-.repair-read-icon{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;border:1px solid currentColor;font-weight:700;font-size:11px;line-height:1;cursor:help}
+.repair-read-icon{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;border:1px solid currentColor;font-weight:700;font-size:var(--fs-meta);line-height:1;cursor:help}
 .repair-read-state[data-tone="bad"] .repair-read-icon{margin-right:4px}
 
 /* ── 同步与备份 ── 卡片标题右边是合起来的结论;问题清单按原因分组,组标题写原因和项数。 */
 #pipelines .pipeline-run>.card-header{justify-content:space-between;flex-wrap:wrap;gap:6px 12px}
 #pipelines .pipeline-verdict{font-size:var(--fs-body);white-space:normal;text-align:left;max-width:100%;height:auto}
+#pipelines .pipeline-record{padding:10px var(--section-inset);font-size:var(--fs-body);overflow-wrap:anywhere}
+#pipelines .pipeline-record>summary{cursor:pointer}
 #pipelines .pipeline-issue-table tr.issue-group th{background:var(--panel2);color:var(--ink);font-weight:600}
 #pipelines .pipeline-issue-table tr.issue-group .n{margin-left:8px;color:var(--dim);font-weight:400}
 

@@ -89,6 +89,8 @@
 #integrations .integration-empty td{padding:0}
 #integrations .integration-empty .review-notice{margin:0}
 #integrations .integration-acts{white-space:nowrap}
+#integrations .integration-detail{margin-top:4px;font-size:var(--fs-meta);color:var(--dim)}
+#integrations .integration-detail>summary{cursor:pointer}
 #integrations .integration-flash{display:block;font-weight:600}
 #integrations .integration-flash.ok{color:var(--ok)}
 #integrations .integration-flash.bad{color:var(--bad)}

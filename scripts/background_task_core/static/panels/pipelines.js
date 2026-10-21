@@ -99,6 +99,7 @@ function pipelineVerdict(key, row, task, snap){
 }
 function renderPipelines(){
   const box=$("pipeline-body");if(!box) return;
+  const restoreDisclosures=captureDisclosures(box);
   const focused=box.contains(document.activeElement)?taskControlKey(document.activeElement):null;
   const query=$('pipeline-task-search').value, verdict=$('pipeline-verdict').value;
   // 卡片标题(「每日备份与整理」)也要搜得到:人是照着卡片上的字搜的,不是照着任务名。
@@ -111,7 +112,7 @@ function renderPipelines(){
   sample.textContent=snap.text;
   sample.className=snap.stale?"pipeline-stale":"faint";
   const stale=COMPONENTS && COMPONENTS.available && snap.stale
-    ? `<p class="review-notice">下面的运行记录来自 ${esc(snap.age)}采集的快照，之后没有再更新，最近运行和各环节结果都停在那一刻。任务现在的状态看每张卡片上的状态和下次运行时间。</p>`:"";
+    ? `<p class="review-notice">运行记录来自 ${esc(snap.age)}的快照，尚未更新。当前任务状态和下次运行时间见任务行。</p>`:"";
   box.innerHTML=(!COMPONENTS || !COMPONENTS.available ? `<p class="review-notice">${esc(COMPONENTS && COMPONENTS.reason || "正在读取运行记录")}</p>`:"")+stale+
     (!visible.length?'<p class="review-empty">没有符合筛选条件的同步与备份任务</p>':'')+
     visible.map(({key,def,row,displayRow,missing})=>{
@@ -122,11 +123,11 @@ function renderPipelines(){
         <div class="card-header"><h2 class="card-title">${esc(def.title)}</h2>${pipelineVerdict(key,row,task,snap)}</div>
         ${taskListRow(displayRow,{controls:row?taskActionButtons(row,{deletable:false,scope:'pipe'}):'',showDetails:!!row,inline:false,
           state:row?null:statusBadge(missing[0],missing[1])})}
-        <div class="pipeline-result">运行记录 ${statusBadge(task?pipeState(status):'未找到对应记录',task?componentTone(status):'idle',undefined,'review-status')}</div>
-        <div class="pipeline-metrics"><span>最近运行 <b>${esc(pipeTime(task && task.execution && task.execution.started_at))}</b></span>
-          <span>运行标识 <b>${esc(task && task.run_id || "未提供")}</b></span>
-          <span>任务标识 <b>${esc(task && task.task_id || "未关联")}</b></span>
-        </div>
+        <details class="pipeline-record" data-disclosure-key="${esc(key)}"><summary>运行记录 ${statusBadge(task?pipeState(status):'未找到对应记录',task?componentTone(status):'idle',undefined,'review-status')} · 最近运行 ${esc(pipeTime(task && task.execution && task.execution.started_at))}</summary>
+          <div class="pipeline-metrics"><span>运行标识 <b>${esc(task && task.run_id || "未提供")}</b></span>
+            <span>任务标识 <b>${esc(task && task.task_id || "未关联")}</b></span>
+          </div>
+        </details>
         <div class="ops-scroll pipeline-steps"><table class="ops-table pipeline-table"><thead><tr><th>环节</th><th>结果</th><th>检查记录</th></tr></thead><tbody>
         ${steps.map((step,i)=>`<tr><th scope="row"><span class="step-index">${i+1}</span>${esc(step.title)}</th><td data-label="结果">${statusBadge(step.label,step.tone,step.symbol,'review-status')}</td>
           <td data-label="检查记录"><div>${esc(step.detail)}</div>
@@ -135,6 +136,7 @@ function renderPipelines(){
           </td></tr>`).join("")}</tbody></table></div></div>`;
     }).join("");
   restoreTaskControlFocus(box,focused);
+  restoreDisclosures();
   const links=$("overview-pipelines");
   if(links) links.innerHTML=Object.entries(PIPELINE_DEFS).map(([key,def])=>{
     const task=pipelineTask(key,COMPONENTS), state=task && (task.last_run_v1 && task.last_run_v1.status || task.verdict);

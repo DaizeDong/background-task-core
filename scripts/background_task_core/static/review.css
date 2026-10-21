@@ -14,13 +14,13 @@ body{font-size:var(--fs-body);line-height:1.5}
 #side .nav-link.active{color:var(--cyan);background:var(--cur);box-shadow:inset 3px 0 var(--cyan)}
 #side .nav-link-title{white-space:nowrap}
 #side:not(.navbar-folded) .nav-link .nav-badge{position:static;margin-left:auto;flex:none}
-#bar{white-space:normal;overflow:visible;padding:9px 18px;min-height:54px}
-#bar .container-fluid{display:flex;align-items:center;justify-content:space-between;gap:12px}
+#bar{white-space:normal;overflow:visible;padding:0 14px;min-height:48px}
+#bar .container-fluid{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;min-width:0}
 .view-heading{min-width:0}.view-heading h1{font-size:var(--fs-title);line-height:1.3;margin:0;font-weight:650;white-space:nowrap}
 .page-actions,.review-actions,.card-actions{display:flex;align-items:center;gap:var(--space-2);flex-wrap:wrap}
 .card-actions{margin-left:auto;min-width:0}
 #view{width:100%;max-width:none;margin:0;padding:0 clamp(12px,1vw,24px) 20px;min-width:0;container:workspace / inline-size}
-.page-body{margin-top:12px;min-width:0}
+.page-body{margin-top:0;min-width:0}
 .page-wrapper{min-width:0}
 .card{border-radius:var(--card-radius);box-shadow:none;margin-bottom:var(--section-gap);min-width:0}
 .card-header{padding:6px var(--section-inset);gap:var(--space-2);flex-wrap:wrap;justify-content:space-between;min-height:40px}
@@ -169,10 +169,10 @@ table.g th.num{text-align:right}
   #side .nav-item{flex:none}#side .nav-link{margin:0;padding:8px 10px;min-height:36px}#side .nav-link-icon{display:none}
   #side .mt-auto{display:none}.navbar-vertical.navbar-expand-sm~.page-wrapper{margin-left:0}
   #side .navbar-collapse{display:block}#side.navbar-folded .navbar-nav{display:flex}#side.navbar-folded .nav-link-title{display:block}
-  #bar{padding:10px 12px;position:static}#bar .container-fluid{flex-wrap:wrap}.view-heading h1{font-size:var(--fs-title)}
+  #bar{padding:0 10px 6px;position:static}#bar .container-fluid{flex-wrap:wrap}.view-heading h1{font-size:var(--fs-title)}
   .page-actions{width:100%}#page-refresh-state{order:1;width:100%}#page-refresh-state:empty{display:none}
   :root{--section-inset:10px}
-  #view{padding:0 10px 16px}.page-body{margin-top:10px}
+  #view{padding:0 10px 16px}.page-body{margin-top:0}
   #todo .review-row{grid-template-columns:66px minmax(0,1fr);padding:8px 10px;gap:6px 8px}.review-actions{grid-column:2;justify-content:flex-start}
   #overview-pipelines{grid-template-columns:1fr}#overview-pipelines>button+button{border-left:0;border-top:1px solid var(--line2)}
   .catalog-tools input{min-width:160px}.catalog-tools select{max-width:100%}.lc-list{grid-template-columns:1fr}

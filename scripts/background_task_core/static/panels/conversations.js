@@ -90,8 +90,7 @@ function cvRows(g){
       ?`<button type="button" class="icon-only mini cv-quick" data-cvquick="${esc(r.id)}"${off} title="重命名"><svg class="ic" aria-hidden="true"><use href="#i-edit"/></svg><span class="control-label">重命名</span></button>`:'';
     const title=chain?`<button class="t" data-cvopen="${esc(r.id)}" title="查看会话：${esc(r.title)}">${esc(r.title)}</button>`:`<span class="t">${esc(r.title)}</span>`;
     return `<div class="cv-r${r.humanSeen>=2?' human':''}" data-cvfile="${esc(r.file)}">
-      <div class="cv-main">${editing || `<div class="cv-title-line">${title}${quick}</div>`}
-        ${r.preview&&r.preview!==r.title?`<span class="pv">${esc(r.preview)}</span>`:''}</div>
+      <div class="cv-main">${editing || `<div class="cv-title-line">${title}${quick}</div>`}</div>
       <span class="cv-updated">${cvAge(r.ageHours)}</span>
       <button type="button" class="icon-only mini cv-more" popovertarget="${esc(menu)}" data-cvmenu="${esc(key)}" title="更多操作"><svg class="ic" aria-hidden="true"><use href="#i-more"/></svg><span class="control-label">更多操作</span></button>
       <div class="pop-menu cv-menu" id="${esc(menu)}" popover data-cvmenu-for="${esc(key)}" aria-label="会话操作">
@@ -99,7 +98,7 @@ function cvRows(g){
           +menuItem('i-move','移动',`data-cvmove="${esc(r.id)}" data-cvdrag="${esc(r.id)}" draggable="${!disabled}"${off} title="点击选择目标项目，也可拖到其他项目上"`,'cv-handle'):''}
         ${menuItem('i-copy','复制文件路径',`data-cvcopy="${esc(r.file)}" title="复制文件路径"`)}
         <div class="menu-sep" role="separator"></div>
-        <div class="menu-facts"><span>标题来源：${esc(CV_SRC[r.titleFrom]||r.titleFrom||'未记录')}</span><span>文件大小：${kb(r.bytes)}</span>
+        <div class="menu-facts">${r.preview&&r.preview!==r.title?`<span>${esc(r.preview)}</span>`:''}<span>标题来源：${esc(CV_SRC[r.titleFrom]||r.titleFrom||'未记录')}</span><span>文件大小：${kb(r.bytes)}</span>
         <span>已识别的用户提问：${r.humanSeen ?? '未记录'}${r.partial?'（只读取了部分内容）':''}</span>
         <span class="cv-location">会话编号：${esc(r.id)}</span><span class="cv-location">文件位置：${esc(r.file)}</span>
         ${!valid?'<span class="warn">会话编号无法识别，可通过文件位置检查原始记录。</span>':''}</div>
@@ -114,7 +113,7 @@ function cvReopenMenu(){
 function cvPage(g){
   const id=cvKey(g), state=CV_PAGES.get(id), more=g.hasMore;
   return `<div class="cv-page"><span${state?.error?' class="bad" role="alert"':''}>${state?.error?esc(state.error):`已加载 ${g.shown.length} / ${g.count} 个会话`}</span>
-    ${more?`<button data-cvmore="${esc(id)}"${state?.busy?' disabled':''}>${state?.busy?'加载中…':state?.error?'重试加载':'加载更多'}</button>`:'<span>已全部显示</span>'}</div>`;
+    ${more?`<button data-cvmore="${esc(id)}"${state?.busy?' disabled':''}>${state?.busy?'加载中…':state?.error?'重试加载':'加载更多'}</button>`:''}</div>`;
 }
 function cvGroupElement(id){
   return [...$('cvgroups').querySelectorAll('[data-cvproject]')].find(el=>el.dataset.cvproject===id);
@@ -170,9 +169,9 @@ function renderConvos(){
   }
   const S=CONVOS.summary, query=CV_QUERY.trim().toLowerCase();
   if(query!==CV_OPEN_QUERY){CV_OPEN=query?{}:{...CV_BASE_OPEN};CV_OPEN_QUERY=query;}
-  $('cvhead').innerHTML=`<span class="cv-total"><b>${S.matched}</b> 个会话，分布在 <b>${S.groups}</b> 个项目</span>
+  $('cvhead').innerHTML=`<span class="cv-total"><b>${S.matched}</b> 会话 · <b>${S.groups}</b> 项目</span>
     <label>排序 <select id="cvsort">${[['new','最近更新'],['count','会话最多'],['old','最早更新'],['size','占用空间']].map(([v,t])=>`<option value="${v}"${CV_SORT===v?' selected':''}>${t}</option>`).join('')}</select></label>
-    <label title="根据已读取的内容识别，长会话可能只统计了一部分"><input type="checkbox" id="cvonly"${CV_HUMAN_ONLY?' checked':''}> 至少两次用户提问</label>
+    <label title="至少两次用户提问；根据已读取的内容识别，长会话可能只统计了一部分"><input type="checkbox" id="cvonly" aria-label="至少两次用户提问"${CV_HUMAN_ONLY?' checked':''}> 多轮会话</label>
     ${S.unreadable?`<span class="bad" role="alert">${S.unreadable} 个文件或目录读取失败，列表可能不完整。请检查访问权限后刷新。</span>`:''}
     ${S.cacheError?`<span class="warn" role="status" title="${esc(S.cacheError)}">缓存暂时不可用，列表仍可使用，后续刷新可能较慢。</span>`:''}`;
   const groups=[...CONVOS.groups];
@@ -180,12 +179,18 @@ function renderConvos(){
     size:(a,b)=>b.bytes-a.bytes,count:(a,b)=>b.count-a.count};
   const isEph=g=>/[\\/]Temp[\\/](astab|astra|ccstab|ccagentic)_[a-z0-9]+$/i.test(g.cwd)&&!g.humanish&&g.count<=2;
   const eph=groups.filter(isEph), rest=groups.filter(g=>!isEph(g)).sort(compare[CV_SORT]);
+  const paths=groups.map(g=>String(g.cwd || cvKey(g)).split(/[\\/]/).filter(Boolean));
+  const projectLabel=g=>{
+    const parts=paths[groups.indexOf(g)];
+    let depth=1;
+    while(depth<parts.length && paths.some(other=>other!==parts && other.slice(-depth).join('/')===parts.slice(-depth).join('/'))) depth++;
+    return parts.slice(-depth).join(' / ');
+  };
   const groupHtml=g=>{
     const id=cvKey(g), open=CV_OPEN[id] ?? !!query, cwd=String(g.cwd || id);
-    const cut=cwd.search(/[\\/][^\\/]*$/), head=cut>0?cwd.slice(0,cut+1):'', tail=cut>0?cwd.slice(cut+1):cwd;
     return `<div class="cv-g${open?' open':''}" data-cv="${esc(id)}" data-cvproject="${esc(id)}">
       <button class="cv-gh" aria-expanded="${open}" title="${esc(g.storagePath || cwd)}">
-        <span class="caret" aria-hidden="true">${open?'▼':'▶'}</span><span class="dir"><span class="dn">${esc(tail)}</span><span class="dp">${esc(head)}</span></span>
+        <span class="caret" aria-hidden="true">${open?'▼':'▶'}</span><span class="dir"><span class="dn">${esc(projectLabel(g))}</span></span>
         <span class="n">${g.count} 个会话</span><span class="ag">${g.newest?timeTag(g.newest):'<span class="u">时间未知</span>'}</span></button>
       <div class="cv-list">${open?cvLocation(g)+cvRows(g)+cvPage(g):''}</div></div>`;
   };
@@ -200,7 +205,7 @@ function renderConvos(){
 }
 function cvLocation(g){
   return `${g.locationWarning?`<p class="cv-notice error" role="alert">项目位置需要核对：${esc(g.locationWarning)}</p>`:''}
-    <details class="cv-project-details" data-cvdetail="project:${esc(cvKey(g))}"${CV_DETAILS.has('project:'+cvKey(g))?' open':''}><summary>项目位置</summary><div class="cv-detail-body">
+    <details class="cv-project-details" data-cvdetail="project:${esc(cvKey(g))}"${CV_DETAILS.has('project:'+cvKey(g))?' open':''}><summary>项目详情</summary><div class="cv-detail-body">
       <span class="cv-location">工作目录：${esc(g.cwd)}${g.locationInferred?'（根据历史记录推断）':''}</span>
       <span class="cv-location">会话存放位置：${esc(g.storagePath || g.cwd)}</span><span>文件合计：${kb(g.bytes)}</span>
       <button class="icon-only mini" data-cvcopy="${esc(g.storagePath || g.cwd)}" title="复制存放路径"><svg class="ic" aria-hidden="true"><use href="#i-copy"/></svg><span class="control-label">复制存放路径</span></button></div></details>`;
