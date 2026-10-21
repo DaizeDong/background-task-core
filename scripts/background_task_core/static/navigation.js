@@ -230,7 +230,8 @@ const ESC_STEPS={
   automations:()=>collapseAutomationDetail() || closePageDisclosure('#automations .automation-group-header details[open]'),
   pipelines:()=>closePageDisclosure('#pipelines .pipeline-record[open]'),
   integrations:()=>closePageDisclosure('#integrations .integration-detail[open]'),
-  llm:()=>closeCall() || closePageDisclosure('#llm .panel-disclosure[open]'),
+  llm:()=>closeCall() || closePageDisclosure('#llm .l-usage-details[open],#llm .panel-disclosure[open]'),
+  resources:()=>closePageDisclosure('#resources .skill-budget[open]'),
   // 手机上仓库详情盖着列表时,Esc 回到列表;宽屏上没有这一层。
   repos:()=>repoEscape(),
   // 对话链是可选面板,没载入时这一屏没有可退的层。

@@ -89,12 +89,17 @@
 #pipeline-sample.pipeline-stale{color:var(--warn)}
 .task-summary-text{margin:5px 0 0;font-size:var(--fs-body);line-height:1.5;color:var(--dim);overflow-wrap:anywhere}
 .task-machine-name{display:block;font-family:var(--mono);font-size:var(--fs-meta);font-weight:400;color:var(--dim);margin-top:5px;overflow-wrap:anywhere}
-#automation-list{display:grid;gap:var(--section-gap);min-width:0}
-.automation-group-header{align-items:flex-start;justify-content:space-between;gap:8px 20px;flex-wrap:wrap}
-.automation-group-header>div{min-width:0;flex:1 1 240px}
+#automation-list{min-width:0;border:1px solid var(--line);border-radius:var(--card-radius);background:var(--panel);overflow:clip}
+.automation-group+.automation-group{border-top:1px solid var(--line)}
+.automation-group-header{align-items:center;justify-content:space-between;gap:8px 20px;flex-wrap:wrap;background:var(--panel2)}
+.automation-group-header>details{min-width:0;flex:1 1 240px}
+.automation-group-header summary{list-style:none;min-height:28px;display:flex;align-items:center;width:fit-content;max-width:100%;border-radius:4px}
+.automation-group-header summary::-webkit-details-marker{display:none}
+.automation-group-header summary .ic{color:var(--dim)}
+.automation-group-header summary:hover .ic,.automation-group-header details[open] summary .ic{color:var(--cyan)}
 .automation-group-header p{margin:5px 0 0;color:var(--dim);font-size:var(--fs-body);overflow-wrap:anywhere}
 .automation-verdict-counts{color:var(--dim);font-size:var(--fs-meta);line-height:1.7;overflow-wrap:anywhere}
-.automation-list-heading{padding-top:7px;padding-bottom:7px;background:var(--panel2);color:var(--dim);font-size:var(--fs-meta)}
+.automation-list-heading{position:sticky;top:var(--sticky-stack,48px);z-index:2;padding-top:7px;padding-bottom:7px;background:var(--panel);border-bottom:1px solid var(--line);color:var(--dim);font-size:var(--fs-meta)}
 .automation-actions{display:flex;align-items:center;gap:var(--space-1);flex-wrap:wrap;min-width:0}
 .automation-state{min-width:0;display:flex;flex-wrap:wrap;align-items:center;gap:4px}
 .work-section-note{font-size:var(--fs-meta);color:var(--dim);padding:6px 12px;border-bottom:1px solid var(--line2)}

@@ -18,7 +18,7 @@ function renderPlugins(){
   if(!P.available){ mtUnset(pe,P.reason); }
   else{
     const selected=runtimeRows(P.plugins,"plugin");
-    pe.innerHTML=`<div class="mt-t">插件 <span class="sub">${matchCount(selected.length,P.plugins.length,"个")}</span></div>
+    pe.innerHTML=`<div class="resource-count">${matchCount(selected.length,P.plugins.length,"个")}</div>
       <div class="mt-rows">${selected.map(p=>{
         const nm=p.name.split("@")[0];
         // 范围只在不是 user 时写出来:每一行都印「user」等于没印。范围没读到时照写「范围未检查」。

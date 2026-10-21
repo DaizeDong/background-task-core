@@ -169,6 +169,7 @@ async function lcSave(){
 
 // ── 用量窗口 ──
 function renderWins(){
+  const restoreDisclosures = captureDisclosures($("lledger"));
   const L0 = LLM.ledger || {};
   // 账本文件根本不在,和账本在、里面今天没有调用,是两件事。
   // 后者是「今天很闲」,前者是「这一屏什么都没看」—— 而把前者画成一排 0,
@@ -190,20 +191,23 @@ function renderWins(){
     // 无时间戳的条数每个时段都一样,只在下面账本那一行说一次;每张卡各写一遍,读起来像四件事。
     const sub = blind
       ? "这段时间里没有带时间戳的调用，无法统计"
-      : ('<span class="ok">' + lnum(w.ok) + " 成功</span> · "
-         + (w.failed ? '<span class="bad">' + lnum(w.failed) + " 失败</span>" : "0 失败")
-         + " · 低成本服务占比 " + lpct(w.cheap_share)
-         + (w.avg_ms != null ? " · 平均 " + lnum(Math.round(w.avg_ms)) + "ms" : ""));
+      : (w.failed ? '<span class="bad">' + lnum(w.failed) + " 失败</span>" : "0 失败");
     return '<div class="' + cls + '"><h4>' + esc(w.label) + "</h4>"
       + '<div class="big">' + esc(big) + "</div>"
       + '<div class="sub">' + sub + "</div></div>";
   }).join("");
 
   const L = LLM.ledger || {};
-  $("lledger").innerHTML = "已读取 " + kb(L.bytes)
+  const metrics = wins.map(w=>'<div class="l-usage-window"><b>' + esc(w.label) + '</b><span>'
+    + (w.calls === 0 && (w.unstamped_excluded || 0) > 0 ? '缺少时间戳，无法统计'
+      : lnum(w.ok) + ' 成功 · 低成本服务占比 ' + lpct(w.cheap_share)
+        + ' · 平均 ' + (w.avg_ms == null ? '未计' : lnum(Math.round(w.avg_ms)) + 'ms')) + '</span></div>').join('');
+  $("lledger").innerHTML = '<details class="l-usage-details" data-disclosure-key="llm-usage"><summary>统计明细与账本</summary>'
+    + '<div class="l-usage-windows">' + metrics + '</div>已读取 ' + kb(L.bytes)
     + " · " + lnum(L.parsed) + " 条可解析"
-    + (L.malformed ? ' · <span class="bad">' + lnum(L.malformed) + " 条坏行</span>" : "")
-    + " · 带时间戳 " + lnum(L.stamped) + " 条 / 无时间戳 " + lnum(L.unstamped) + " 条"
+    + '</details>'
+    + (L.malformed ? '<span class="bad">' + lnum(L.malformed) + " 条坏行</span> · " : "")
+    + "带时间戳 " + lnum(L.stamped) + " 条 / 无时间戳 " + lnum(L.unstamped) + " 条"
     + (L.unstamped ? "（不计入上面各时段）" : "")
     // 读侧承诺 parsed + malformed + blank == lines。这里当场验算,不是装饰:
     // 一个漏读了一段文件的解析器,报出来的每个数都自洽、都好看,
@@ -213,6 +217,7 @@ function renderWins(){
        ? ' · <span class="bad">对不上:' + lnum(L.parsed) + "+" + lnum(L.malformed)
          + "+" + lnum(L.blank) + " ≠ " + lnum(L.lines) + " 行,解析器漏了东西</span>"
        : "");
+  restoreDisclosures();
   $("lunote").textContent = "";
 }
 
@@ -356,6 +361,8 @@ function lmGoPage(n){
 
 function renderCalls(){
   if(!LMROWS) return;
+  const focusedCall = document.activeElement?.closest('#lmtab [data-call-toggle]')?.dataset.callToggle;
+  const focusedClose = document.activeElement?.closest('#lmtab [data-call-close]') != null;
   const sel = $("lmprov");
   if(sel.options.length <= 1 && LLM && LLM.rungs){
     sel.insertAdjacentHTML("beforeend",
@@ -375,33 +382,30 @@ function renderCalls(){
   const rows = LMROWS.map(r=>{
     const open = LMOPEN === r.i;
     const who = r.provider == null
-      ? '<td class="who none">整链失败</td>'
-      : '<td class="who">' + esc(r.provider) + "</td>";
+      ? '<td data-label="应答服务" class="who none">整链失败</td>'
+      : '<td data-label="应答服务" class="who">' + esc(r.provider) + "</td>";
     // 三种「不知道是谁调的」要分开:字段不存在 = 这条记录早于 caller 功能;
     // 字段是 null = 推断失败(嵌入式调用、REPL);有值就是有值。
     // 把前两种都写成「未知」,就把「还没开始记」和「记了但推断不出来」焊死了。
-    const caller = !("caller" in r) ? '<td class="unk">—</td>'
-      : r.caller == null ? '<td class="unk">推断不出</td>'
-      : '<td class="who">' + esc(r.caller) + "</td>";
+    const caller = !("caller" in r) ? '<td data-label="调用方" class="unk">未记录</td>'
+      : r.caller == null ? '<td data-label="调用方" class="unk">推断不出</td>'
+      : '<td data-label="调用方" class="who">' + esc(r.caller) + "</td>";
     // 每行自己说成没成:以前一次失败的调用和成功的长得一样,只有应答服务为空时才看得出来。
-    const result = '<td class="res">' + (r.ok ? statusBadge("成功", "ok") : statusBadge("失败", "bad")) + "</td>";
+    const result = '<td data-label="结果" class="res">' + (r.ok ? statusBadge("成功", "ok") : statusBadge("失败", "bad")) + "</td>";
     // 行首的三角和 aria-expanded:一眼看得出这一行点了能展开。
     let tr = '<tr class="lrow' + (open ? " open" : "") + (r.ok ? "" : " failed") + (LMJUMP === r.i ? " jumped" : "")
       + '" data-i="' + r.i + '" aria-expanded="' + open + '" title="' + (open ? "收起明细" : "展开明细") + '">'
-      + '<td class="no"><span class="caret" aria-hidden="true">' + (open ? "▼" : "▶") + "</span>" + r.i + "</td>"
-      + "<td>" + lwhen(r.ts) + "</td>" + result + caller + who
-      + '<td class="sk">' + (r.skipped && r.skipped.length ? esc(r.skipped.join(",")) : "—") + "</td>"
-      + "<td>" + esc(r.mode || "") + "</td>"
-      + '<td class="r">' + lnum(r.prompt_chars) + "</td>"
-      + '<td class="r">' + lnum(r.reply_chars) + "</td>"
-      + '<td class="r">' + (r.ms == null ? '<span class="faint">—</span>' : lnum(r.ms)) + "</td>"
-      + '<td class="r">' + r.attempts + "</td></tr>";
+      + '<td class="no" data-label="明细"><button type="button" class="mini" data-call-toggle="' + r.i
+      + '" aria-expanded="' + open + '" aria-label="' + (open ? '收起' : '展开') + '第 ' + r.i
+      + ' 行明细"><span class="caret" aria-hidden="true">' + (open ? "▼" : "▶") + '</span>#' + r.i + '</button></td>'
+      + '<td data-label="时间">' + lwhen(r.ts) + "</td>" + result + caller + who
+      + '<td class="r" data-label="耗时">' + (r.ms == null ? '<span class="faint">未计</span>' : lnum(r.ms) + ' ms') + "</td></tr>";
     // 明细可能比一屏还高:收起按钮钉在明细右上角,不用回头去找那一行。
     if(open) tr += '<tr><td class="det" colspan="' + LM_COLS + '"><div class="det-bar"><button type="button" class="mini det-close" data-call-close title="收起明细"><svg class="ic" aria-hidden="true"><use href="#i-up"/></svg>收起</button></div>' + detailHTML(r) + "</td></tr>";
     return tr;
   }).join("");
-  const head = '<tr><th>行号</th><th>时间</th><th>结果</th><th>调用方</th><th>应答服务</th><th>已跳过</th><th>模式</th>'
-    + '<th class="r">输入字符</th><th class="r">回复字符</th><th class="r">耗时（ms）</th><th class="r">尝试次数</th></tr>';
+  const head = '<thead><tr><th scope="col">明细 / 行号</th><th scope="col">时间</th><th scope="col">结果</th>'
+    + '<th scope="col">调用方</th><th scope="col">应答服务</th><th scope="col" class="r">耗时</th></tr></thead>';
   // 空结果必须说出**为什么**空。「搜错误文本」+「只看成功」是一个天然的空集:
   // 成功的调用根本没有错误文本。不说破的话,一个用对了工具的人会以为工具坏了,
   // 而这和工具真的坏了在屏幕上是同一句话。
@@ -414,6 +418,8 @@ function renderCalls(){
     + (LMERR ? '<tr><td colspan="' + LM_COLS + '">' + errorBlock("调用记录", LMERR, "data-lm-retry") + "</td></tr>"
        : rows || '<tr><td colspan="' + LM_COLS + '">' + emptyBlock(empty, {filtered}) + "</td></tr>");
 
+  if(focusedCall != null) document.querySelector('#lmtab [data-call-toggle="' + focusedCall + '"]')?.focus({preventScroll:true});
+  else if(focusedClose) document.querySelector('#lmtab [data-call-close]')?.focus({preventScroll:true});
   const from = LMTOTAL ? LMQ.offset + 1 : 0;
   const to = Math.min(LMQ.offset + LMQ.limit, LMTOTAL);
   const pages = lmPages(), page = Math.floor(LMQ.offset / LMQ.limit) + 1;
@@ -432,11 +438,16 @@ function renderCalls(){
     + "<span>" + lnum(from) + "–" + lnum(to) + " / 共 " + lnum(LMTOTAL) + " 条</span>";
   if(typing){ try{ $("lmpgno").focus(); }catch(e){} }
 }
-const LM_COLS = 11;
+const LM_COLS = 6;
 
 function detailHTML(r){
   const b = LMBODY[r.i];
   let s = "<dl>"
+    + "<dt>账本行号</dt><dd>" + lnum(r.i) + "</dd>"
+    + "<dt>已跳过</dt><dd>" + (r.skipped && r.skipped.length ? esc(r.skipped.join(", ")) : "—") + "</dd>"
+    + "<dt>模式</dt><dd>" + esc(r.mode || "未记录") + "</dd>"
+    + "<dt>输入 / 回复字符</dt><dd>" + lnum(r.prompt_chars) + " / " + lnum(r.reply_chars) + "</dd>"
+    + "<dt>尝试次数</dt><dd>" + lnum(r.attempts) + "</dd>"
     + "<dt>调用顺序</dt><dd>" + esc((r.chain || []).join(" → ")) + "</dd>"
     + "<dt>联网</dt><dd>" + (r.web ? "是" : "否") + "</dd>"
     + "<dt>结果</dt><dd>" + (r.ok ? "成功" : "失败") + "</dd>"
@@ -528,6 +539,7 @@ function closeCall(){
   LMOPEN = null;
   renderCalls();
   const row = document.querySelector('#lmtab tr.lrow[data-i="' + i + '"]');
+  row?.querySelector('[data-call-toggle]')?.focus({preventScroll:true});
   if(row && row.scrollIntoView) row.scrollIntoView({block: "nearest"});
   return true;
 }

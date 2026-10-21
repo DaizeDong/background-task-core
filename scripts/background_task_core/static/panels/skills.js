@@ -68,36 +68,36 @@ function renderSkills(){
   if(!MAINT) return;
   // --- skill:预算是名字加描述的字符数,超了尾部条目的描述会被静默丢弃 ---
   const S=MAINT.skills, el=$("mt-skills");
+  const restoreDisclosures=captureDisclosures(el);
   if(!S.available){ mtUnset(el,S.reason); }
   else{
-    // 每行一条微型条。22 个字符数原来只能逐行读,谁在吃预算看不出来。
-    // 归一化用当前最大值而不是 18600 的预算上限:单个 skill 从来到不了上限,
-    // 按上限归一会让 22 根条全部贴着左边,谁也分不出谁。
+    // 展开预算时显示各行字数和相对大小;按当前最大值归一化。
     const maxC=Math.max(1,...S.skills.filter(k=>!k.archived).map(k=>k.chars||0));
     const selected=runtimeRows(S.skills,"skill");
     // 归档是可逆的,用普通按钮;删除才是红的,两个之间隔开一段,免得手一滑点到隔壁。
-    // 联接写成字「联接」,不再是一个要悬停才知道意思的 ↗。
     const rows=selected.map(k=>`<div class="mt-r bar skill-row${k.archived?" off":""}">
-      <span class="n" title="${esc(k.name)}">${esc(k.name)}${k.linked?` <span class="lk lk-tag" title="目录联接（junction），指向其他仓库">联接</span>`:""}</span>
+      <span class="n" title="${esc(k.name)}">${esc(k.name)}${k.archived?` <span class="sub">已归档</span>`:""}${k.linked?` <span class="lk-tag" role="img" aria-label="目录联接（junction），指向其他仓库" title="目录联接（junction），指向其他仓库"><svg class="ic" aria-hidden="true"><use href="#i-link"/></svg></span>`:""}</span>
       <span class="ub" aria-hidden="true"><i style="width:${
         k.archived?0:Math.round((k.chars||0)/maxC*100)}%"></i></span>
-      <span class="c">${k.archived?"已归档":fmtNum(k.chars)+" 字"}</span>
+      <span class="c">${k.descUnreadable?"字数未读到":fmtNum(k.chars)+" 字"}</span>
       <span class="mt-acts">${k.archived
         ? ibtn("i-restore","恢复技能，下次会话生效",`data-mt="skill.restore" data-name="${esc(k.name)}"`)
         : ibtn("i-archive","归档技能，下次会话不再加载",`data-mt="skill.archive" data-name="${esc(k.name)}"`)}
       <button class="icon-only mini danger" data-delete="skill" data-name="${esc(k.name)}" data-location="${k.archived?'archive':'live'}" title="预览删除范围；联接只移除联接本身"><svg class="ic" aria-hidden="true"><use href="#i-trash"/></svg><span class="control-label">删除…</span></button></span>
     </div>`).join("");
-    // 预算条带上自己的名字和数:「描述预算 12,345 / 18,600 字」。原来是一根无名的条,旁边一个没有单位的数。
+    // 次要预算信息按需展开,超限数和读取问题始终可见。
     const limit=S.budgetLimit || 18600, pct=Math.min(S.budgetPct,100);
-    el.innerHTML=`<div class="mt-t">技能 <span class="sub">${matchCount(selected.length,S.skills.length,"个")}</span></div>
+    el.innerHTML=`<div class="resource-count">${matchCount(selected.length,S.skills.length,"个")}</div>
+      <details class="skill-budget" data-disclosure-key="skill-budget"><summary>描述预算与字数${S.budgetChars>limit?` <span class="warn">超出 ${fmtNum(S.budgetChars-limit)} 字</span>`:["warn","bad"].includes(toneOf(S.verdict))?` <span class="warn">已用 ${fmtNum(S.budgetChars)} 字</span>`:""}</summary>
       <div class="mt-budget"><span class="lb">描述预算</span>
-        <div class="mt-meter" role="meter" aria-label="技能描述预算" aria-valuemin="0" aria-valuemax="${esc(limit)}" aria-valuenow="${esc(S.budgetChars)}"
+        <div class="mt-meter${S.budgetChars>limit?" over":""}" role="meter" aria-label="技能描述预算" aria-valuemin="0" aria-valuemax="${esc(limit)}" aria-valuenow="${esc(Math.min(S.budgetChars,limit))}"
           aria-valuetext="${esc(`已用 ${fmtNum(S.budgetChars)} 字，上限 ${fmtNum(limit)} 字`)}"><i style="width:${pct.toFixed(1)}%;
           background:${`var(--${toneOf(S.verdict)})`}"></i></div>
-        <span class="v">${fmtNum(S.budgetChars)} / ${fmtNum(limit)} 字</span></div>
-      ${S.descUnreadable ? `<div class="warn-line">${S.descUnreadable} 份描述读不出来，上面的字数偏低</div>` : ""}
+        <span class="v">${fmtNum(S.budgetChars)} / ${fmtNum(limit)} 字</span></div></details>
+      ${S.descUnreadable ? `<div class="warn-line">${S.descUnreadable} 份描述读不出来，预算字数偏低</div>` : ""}
       <div class="mt-rows">${rows || emptyBlock(S.skills.length?"没有匹配的技能":"没有技能",RUNTIME_QUERY||RUNTIME_STATE?{filtered:"resources"}:{})}</div>`;
   }
+  restoreDisclosures();
 }
 
 function renderClientPlugins(){

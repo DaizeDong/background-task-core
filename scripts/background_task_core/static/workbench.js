@@ -270,11 +270,13 @@ function renderAutomations(){
   const groups=new Map();rows.forEach(row=>{if(!groups.has(row.cat))groups.set(row.cat,[]);groups.get(row.cat).push(row);});
   // 这张列表会被工作记录刷新、修复进度轮询顺带重画:焦点在某个按钮上时,重画之后要放回同一个按钮。
   const focused=$('automation-list').contains(document.activeElement)?taskControlKey(document.activeElement):null;
-  $('automation-list').innerHTML=!DATA?workEmpty('暂时读不到计划任务'):rows.length?[...groups].map(([name,items])=>{
+  const heading='<div class="automation-list-heading" aria-hidden="true"><span>任务与建议</span><span>运行计划</span><span>状态</span><span>操作</span></div>';
+  $('automation-list').innerHTML=!DATA?workEmpty('暂时读不到计划任务'):rows.length?heading+[...groups].map(([name,items])=>{
     const group=DATA.groups.find(g=>g.cat===name), all=ROWS.filter(row=>row.cat===name);
-    return `<section class="card automation-group"><div class="card-header automation-group-header"><div><h3 class="card-title">${esc(name)} <span class="n">${items.length===all.length?all.length:items.length+'/'+all.length} 项计划</span></h3>
-      ${group?.desc?`<details data-disclosure-key="${esc(name)}"><summary>说明</summary><p>${esc(group.desc)}</p></details>`:''}</div><span class="automation-verdict-counts">${automationVerdictChips(all,verdict)}</span></div>
-      <div class="automation-list-heading" aria-hidden="true"><span>任务与建议</span><span>运行计划</span><span>状态</span><span>操作</span></div>${items.map(row=>taskListRow(row)).join('')}</section>`;
+    const count=items.length===all.length?all.length:items.length+'/'+all.length;
+    const title=`<h3 class="card-title">${esc(name)} <span class="n" title="${count} 项计划">${count}</span>${group?.desc?'<svg class="ic" aria-hidden="true"><use href="#i-info"/></svg>':''}</h3>`;
+    const description=group?.desc?`<details data-disclosure-key="${esc(name)}"><summary title="${esc(name+'：分组说明')}">${title}</summary><p>${esc(group.desc)}</p></details>`:title;
+    return `<section class="automation-group"><div class="card-header automation-group-header">${description}<span class="automation-verdict-counts">${automationVerdictChips(all,verdict)}</span></div>${items.map(row=>taskListRow(row)).join('')}</section>`;
   }).join(''):workEmpty('没有符合筛选条件的计划任务');
   restoreTaskControlFocus($('automation-list'),focused);
   restoreDisclosures();
