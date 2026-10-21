@@ -8,10 +8,39 @@ function runtimeRows(rows,kind){
   }).sort((a,b)=>RUNTIME_SORT==="budget" && kind==="skill" ? (b.chars||0)-(a.chars||0) || a.name.localeCompare(b.name) : a.name.localeCompare(b.name));
 }
 async function loadMaint(){
-  $("mtnote").textContent="读取中";MAINT_ERROR="";renderResourceAnchors();
-  try{ MAINT=await api("/api/maint"); $("mtnote").textContent=""; }
-  catch(e){ MAINT_ERROR=e.message; $("mtnote").textContent="读取失败:"+e.message; renderResourceAnchors(); return; }
-  renderMaint();
+  if(!MAINT) MAINT={skills:null,plugins:null};
+  // Start both reads before yielding so readPage collects both source paths.
+  await Promise.all([
+    loadMaintPart("skills",renderSkills),
+    loadMaintPart("plugins",renderClientPlugins)
+  ]);
+}
+async function loadMaintPart(part,render){
+  MAINT[part]={...MAINT[part],loading:true};
+  if(!MAINT[part].available) render();
+  renderMaintStatus();
+  try{
+    const data=await api("/api/"+part);
+    MAINT[part]={...data,readFailed:data.available===false && !data.unchecked};
+  }
+  catch(error){MAINT[part]={available:false,readFailed:true,reason:error.message};}
+  render();
+  renderMaintStatus();
+}
+function renderMaintStatus(){
+  const parts=[["skills","技能"],["plugins","插件"]];
+  MAINT_ERROR=parts.filter(([part])=>MAINT?.[part]?.readFailed).map(([part,label])=>label+"："+MAINT[part].reason).join("；");
+  const pending=parts.filter(([part])=>!MAINT?.[part] || MAINT[part].loading).map(([,label])=>label+"读取中");
+  $("mtnote").textContent=[...pending,MAINT_ERROR?"读取失败："+MAINT_ERROR:""].filter(Boolean).join("；");
+  renderResourceAnchors();
+}
+function renderMaintPartState(el,part,label){
+  const data=MAINT?.[part];
+  if(!data || data.loading && !data.available) el.innerHTML=loadingBlock(label);
+  else if(data.readFailed) el.innerHTML=errorBlock(label,data.reason);
+  else if(!data.available) mtUnset(el,data.reason);
+  else return false;
+  return true;
 }
 
 // 页顶锚点后面跟着各块的数目:「技能 22 · 插件 17 · 记忆 120 · 目录 341」。
@@ -20,14 +49,17 @@ async function loadMaint(){
 function renderResourceAnchors(){
   const anchor=goto=>document.querySelector(`#resources .resources-anchors [data-goto="${goto}"]`);
   const paint=(goto,label,cell)=>{ const el=anchor(goto); if(el) el.innerHTML=`${esc(label)} ${cell}`; };
-  const maint=part=>MAINT_ERROR?countCell("broken",null,MAINT_ERROR):!MAINT?countCell("loading"):
-    MAINT[part] && MAINT[part].available?countCell("ok",(MAINT[part][part]||[]).length):countCell("unchecked");
+  const maint=part=>{
+    const data=MAINT?.[part];
+    return !data || data.loading?countCell("loading"):data.readFailed?countCell("broken",null,data.reason):
+      data.available?countCell("ok",data[part].length):countCell("unchecked");
+  };
   paint("#mt-skills","技能",maint("skills"));
   paint("#mt-plugins","插件",maint("plugins"));
   const mem=MEM;
   paint("#membox","记忆",!mem?countCell("loading"):mem.error?countCell("broken",null,mem.error):
     !mem.available?countCell("unchecked"):countCell("ok",(mem.live||0)+(mem.cold||0)));
-  const components=catalogComponents(), catalog=components && components.catalog;
+  const components=COMPONENTS, catalog=components && components.catalog;
   // 组件接口读失败(loadComponents 的 catch)是故障,画「!」;读到了但目录没配置才是「—」。
   paint("#catalog-box","目录",!components?countCell("loading"):components.readFailed?countCell("broken",null,components.reason)
     :catalog && catalog.available?countCell("ok",(catalog.records||[]).length):countCell("unchecked"));
@@ -65,9 +97,10 @@ function reasonTags(codes){
 }
 
 function renderSkills(){
-  if(!MAINT) return;
   // --- skill:预算是名字加描述的字符数,超了尾部条目的描述会被静默丢弃 ---
-  const S=MAINT.skills, el=$("mt-skills");
+  const el=$("mt-skills");
+  if(renderMaintPartState(el,"skills","技能")) return;
+  const S=MAINT.skills;
   const restoreDisclosures=captureDisclosures(el);
   if(!S.available){ mtUnset(el,S.reason); }
   else{
@@ -104,7 +137,6 @@ function renderClientPlugins(){
   if(typeof renderPlugins==='function') renderPlugins();
   else mtUnset($('mt-plugins'),'Claude 插件面板加载失败，请刷新页面重试');
 }
-function renderMaint(){ if(!MAINT) return; renderSkills(); renderClientPlugins(); renderCatalog(); renderResourceAnchors(); }
 
 const CATALOG_LABELS={yes:"是",no:"否",unknown:"未检查",not_applicable:"不适用",
   checked:"已检查",partial:"部分检查",unchecked:"未检查",complete:"完整",zero:"无检查项",
@@ -150,7 +182,6 @@ const CATALOG_OPEN=new Set();
 // 下面的自动化检查结果要翻十几屏才看得到。默认排序有问题的在前,前 25 行里就是要人管的那些。
 const CATALOG_ROW_LIMIT=25;
 let CATALOG_ALL=false;
-function catalogComponents(){return COMPONENTS || (MAINT && MAINT.components);}
 function catalogName(source){
   return source.registry_key || (source.relative_path && source.relative_path!=="." ? source.relative_path : null)
     || `未命名${catalogLabel(source.kind)} (${source.source_id.split(":").pop().slice(0,8)})`;
@@ -173,7 +204,7 @@ function catalogMatches(source){
 }
 function renderCatalog(){
   const el=$("mt-catalog");if(!el) return;
-  const components=catalogComponents(), catalog=components && components.catalog;
+  const components=COMPONENTS, catalog=components && components.catalog;
   const records=catalog && catalog.records || [], cov=components && components.coverage || {};
   const tasks=components && components.tasks || [], coverageTone=['ok','warn','bad','idle'].includes(cov.tone)?cov.tone:'idle';
   const problemCount=tasks.filter(task=>['unhealthy','degraded'].includes(task.verdict)).length;
@@ -200,7 +231,7 @@ function renderCatalog(){
   syncResetFilters();
 }
 function renderCatalogHealth(){
-  const components=catalogComponents(), el=$("health-results");if(!el) return;
+  const components=COMPONENTS, el=$("health-results");if(!el) return;
   if(!components || !components.available){el.innerHTML=`<p class="review-notice">${esc(components && components.reason || "组件证据不可用")}</p>`;return;}
   const tasks=components.tasks || [], query=CATALOG_QUERY.trim().toLowerCase();
   const rows=tasks.filter(task=>(!HEALTH_STATE || (task.verdict||"unknown")===HEALTH_STATE) && (!query || JSON.stringify([task.name,task.task_id,task.checks]).toLowerCase().includes(query)));
@@ -263,7 +294,7 @@ function catalogCompare(a,b){
   return catalogSummary(a.status).rank-catalogSummary(b.status).rank || name(a,b);
 }
 function renderCatalogResults(){
-  const components=catalogComponents(), catalog=components && components.catalog, el=$("catalog-results");if(!el) return;
+  const components=COMPONENTS, catalog=components && components.catalog, el=$("catalog-results");if(!el) return;
   if(!catalog || !catalog.available){el.innerHTML=`<p class="review-notice">${esc(catalog && catalog.reason || "来源目录尚未读取")}</p>`;return;}
   const all=catalog.records||[], rows=all.filter(catalogMatches).sort(catalogCompare);
   const shown=CATALOG_ALL?rows:rows.slice(0,CATALOG_ROW_LIMIT);

@@ -22,6 +22,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import secrets
@@ -756,11 +757,21 @@ class Handler(ComponentRoutes, BaseHTTPRequestHandler):
     def log_message(self, fmt, *a):  # keep the console quiet; errors still surface in responses
         pass
 
-    def _send(self, code: int, body: bytes, ctype: str):
+    def _send(self, code: int, body: bytes, ctype: str, *, revalidate: bool = False):
+        etag = None
+        if revalidate:
+            etag = '"' + hashlib.sha256(body).hexdigest() + '"'
+            candidates = ','.join(self.headers.get_all("If-None-Match", []))
+            if any(tag.strip().removeprefix("W/") in ("*", etag)
+                   for tag in candidates.split(",")):
+                code = 304
         self.send_response(code)
         self.send_header("Content-Type", ctype)
-        self.send_header("Content-Length", str(len(body)))
-        self.send_header("Cache-Control", "no-store")
+        if code != 304:
+            self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-cache" if revalidate else "no-store")
+        if etag is not None:
+            self.send_header("ETag", etag)
         self.send_header("X-Content-Type-Options", "nosniff")
         # 不许被别人 iframe 进去。Host 白名单防的是 DNS rebinding:攻击者把域名 rebind 到
         # 127.0.0.1 之后 Host 头对不上,于是被挡。iframe 走的是另一条路 :
@@ -778,7 +789,8 @@ class Handler(ComponentRoutes, BaseHTTPRequestHandler):
         # 页面里没有任何外链,所以 referrer 一栏也没有存在的理由。
         self.send_header("Referrer-Policy", "no-referrer")
         self.end_headers()
-        self.wfile.write(body)
+        if code != 304:
+            self.wfile.write(body)
 
     def _json(self, code: int, obj):
         self._send(code, json.dumps(obj, ensure_ascii=False).encode("utf-8"),
@@ -953,7 +965,7 @@ class Handler(ComponentRoutes, BaseHTTPRequestHandler):
             except (OSError, ValueError):
                 return self._json(404, {"error": "not found"})
             ctype = "text/css; charset=utf-8" if rel.endswith(".css") else "text/javascript; charset=utf-8"
-            return self._send(200, body, ctype)
+            return self._send(200, body, ctype, revalidate=True)
         if path == '/api/integrations':
             if not self._authed():
                 return self._json(403, {"error": "bad token"})
@@ -1018,7 +1030,7 @@ class Handler(ComponentRoutes, BaseHTTPRequestHandler):
             ctype = {".css": "text/css; charset=utf-8",
                      ".js": "text/javascript; charset=utf-8"}.get(target.suffix, "text/plain")
             try:
-                return self._send(200, target.read_bytes(), ctype)
+                return self._send(200, target.read_bytes(), ctype, revalidate=True)
             except OSError:
                 return self._json(404, {"error": "not found"})
         if path in ("/favicon.svg", "/favicon.ico"):

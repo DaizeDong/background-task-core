@@ -44,12 +44,17 @@ const lpct = f => f==null ? '<span class="faint">未计</span>' : (f*100).toFixe
 // 没有时间戳的记录在这一屏有十几万条,每行写一遍「无时间戳」只是噪音:写成淡色的「—」,原因放在悬停里。
 const lwhen = t => t==null ? '<span class="when unk" title="无时间戳">—</span>' : timeTag(t);
 
+async function loadLLMSummary(){
+  try{ LLM=await api('/api/llmcall'); }
+  catch(error){ LLM={error:error.message}; }
+  if(!LLM.error) llmBadge();
+}
 function loadLLM(){
   if(LLM_LOADING) return LLM_LOADING;
   $("lcnote").textContent='正在读取完整调用账本…';
   LLM_LOADING=(async()=>{
-  try{ LLM = await api("/api/llmcall"); $("lcnote").textContent=""; }
-  catch(e){ LLM = {error: e.message}; }
+  await loadLLMSummary();
+  $("lcnote").textContent="";
   LCDRAFT = null;
   renderLLM();
   lmDropStalePrefs();

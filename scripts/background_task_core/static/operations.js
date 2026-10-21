@@ -143,14 +143,14 @@ function pageSnapshot(view){
     // 导出的 filters 要和屏幕上实际在用的筛选一一对上,少记一个,导出的列表就解释不了。
     automations:()=>({tasks:DATA,repairs:REPAIRS,filters:{query:AUTO_QUERY,state:AUTO_STATE,verdict:value('automation-verdict')}}),
     integrations:()=>({integrations:typeof INTEGRATIONS==='undefined'?null:INTEGRATIONS}),
-    resources:()=>({components:catalogComponents(),maintenance:MAINT,memory:MEM,
+    resources:()=>({components:COMPONENTS,maintenance:MAINT,memory:MEM,
       filters:{query:RUNTIME_QUERY,runtimeState:RUNTIME_STATE,runtimeSort:RUNTIME_SORT,catalogKind:CATALOG_KIND,catalogClient:CATALOG_CLIENT,catalogState:CATALOG_STATE,healthState:HEALTH_STATE}}),
     diagnostics:()=>({tasks:DATA,components:COMPONENTS,selfcheck:SCK,repositories:REPOS,system:SYS,memory:MEM}),
     pipelines:()=>({components:COMPONENTS,tasks:DATA,repairs:REPAIRS,filters:{query:value('pipeline-task-search'),verdict:value('pipeline-verdict')}}),
     tasks:()=>({tasks:DATA,repairs:REPAIRS,visibleTaskNames:VIEW.map(row=>row.name),
       filters:{query:value('q'),category:value('cat'),verdict:value('task-verdict'),status:TASK_STATUS,hideDisabled:!!$('hideoff')?.checked}}),
     repos:()=>({repositories:REPOS,filters:{query:value('rpq'),account:value('rpacc'),kind:value('rpkind'),visibility:value('rpvis'),state:RP_STATE,issue:RP_ISSUE}}),
-    storage:()=>({components:catalogComponents(),maintenance:MAINT,memory:MEM,system:SYS,codex:CODEX,cleanup:CXL,cleanupLibrary:value('cxwhich')}),
+    storage:()=>({components:COMPONENTS,maintenance:MAINT,memory:MEM,system:SYS,codex:CODEX,cleanup:CXL,cleanupLibrary:value('cxwhich')}),
     convos:()=>({conversations:CONVOS,filters:{query:CV_QUERY,humanOnly:CV_HUMAN_ONLY,sort:CV_SORT},chain:typeof convoChainSnapshot==='function'?convoChainSnapshot():null}),
     llm:()=>({usage:LLM,calls:LMROWS,total:LMTOTAL,query:{...LMQ}})
   };

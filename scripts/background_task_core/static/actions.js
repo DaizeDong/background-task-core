@@ -443,7 +443,7 @@ async function confirmDeletion(){
     toast($('delete-state').textContent,result.ok?'ok':'bad');
     if(result.ok) $('delete-dialog').close();
   }catch(error){$('delete-state').textContent=error.message;}
-  finally{DELETE_PLAN=null;DELETE_BUSY=false;syncDeleteConfirm();await loadMaint();}
+  finally{DELETE_PLAN=null;DELETE_BUSY=false;syncDeleteConfirm();await Promise.all([loadMaint(),loadComponents()]);}
 }
 function startDeletionControls(){
   $('delete-name').addEventListener('input',syncDeleteConfirm);

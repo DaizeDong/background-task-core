@@ -13,8 +13,9 @@ function pluginSwitch(p,name){
     data-mt="${p.enabled?"plugin.disable":"plugin.enable"}" data-name="${esc(p.name)}"${managed?" disabled":""} title="${esc(title)}"><span class="knob" aria-hidden="true"></span></button>`;
 }
 function renderPlugins(){
-  if(!MAINT) return;
-  const P=MAINT.plugins, pe=$("mt-plugins");
+  const pe=$("mt-plugins");
+  if(renderMaintPartState(pe,"plugins","插件")) return;
+  const P=MAINT.plugins;
   if(!P.available){ mtUnset(pe,P.reason); }
   else{
     const selected=runtimeRows(P.plugins,"plugin");

@@ -95,7 +95,7 @@ function noteRead(path,state){
 // 当前这一屏读完以后,把便宜的徽章来源补读一遍,让侧栏在人点进去之前就有数。
 // 仓库扫描(/api/repos)和计划任务(/api/tasks)不在这里:前者要对每个仓库跑一串 git,后者要起 PowerShell,
 // 它们的徽章等人打开那一屏时随那一屏的读取填上。读过的(哪怕失败了)不再重复读,刷新归刷新按钮。
-const BADGE_LOADERS={'/api/sys':()=>loadSys(),'/api/mem':()=>loadMem(),'/api/llmcall':()=>loadLLM()};
+const BADGE_LOADERS={'/api/sys':()=>loadSys(),'/api/mem':()=>loadMem(),'/api/llmcall':()=>loadLLMSummary()};
 function prefetchBadgeSources(){
   return Promise.allSettled(Object.entries(BADGE_LOADERS).filter(([path])=>!API_READS.has(path)).map(([,loader])=>loader()));
 }
@@ -184,16 +184,17 @@ function showView(key,push,options){
   $('view-title').textContent=definition.views[key];
   $('view-title').parentElement.classList.toggle('visually-hidden',tabs.length>1);
   document.title=definition.views[key]+' · Background Task Core';
+  if(PAGE_INITIAL_READS.has(key) && (key==='overview' || key==='work')) renderWorkPlatform();
+  if(key==='tasks') renderTaskCharts();
   loadPageOnce(key);
   renderRefreshAge();
   if(key==='automations') renderAutomations();
   // 修复进度每次进入自动化的任一标签都重读,不只第一次:工单在别处(工作记录、Discord)推进,这里没有别的消息来源。
   if(group==='automations') loadRepairs();
-  // 对话链开着时地址写成带 id 的那个:写成裸 #convos 的话,紧跟着的 hashchange
-  // 会把它读成「后退回列表」而关掉对话链。面板没载入就照旧只写分区名。
+  // Keep route arguments and history without replaying this navigation via hashchange.
   const want=key==='convos' && typeof convoChainRoute==='function' ? convoChainRoute(arg,push)
     : key==='repos' ? repoRoute(arg) : key;
-  if(push && location.hash.slice(1)!==want) location.hash=want;
+  if(push && location.hash.slice(1)!==want) history.pushState(null,'','#'+want);
   // 批量操作条只属于运行详情:换到别的分区就收起来,选中的任务留着,回来还在。
   renderBulk();
   if(!sameRepos) window.scrollTo(0,0);

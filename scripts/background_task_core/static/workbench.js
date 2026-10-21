@@ -2,7 +2,10 @@
 // fresh:提交之后的那次重读。正在进行的那次读取可能是提交之前开始的,并进去拿到的是提交前的样子,
 // 所以等它读完再另读一次;服务端的合并读也按同样的规矩分代(source_reads.mutated)。
 function loadWork({fresh=false}={}){
-  if(WORK_PENDING) return fresh?WORK_PENDING.then(()=>loadWork()):WORK_PENDING;
+  if(WORK_PENDING){
+    renderWorkPlatform();
+    return fresh?WORK_PENDING.then(()=>loadWork()):WORK_PENDING;
+  }
   WORK_LOADING=true;
   renderWorkPlatform();
   WORK_PENDING=(async()=>{
@@ -128,16 +131,17 @@ function workCoverageText(coverage,stale){
   return parts.length?parts.join('，')+'。':'';
 }
 function renderWorkPlatform(){
-  const restoreDisclosures=['interrupted-work','active-work','recent-results','tracked-work','work-list']
+  if(CURVIEW==='overview') renderWorkOverview();
+  else if(CURVIEW==='work') renderWorkPage();
+}
+function renderWorkOverview(){
+  const restoreDisclosures=['interrupted-work','active-work','recent-results','tracked-work']
     .map(id=>captureDisclosures($(id)));
   const phase=workPhase(), present=phase==='ok', p=workProjection(WORK), coverage=WORK?.coverage || {};
   const stale=WORK_ERROR && present;
-  // 读不到的时候只说一次:工作台一块、工作记录列表一块,带重试;原始代号只进悬停。
-  // 以前同一句「暂时读不到工作记录」在一屏里出现四次,原因却一次也没说。
   const feedState=phase==='loading'?loadingBlock('工作记录'):phase==='broken'?errorBlock('工作记录',WORK?.reason,'data-work-retry'):'';
   $('work-source-state').textContent=present?[stale?'刷新失败，显示上次记录':'',WORK_LOADING?'刷新中':'',coverage.omitted || coverage.invalid?'部分记录未读到':''].filter(Boolean).join(' · '):'';
   $('overview-work-state').innerHTML=feedState;$('overview-work-state').hidden=present;
-  $('work').dataset.feed=phase;
   $('overview').dataset.feed=phase;
   // Agent 没做完或出错的工作单独一张卡,红色边条;一条都没有就整张藏起来。
   const interrupted=present?p.interrupted:[];
@@ -151,6 +155,17 @@ function renderWorkPlatform(){
   setWorkCount('result-count',phase,Math.min(6,p.results.length),p.results.length);
   setWorkCount('tracked-count',phase,Math.min(5,p.tracked.length),p.tracked.length);
   $('work-context').textContent=present && WORK.queue?.state==='blocked'?'队列受阻：进程清理待确认':'';
+  const blocked=phase==='broken'?WORK_FAILED_REASON:'';
+  document.querySelectorAll('#overview [data-work-filter]').forEach(button=>setDisabled(button,blocked));
+  restoreDisclosures.forEach(restore=>restore());
+  renderPlatformSignals();
+}
+function renderWorkPage(){
+  const restoreDisclosures=captureDisclosures($('work-list'));
+  const phase=workPhase(), present=phase==='ok', coverage=WORK?.coverage || {};
+  const stale=WORK_ERROR && present;
+  const feedState=phase==='loading'?loadingBlock('工作记录'):phase==='broken'?errorBlock('工作记录',WORK?.reason,'data-work-retry'):'';
+  $('work').dataset.feed=phase;
   const coverageText=present?workCoverageText(coverage,stale):'';
   $('work-coverage').textContent=coverageText;
   $('work-coverage').hidden=!coverageText;
@@ -163,10 +178,9 @@ function renderWorkPlatform(){
   const history=workRows(WORK,{role:WORK_ROLE,source:WORK_SOURCE,query:WORK_QUERY}).filter(item=>!workUnfinished(item)).length;
   $('work-match').textContent=present?`${fmtNum(rows.length)} 项`:'';
   $('work-match').title=[grouped?`含 ${grouped} 条关联记录`:'',WORK_STATE==='unfinished' && history?`${history} 项已结束，可在「全部状态」查看`:''].filter(Boolean).join('；');
-  // 读坏了的时候,搜索、三个下拉和工作台上的「查看… →」都做不了事:灰掉并说清为什么,而不是点了进一张空列表。
+  // 读坏了的时候禁用筛选,并保留不可用原因。
   const blocked=phase==='broken'?WORK_FAILED_REASON:'';
   ['work-search','work-role','work-state','work-source','work-context-toggle'].forEach(id=>setDisabled($(id),blocked));
-  document.querySelectorAll('#overview [data-work-filter]').forEach(button=>setDisabled(button,blocked));
   const sources=[...new Set((WORK?.sources || []).map(row=>row.source))].sort();
   const missingSource=WORK_SOURCE && !sources.includes(WORK_SOURCE);
   const options='<option value="">全部来源</option>'+sources.map(source=>`<option value="${esc(source)}">${esc(workSourceLabel(source))}</option>`).join('')+(missingSource?`<option value="${esc(WORK_SOURCE)}">${esc(workSourceLabel(WORK_SOURCE))}（本次未读到）</option>`:'');
@@ -175,14 +189,17 @@ function renderWorkPlatform(){
   syncResetFilters();
   // 「已应用上次的筛选」贴在清除筛选按钮旁边。
   $('work-filter-restored').hidden=!(WORK_FILTERS_RESTORED && activeFilterCount('work')>0);
+  restoreDisclosures();
+  if(!$('work-context-panels').hidden) renderWorkContext();
+}
+function renderWorkContext(){
+  const present=workPhase()==='ok', coverage=WORK?.coverage || {};
   const counts=new Map();(WORK?.sources || []).forEach(row=>counts.set(row.source,(counts.get(row.source)||0)+row.count));
   $('source-volume').innerHTML=!present?'':[...counts].sort((a,b)=>b[1]-a[1]).map(([source,count])=>`<button data-work-source="${esc(source)}" title="只看此来源，清除其他筛选" aria-pressed="${source===WORK_SOURCE}">${esc(workSourceLabel(source))} <b>${fmtNum(count)}</b></button>`).join('') || emptyBlock('没有来源记录');
   const events=WORK?.events || [];
   const knownIds=new Set((WORK?.items || []).map(item=>item.id));
   $('work-activity').innerHTML=!present?'':events.slice(0,40).map(event=>`<li>${workTimeTag(event.ts)}<div>${knownIds.has(event.item_id)?`<button class="record-link" data-work-id="${esc(event.item_id)}">${esc(event.title)}</button>`:`<span>${esc(event.title)}</span><small>对应的工作记录未加载</small>`}<small>${esc(workEventLabel(event))}</small></div></li>`).join('') || emptyBlock('没有可显示的活动记录');
   $('activity-coverage').textContent=present?coverage.events_available?`显示 ${Math.min(40,events.length)} 条 · 共 ${fmtNum(coverage.event_total)} 条`:'暂时读不到活动记录':'';
-  restoreDisclosures.forEach(restore=>restore());
-  renderPlatformSignals();renderAutomations();
 }
 function renderPlatformSignals(){
   renderAttentionStrip();
@@ -360,6 +377,7 @@ function startWorkPlatform(){
   $('work-context-toggle').addEventListener('click',()=>{
     const panels=$('work-context-panels'), toggle=$('work-context-toggle');
     panels.hidden=!panels.hidden;
+    if(!panels.hidden) renderWorkContext();
     toggle.setAttribute('aria-expanded',String(!panels.hidden));
     // 动作名跟着展开状态变;setDisabled 记下的旧名字作废,下次灰掉时说的才是现在这个动作。
     delete toggle.dataset.label;

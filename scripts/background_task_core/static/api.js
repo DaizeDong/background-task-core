@@ -141,7 +141,7 @@ function api(p,o){
       // available:false 的原因照旧记进 error,老的读法不变。登记过的那几路另带 unchecked,
       // 让徽章和顶栏把「没在查」和真的读取失败分开(工作台的 readState 也是这么分的)。
       const unavailable=!j?.error && j?.available===false;
-      const unchecked=unavailable && API_UNCHECKED_WHEN_UNAVAILABLE.includes(p.split('?')[0]);
+      const unchecked=unavailable && (j.unchecked===true || API_UNCHECKED_WHEN_UNAVAILABLE.includes(p.split('?')[0]));
       record({pending:false,error:j?.error?apiError(j,r.status):(unavailable?j.reason || '不可用':null),...(unchecked?{unchecked:true}:{})});
       if(operation) ConsoleActions.finish(operation,j);
       return j;
@@ -325,7 +325,7 @@ async function maintAct(action,name){
     if(action.startsWith("repo.")) await loadRepos();
     else if(action.startsWith("clean.")) await loadSys();
     else if(action.startsWith("memory.")) await loadMem();
-    else await loadMaint();
+    else await Promise.all([loadMaint(),loadComponents()]);
   }
 }
 

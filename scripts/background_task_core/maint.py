@@ -90,7 +90,7 @@ def read_skills() -> dict:
     root, arch = _root("BACKGROUND_TASK_CORE_SKILLS"), _root("BACKGROUND_TASK_CORE_SKILL_ARCHIVE")
     # 「没设」和「设了但路径不在」分开报,别把坏了的检查说成没检查。
     if not root:
-        return {"available": False,
+        return {"available": False, "unchecked": True,
                 "reason": "没有设 BACKGROUND_TASK_CORE_SKILLS,skill 这一栏是「未检查」。"}
     if not root.is_dir():
         return {"available": False,
@@ -135,7 +135,7 @@ def read_plugins(timeout: int = 40) -> dict:
     """Read the CLI's structured inventory; an empty JSON list is a verified zero."""
     exe = _claude()
     if not exe:
-        return {"available": False, "reason": "找不到 claude 可执行文件，插件未检查"}
+        return {"available": False, "unchecked": True, "reason": "找不到 claude 可执行文件，插件未检查"}
     try:
         result = subprocess.run([exe, "plugin", "list", "--json"], capture_output=True, text=True,
                                 encoding="utf-8", errors="replace", timeout=timeout,

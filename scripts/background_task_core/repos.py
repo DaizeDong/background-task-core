@@ -393,9 +393,23 @@ def scan(root: str | None = None, now: float | None = None, workers: int = 10) -
     # 身份表和可见性表同一个形态:仓外文件、走环境变量、读不到时带着原因一起下发。
     # 读不到绝不能静默:那会让每一行都显示「未检查」而页面说不出为什么。
     idt, idt_reason = _identity_load_table()
+
+    def scan_with_identity(repo: Path) -> dict:
+        row = scan_one(repo, vis, now)
+        if row.get("state") == ERROR:
+            return row
+        try:
+            row["identity"] = _identity_judge(Path(row["path"]), row.get("owner"), idt, idt_reason)
+        except Exception as e:
+            # 判定不了要说出来,不能让这一栏空着, 空着和「对得上」在屏幕上一样。
+            row["identity"] = {"state": _IDENTITY_UNCHECKED, "owner": row.get("owner"),
+                              "expect": None, "scope": None,
+                              "why": "判定失败(%s)" % e.__class__.__name__}
+        return row
+
     out = []
     with cf.ThreadPoolExecutor(max_workers=workers) as ex:
-        futs = {ex.submit(scan_one, r, vis, now): r for r in repos}
+        futs = {ex.submit(scan_with_identity, r): r for r in repos}
         for f in cf.as_completed(futs):
             r = futs[f]
             try:
@@ -404,19 +418,6 @@ def scan(root: str | None = None, now: float | None = None, workers: int = 10) -
                 # 扫不动的仓要出现在列表里并且是红的。悄悄跳过等于把它算成没问题。
                 out.append({"name": r.name, "path": str(r), "state": ERROR,
                             "why": f"{e.__class__.__name__}: {e}"})
-
-    # 账号归属。放在分类之后、排序之前,因为它按仓逐个跑 git,而扫描那一步已经并发过了;
-    # 这里再开一层并发只会和上面那批 git 抢同一批句柄。
-    for _r in out:
-        if _r.get("state") == ERROR:
-            continue
-        try:
-            _r["identity"] = _identity_judge(Path(_r["path"]), _r.get("owner"), idt, idt_reason)
-        except Exception as e:
-            # 判定不了要说出来,不能让这一栏空着, 空着和「对得上」在屏幕上一样。
-            _r["identity"] = {"state": _IDENTITY_UNCHECKED, "owner": _r.get("owner"),
-                              "expect": None, "scope": None,
-                              "why": "判定失败(%s)" % e.__class__.__name__}
 
     _classify(out)
     out.sort(key=lambda x: (-_SEV.get(x["state"], 0), x["name"]))

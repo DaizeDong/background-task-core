@@ -358,11 +358,12 @@ def scan(limit_per_group: int = 40, *, group: str | None = None, cursor: str | N
                     failed += 1
                     continue
                 rec["_m"] = st.st_mtime
-            fresh[key] = rec
+            # Age is response-time presentation, not a change to cached metadata.
+            fresh[key] = {name: value for name, value in rec.items() if name != "ageHours"}
             rows.append(rec)
             projects[d.name][1].append(rec)
 
-    if cpath and cache_error is None:
+    if cpath and cache_error is None and fresh != cached:
         try:
             _write_cache_atomically(cpath, fresh)
         except (OSError, ValueError, RuntimeError, ImportError) as error:

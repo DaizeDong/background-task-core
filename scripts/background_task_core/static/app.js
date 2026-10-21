@@ -46,17 +46,13 @@ const OPTIONAL_PANELS = {
     else showFailure(event.message || "script load error");
   });
   window.addEventListener("unhandledrejection", event => showFailure(String(event.reason)));
-  // Fetch a small window ahead. Script insertion stays sequential so a failed
+  // Fetch modules together. Script insertion stays sequential so a failed
   // dependency still stops startup before dependent code or events can execute.
-  let prepared=0;
-  const prepareDownloads = index => {
-    while(prepared < Math.min(index+4,CONSOLE_MODULES.length)){
-      const link=document.createElement('link');
-      link.rel='preload';link.as='script';
-      link.href='/static/'+CONSOLE_MODULES[prepared++];
-      document.head.appendChild(link);
-    }
-  };
+  for(const path of CONSOLE_MODULES){
+    const link=document.createElement('link');
+    link.rel='preload';link.as='script';link.href='/static/'+path;
+    document.head.appendChild(link);
+  }
   const loadScript = path => new Promise((resolve,reject)=>{
     let failures=0;
     const append = () => {
@@ -75,8 +71,7 @@ const OPTIONAL_PANELS = {
     append();
   });
   try {
-    for(const [index,path] of CONSOLE_MODULES.entries()){
-      prepareDownloads(index);
+    for(const path of CONSOLE_MODULES){
       loading=path;moduleError=null;
       try { await loadScript(path);
       if(moduleError) throw new Error(moduleError);

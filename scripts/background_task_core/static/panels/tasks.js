@@ -685,6 +685,12 @@ function forgetClosedTaskMenu(event){
   if(TASK_MENU_OPEN===menu.id) TASK_MENU_OPEN=null;
 }
 
+function renderTaskCharts(){
+  if(!DATA || CURVIEW!=='tasks') return;
+  renderTL();
+  if($('hmbox').open) renderHeat();
+  if($('scbox').open) renderScores();
+}
 function render(){
   const S=DATA.summary;
   // 零态改色而不是隐藏。「0 个失败」和「这一项没采到」必须保持可分辨 ——
@@ -704,7 +710,7 @@ function render(){
   renderDataLine();
   renderFresh();
   updateBadges();
-  renderTL(); renderHeat(); renderScores();
+  renderTaskCharts();
 
   const q=$("q").value.trim().toLowerCase(), cat=$("cat").value;
   const hideOff=$("hideoff").checked;
@@ -970,6 +976,9 @@ function startTimeline(){
   $("tlreset").addEventListener("click",tlReset);
 }
 function startTasksPage(){
+  for(const [id,draw] of [['hmbox',renderHeat],['scbox',renderScores]]){
+    $(id).addEventListener('toggle',()=>{if($(id).open && DATA) draw();});
+  }
   $('tasks').querySelector('.task-summary').addEventListener('click',event=>{
     const button=event.target.closest('[data-task-status]');
     if(button && !button.disabled) setTaskStatus(button.dataset.taskStatus);
