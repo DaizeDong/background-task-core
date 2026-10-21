@@ -40,7 +40,7 @@ def _read(path: str):
 
 
 JOBS = {"ingest": ("runs", "ingest_main"), "status": ("runs", "status_main"),
-        "observations": ("lifecycle", "observations_main")}
+        "observations": ("lifecycle", "observations_main"), "backup": ("store", "backup_main")}
 
 
 def main(argv: list[str] | None = None, *, runtime=None) -> int:

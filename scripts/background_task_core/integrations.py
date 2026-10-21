@@ -181,6 +181,18 @@ def owner_environment(env):
     return child
 
 
+# Retain only owner-issued links and revisions, never transcript text.
+_WORK_LINKS = {}
+_WORK_LINKS_LOCK = threading.Lock()
+_WAKEUPS = {}
+_WAKEUPS_LOCK = threading.Lock()
+
+
+def _work_binding(env):
+    return tuple(env.get(key, '') for key in ('BACKGROUND_TASK_CORE_REMINDER_CLI',
+                 'BACKGROUND_TASK_CORE_REMINDER_DB', 'BACKGROUND_TASK_CORE_ACTION_WORKSPACE'))
+
+
 def read_work(env=None):
     env = os.environ if env is None else env
     unavailable = {"schemaVersion": 1, "available": False, "items": [], "events": [], "sources": []}
@@ -222,6 +234,17 @@ def read_work(env=None):
                     offer.update(enabled=False, reason='执行服务尚未连接')
             if actions.get('offers') and not actions.get('current') and not any(offer.get('enabled') for offer in actions['offers']):
                 actions.update(available=False, reason='执行服务尚未连接', offers=[])
+        with _WORK_LINKS_LOCK:
+            _WORK_LINKS.clear()
+            _WORK_LINKS.update({(_work_binding(env), item['id']): {
+                'revision': (item.get('actions') or {}).get('revision'),
+                'links': deepcopy((item.get('actions') or {}).get('links', []))}
+                for item in payload['items']})
+        with _WAKEUPS_LOCK:
+            for item in payload['items']:
+                current = (item.get('actions') or {}).get('current')
+                if current and (_work_binding(env), current.get('id')) in _WAKEUPS:
+                    current['wakeup'] = dict(_WAKEUPS[(_work_binding(env), current['id'])])
         return payload
     except (OSError, ValueError, subprocess.SubprocessError):
         return dict(unavailable, reason="work_reader_failed")
@@ -306,22 +329,71 @@ def _run_task(task_id, runtime):
     return controller.Controller(runtime).action(selected['name'], 'run')
 
 
-def _wake_agent_tick(task_id):
-    """Ask the scheduler to run the agent queue tick now, off the request thread.
+def context_view(item_id, env=None, revision=None):
+    env = os.environ if env is None else env
+    key = (_work_binding(env), item_id)
+    with _WORK_LINKS_LOCK:
+        item = deepcopy(_WORK_LINKS.get(key))
+    if item is None or revision is not None and item['revision'] != revision:
+        feed = read_work(env)
+        if not feed.get('available'):
+            return {'available': False, 'code': 'work_binding_invalid', 'reason': feed.get('reason')}
+        with _WORK_LINKS_LOCK:
+            item = deepcopy(_WORK_LINKS.get(key))
+    if item is None:
+        return {'available': False, 'code': 'item_not_found', 'reason': '当前记录中找不到这条待办。'}
+    # The owner checks the revision when creating work, but recognizes a replay first.
+    # Do not reject an already accepted request just because its receipt changed the revision.
+    if revision is not None and item['revision'] != revision:
+        return {'available': False, 'code': 'stale_recommendation', 'reason': MESSAGES['stale_recommendation']}
+    sessions = {link.get('id') for link in item['links'] if link.get('kind') == 'session'}
+    if not sessions:
+        return {'available': False, 'code': 'no_source', 'reason': '这条待办没有记录来源会话。'}
+    if len(sessions) != 1:
+        return {'available': False, 'code': 'session_context_unavailable', 'reason': '记录关联了多个会话，无法确定原会话。'}
+    session = sessions.pop()
+    try:
+        from .work_context import read_session_context
+        from .component_routes import _CONVO_ACCESS
+        with _CONVO_ACCESS:
+            text = read_session_context(session, env.get('BACKGROUND_TASK_CORE_SESSIONS'))
+        return {'available': True, 'session_id': session, 'text': text, 'partial': True}
+    except (ImportError, OSError, ValueError) as exc:
+        return {'available': False, 'session_id': session, 'code': 'session_context_unavailable',
+                'reason': f'原会话片段暂时读不到：{exc}'}
 
-    task_id is the configured owner/name ID; its name part is the scheduler task name.
 
-    Best effort only: the tick's own trigger picks the queued action up anyway, so a failed or
-    slow wakeup costs latency, never the action. Nothing waits on it and nothing reports it.
-    """
+def _wake_agent_tick(task_id, action_id, env):
+    """Report asynchronous scheduler acceptance separately from queued work execution."""
+    key = (_work_binding(env), action_id)
+    pending = {'state': 'pending', 'message': '正在唤醒执行队列。'}
+    with _WAKEUPS_LOCK:
+        # Diagnostic observations are bounded and last only for this console process.
+        if len(_WAKEUPS) >= 256:
+            _WAKEUPS.pop(next(iter(_WAKEUPS)))
+        _WAKEUPS[key] = pending
+
     def run():
         try:
-            subprocess.run(['schtasks', '/run', '/tn', task_id.rsplit('/', 1)[-1]], stdin=subprocess.DEVNULL,
-                           capture_output=True, timeout=60,
-                           creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
-        except (OSError, subprocess.SubprocessError):
-            pass
-    threading.Thread(target=run, name='agent-tick-wakeup', daemon=True).start()
+            result = subprocess.run(['schtasks', '/run', '/tn', task_id.rsplit('/', 1)[-1]],
+                stdin=subprocess.DEVNULL, capture_output=True, timeout=60,
+                creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
+            observation = ({'state': 'accepted', 'message': '已请求执行队列运行。'}
+                if result.returncode == 0 else {'state': 'failed', 'returncode': result.returncode,
+                'message': '未能立即唤醒，工作仍在队列中，等待定时调度。'})
+        except (OSError, subprocess.SubprocessError) as exc:
+            observation = {'state': 'failed', 'reason': type(exc).__name__,
+                'message': '未确认队列已唤醒，工作仍在队列中，等待定时调度。'}
+        with _WAKEUPS_LOCK:
+            if key in _WAKEUPS:
+                _WAKEUPS[key] = observation
+    try:
+        threading.Thread(target=run, name='agent-tick-wakeup', daemon=True).start()
+    except RuntimeError:
+        with _WAKEUPS_LOCK:
+            _WAKEUPS[key] = {'state': 'failed', 'message': '无法唤醒执行队列，工作仍在排队。'}
+    with _WAKEUPS_LOCK:
+        return dict(_WAKEUPS[key])
 
 
 def submit(request, *, stop=False, env=None):
@@ -335,9 +407,22 @@ def submit(request, *, stop=False, env=None):
             raise ActionError('queue_not_configured')
         # A linked task runs through the controller; validate it before reserving the action.
         runtime = None if action in ('complete', 'agent') else controller.load_runtime(environ=env)
-        reply = invoke('work-action', {'request': request, 'context': ''}, env)
+        context = ''
+        if action == 'agent':
+            source = context_view(request['item_id'], env, request['revision'])
+            if source.get('available'):
+                context = source['text']
+            elif source.get('code') not in ('no_source', 'stale_recommendation'):
+                # A receipt may have arrived since the page read. The owner can
+                # replay that request, but cannot create new work at an old revision.
+                feed = read_work(env)
+                item = next((row for row in feed.get('items', []) if row['id'] == request['item_id']), None)
+                if not item or (item.get('actions') or {}).get('revision') == request['revision']:
+                    return {'schemaVersion': 1, 'ok': False, 'code': source['code'],
+                            'message': source['reason'], 'uncertain': not feed.get('available')}
+        reply = invoke('work-action', {'request': request, 'context': context}, env)
         if action == 'agent' and reply.pop('wakeup', False):
-            _wake_agent_tick(env['BACKGROUND_TASK_CORE_AGENT_TASK_ID'])
+            reply['wakeup'] = _wake_agent_tick(env['BACKGROUND_TASK_CORE_AGENT_TASK_ID'], reply['action']['id'], env)
         dispatch = reply.pop('dispatch', None) if runtime is not None else None
         if dispatch:
             try:

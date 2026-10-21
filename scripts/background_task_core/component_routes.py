@@ -131,6 +131,7 @@ def llm_overview() -> dict:
 class ComponentRoutes:
     component_get_routes = frozenset((
         '/api/convos',
+        '/api/work/context',
         '/api/codex/list',
         '/api/llmcall/calls',
         '/api/convo/chain',
@@ -154,6 +155,16 @@ class ComponentRoutes:
     }
 
     def component_get(self, path):
+        if path == '/api/work/context':
+            if not self._authed():
+                return self._json(403, {'error': 'bad token'})
+            query = parse_qs(urlparse(self.path).query)
+            item_id = (query.get('item_id') or [''])[0]
+            if not item_id or len(item_id) > 300:
+                return self._json(400, {'error': 'item_id is required'})
+            from . import integrations
+            return self._json(200, integrations.context_view(item_id))
+
         if path == '/api/convos':
             return self._convo_list()
 

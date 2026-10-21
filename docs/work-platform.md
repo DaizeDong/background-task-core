@@ -85,6 +85,13 @@ read, unreadable, read with no orders, and read with orders are four different d
 
 ## Frontend composition
 
+Recorded session links expose an on-demand source excerpt and the original conversation.
+Agent submissions include that bounded excerpt; completion and stop do not read transcripts.
+Missing source links use the item's own description, while an unreadable recorded source is
+reported. An outdated request is still sent to the owner to retrieve its existing receipt;
+the owner's revision check prevents it from creating new work. Queue wakeup observations are
+asynchronous, bounded in memory and separate from execution status.
+
 `work-model.js` provides pure selectors over the owner feed; `workbench.js` composes
 small work/result/activity/source projections in multiple views. `navigation.js` owns
 view grouping and legacy links. `actions.js` owns visible action availability and the

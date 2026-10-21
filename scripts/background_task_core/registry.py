@@ -930,7 +930,14 @@ def _verify_files(runtime, expected):
 
 
 def _safely_disabled(runtime, journal):
-    names = set(journal["scheduler_before"])
+    names = set(journal.get("scheduler_before", {}))
+    if "scheduler_before" not in journal:
+        inputs = runtime.authority._inputs(journal.get("input_before"))
+        ids = {key.removeprefix("task:") for key in journal["locks"] if key.startswith("task:")}
+        bindings = inputs['request']['bindings']['tasks']
+        if not ids or not ids <= bindings.keys():
+            raise Conflict("scheduler_scope_unknown", "journal")
+        names.update(bindings[task_id]['name'] for task_id in ids)
     names.update(s["key"] for s in journal["steps"] if s["kind"] == "scheduler")
     for name in sorted(names):
         current = _read(runtime.scheduler, name)
@@ -940,11 +947,24 @@ def _safely_disabled(runtime, journal):
 
 
 def _restored_files(runtime, journal):
-    expected = {key: runtime.vault.get(ref) for key, ref in journal["file_before"].items()}
+    expected = {key: runtime.vault.get(ref) for key, ref in journal.get("file_before", {}).items()}
     for step in journal["steps"]:
         if step["kind"] == "files":
             ref = step.get("undo", step["before"]) if step["phase"] == "undone" else step["before"]
             expected[step["key"]] = runtime.vault.get(ref)
+    if "file_before" not in journal:
+        # Old journals recorded changed files only. Unchanged files still need
+        # a receipt fingerprint; absence of a before-image alone proves nothing.
+        receipt = runtime.authority.receipt()
+        config = runtime.authority.config
+        paths = list(config.paths.values()) + list(config.launchers.values())
+        paths += [path for path in config.active_xml.values() if path]
+        for path in paths:
+            if path not in expected:
+                current = _read(runtime.files, path)
+                if fingerprint(current) != receipt['file_ownership'].get(path):
+                    raise Conflict("file_ownership_changed", "files")
+                expected[path] = current
     return expected
 
 

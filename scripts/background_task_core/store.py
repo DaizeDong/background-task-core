@@ -701,7 +701,7 @@ class GenerationAuthority:
         receipt binds observed filesystem identities and root task definitions.
         """
         if 'completion' not in journal:
-            expected_files = {key: runtime.vault.get(ref) for key, ref in journal['file_before'].items()}
+            expected_files = {key: runtime.vault.get(ref) for key, ref in journal.get('file_before', {}).items()}
             # Reconcile journals record scheduler_before only when they review Scheduler drift.
             expected_tasks = {key: runtime.vault.get(ref) for key, ref in journal.get('scheduler_before', {}).items()}
             for step in journal['steps']:
@@ -747,12 +747,18 @@ class GenerationAuthority:
                     current = reg._read(self.scheduler, proof['name'])
                     reg._idle(current)
                     expected = expected_tasks.get(proof['name'])
+                    if expected is None and 'scheduler_before' not in journal and status == 'rolled_back':
+                        # An unchanged old task has no step before-image. Its
+                        # existing authority proof must still match exactly.
+                        if current.get('identity') != proof['identity']:
+                            raise reg.Conflict('receipt_task_changed', 'authority')
+                        expected = current
                     if expected is None or not reg._same('scheduler', current, expected):
                         raise reg.Conflict('receipt_task_changed', 'authority')
                     proof['identity'] = current.get('identity')
                     proof['writer'] = 'declarations' if task_id in machine['migrated_tasks'] else 'legacy'
                     proof['receipt_kind'] = 'observed-root-task-definition'
-            for path in journal['file_before']:
+            for path in expected_files:
                 current = reg._read(self.files, path)
                 if current != expected_files[path]:
                     raise reg.Conflict('receipt_resource_changed', 'authority')
@@ -766,7 +772,7 @@ class GenerationAuthority:
         inputs = self._inputs(receipt['input_reference'])
         if any(inputs['request']['machine'][key] != value for key, value in receipt['authority'].items()):
             raise reg.Conflict('input_authority_mismatch', 'authority')
-        for path in journal['file_before']:
+        for path in journal.get('file_before', receipt['file_ownership']):
             if reg.fingerprint(reg._read(self.files, path)) != receipt['file_ownership'][path]:
                 raise reg.Conflict('receipt_resource_changed', 'authority')
         for task_id, proof in receipt['ownership'].items():
@@ -810,3 +816,211 @@ def create_runtime(config):
                        ResourceLocks(config.state_root / 'locks'),
                        lambda spec, old, enabled: render(spec, old, enabled, config.launcher_argument(spec['task_id'])),
                        authority, read_linked_items)
+
+
+def export_registration_recovery(runtime, output, *, launcher_binding=None):
+    """Capture authority, pending transactions and their protected reference closure.
+
+    This is recovery evidence, not a task-registration restore operation. Local
+    ciphertext and filesystem identities remain bound to the original host.
+    """
+    import tempfile
+    import zipfile
+    from .runs import check_write_path
+
+    output = check_write_path(output)
+    config = runtime.authority.config
+    if any(output.is_relative_to(root) for root in (config.state_root, config.vault_root)):
+        raise ValueError('Recovery output must be outside active state and vault roots')
+    members, sources, documents, refs = {}, {}, [], set()
+
+    def capture(path, member, *, optional=False):
+        path = fs.validate_path(path)
+        snapshot = FileResources([path], config.state_root / 'stages').read(str(path))
+        if path in sources and sources[path] != snapshot:
+            raise Conflict('recovery_source_changed', 'storage')
+        sources[path] = snapshot
+        documents.append({'source': str(path), 'member': member, 'state': snapshot['state']})
+        if snapshot['state'] == 'absent':
+            if not optional:
+                raise Conflict('recovery_source_missing', 'storage')
+            return None
+        members[member] = snapshot['value']
+        return snapshot['value']
+
+    def references(value):
+        if isinstance(value, dict):
+            for item in value.values():
+                references(item)
+        elif isinstance(value, list):
+            for item in value:
+                references(item)
+        elif isinstance(value, str) and value.startswith('cred:'):
+            if not re.fullmatch(r'cred:[a-f0-9]{32}:[a-f0-9]{32}:[a-f0-9]{64}:[a-f0-9]{32}', value):
+                raise Conflict('secure_reference_unavailable', 'vault')
+            refs.add(value)
+
+    with runtime.locks.hold(['authority']):
+        receipt = runtime.authority.receipt()
+        pointer = runtime.authority._pointer()
+        raw_pointer = capture(config.state_root / 'current.json', 'state/current.json', optional=pointer is None)
+        if (decode(raw_pointer) if raw_pointer is not None else None) != pointer:
+            raise Conflict('recovery_source_changed', 'storage')
+        if pointer is not None:
+            raw_receipt = capture(config.state_root / 'receipts' / (pointer['generation'] + '.json'),
+                                  'state/receipts/' + pointer['generation'] + '.json')
+            if decode(raw_receipt) != receipt:
+                raise Conflict('recovery_source_changed', 'storage')
+        references(receipt)
+        paths = [config.source_path, config.desired, config.adoption]
+        paths += list(map(Path, config.paths.values())) + list(map(Path, config.launchers.values()))
+        paths += [Path(path) for path in config.active_xml.values() if path]
+        for path in dict.fromkeys(paths):
+            raw = capture(path, 'private/' + path.relative_to(config.private_root).as_posix(),
+                          optional=path not in (config.source_path, config.desired, config.adoption))
+            if path == config.adoption and pointer is None and decode(raw) != receipt:
+                raise Conflict('recovery_source_changed', 'storage')
+        if launcher_binding is not None:
+            capture(launcher_binding, 'launcher-binding.json')
+        pending = []
+        for journal in runtime.journal.list():
+            if journal['status'] in ('committed', 'rolled_back') and journal.get('cleaned') is True:
+                continue
+            tx = journal['transaction_id']
+            pending.append(tx)
+            raw = capture(config.state_root / 'journals' / (tx + '.json'), 'state/journals/' + tx + '.json')
+            if decode(raw) != journal:
+                raise Conflict('recovery_source_changed', 'storage')
+            references(journal)
+            for step in journal['steps']:
+                if step['kind'] != 'files':
+                    continue
+                for token in (step['token'], step['token'] + ':undo'):
+                    stage_path = runtime.files._stage(token)
+                    raw = capture(stage_path, 'state/stages/' + stage_path.name, optional=True)
+                    if raw is None:
+                        continue
+                    record = decode(raw)
+                    key = runtime.files._path(step['key'])
+                    for role, prefix in (('stage', '.t12-stage-'), ('detached', '.t12-detached-')):
+                        if role in record:
+                            path = key.with_name(prefix + digest(token.encode()))
+                            if str(path) != record[role]:
+                                raise Conflict('stage_owner_lost', 'files')
+                            capture(path, 'private/' + path.relative_to(config.private_root).as_posix(), optional=True)
+        captured_refs = set()
+        while refs - captured_refs:
+            ref = sorted(refs - captured_refs)[0]
+            _, domain, obj, _, _ = ref.split(':')
+            filename = 'background-task-core-' + domain + '-' + obj + '.cred'
+            capture(config.vault_root / filename, 'vault/' + filename)
+            snapshot = runtime.vault.get(ref)
+            references(snapshot)
+            if snapshot.get('identity') == 'authority-receipt-v1':
+                references(decode(snapshot['value']))
+            captured_refs.add(ref)
+        if output in sources:
+            raise ValueError('Recovery output would overwrite an input')
+        manifest = {'schema_version': 1, 'kind': 'background-task-core-registration-recovery',
+                    'generation': receipt['generation'], 'domain': config.domain,
+                    'documents': documents, 'pending_journals': pending,
+                    'protected_references': sorted(captured_refs), 'machine_bound': True,
+                    'restore_limit': 'Ciphertext needs the original Windows account and machine. '
+                                     'Copied files do not preserve filesystem identities. '
+                                     'This capture does not register tasks or restore terminal authority history.'}
+        members['manifest.json'] = encode(manifest)
+        with tempfile.NamedTemporaryFile(prefix='registration-', suffix='.zip', dir=output.parent,
+                                         delete=False) as stream:
+            temporary = Path(stream.name)
+        try:
+            with zipfile.ZipFile(temporary, 'w', compression=zipfile.ZIP_DEFLATED) as archive:
+                for name, data in sorted(members.items()):
+                    archive.writestr(name, data)
+            # The authority lock serializes runtime writers; snapshot comparison
+            # also catches externally edited declaration and launcher files.
+            for path, snapshot in sources.items():
+                if FileResources([path], config.state_root / 'stages').read(str(path)) != snapshot:
+                    raise Conflict('recovery_source_changed', 'storage')
+            os.replace(temporary, output)
+        finally:
+            temporary.unlink(missing_ok=True)
+    return {'status': 'captured', 'output': str(output), 'generation': receipt['generation'],
+            'pending_journals': len(pending), 'protected_references': len(captured_refs),
+            'machine_bound': True}
+
+
+def backup_database(output, *, source=None):
+    """Back up every SQLite table, including committed WAL data, without ingesting."""
+    import sqlite3
+    import tempfile
+    import zipfile
+    from contextlib import closing
+    from .runs import check_write_path, resolve_db
+
+    if source is None:
+        source, unavailable = resolve_db()
+        if unavailable is not None:
+            raise ValueError(unavailable.message)
+    source = check_write_path(source)
+    output = check_write_path(output)
+    if source == output or str(output) in {str(source) + suffix for suffix in ('-wal', '-shm', '-journal')}:
+        raise ValueError('Backup output must not overwrite the live database or its sidecars')
+    with tempfile.NamedTemporaryFile(prefix='database-', suffix='.sqlite3', dir=output.parent,
+                                     delete=False) as stream:
+        temporary = Path(stream.name)
+    compressed = None
+    try:
+        with closing(sqlite3.connect(source.as_uri() + '?mode=ro', uri=True)) as original:
+            with closing(sqlite3.connect(temporary)) as backup:
+                original.backup(backup)
+                # Make the backup standalone even when the source uses WAL.
+                backup.execute('PRAGMA journal_mode=DELETE')
+        if output.suffix == '.zip':
+            with tempfile.NamedTemporaryFile(prefix='database-', suffix='.zip', dir=output.parent,
+                                             delete=False) as stream:
+                compressed = Path(stream.name)
+            with zipfile.ZipFile(compressed, 'w', compression=zipfile.ZIP_DEFLATED) as archive:
+                archive.write(temporary, 'console.sqlite3')
+            os.replace(compressed, output)
+        else:
+            os.replace(temporary, output)
+    finally:
+        temporary.unlink(missing_ok=True)
+        if compressed is not None:
+            compressed.unlink(missing_ok=True)
+    return {'status': 'captured', 'output': str(output), 'bytes': output.stat().st_size}
+
+
+def backup_main(argv=None):
+    """Create an on-demand private database or registration recovery snapshot."""
+    import argparse
+    from datetime import datetime, timezone
+    from .runs import companion_root, check_write_path
+
+    parser = argparse.ArgumentParser(description=backup_main.__doc__)
+    parser.add_argument('kind', choices=('database', 'registration'))
+    parser.add_argument('--output', help='Private output file; defaults to companion data/recovery')
+    parser.add_argument('--source', help='Database override')
+    parser.add_argument('--launcher-binding', help='Launcher binding to include in registration backup')
+    for name in ('runtime-config', 'private-root', 'state-root', 'vault-root'):
+        parser.add_argument('--' + name)
+    args = parser.parse_args(argv)
+    if args.output:
+        output = check_write_path(args.output)
+    else:
+        root = companion_root()
+        if root is None:
+            raise ValueError('Configure the private companion before creating backups; see CONFIG.md')
+        directory = check_write_path(root / 'data' / 'recovery')
+        directory.mkdir(parents=True, exist_ok=True)
+        stamp = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%fZ')
+        output = directory / (stamp + ('-console.sqlite3.zip' if args.kind == 'database' else '-registration.zip'))
+    if args.kind == 'database':
+        result = backup_database(output, source=args.source)
+    else:
+        from .lifecycle import load_runtime
+        runtime = load_runtime(runtime_config=args.runtime_config, private_root=args.private_root,
+                               state_root=args.state_root, vault_root=args.vault_root, for_recovery=True)
+        result = export_registration_recovery(runtime, output, launcher_binding=args.launcher_binding)
+    print(json.dumps(result, sort_keys=True))
+    return 0

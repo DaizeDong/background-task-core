@@ -33,7 +33,7 @@ from collections import Counter, defaultdict
 from datetime import date, datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import unquote
+from urllib.parse import parse_qs, unquote, urlparse
 
 from . import integrations
 from .component_routes import ComponentRoutes, _CONVO_ACCESS, CONVO_UNLOCKED_POSTS
@@ -967,6 +967,21 @@ class Handler(ComponentRoutes, BaseHTTPRequestHandler):
                 return self._json(200, integrations.ROUTES[path].read(globals()))
             except Exception as error:
                 return self._json(500, {'error': f'{type(error).__name__}: {error}'})
+        if path == "/api/hours":
+            if not self._authed():
+                return self._json(403, {"error": "bad token"})
+            query = parse_qs(urlparse(self.path).query)
+            start, end = (query.get("from") or [""])[0], (query.get("to") or [""])[0]
+            con, status = console_store.connect_ro()
+            if status:
+                return self._json(200, {"available": False, "reason": status.message})
+            try:
+                tasks = console_store.health_by_hour(con, start, end)
+                return self._json(200, {"available": True, "from": start, "to": end, "tasks": tasks})
+            except ValueError as error:
+                return self._json(400, {"error": str(error)})
+            finally:
+                con.close()
         if path == "/api/task/repairs":
             if not self._authed():
                 return self._json(403, {"error": "bad token"})

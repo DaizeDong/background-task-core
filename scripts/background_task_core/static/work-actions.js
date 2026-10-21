@@ -8,7 +8,9 @@ const WORK_ACTION_STATES={preparing:['准备中','pending'],queued:['排队中',
 const workIcon=icon=>icon?`<svg class="ic" aria-hidden="true"><use href="#${icon}"/></svg>`:'';
 function workActionButtons(item,compact=false){
   const actions=item.actions;if(!actions) return item.origin_item_id?`<div class="work-actions"><button type="button" class="mini work-link" data-work-id="${esc(item.origin_item_id)}" title="打开这项工作由之而来的那条待办">查看原待办</button></div>`:'';
-  if(!actions.available) return actions.reason?`<div class="work-actions"><small>${esc(actions.reason)}</small></div>`:'';
+  const source=(actions.links || []).some(link=>link.kind==='session')
+    ?`<button type="button" class="mini icon-only" data-work-context="${esc(item.id)}" title="查看原对话与片段" aria-label="查看原对话与片段">${workIcon('i-link')}</button>`:'';
+  if(!actions.available) return `<div class="work-actions">${source}${actions.reason?`<small>${esc(actions.reason)}</small>`:''}</div>`;
   const current=actions.current, pending=WORK_ACTION_PENDING.has(item.id), readOnly=ConsoleActions.readOnly;
   const controls=(actions.offers || []).slice(0,3).map((offer,index)=>{
     const disabled=readOnly || pending || !offer.enabled;
@@ -31,6 +33,9 @@ function workActionButtons(item,compact=false){
       if(task?.name) controls.push(`<button type="button" class="mini work-link" data-task="${esc(task.name)}" title="${esc('打开关联的计划任务 '+task.name)}">${workIcon('i-link')}<span>关联任务</span></button>`);
     }
   }
+  if(source) controls.push(source);
+  const wakeup=current?.wakeup;
+  if(wakeup?.state==='failed' && ['preparing','queued'].includes(current.state)) controls.push(`<small class="work-wakeup-warning" role="status">${esc(wakeup.message)}</small>`);
   const note=current?.summary || (current?.state==='task_requested'?'运行请求已提交，完成结果尚未确认':'');
   return controls.length || note?`<div class="work-actions${compact?' compact':''}"><div class="work-action-controls">${controls.join('')}</div>${note?`<small class="work-action-note" title="${esc(note)}">${esc(note)}</small>`:''}</div>`:'';
 }
@@ -78,6 +83,7 @@ async function sendWorkAction(itemId,actionId,verb){
     const reply=await api('/api/work/'+verb,{method:'POST',body:JSON.stringify(intent)});
     if(reply.ok){forget();toast(verb==='stop'?'已请求停止':actionId==='complete' && reply.status==='done'?'待办已标记完成':reply.status==='queued'?'已加入队列':reply.status==='task_requested'?'已提交任务，结果待确认':'已找到这次处理记录',actionId==='complete' && reply.status==='done'?'ok':'info');}
     else{if(reply.uncertain===false) forget();toast(reply.message || '未能提交，请刷新后重试','bad');}
+    if(reply.wakeup?.state==='failed') toast(reply.wakeup.message,'bad');
   }catch(error){
     if(error.requestRejected || error.payload?.uncertain===false){forget();toast(error.message,'bad');}
     else toast(`${error.message}。未收到确认。再次点击会核对原请求，不会重复创建工作。`,'bad');

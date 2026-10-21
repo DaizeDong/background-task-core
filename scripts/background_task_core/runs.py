@@ -16,6 +16,7 @@ import re
 import sqlite3
 import subprocess
 import sys
+import tempfile
 import time
 import xml.etree.ElementTree as ET
 from collections import Counter, defaultdict
@@ -935,7 +936,7 @@ def build(tasks: dict, runs_by_task: dict | None = None, now: datetime | None = 
 
 
 # ---- evtlog ------------------------------------------------------------------------------------
-# TaskScheduler 运行日志的读法:EvtQuery + 渲染 XML(pywin32),这是唯一的读取器。
+# TaskScheduler event XML: native pywin32 first, PowerShell on native failure.
 #
 # 比 Get-WinEvent 快三个数量级:慢的是每条事件都去解析一次 provider 元数据。
 # 读不到时返回 enabled=False 并说明原因,不装作成功:一条空的运行日志和一段读不到的
@@ -1048,7 +1049,7 @@ def _parse(xml: str) -> dict | None:
             "t": t.strftime("%Y-%m-%d %H:%M:%S"), "rc": rc}
 
 
-def read(days: int, max_events: int) -> dict:
+def _read_native(days: int, max_events: int) -> dict:
     import win32evtlog
 
     since = _dt.datetime.now().astimezone() - _dt.timedelta(days=days)
@@ -1096,23 +1097,66 @@ def read(days: int, max_events: int) -> dict:
                 break
 
     oldest_rid, record_count = log_stats()
-    return {
-        "enabled": True,
-        "reason": (f"事件读到一半失败({broke}),下面的条数是不完整的" if broke else None),
-        "partial": bool(broke),
-        "since": since.strftime("%Y-%m-%d"),
-        "oldest": rows[-1]["t"] if rows else None,
-        "count": len(rows),
-        # 解析不了的事件要报出来。悄悄丢掉会让「这台机器没记录」和「我读不懂它记的东西」
-        # 变成同一个空列表。
-        "dropped": dropped,
-        "truncated": len(rows) >= max_events,
-        # 下面三个只有摄入器用:去重的水位线、日志被清空的探测器、通道里的记录总数。
-        "maxRecordId": max((r["rid"] for r in rows if r.get("rid")), default=0),
-        "oldestRecordId": oldest_rid,
-        "recordCount": record_count,
-        "events": rows,
-    }
+    if oldest_rid is None or record_count is None:
+        broke = broke or "log identity unreadable"
+    return _event_result(rows, since.strftime("%Y-%m-%d"), dropped,
+                         bool(broke), broke, len(rows) >= max_events,
+                         oldest_rid, record_count)
+
+
+def _event_result(rows, since, dropped, partial, reason, truncated, oldest, count):
+    if dropped or oldest is None or count is None:
+        partial = True
+        reason = reason or f"Incomplete event read: dropped={dropped}, log identity={oldest}, count={count}"
+    return {"enabled": True, "reason": reason, "partial": partial,
+            "since": since, "oldest": rows[-1]["t"] if rows else None,
+            "count": len(rows), "dropped": dropped, "truncated": truncated,
+            "maxRecordId": max((r["rid"] for r in rows), default=0),
+            "oldestRecordId": oldest, "recordCount": count, "events": rows}
+
+
+def _read_powershell(days: int, max_events: int) -> dict:
+    rc, output, error = run_ps(Path(__file__).with_name("runlog.ps1"),
+                              ["-Days", str(days), "-MaxEvents", str(max_events)], timeout=180)
+    if rc:
+        raise RuntimeError(error or f"PowerShell event reader exited {rc}")
+    raw = json.loads(output)
+    if not raw.get("enabled"):
+        return raw
+    rows, dropped = [], raw["dropped"]
+    for xml in raw["xml"]:
+        row = _parse(xml)
+        if row is None:
+            dropped += 1
+        else:
+            rows.append(row)
+    return _event_result(rows, raw["since"], dropped, raw["partial"],
+                         raw["reason"], raw["truncated"],
+                         raw["oldestRecordId"], raw["recordCount"])
+
+
+def read(days: int, max_events: int) -> dict:
+    """Collect through one reader; never mix partial batches from different readers."""
+    try:
+        native = _read_native(days, max_events)
+    except Exception as error:
+        native = {"enabled": False, "reason": f"{type(error).__name__}: {error}", "events": []}
+    if native.get("enabled") and not (native.get("partial") or native.get("dropped")):
+        return native
+    try:
+        fallback = _read_powershell(days, max_events)
+    except Exception as error:
+        fallback = {"enabled": False, "reason": f"{type(error).__name__}: {error}", "events": []}
+    if fallback.get("enabled") and not (fallback.get("partial") or fallback.get("dropped")):
+        fallback["collector"] = "powershell"
+        fallback["nativeError"] = native.get("reason") or "native events could not be decoded"
+        return fallback
+    # Preserve useful partial data from one collector and expose both failures.
+    result = fallback if fallback.get("events") else native
+    result["partial"] = True
+    result["reason"] = (f"Native: {native.get('reason') or 'incomplete event read'}; "
+                        f"PowerShell: {fallback.get('reason') or 'incomplete event read'}")
+    return result
 
 
 # ---- console_store -----------------------------------------------------------------------------
@@ -1279,6 +1323,24 @@ def health_by_day(con, days: int = 45) -> dict:
     return out
 
 
+def health_by_hour(con, day_from: str, day_to: str) -> dict:
+    """Health counts per task and local hour, including both boundary dates."""
+    day_from = date.fromisoformat(day_from).isoformat()
+    day_to = date.fromisoformat(day_to).isoformat()
+    rows = con.execute(
+        "SELECT task, day, hour, klass, COUNT(*) n FROM health_obs "
+        "WHERE day BETWEEN ? AND ? GROUP BY task, day, hour, klass",
+        (day_from, day_to)).fetchall()
+    out = {}
+    for row in rows:
+        counts = out.setdefault(row["task"], {}).setdefault(
+            f"{row['day']} {row['hour']:02d}",
+            {"ok": 0, "bad": 0, "stale": 0, "neutral": 0, "n": 0})
+        counts[row["klass"]] = counts.get(row["klass"], 0) + row["n"]
+        counts["n"] += row["n"]
+    return out
+
+
 def health_totals(con, days: int = 45) -> dict:
     rows = con.execute(
         "SELECT task, klass, COUNT(*) n FROM health_obs "
@@ -1341,32 +1403,34 @@ def ingest_verdict(last_ingest: dict | None, now=None) -> dict:
     """
     import datetime as _dt
 
-    now = _dt.datetime.now() if now is None else now
+    now = _dt.datetime.now().astimezone() if now is None else now.astimezone()
 
-    def _parse(s):
-        # finished_at 只由 console_ingest.now() 写入,格式固定。
+    def _parse(value):
         try:
-            return _dt.datetime.strptime(str(s), "%Y-%m-%d %H:%M:%S")
-        except ValueError:
+            # Legacy local dates/minutes and ISO offsets are all accepted. Naive values
+            # belong to this machine's local ingest log, unlike portable health reports.
+            return _dt.datetime.fromisoformat(str(value).strip().replace("Z", "+00:00")).astimezone()
+        except (ValueError, TypeError, OverflowError, OSError):
             return None
 
-    parsed = [(k, v, _parse(v["at"])) for k, v in (last_ingest or {}).items()
-              if isinstance(v, dict) and v.get("at")]
-    parsed = [(k, v, t) for k, v, t in parsed if t is not None]
-    if not parsed:
+    rows = list((last_ingest or {}).items())
+    if not rows:
         return {"state": "never", "ageHours": None, "source": None, "at": None,
-                "failed": [], "why": "摄入器没有留下任何运行记录 —— 库里的数字要么是"
-                                     "手动灌的,要么根本没有。跑一次 python -m background_task_core ingest。"}
-    failed = sorted(k for k, v, _t in parsed if v.get("ok") is False)
-
+                "failed": [], "why": "摄入器没有留下任何运行记录。跑一次 python -m background_task_core ingest。"}
+    failed = sorted(k for k, v in rows if isinstance(v, dict) and v.get("ok") is False)
+    parsed = [(k, v, _parse(v.get("at")) if isinstance(v, dict) else None) for k, v in rows]
+    unreadable = sorted(k for k, v, t in parsed if t is None)
+    parsed = [(k, v, t) for k, v, t in parsed if t is not None]
     parsed.sort(key=lambda x: x[2])
-    src, row, at = parsed[0]
-    age = (now - at).total_seconds() / 3600.0
+    src, row, at = parsed[0] if parsed else (None, {}, None)
+    age = (now - at).total_seconds() / 3600.0 if at else None
 
     if failed:
         state = "failed"
         why = ("摄入器最近一次运行是失败的(" + "、".join(failed)
                + ")。这些数字停在上一次成功那一刻,而页面其余部分看不出异常。")
+    elif age is None:
+        state, why = "unknown", "摄入记录的时间戳读不出来，无法判断新鲜度。"
     elif age >= INGEST_LOSS_HOURS:
         state = "loss"
         why = (f"{src} 已经 {age / 24:.1f} 天没摄入。Windows 运行日志是滚动缓冲,"
@@ -1379,8 +1443,14 @@ def ingest_verdict(last_ingest: dict | None, now=None) -> dict:
         state = "ok"
         why = None
 
-    return {"state": state, "ageHours": round(age, 2), "source": src,
-            "at": row.get("at"), "failed": failed, "why": why}
+    if unreadable:
+        if state == "ok":
+            state = "unknown"
+        why = ((why + " ") if why else "") + "时间戳缺失或读不出来: " + "、".join(unreadable)
+    return {"state": state, "ageHours": round(age, 2) if age is not None else None,
+            "source": src, "at": row.get("at"), "failed": failed,
+            "unreadable": unreadable, "why": why}
+
 
 
 def db_coverage(con) -> dict:
@@ -1542,7 +1612,6 @@ def _iter_health_rows(p: Path, h: dict):
 def ingest_runlog(con, days: int) -> tuple[bool, int, str]:
     started = now()
     try:
-        pass
         raw = read(days=days, max_events=MAX_EVENTS)
     except Exception as e:
         raw = {"enabled": False, "reason": f"读运行日志失败: {e.__class__.__name__}: {e}"}
@@ -1633,142 +1702,93 @@ def _stamp_runlog_success(added: int) -> None:
         pass
 
 
-def _watermark_from_file(out: Path) -> tuple[int, int]:
-    """从 JSONL 末尾读回最后一条的 (log_epoch, record_id)。读不出来就是 (0, 0)。
-
-    只读文件尾部,不整读:这个文件按设计会长到几十 MB,而每轮摄入都要问它一次。
-    (0, 0) 表示「问不出来」,那会让这一轮从 meta 的水位线开始 ——
-    对一个空文件是正确的,对一个读不动的文件是保守的(宁可重导也不漏导:
-    重复行可以事后按 (epoch, record_id) 去重,丢掉的事件找不回来)。
-    """
-    try:
-        size = out.stat().st_size
-    except OSError:
-        return 0, 0
-    if not size:
-        return 0, 0
-    try:
-        with out.open("rb") as fh:
-            # 一行 JSON 约 120 字节,8KB 足够兜住最后一行;文件更短就整读。
-            fh.seek(max(0, size - 8192))
-            tail = fh.read().decode("utf-8", "replace")
-    except OSError:
-        return 0, 0
-    for line in reversed(tail.splitlines()):
-        line = line.strip()
-        if not line:
-            continue
-        try:
-            d = json.loads(line)
-            return int(d["e"]), int(d["r"])   # 键名是缩写的,见 export 那段的 json.dumps
-        except Exception:
-            # 最后一行可能是上一次写到一半的残行。往前再找一条,
-            # 而不是把整个文件判成读不出来。
-            continue
-    return 0, 0
-
-
 # --------------------------------------------------------------------------- durable export
 RUN_EVENTS_DIR = "run-events"
 
 
-def _watermark_from_months(out_dir: Path) -> tuple[int, int]:
-    """The highest (log_epoch, record_id) in the two newest monthly files; (0, 0) when none.
-
-    Two files, not one: the first export of a new month can land before the last events of the
-    previous month are exported, and record ids grow with time, not with the file name.
-    """
-    try:
-        months = sorted(p for p in out_dir.glob("????-??.jsonl") if p.is_file())
-    except OSError:
-        return 0, 0
-    return max((_watermark_from_file(p) for p in months[-2:]), default=(0, 0))
-
-
 def export_run_events(con) -> tuple[bool, int, str]:
-    """Append new run events to monthly JSONL files beside the database (run-events/YYYY-MM.jsonl).
+    """Merge new events into monthly files, replacing each file atomically.
 
-    The OS event log rotates, so this normalized export preserves events beyond its retained window.
-    Keep it versioned in the private companion. Preserve the current database too: this export omits
-    rc_raw, task configuration history and ingest attempts, and --backfill cannot reconstruct them
-    all. No complete JSONL-to-database restore command is currently provided. The append-only JSONL
-    avoids versioning every change to the database binary without claiming to replace that database.
-
-    幂等靠的是水位线 = 最后一条已导出记录的 (log_epoch, record_id)。
-
-    ⚠ 水位线的**权威是这个文件本身,不是 meta 表**。这一点必须这样定,因为
-    「追加文件」和「提交水位线」不可能原子完成:
-      - 先写文件后提交:提交失败(锁超时、崩溃)时文件里已经有那批行,而 meta 还停在旧值,
-        下一轮把同一批**再导一遍** —— 而这是运行事件唯一的持久副本,
-        按它重建历史的人会得到翻倍的启动次数,文件里也没有任何去重键校验。
-      - 先提交后写文件:崩在中间就是 meta 说导过了而文件里没有,那批事件**永久丢失**。
-    两种顺序各自会坏,所以不靠顺序:每次从文件末尾读回真实水位线,
-    与 meta 里那份取较大者。meta 从此只是一个缓存,坏了不影响正确性。
+    The cursor advances only after every affected month lands. A retry merges by event identity,
+    so a file already replaced before a failure does not acquire duplicate rows. The month list
+    lets missing old shards be rebuilt from the database without rescanning all history each run.
+    First use ignores the old, unsafe watermark and reconciles all retained database events once.
+    Normal runs read new database rows and rewrite only affected months. Existing export-only
+    records survive a merge. This normalized export still does not replace a database backup.
     """
     started = now()
     p, st = resolve_db()
     if st:
         return False, 0, st.message
     out_dir = Path(p).parent / RUN_EVENTS_DIR
-
-    row = con.execute("SELECT value FROM meta WHERE key='export_watermark'").fetchone()
-    mark = row["value"] if row else "0:0"
+    added = 0
+    temporary = None
     try:
-        m_epoch, m_rid = (int(x) for x in mark.split(":"))
-    except Exception:
-        m_epoch, m_rid = 0, 0
-
-    # 文件说了算。上一轮如果写进去了但没来得及提交水位线,meta 会落后,
-    # 而这里读回来的那一条会把它顶上去,于是同一批不会被导第二遍。
-    f_epoch, f_rid = _watermark_from_months(out_dir)
-    if (f_epoch, f_rid) > (m_epoch, m_rid):
-        m_epoch, m_rid = f_epoch, f_rid
-
-    rows = con.execute(
-        "SELECT log_epoch,record_id,task,event_id,ts,rc_raw,rc_norm FROM run_event "
-        "WHERE log_epoch > ? OR (log_epoch = ? AND record_id > ?) "
-        "ORDER BY log_epoch, record_id", (m_epoch, m_epoch, m_rid)).fetchall()
-    if not rows:
-        note_run(con, "export", started, True, 0, "nothing new")
-        return True, 0, ""
-
-    # One file per calendar month of the event time (run-events/YYYY-MM.jsonl): a month that is over
-    # never changes again, so its history diff stays small and the current file stays short.
-    by_month: dict[str, list[str]] = {}
-    for r in rows:
-        by_month.setdefault(str(r["ts"])[:7], []).append(json.dumps({
-            "e": r["log_epoch"], "r": r["record_id"], "t": r["task"],
-            "i": r["event_id"], "ts": r["ts"],
-            "rc": r["rc_norm"],           # normalised; NULL when the event carries none
-        }, ensure_ascii=False, sort_keys=True) + "\n")
-    out = out_dir
-    try:
+        row = con.execute("SELECT value FROM meta WHERE key='export_months'").fetchone()
+        state = json.loads(row["value"]) if row else {"cursor": [0, 0], "months": []}
+        mark_epoch, mark_rid = state["cursor"]
+        rows = con.execute(
+            "SELECT log_epoch,record_id,task,event_id,ts,rc_norm FROM run_event "
+            "WHERE (log_epoch,record_id) > (?,?) ORDER BY log_epoch,record_id",
+            (mark_epoch, mark_rid)).fetchall()
+        by_month = defaultdict(list)
+        for event in rows:
+            by_month[event["ts"][:7]].append(event)
+        months = set(state["months"])
+        if row is None:
+            months.update(path.stem for path in out_dir.glob("????-??.jsonl"))
+        # Only missing shards need a historical query; the day index bounds each query.
+        for month in sorted(months):
+            if not (out_dir / f"{month}.jsonl").exists():
+                first = date.fromisoformat(month + "-01")
+                following = (first.replace(day=28) + timedelta(days=4)).replace(day=1)
+                by_month[month] = con.execute(
+                    "SELECT log_epoch,record_id,task,event_id,ts,rc_norm FROM run_event "
+                    "WHERE day >= ? AND day < ? ORDER BY log_epoch,record_id",
+                    (first.isoformat(), following.isoformat())).fetchall()
+                if not by_month[month]:
+                    raise ValueError(f"Cannot rebuild missing export shard {month}: no retained database events")
         out_dir.mkdir(parents=True, exist_ok=True)
-        for month, lines in sorted(by_month.items()):
-            with (out_dir / f"{month}.jsonl").open("a", encoding="utf-8", newline="\n") as fh:
-                fh.writelines(lines)
-    except Exception as e:
-        note_run(con, "export", started, False, 0, str(e)[:400])
-        return False, 0, str(e)
-
-    last = rows[-1]
-    try:
+        for month, events in sorted(by_month.items()):
+            target = out_dir / f"{month}.jsonl"
+            merged = {}
+            if target.exists():
+                with target.open(encoding="utf-8") as stream:
+                    for line in stream:
+                        if line.strip():
+                            event = json.loads(line)
+                            merged[(event["e"], event["r"])] = event
+            before = len(merged)
+            for event in events:
+                merged[(event["log_epoch"], event["record_id"])] = {
+                    "e": event["log_epoch"], "r": event["record_id"], "t": event["task"],
+                    "i": event["event_id"], "ts": event["ts"], "rc": event["rc_norm"]}
+            with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", newline="\n",
+                                             dir=out_dir, prefix=f".{month}-", suffix=".tmp",
+                                             delete=False) as stream:
+                temporary = Path(stream.name)
+                for key in sorted(merged):
+                    stream.write(json.dumps(merged[key], ensure_ascii=False, sort_keys=True) + "\n")
+                stream.flush()
+                os.fsync(stream.fileno())
+            os.replace(temporary, target)
+            temporary = None
+            added += len(merged) - before
+        if rows:
+            state["cursor"] = [rows[-1]["log_epoch"], rows[-1]["record_id"]]
+        state["months"] = sorted(months | set(by_month))
         begin(con)
-        con.execute("INSERT INTO meta(key,value) VALUES('export_watermark',?) "
-                    "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
-                    (f"{last['log_epoch']}:{last['record_id']}",))
-        note_run(con, "export", started, True, len(rows), str(out))
+        con.execute("INSERT INTO meta(key,value) VALUES('export_months',?) "
+                    "ON CONFLICT(key) DO UPDATE SET value=excluded.value", (json.dumps(state),))
+        note_run(con, "export", started, True, added, str(out_dir))
         con.execute("COMMIT")
-    except Exception as e:
+    except Exception as error:
         rollback(con)
-        # 失败也要记一行;note_run 可能因同一把锁失败,所以它也要能安静收场。
-        try:
-            note_run(con, "export", started, False, 0, str(e)[:400])
-            con.commit()
-        except Exception:
-            pass
-        return False, 0, str(e)
-    return True, len(rows), ""
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
+        note_run(con, "export", started, False, added, str(error)[:400])
+        return False, added, str(error)
+    return True, added, ""
 
 
 # --------------------------------------------------------------------------- task settings

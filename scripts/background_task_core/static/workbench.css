@@ -254,7 +254,8 @@ dialog#work-detail{width:min(760px,calc(100vw - 32px))}#work-detail h3{font-size
 /* ================= 外框:品牌、顶栏、侧栏 ================= */
 /* 品牌字挨着图标,不再被推到侧栏最右边。 */
 #side .navbar-brand{display:flex;align-items:center;justify-content:flex-start;gap:8px}
-#side .navbar-brand>span{margin-left:0!important}
+#side .navbar-brand>span{margin-left:0!important;min-width:0;overflow:hidden;text-overflow:ellipsis}
+#side .navbar-brand img{flex-shrink:0}
 /* 深色下图标本身的深色格子会融进底色:给它垫一块浅底。 */
 :root[data-theme="dark"] #side .navbar-brand img{background:var(--ink);border-radius:4px;padding:2px;box-sizing:content-box}
 /* 顶栏右侧:只读标识、刷新时间、刷新、「⋯」。 */
@@ -284,3 +285,9 @@ dialog#work-detail{width:min(760px,calc(100vw - 32px))}#work-detail h3{font-size
   #side .nav-link .nav-badge{min-width:16px;padding:0 2px}
   #view-tabs a{padding-inline:10px}
 }
+
+/* Source excerpts are shown only on request inside the work detail dialog. */
+#work-source-context { margin-block: 1rem; }
+#work-source-context .work-source-heading { display: flex; align-items: center; gap: .75rem; }
+#work-source-context pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 20rem; overflow: auto; }
+.work-actions .work-wakeup-warning { color: var(--tblr-warning); }

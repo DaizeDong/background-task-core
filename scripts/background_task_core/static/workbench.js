@@ -283,6 +283,8 @@ function renderAutomations(){
 function openWorkRecord(id,keepOrder=false){
   const item=(WORK?.items || []).find(row=>row.id===id);
   if(!item){toast('该记录未载入，请刷新工作记录','bad');return;}
+  const sourceContext=keepOrder && WORK_DETAIL_ID===id
+    && WORK_DETAIL_ITEM?.actions?.revision===item.actions?.revision?$('work-source-context'):null;
   if(!keepOrder){
     const rows=selectedWorkRows();
     WORK_DETAIL_IDS=(rows.some(row=>row.id===id)?rows:workRows(WORK,{role:'all'})).map(row=>row.id);
@@ -296,9 +298,10 @@ function openWorkRecord(id,keepOrder=false){
   $('work-detail-title').textContent=item.title;
   $('work-detail-body').innerHTML=`<dl class="record-fields"><dt>类别</dt><dd>${esc(ROLE_LABELS[item.role])}</dd><dt>来源</dt><dd>${esc(workSourceLabel(item.source))}</dd><dt>记录状态</dt><dd>${esc(workLabel(item))}</dd><dt>更新时间</dt><dd>${when(item.updated_at)}</dd>${item.due_at?`<dt>截止时间</dt><dd>${when(item.due_at)}</dd>`:''}${item.project?`<dt>项目</dt><dd>${esc(item.project)}</dd>`:''}</dl>
     ${item.group_parent_id?`<p>已归入 <button type="button" class="link-button" data-work-id="${esc(item.group_parent_id)}">查看当前事项</button></p>`:''}${workActionButtons(item)}<h3>${workResult(item)?'完成摘要':'摘要'}</h3><p class="record-summary">${esc(item.summary || '没有摘要')}</p>${item.latest_mail_summary?`<p>最新邮件：${esc(item.latest_mail_summary)}</p>`:''}
-    ${workQueueNote(item)}
+    ${workQueueNote(item)}<div id="work-source-context" hidden></div>
     <h3>最近活动</h3><ul class="record-events">${events.map(event=>`<li>${workTimeTag(event.ts)} · ${esc(workEventLabel(event))}${event.actor?' · '+esc(event.actor):''}</li>`).join('') || '<li>本次读取的活动中没有这条记录</li>'}</ul>
     <h3>技术信息</h3><dl class="record-fields"><dt>记录 ID</dt><dd><code>${esc(item.id)}</code></dd><dt>来源代码</dt><dd><code>${esc(item.source || '未记录')}</code></dd></dl>`;
+  if(sourceContext) $('work-source-context').replaceWith(sourceContext);
   const index=WORK_DETAIL_IDS.indexOf(id);
   // 灰着的上一条 / 下一条说清为什么:到头了,或者这条不在当前列表里。
   setDisabled($('work-detail-prev'),index<0?'这条记录不在当前列表里':index===0?'已是第一条':'');
@@ -307,10 +310,30 @@ function openWorkRecord(id,keepOrder=false){
   $('work-detail').scrollTop=0;
   if(!$('work-detail').open) $('work-detail').showModal();
 }
+async function showWorkContext(itemId){
+  openWorkRecord(itemId);
+  const host=$('work-source-context');if(!host) return;
+  host.hidden=false;host.innerHTML=loadingBlock('原对话片段');
+  try{
+    const result=await api('/api/work/context?item_id='+encodeURIComponent(itemId));
+    if(!host.isConnected || WORK_DETAIL_ID!==itemId) return;
+    const open=result.session_id?`<button type="button" class="mini" data-work-session="${esc(result.session_id)}">打开原对话</button>`:'';
+    host.innerHTML=`<div class="work-source-heading"><strong>原对话片段</strong>${open}</div>`
+      +(result.available?`<pre>${esc(result.text)}</pre>`:`<p role="status">${esc(result.reason || '原对话暂时不可用')}</p>`);
+  }catch(error){
+    if(host.isConnected && WORK_DETAIL_ID===itemId) host.innerHTML=errorBlock('原对话片段',error);
+  }
+}
 // 这一屏的点击都在这里分派。
 function routeWorkClick(event){
   const target=event.target;
   if(!target?.closest) return;
+  const context=target.closest('[data-work-context]');if(context){showWorkContext(context.dataset.workContext);return;}
+  const session=target.closest('[data-work-session]');if(session){
+    if(typeof openConvoChain!=='function'){toast('对话面板未加载','bad');return;}
+    $('work-detail').close();
+    openConvoChain(session.dataset.workSession).catch(error=>toast(error.message,'bad'));return;
+  }
   const modified=event.ctrlKey || event.metaKey || event.shiftKey || event.altKey;
   const view=target.closest('[data-open-view]');if(view){if(modified) return;event.preventDefault();showView(view.dataset.openView,true);}
   const attention=target.closest('[data-attention-filter]');if(attention){if(modified) return;event.preventDefault();openDiagnosticsFiltered(attention.dataset.attentionFilter);return;}

@@ -63,6 +63,8 @@ python -m background_task_core.server --port 8787            # the page, bound t
 python -m background_task_core ingest [--skip-runlog]       # fill the console database
 python -m background_task_core status --configured          # component status reader
 python -m background_task_core observations --periodic ...  # one passive health collection pass
+python -m background_task_core backup database              # complete private SQLite snapshot
+python -m background_task_core backup registration          # private registration recovery evidence
 python -m background_task_core <authority command> ...      # plan, registration-plan, creation-check, apply, retire, control, ...
 ```
 
@@ -84,7 +86,7 @@ Real requests and returned plans contain machine data and belong in private stor
 
 ## Where the data lives
 
-The database and the run-event export live in a private companion resolved by `fleet_guards.runtime`. The database (`data/background-task-core/console.sqlite3`), the DPAPI vault and other files every run rewrites are local state there and are not versioned; the versioned history is the monthly text export `data/background-task-core/run-events/YYYY-MM.jsonl`. If no companion resolves, the console reports UNINITIALISED; writes never fall back to this repository.
+The database and the run-event export live in a private companion resolved by `fleet_guards.runtime`. The database (`data/background-task-core/console.sqlite3`), the DPAPI vault and other files every run rewrites are local state there and are not versioned; the versioned history is the monthly text export `data/background-task-core/run-events/YYYY-MM.jsonl`. On-demand [recovery backups](docs/recovery-backups.md) go into the companion's versioned `data/recovery/`. If no companion resolves, the console reports UNINITIALISED; writes never fall back to this repository.
 
 ## Limitations
 
