@@ -1226,13 +1226,20 @@ def _outputs(bundle, compiled, selected, before, intent, tx, *, linked=None):
     rows = require(health, "tasks", list)
     if any(not isinstance(row, dict) or not isinstance(row.get("name"), str) for row in rows):
         raise Conflict("invalid_health", "task-health.json")
-    health["tasks"] = [row for row in rows if row["name"].casefold() not in names]
     projected = json.loads(compiled["generated_files"]["task-health.json"]["content"])
-    if not retiring:
-        health["tasks"] += [r for r in projected["tasks"] if r["task_id"] in projected_ids]
+    fresh = [] if retiring else [r for r in projected["tasks"] if r["task_id"] in projected_ids]
+    # Every projection below keeps a re-applied task where it already stands: removing and
+    # re-appending it reordered the file on every apply, so an unchanged task never compared equal.
+    health["tasks"], placed = [], set()
+    for row in rows:
+        key = row["name"].casefold()
+        if key not in names:
+            health["tasks"].append(row)
+        elif key not in placed:
+            placed.add(key)
+            health["tasks"] += [r for r in fresh if r["name"].casefold() == key]
+    health["tasks"] += [r for r in fresh if r["name"].casefold() not in placed]
     text = _decode(before[paths["TaskNames.ps1"]])
-    # A name that stays listed is left where it is: removing and re-appending it changed the file
-    # on every apply, so an unchanged task never compared equal.
     listed = {spec["name"].casefold() for spec in selected
               if spec['task_id'] in projected_ids and spec["backup"] and not retiring}
     try:
@@ -1249,16 +1256,22 @@ def _outputs(bundle, compiled, selected, before, intent, tx, *, linked=None):
         raise Conflict("invalid_allowlist", "TaskNames.ps1") from exc
     categories = _document(before[paths["categories.json"]])
     cats = require(categories, "categories", list)
+    category_names = {d["id"]: d["name"] for d in machine["categories"]}
+    staying = [] if retiring else [s for s in selected if s['task_id'] in projected_ids]
+    home = {s["name"].casefold(): category_names.get(s["category"]) for s in staying}
+    described = {s["name"].casefold(): category_names.get(s["category"]) for s in staying
+                 if s.get("description") is not None}
     for cat in cats:
         members = require(cat, "tasks", list)
         if any(not isinstance(n, str) for n in members):
             raise Conflict("invalid_categories", "categories")
-        cat["tasks"] = [n for n in members if n.casefold() not in names]
+        cat["tasks"] = [n for n in members if n.casefold() not in names or home.get(n.casefold()) == cat.get("name")]
         if "taskDesc" in cat:
             descriptions = require(cat, "taskDesc", dict)
             if any(not isinstance(k, str) or not isinstance(v, str) for k, v in descriptions.items()):
                 raise Conflict("invalid_categories", "categories.taskDesc")
-            cat["taskDesc"] = {k: v for k, v in descriptions.items() if k.casefold() not in names}
+            cat["taskDesc"] = {k: v for k, v in descriptions.items()
+                               if k.casefold() not in names or described.get(k.casefold()) == cat.get("name")}
     if not retiring:
         for descriptor in machine["categories"]:
             members = [s["name"] for s in selected if s['task_id'] in projected_ids and s["category"] == descriptor["id"]]
@@ -1266,7 +1279,8 @@ def _outputs(bundle, compiled, selected, before, intent, tx, *, linked=None):
             if len(matching) > 1:
                 raise Conflict("ambiguous_category", "categories")
             if matching:
-                matching[0]["tasks"] += members
+                listed = {n.casefold() for n in matching[0]["tasks"]}
+                matching[0]["tasks"] += [n for n in members if n.casefold() not in listed]
             elif members:
                 cats.append({k: v for k, v in descriptor.items() if k != "id"} | {"tasks": members})
             descriptions = {s["name"]: s["description"] for s in selected
