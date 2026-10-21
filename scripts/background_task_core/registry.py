@@ -1231,12 +1231,17 @@ def _outputs(bundle, compiled, selected, before, intent, tx, *, linked=None):
     if not retiring:
         health["tasks"] += [r for r in projected["tasks"] if r["task_id"] in projected_ids]
     text = _decode(before[paths["TaskNames.ps1"]])
+    # A name that stays listed is left where it is: removing and re-appending it changed the file
+    # on every apply, so an unchanged task never compared equal.
+    listed = {spec["name"].casefold() for spec in selected
+              if spec['task_id'] in projected_ids and spec["backup"] and not retiring}
     try:
+        present = {name.casefold() for name in literal_names(text)}
         for name in literal_names(text):
-            if name.casefold() in names:
+            if name.casefold() in names and name.casefold() not in listed:
                 text, _ = remove_name(text, name)
         for spec in selected:
-            if spec['task_id'] in projected_ids and spec["backup"] and not retiring:
+            if spec["name"].casefold() in listed and spec["name"].casefold() not in present:
                 close = closing_paren(text)
                 text = text[:close] + "\n    '" + spec["name"].replace("'", "''") + "'\n" + text[close:]
         literal_names(text)
