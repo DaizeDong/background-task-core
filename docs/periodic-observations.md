@@ -1,6 +1,6 @@
 # Periodic observation collection
 
-TaskHealthMonitor can refresh the existing console status snapshot on each of its
+The hourly health task (`windows/task-health-monitor.ps1`) refreshes the existing console status snapshot on each of its
 scheduled runs. `python -m background_task_core observations --periodic` performs one pass and exits.
 It starts the bundled `collect.ps1 -CaptureOnly` through `llmcall.process`, then
 uses the existing observation worker, health evaluator, publication lock and
