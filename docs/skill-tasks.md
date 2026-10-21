@@ -16,7 +16,7 @@ Public, so it holds no machine value: paths go through `${SKILL_ROOT}`, `${COMPA
 | `tasks[].name` | yes | The Task Scheduler name, unique on the machine. |
 | `tasks[].purpose` | yes | One sentence; it becomes the console description unless the companion overrides it. |
 | `tasks[].enabled` | yes | `true` to create the task enabled, `false` for an opt-in task. |
-| `tasks[].trigger` | yes | `{"type": "daily", "at": "HH:MM"}`, `{"type": "weekly", "at": "HH:MM", "days": ["mon", ...]}`, `{"type": "interval", "minutes": N}` (or `seconds`), `{"type": "logon"}`, or a list of these. |
+| `tasks[].trigger` | yes | `{"type": "daily", "at": "HH:MM"}`, `{"type": "weekly", "at": "HH:MM", "days": ["mon", ...]}`, `{"type": "monthly", "at": "HH:MM", "days": [1, ...]}` (days of the month, every month), `{"type": "interval", "minutes": N}` (or `seconds`), `{"type": "logon"}`, or a list of these. |
 | `tasks[].timezone` | no | `local` (default: wall-clock time on this machine, across DST) or `UTC`. |
 | `tasks[].argv` | yes | Command and arguments. `argv[0]` is a `%NAME%` reference or `${...}` placeholder followed by a path. |
 | `tasks[].cwd` | no | Working directory, default `${SKILL_ROOT}`. |

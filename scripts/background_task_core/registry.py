@@ -389,13 +389,17 @@ def _trigger(trigger) -> None:
         units = [key for key in ("seconds", "minutes") if key in trigger]
         if len(units) != 1 or require(trigger, units[0], int) <= 0:
             raise ContractError("invalid_value", "trigger.interval")
-    elif kind in ("daily", "weekly"):
+    elif kind in ("daily", "weekly", "monthly"):
         at = require(trigger, "at", str)
         if not re.fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?", at):
             raise ContractError("invalid_value", "trigger.at")
         if kind == "weekly":
             days = require(trigger, "days", list)
             if not days or any(d not in ("mon", "tue", "wed", "thu", "fri", "sat", "sun") for d in days):
+                raise ContractError("invalid_value", "trigger.days")
+        if kind == "monthly":
+            days = require(trigger, "days", list)
+            if not days or any(type(d) is not int or not 1 <= d <= 31 for d in days):
                 raise ContractError("invalid_value", "trigger.days")
     elif kind != "logon":
         raise ContractError("unsupported_trigger", "trigger.type")
@@ -621,12 +625,12 @@ def validate_trigger_shape(trigger):
     """Only accept declaration fields that have defined rendering semantics."""
     _trigger(trigger)
     entries = trigger if isinstance(trigger, list) else [trigger]
-    shapes = {'daily': {'type', 'at'}, 'weekly': {'type', 'at', 'days'},
+    shapes = {'daily': {'type', 'at'}, 'weekly': {'type', 'at', 'days'}, 'monthly': {'type', 'at', 'days'},
               'interval': {'type', 'seconds', 'minutes'}, 'logon': {'type'},
               'xml': {'type', 'xml', 'owner', 'reason'}}
     for entry in entries:
         fields(entry, shapes[entry['type']], 'trigger')
-        if entry['type'] == 'weekly' and len(set(entry['days'])) != len(entry['days']):
+        if entry['type'] in ('weekly', 'monthly') and len(set(entry['days'])) != len(entry['days']):
             raise ContractError('duplicate_day', 'trigger.days')
 
 

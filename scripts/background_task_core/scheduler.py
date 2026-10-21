@@ -519,13 +519,22 @@ def render(spec, old, enabled, launcher=None):
         entries = spec['trigger'] if isinstance(spec['trigger'], list) else [spec['trigger']]
         for trigger in entries:
             kind = trigger.get('type')
-            if kind in ('daily', 'weekly'):
+            if kind in ('daily', 'weekly', 'monthly'):
                 item = ET.SubElement(triggers, '{' + NS + '}CalendarTrigger')
                 at = trigger['at'] if len(trigger['at']) == 8 else trigger['at'] + ':00'
                 text(item, 'StartBoundary', '2000-01-01T' + at + zone)
                 text(item, 'Enabled', True)
                 if kind == 'daily':
                     text(node(item, 'ScheduleByDay'), 'DaysInterval', 1)
+                elif kind == 'monthly':
+                    schedule = node(item, 'ScheduleByMonth')
+                    days = node(schedule, 'DaysOfMonth')
+                    for day in trigger['days']:
+                        ET.SubElement(days, '{' + NS + '}Day').text = str(day)
+                    months = node(schedule, 'Months')
+                    for month in ('January', 'February', 'March', 'April', 'May', 'June', 'July',
+                                  'August', 'September', 'October', 'November', 'December'):
+                        node(months, month)
                 else:
                     schedule = node(item, 'ScheduleByWeek')
                     text(schedule, 'WeeksInterval', 1)

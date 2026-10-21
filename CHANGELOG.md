@@ -7,7 +7,8 @@ All notable changes to this project are documented here (Keep a Changelog style)
 ### Tasks that ship with a skill
 - `python -m background_task_core install-skill --skill-root <skill>` reads the skill's `automation/tasks.json` and its companion's `automation/tasks.local.json`, writes the declarations and launchers into the authority's desired files, and runs the creation check, plan and apply for exactly that skill's tasks. Tasks the manifest drops are retired; re-running changes nothing. `--enable keep|hold|declared` chooses how enabled state is set, `--dry-run` prints the declarations without writing. Contract in `docs/skill-tasks.md`.
 - `apply` can create a declared task that has no ownership proof while the Scheduler holds no task of that name; the receipt records its first proof.
-- A binding may use `timezone: "local"`: daily, weekly and interval triggers then render without an offset and run at machine-local wall-clock time.
+- A structured `monthly` trigger (`at` plus `days` of the month, every month) renders as a calendar trigger, so a monthly task no longer needs XML passthrough.
+- A binding may use `timezone: "local"`: daily, weekly, monthly and interval triggers then render without an offset and run at machine-local wall-clock time.
 - A live task without an embedded trigger can be re-declared with a structured trigger, which replaces its triggers; only an xml trigger still requires passthrough.
 
 ### Renamed to background-task-core

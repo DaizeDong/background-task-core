@@ -194,11 +194,12 @@ Legacy argument observation uses native CommandLineToArgvW through the Windows
 boundary, including doubled literal quotes and empty arguments. Platforms without
 that parser refuse conversion instead of approximating it.
 
-Daily/weekly/interval/logon declarations, including lists, render for UTC, or for
+Daily/weekly/monthly/interval/logon declarations, including lists, render for UTC, or for
 machine-local wall-clock time when the binding's timezone is `local` (boundaries
 without an offset, which the Scheduler keeps across DST).
 Supported trigger dictionaries reject unrecognized fields before compilation or
-rendering. Daily accepts type/at; weekly adds unique days; interval accepts exactly
+rendering. Daily accepts type/at; weekly adds unique days; monthly adds unique days of the
+month (1-31, every month); interval accepts exactly
 one of seconds/minutes; logon accepts type. Extra Scheduler trigger semantics
 require reviewed XML passthrough, which retains the complete trigger collection.
 Other named zones require reviewed full XML passthrough, retaining boundaries,
