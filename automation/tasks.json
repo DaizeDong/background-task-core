@@ -3,6 +3,19 @@
   "skill": "background-task-core",
   "tasks": [
     {
+      "id": "background-task-core/console-start",
+      "name": "BackgroundTaskCoreConsole",
+      "purpose": "Start the local console at sign-in without opening a browser; reuse an existing compatible server.",
+      "enabled": true,
+      "trigger": {"type": "logon"},
+      "argv": [
+        "%SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+        "-NoProfile", "-WindowStyle", "Hidden", "-ExecutionPolicy", "Bypass",
+        "-File", "${SKILL_ROOT}/windows/background-task-core.ps1", "-NoBrowser"
+      ],
+      "timeout_seconds": 0
+    },
+    {
       "id": "background-task-core/taskhealthmonitor",
       "name": "BackgroundTaskCoreHealth",
       "purpose": "Hourly health pass: publishes the passive observation snapshot, judges every watched task, ingests health into the console database, and pushes the digest and its own heartbeat.",
@@ -21,9 +34,8 @@
           "required": true,
           "health": {
             "label": "the monitor itself (hourly)",
-            "max_age_hours": 100000,
-            "watched_elsewhere": "schedule-reminder",
-            "artifact_note": "Declared exception, not a gap. The monitor cannot meaningfully watch itself, so every run upserts its own dead-man item into schedule-reminder under the idempotency key task-health:monitor-watchdog, and the reminder tick surfaces it when its due time stops advancing."
+            "max_age_hours": 3,
+            "artifact_note": "The console reads this synchronous task's Scheduler result. Each run also advances the existing schedule-reminder dead-man item task-health:monitor-watchdog."
           }
         }
       ]
