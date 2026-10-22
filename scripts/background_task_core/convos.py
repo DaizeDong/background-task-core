@@ -29,11 +29,11 @@ rename 排最前没有别的理由:那是唯一**人明确说过「这场对话�
 
 from __future__ import annotations
 
-import io
 import base64
 import hashlib
 import json
 import math
+import mmap
 import os
 import re
 import time
@@ -78,6 +78,30 @@ def _iter_json(chunk: str):
             continue
 
 
+def _title_lines(path: Path):
+    """Find candidate lines in native byte searches without decoding tool output."""
+    with path.open("rb") as stream:
+        if not os.fstat(stream.fileno()).st_size:
+            return
+        with mmap.mmap(stream.fileno(), 0, access=mmap.ACCESS_READ) as data:
+            yield from _mapped_title_lines(data)
+
+
+def _mapped_title_lines(data):
+    marks = (b"title", b"/rename")
+    positions = [data.find(mark) for mark in marks]
+    while any(position >= 0 for position in positions):
+        hit = min(position for position in positions if position >= 0)
+        start = data.rfind(b"\n", 0, hit) + 1
+        end = data.find(b"\n", hit)
+        if end < 0:
+            end = len(data)
+        yield from data[start:end].splitlines()
+        for i, position in enumerate(positions):
+            if 0 <= position <= end:
+                positions[i] = data.find(marks[i], end + 1)
+
+
 def read_titles(path: Path) -> dict:
     """这场对话叫什么。返回 {"custom":…, "renameArgs":…, "ai":…},取不到的是 None。
 
@@ -111,11 +135,9 @@ def read_titles(path: Path) -> dict:
 
     custom = args = ai = None
     try:
-        for line in io.open(path, encoding="utf-8", errors="replace"):
-            if "title" not in line and "/rename" not in line:
-                continue
+        for raw_line in _title_lines(path):
             try:
-                obj = json.loads(line)
+                obj = json.loads(raw_line.decode("utf-8", "replace"))
             except ValueError:
                 continue
             t = obj.get("type")
