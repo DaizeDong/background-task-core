@@ -1,5 +1,5 @@
 ﻿# One resolver adapter shared by task, backup and agent entrypoints.
-# The T18 resolver verifies installed receipts; this helper never parses pointers.
+# The installed launcher resolves its receipt; this helper never parses pointers.
 $script:BackgroundTaskCoreRuntimeNames = @('Python','ArtifactResolver','InstalledRoot','RuntimeConfig','PrivateRoot','StateRoot','VaultRoot')
 $script:BackgroundTaskCoreRuntimeVariables = @('BACKGROUND_TASK_CORE_PYTHON','BACKGROUND_TASK_CORE_ARTIFACT_RESOLVER','BACKGROUND_TASK_CORE_INSTALLED_ROOT',
     'BACKGROUND_TASK_CORE_RUNTIME_CONFIG','BACKGROUND_TASK_CORE_PRIVATE_ROOT','BACKGROUND_TASK_CORE_STATE_ROOT','BACKGROUND_TASK_CORE_VAULT_ROOT')
@@ -217,9 +217,11 @@ function Resolve-BackgroundTaskCoreArtifacts {
     foreach ($file in @($Python, $ArtifactResolver)) {
         if (-not (Test-Path -LiteralPath $file -PathType Leaf)) { throw 'Reviewed artifact binding file missing' }
     }
-    $raw = & $Python -I -B $ArtifactResolver --resolve --root $InstalledRoot
+    $launcher = Join-Path $InstalledRoot 'launch.py'
+    $raw = & $Python -I -B $launcher resolve
     if ($LASTEXITCODE -ne 0) { throw 'Installed artifacts could not be resolved' }
     $resolved = ($raw -join "`n") | ConvertFrom-Json
+    $resolved.generation = $resolved.stage
     if (-not $resolved.python -or -not [IO.Path]::IsPathRooted($resolved.python) -or
         -not (Test-Path -LiteralPath $resolved.python -PathType Leaf) -or
         -not $resolved.packages -or -not $resolved.entrypoints) {
