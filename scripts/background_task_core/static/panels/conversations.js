@@ -112,7 +112,8 @@ function cvReopenMenu(){
 }
 function cvPage(g){
   const id=cvKey(g), state=CV_PAGES.get(id), more=g.hasMore;
-  return `<div class="cv-page"><span${state?.error?' class="bad" role="alert"':''}>${state?.error?esc(state.error):`已加载 ${g.shown.length} / ${g.count} 个会话`}</span>
+  const complete=!more && !state?.busy && !state?.error && g.shown.length===g.count;
+  return `<div class="cv-page"><span${state?.error?' class="bad" role="alert"':''}>${state?.error?esc(state.error):complete?`${g.count} 个会话`:`已加载 ${g.shown.length} / ${g.count} 个会话`}</span>
     ${more?`<button data-cvmore="${esc(id)}"${state?.busy?' disabled':''}>${state?.busy?'加载中…':state?.error?'重试加载':'加载更多'}</button>`:''}</div>`;
 }
 function cvGroupElement(id){

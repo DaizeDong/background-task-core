@@ -3,6 +3,7 @@
   /* 字号档位只在 styles.css 定义一份;这里以前另有一份,两份互相覆盖。 */
   --tblr-sidebar-width:11rem;
   --space-1:4px;--space-2:8px;--space-3:12px;--space-4:16px;
+  --workspace-gutter:clamp(12px,1vw,24px);
   --control-height:32px;--section-gap:10px;--section-inset:12px;--card-radius:8px;
 }
 body{font-size:var(--fs-body);line-height:1.5}
@@ -22,12 +23,12 @@ body{font-size:var(--fs-body);line-height:1.5}
 #side :focus-visible{outline-color:var(--nav-accent)}
 #side .nav-link-title{white-space:nowrap}
 #side:not(.navbar-folded) .nav-link .nav-badge{position:static;margin-left:auto;flex:none}
-#bar{white-space:normal;overflow:visible;padding:0 14px;min-height:48px}
+#bar{white-space:normal;overflow:visible;padding:0 var(--workspace-gutter);min-height:48px}
 #bar .container-fluid{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;min-width:0}
 .view-heading{min-width:0}.view-heading h1{font-size:var(--fs-title);line-height:1.3;margin:0;font-weight:600;white-space:nowrap}
 .page-actions,.review-actions,.card-actions{display:flex;align-items:center;gap:var(--space-2);flex-wrap:wrap}
 .card-actions{margin-left:auto;min-width:0}
-#view{width:100%;max-width:none;margin:0;padding:0 clamp(12px,1vw,24px) 20px;min-width:0;container:workspace / inline-size}
+#view{width:100%;max-width:none;margin:0;padding:0 var(--workspace-gutter) 20px;min-width:0;container:workspace / inline-size}
 .page-body{margin-top:0;min-width:0}
 .page-wrapper{min-width:0}
 .card{border-radius:var(--card-radius);box-shadow:none;margin-bottom:var(--section-gap);min-width:0}
@@ -179,10 +180,10 @@ table.g th.num{text-align:right}
   #bar .page-tools button:focus-visible{outline-color:var(--nav-accent)}
   #side .mt-auto{display:none}.navbar-vertical.navbar-expand-sm~.page-wrapper{margin-left:0}
   #side .navbar-collapse{display:block}#side.navbar-folded .navbar-nav{display:flex}#side.navbar-folded .nav-link-title{display:block}
-  #bar{padding:0 10px 6px;position:static}#bar .container-fluid{flex-wrap:wrap}.view-heading h1{font-size:var(--fs-title)}
-  .page-actions{width:100%}#page-refresh-state{order:1;width:100%}#page-refresh-state:empty{display:none}
-  :root{--section-inset:10px}
-  #view{padding:0 10px 16px}.page-body{margin-top:0}
+  #bar{position:static}#bar .container-fluid{flex-wrap:wrap;gap:var(--space-2)}.view-heading h1{font-size:var(--fs-title)}
+  .page-actions{width:auto;margin-left:auto}#page-refresh-state:empty{display:none}
+  :root{--section-inset:10px;--workspace-gutter:10px}
+  #view{padding-bottom:16px}.page-body{margin-top:0}
   #todo .review-row{grid-template-columns:66px minmax(0,1fr);padding:8px 10px;gap:6px 8px}.review-actions{grid-column:2;justify-content:flex-start}
   #overview-pipelines{grid-template-columns:1fr}#overview-pipelines>button+button{border-left:0;border-top:1px solid var(--line2)}
   .catalog-tools input{min-width:160px}.catalog-tools select{max-width:100%}.lc-list{grid-template-columns:1fr}

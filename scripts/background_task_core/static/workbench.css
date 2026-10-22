@@ -7,6 +7,7 @@
   white-space:nowrap;border-bottom:2px solid transparent;font-size:var(--fs-lead);font-weight:500}
 #view-tabs a:hover{color:var(--ink);background:var(--cur)}
 #view-tabs a[aria-current]{color:var(--cyan);border-color:var(--cyan);font-weight:600}
+#view-tabs .nav-badge{min-width:3ch;text-align:center;font-variant-numeric:tabular-nums}
 #view-tabs a:focus-visible{outline:2px solid var(--cyan);outline-offset:-2px}
 /* 「← 返回 来源」只在下钻来的屏上出现,贴在标签栏右端,是一枚芯片而不是又一个标签。 */
 #view-tabs a.view-origin{margin:0 0 4px auto;min-height:30px;padding:4px 10px;border:1px solid var(--line);border-radius:4px;
@@ -280,7 +281,7 @@ dialog#work-detail{width:min(760px,calc(100vw - 32px))}#work-detail h3{font-size
 .page-menu [data-theme-choice][aria-pressed="true"]{color:var(--cyan);font-weight:600}
 .page-menu [data-theme-choice][aria-pressed="true"]::after{content:"✓";margin-left:auto}
 @media(max-width:767px){
-  /* 窄屏时刷新和「⋯」挪进最上面的品牌行,顶栏少一整行;只读标识和刷新时间留在标题下面。 */
+  /* Keep refresh controls in the brand row and status beside the page tabs. */
   .page{position:relative}
   .page-tools{position:absolute;top:4px;right:10px;z-index:31}
   #side .navbar-brand{padding-right:96px}
@@ -293,8 +294,9 @@ dialog#work-detail{width:min(760px,calc(100vw - 32px))}#work-detail h3{font-size
   #side .navbar-nav::-webkit-scrollbar{display:none}
   #side .nav-link{padding:8px 3px;gap:2px}
   #side .nav-link .nav-badge{min-width:16px;padding:0 2px}
-  #view-tabs{flex-basis:100%}
-  #view-tabs a{padding-inline:8px;min-height:40px}
+  #view-tabs{flex:1 1 0;flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none}
+  #view-tabs::-webkit-scrollbar{display:none}
+  #view-tabs a{flex:none;padding-inline:8px;min-height:40px}
 }
 
 /* Source excerpts are shown only on request inside the work detail dialog. */

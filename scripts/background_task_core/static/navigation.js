@@ -145,6 +145,16 @@ function returnToOrigin(){
   return true;
 }
 
+function revealCurrentNavigation(){
+  for(const selector of ['#side .navbar-nav','#view-tabs']){
+    const strip=document.querySelector(selector), current=strip?.querySelector('[aria-current="page"]');
+    if(!current || strip.scrollWidth<=strip.clientWidth) continue;
+    const bounds=strip.getBoundingClientRect(), item=current.getBoundingClientRect();
+    if(item.left<bounds.left) strip.scrollLeft+=item.left-bounds.left;
+    else if(item.right>bounds.right) strip.scrollLeft+=item.right-bounds.right;
+  }
+}
+
 function showView(key,push,options){
   // 会话屏有一级下钻:#convos/<会话 id>[/<子代理 id>][/leaf=<uuid>],由可选面板 convchain 接。
   // 仓库屏带选中的仓:#repos/<仓名>,由 repositories.js 的 repoRoute 接,浏览器后退就回到上一个选中的仓。
@@ -183,6 +193,7 @@ function showView(key,push,options){
   // Tabs already name the current page; retain its heading for assistive navigation.
   $('view-title').textContent=definition.views[key];
   $('view-title').parentElement.classList.toggle('visually-hidden',tabs.length>1);
+  revealCurrentNavigation();
   document.title=definition.views[key]+' · Background Task Core';
   if(PAGE_INITIAL_READS.has(key) && (key==='overview' || key==='work')) renderWorkPlatform();
   if(key==='tasks') renderTaskCharts();

@@ -32,7 +32,7 @@
 #resources #mt-skills .skill-row .n{grid-column:1;white-space:normal;overflow-wrap:anywhere}
 #resources #mt-skills .skill-row .mt-acts{grid-column:-2;justify-self:end}
 #resources #mt-skills .skill-row .ub,#resources #mt-skills .skill-row .c{display:none}
-#resources #mt-skills:has(.skill-budget[open]) .skill-row{grid-template-columns:minmax(0,1fr) 64px auto auto}
+#resources #mt-skills:has(.skill-budget[open]) .skill-row{grid-template-columns:minmax(0,1fr) 64px 96px auto}
 #resources #mt-skills:has(.skill-budget[open]) .skill-row .ub{display:block;grid-column:2}
 #resources #mt-skills:has(.skill-budget[open]) .skill-row .c{display:block;grid-column:3;color:var(--dim);text-align:right;white-space:nowrap}
 #resources .lk-tag{display:inline-flex;vertical-align:middle;margin-left:4px;color:var(--cyan)}

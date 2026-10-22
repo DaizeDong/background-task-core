@@ -29,7 +29,9 @@
 .task-op-label,.task-menu .menu-item>span{white-space:nowrap}
 
 /* 任务开关和同步与备份的一行:状态列放得下「失败 · 退出码 1」,操作列放得下运行、停用、⋯ 和详情,不再折成两行。 */
+#automations .automation-row{padding-top:var(--space-2);padding-bottom:var(--space-2)}
 @media(min-width:1101px){
+  #automations .automation-row{align-items:start}
   #automations .automation-row,#automations .automation-list-heading,#pipelines .automation-row{grid-template-columns:minmax(0,1fr) minmax(150px,220px) 150px 260px}
 }
 

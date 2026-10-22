@@ -86,6 +86,9 @@
 技能和插件分别读取 `/api/skills`、`/api/plugins`,先完成的先显示;组件目录由 `loadComponents` 独立读取。修改资源后两路都要刷新。
 来源明确回 `available:false, unchecked:true` 时表示未配置;读取失败仍是失败,不能仅凭 `available:false` 把它算成未检查。
 
+顶栏和内容共用 `--workspace-gutter`。窄屏标签保持单行横向滚动,刷新状态留在旁边;切页时只调整导航条的横向位置,不要用会连带移动整页的 `scrollIntoView()`。
+工作台的日期对齐按列表容器宽度决定,不能按整扇窗口判断:两列并排时,每张列表的可用宽度只有一半。
+
 ### 量 computed style,不要靠看
 
 一次真实事故:明细表每行从 20px 变成 184px、整张表 9300px 高,
