@@ -25,7 +25,7 @@ Public, so it holds no machine value: paths go through `${SKILL_ROOT}`, `${COMPA
 | `tasks[].power` | no | `disallow_start_on_batteries`, `stop_on_batteries`, `wake_to_run`; each defaults to `false`. |
 | `tasks[].timeout_seconds` | yes | Scheduler execution limit; `0` for none. |
 | `tasks[].concurrency` | no | `IgnoreNew` (default), `Parallel`, `Queue` or `StopExisting`. |
-| `tasks[].backup` | no | Default `true`: the task's XML is exported by the nightly backup. |
+| `tasks[].backup` | no | Default `true`: the task is in the `TaskNames` projection, so this repository's `BackgroundTaskCoreXmlExport` task (`windows/export-task-xml.ps1`) exports its XML to the companion's `data/task-exports` daily. |
 | `tasks[].checks` | no | `[{"id", "required", "health": {...}}]`. `health` is the task-health row (`label`, `max_age_hours`, `artifact`, `ok_exit_codes`, ...); `${...}` in it becomes a `~/` path. |
 
 Synthetic example:

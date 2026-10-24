@@ -65,6 +65,31 @@
           }
         }
       ]
+    },
+    {
+      "id": "background-task-core/exporttaskxml",
+      "name": "BackgroundTaskCoreXmlExport",
+      "purpose": "Daily reference export of the Scheduler XML of every task in the authority's TaskNames projection into the companion's data/task-exports.",
+      "enabled": true,
+      "trigger": {"type": "daily", "at": "21:45"},
+      "argv": [
+        "%SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+        "-NoProfile", "-WindowStyle", "Hidden", "-ExecutionPolicy", "Bypass",
+        "-File", "${SKILL_ROOT}/windows/export-task-xml.ps1", "-Companion", "${COMPANION_ROOT}"
+      ],
+      "timeout_seconds": 600,
+      "checks": [
+        {
+          "id": "task-exports",
+          "required": true,
+          "health": {
+            "label": "task XML export (daily 21:45)",
+            "max_age_hours": 26,
+            "artifact": "${COMPANION_ROOT}/data/task-exports",
+            "artifact_max_age_hours": 26
+          }
+        }
+      ]
     }
   ]
 }
