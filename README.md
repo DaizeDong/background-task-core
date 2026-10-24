@@ -88,7 +88,7 @@ This repository's own two tasks are declared in [automation/tasks.json](automati
 
 ## Tasks that ship with a skill
 
-A skill declares its scheduled tasks in `automation/tasks.json` (public, variables only) and keeps machine choices in its private companion's `automation/tasks.local.json`. `install-skill` turns both into authority declarations and creates, updates or retires exactly that skill's tasks; re-running it changes nothing. Contract and example: [docs/skill-tasks.md](docs/skill-tasks.md).
+A skill declares its scheduled tasks in `automation/tasks.json` (public, variables only) and keeps machine choices in its private companion's `automation/tasks.local.json`. `install-skill` turns both into authority declarations and creates, updates or retires exactly that skill's tasks; re-running it changes nothing. Contract and example: [docs/skill-tasks.md](docs/skill-tasks.md); procedure and the Task Scheduler settings catalog: [docs/task-creation.md](docs/task-creation.md).
 
 ## Configuration
 

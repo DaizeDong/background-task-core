@@ -1,21 +1,17 @@
 ﻿<#
   task-registry-check.ps1 - 计划任务创建规范的执行机制
 
-  规范全文在机主私有配置仓的 docs/TASK_CREATION_SPEC.md。
-  这个脚本是它的机械化形式。没有它,那份规范只是散文。
+  规范全文在本仓 docs/task-creation.md。
 
   断言三条(第四条"开关漂移"尚未实现,理由见文件末尾,不要假装它在):
     A1 三处登记齐全 -- 每个活跃的自装任务同时出现在活体任务表、备份 allow-list(登记权威生成的
        TaskNames.ps1 投影)、健康监控清单里。两份清单的位置都从私有 launcher binding 读。
        声明过的例外(task-health.json 里带 watched_elsewhere 的条目)算通过,名字碰巧没被正则
        匹配上的沉默不算。
-    A2 声明的产物不是日志 -- artifact 路径不得以 .log 结尾。理由是不变量 I2:
-       market-intel-refresh.log 在崩溃路径上照写,于是 RefreshMarketIntel 连续失败而监控一路判绿。
-       成果是产物,日志是记录。
+    A2 声明的产物不是日志 -- .log 型 artifact 必须声明语义(只在成功路径写,或不能证明成功)。
     A3 并发闸自测通过 -- 含负对照。task-gate.ps1 -SelfTest 的退出码即失败项数。
 
-  本脚本自己受不变量 I3 约束: 枚举到 0 个任务时必须报失败,不能报通过。
-  "clean" 和 "根本没检查" 必须是两个不同的输出。
+  枚举到 0 个任务时报失败,不报通过。
 
   退出码: 0 = 全部通过 ; 1 = 有违规(逐条打印) ; 2 = 检查器自身无法工作(枚举失败等)
 #>
