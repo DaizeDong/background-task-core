@@ -17,31 +17,10 @@
   evaluator owns exit-code normalization, freshness, workload evidence and coverage.
   Per-task log lines retain the legacy history shape and include backend verdicts.
 
-  FLEET DOC DEBT IS REPORTED HERE, AND IT IS NOT A TASK FAILURE. Until 2026-07-31 a RED fleet
-  verdict made sync-config-to-backup.ps1 exit 1, which made SyncClaudeConfig's LastTaskResult 1,
-  which made this monitor print "SyncClaudeConfig: FAILED 0x1 (config backup Layer 1)". The backup
-  had succeeded; a SKILL.md was too long. Two signals with completely different urgency shared one
-  wire, and the loud one was borrowed by the quiet one, which is how the one alarm that must never
-  be ignored gets trained into background noise.
-  The backup's exit code now means only "did the backup work". The fleet verdict is read HERE,
-  directly from fleet_check.py's own status artifact, and reported as its own block: separate list,
-  separate heading, wording that never says FAILED, and printed even when every task is healthy so
-  it cannot be lost. Staleness of that artifact is itself reported, because a verdict nobody
-  produced is not a green one.
-
-  SILENCE IS NEVER A RESULT (2026-07-31). Three separate ways this script reported success by
-  saying nothing, all now closed, all of them the same mistake in different clothes:
-    a GREEN fleet rendered as zero lines and no fleet section, so healthy, crashed and broken all
-      looked alike. Green is now stated, with its timestamp and its coverage.
-    the fleet artifact was read against a 30 hour rolling window with no run-start test, so a ten
-      hour old GREEN passed at 23:00 with the 22:00 producer having produced nothing. Freshness is
-      now measured against the producer task's actual last run.
-    the daily-digest marker was written before the relay result was looked at, so one failed push
-      suppressed every retry for the rest of the calendar day and the log said "relayed". The
-      marker is now a receipt for a confirmed delivery and nothing else.
-  The rule these share: an operator can only audit something that is written down. Any state worth
-  reporting has to produce a line, including the good one, so that missing output means the
-  reporter is broken instead of meaning everything is fine.
+  FLEET DOC DEBT IS REPORTED HERE, AND IT IS NOT A TASK FAILURE. The verdict comes from
+  fleet_check.py's status artifact through skill-smith's scripts/fleet-verdict.ps1 and is printed as
+  its own block, even when every task is healthy, with its freshness measured against the producer
+  task's last run. The digest marker is written only after a confirmed delivery.
 #>
 param(
   [string]$Python  = (Join-Path $env:ProgramData 'miniconda3\python.exe'),
@@ -50,20 +29,13 @@ param(
   # BACKGROUND_TASK_CORE_REMINDER_CLI, and the directory of its BACKGROUND_TASK_CORE_HISTORY log.
   [string]$SrDir   = "",
   [string]$LogDir  = "",
-  # fleet-verdict.ps1 is shared with the owner's nightly config backup, so it stays with that
-  # backup's scripts under CLAUDE_CONFIG_DIR rather than in this repository.
-  [string]$FleetVerdictLib = $(if ($env:CLAUDE_CONFIG_DIR) { Join-Path $env:CLAUDE_CONFIG_DIR 'scripts\lib\fleet-verdict.ps1' } else { '' }),
-  # fleet_check.py's own default location. It used to be redirected into the monitor's log directory, which
-  # produced a second same-named artifact that any hand run of the tool left behind; see
-  # $script:FleetStatusDefault in lib/fleet-verdict.ps1. Empty means "use the shared default",
-  # which keeps the one canonical path defined in exactly one place.
+  # skill-smith's scripts/fleet-verdict.ps1. Empty means skill-smith\scripts\fleet-verdict.ps1 under
+  # the launcher binding's BACKGROUND_TASK_CORE_SKILLS directory.
+  [string]$FleetVerdictLib = "",
+  # Empty means the path fleet_check.py itself reports.
   [string]$FleetStatus = "",
   [double]$FleetMaxAgeHours = 30,
-  # WHICH RUN the fleet verdict is supposed to describe. The fleet check is skill-smith's own
-  # SkillSmithFleetCheck task (declared in that skill's automation/tasks.json), so the honest
-  # freshness question is "does the artifact cover the last time THAT task ran", not "is the
-  # artifact younger than a rolling window". See the fleet block below for the ten-hour-old-GREEN
-  # hole this closes.
+  # The verdict must cover the last run of skill-smith's SkillSmithFleetCheck task.
   [string]$FleetProducerTask = "SkillSmithFleetCheck",
   # Used only if the producer task cannot be interrogated (not registered, never run, scheduler
   # unavailable). Local time of day, matching the producer task's trigger.
@@ -105,13 +77,6 @@ if ($CollectionOnly) {
   exit 2
 }
 
-# Shared definition of the fleet verdict and of what a backup failure is. See its header for the
-# SyncClaudeConfig 0x1 incident that forced the two apart.
-if (-not $FleetVerdictLib -or -not (Test-Path -LiteralPath $FleetVerdictLib -PathType Leaf)) {
-  throw 'fleet-verdict.ps1 not found; set CLAUDE_CONFIG_DIR or pass -FleetVerdictLib'
-}
-. $FleetVerdictLib
-
 # UTF-8 native-command I/O (CRITICAL for the Chinese infra push). PS 5.1 in a detached scheduled-task
 # session defaults [Console]::OutputEncoding to the system codepage (GBK/936) and decodes a child
 # process's UTF-8 stdout as GBK, so '... | Out-String' turned llmcall's Chinese tidy into mojibake
@@ -125,8 +90,12 @@ try {
   $env:PYTHONIOENCODING = 'utf-8'
 } catch { }
 
-if (-not $SrDir -or -not $LogDir) {
+if (-not $SrDir -or -not $LogDir -or -not $FleetVerdictLib) {
   $launcherEnvironment = (Read-BackgroundTaskCoreLauncherBinding -BindingFile $LauncherBindingFile).Environment
+  if (-not $FleetVerdictLib) {
+    if (-not $launcherEnvironment['BACKGROUND_TASK_CORE_SKILLS']) { throw 'Launcher binding names no BACKGROUND_TASK_CORE_SKILLS; pass -FleetVerdictLib' }
+    $FleetVerdictLib = Join-Path $launcherEnvironment['BACKGROUND_TASK_CORE_SKILLS'] 'skill-smith\scripts\fleet-verdict.ps1'
+  }
   if (-not $SrDir) {
     if (-not $launcherEnvironment['BACKGROUND_TASK_CORE_REMINDER_CLI']) { throw 'Launcher binding names no BACKGROUND_TASK_CORE_REMINDER_CLI; pass -SrDir' }
     $SrDir = Split-Path -Parent $launcherEnvironment['BACKGROUND_TASK_CORE_REMINDER_CLI']
@@ -136,6 +105,8 @@ if (-not $SrDir -or -not $LogDir) {
     $LogDir = Split-Path -Parent $launcherEnvironment['BACKGROUND_TASK_CORE_HISTORY']
   }
 }
+if (-not (Test-Path -LiteralPath $FleetVerdictLib -PathType Leaf)) { throw "fleet-verdict.ps1 not found at $FleetVerdictLib" }
+. $FleetVerdictLib
 $reminder = Join-Path $SrDir "reminder.py"
 $relay    = Join-Path $SrDir "relay.py"
 if (-not (Test-Path $LogDir)) { New-Item -ItemType Directory -Path $LogDir -Force | Out-Null }
@@ -237,27 +208,9 @@ try {
 # ---- fleet doc debt: a SEPARATE signal, read from its own artifact, never a task result ----------
 # This block deliberately does not touch $unhealthy. A task in $unhealthy means a scheduled job on
 # this machine is failing or has gone silent, which is an operational emergency. Fleet doc debt is a
-# chore. Merging them is the exact defect this section exists to undo, and the merge is easy to make
-# by accident, so the two lists stay physically separate all the way to the push.
-#
-# TWO THINGS THIS BLOCK USED TO GET WRONG, BOTH FIXED 2026-07-31, BOTH OF THE HOUSE STYLE (the
-# output looked entirely normal while being untrue):
-#
-#   1. A ROLLING AGE WINDOW CANNOT ASK WHETHER THE RUN HAPPENED. This read the artifact with
-#      MaxAgeHours 30 and deliberately passed no run-start test, on the reasoning that the monitor
-#      did not run the check so it had no run to measure against. That reasoning is wrong: it did
-#      not run the check, but it knows exactly which run was SUPPOSED to produce it, because that
-#      run is a scheduled task on this machine with a LastRunTime. Measured consequence: at 23:00,
-#      with the 22:00 nightly having produced nothing at all, a ten hour old GREEN was reported as
-#      a current GREEN. Thirty hours of slack is a whole missed night. The monitor now demands the
-#      artifact cover the producer's last run, and a stale one renders as UNKNOWN rather than as
-#      its last known verdict.
-#
-#   2. GREEN SAID NOTHING. Format-FleetVerdictBlock returned zero lines for a fresh GREEN unless a
-#      caller opted in, and this caller did not, so a healthy fleet produced no fleet section and
-#      was indistinguishable from a reader that had crashed. Green is now rendered by default and
-#      the -OmitWhenGreen opt-out is deliberately not used here.
-#
+# chore, so the two lists stay separate all the way to the push. The artifact must cover the
+# producer task's last run, and GREEN is printed too (no -OmitWhenGreen), so a missing block means
+# the reader did not run.
 $fleetLines = @()
 try {
   $fsPath = if ($FleetStatus) { $FleetStatus } else { Resolve-FleetStatusPath }
@@ -527,19 +480,9 @@ if ($unhealthy.Count -gt 0 -or $fleetLines.Count -gt 0 -or $registryLines.Count 
     $r = PyCall @($relay, "send", "--stream", $stream, "--text-b64", $b64)
     $relayRc = $script:PyExit
 
-    # THE MARKER IS A RECEIPT, NOT AN INTENTION. Until 2026-07-31 these three lines ran in the
-    # order: send, write the marker unconditionally, log "relayed daily digest". The send's result
-    # was never looked at. So a webhook outage produced a log line claiming delivery and a marker
-    # claiming today was already handled, and because the marker gates one push per calendar day,
-    # every remaining hourly run that day suppressed itself as a duplicate of a push that never
-    # happened. Net effect of a transient network failure at the wrong minute: the operator gets
-    # nothing for 24 hours and the log says they were told. That is the worst shape a monitoring
-    # bug can take, because the silence it produces is the same silence that means all is well.
-    #
-    # Now: the marker is written ONLY on a confirmed 0 from relay.py, so a failure leaves the day
-    # unmarked and the next hourly run retries. And a failure is not merely "not recorded as
-    # success", it is recorded AS A FAILURE in three durable places that do not share a transport
-    # with the thing that just failed:
+    # THE MARKER IS A RECEIPT, NOT AN INTENTION: it is written only on a confirmed 0 from relay.py,
+    # so a failure leaves the day unmarked and the next hourly run retries. A failure is recorded in
+    # three places that do not share a transport with the thing that just failed:
     #   1. this log, in words that are greppable and do not say "relayed";
     #   2. a file under logs\undelivered\ holding the exact body that did not go out, so nothing
     #      the digest was trying to say is lost even if every retry also fails;
@@ -571,11 +514,8 @@ if ($unhealthy.Count -gt 0 -or $fleetLines.Count -gt 0 -or $registryLines.Count 
     }
   }
 } else {
-  # Now effectively unreachable: the fleet block always produces lines (green included), so the
-  # push condition is always satisfied and the daily digest goes out every day whether the news is
-  # good or bad. That is the point. Reaching here means the fleet renderer returned nothing, which
-  # is itself the defect this file spent 2026-07-31 removing, so it is logged as a defect and not
-  # as an all-clear.
+  # Effectively unreachable: the fleet block always produces lines (green included), so reaching
+  # here means the renderer returned nothing, which is logged as a defect and not as an all-clear.
   Log "BUG: nothing to push. unhealthy=0 AND the fleet block rendered 0 lines; the fleet renderer is supposed to speak on green. Treat this as the reporting chain being broken, not as a healthy night."
 }
 
