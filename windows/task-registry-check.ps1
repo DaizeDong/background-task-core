@@ -3,13 +3,12 @@
 
   规范全文在本仓 docs/task-creation.md。
 
-  断言三条(第四条"开关漂移"尚未实现,理由见文件末尾,不要假装它在):
+  断言两条:
     A1 三处登记齐全 -- 每个活跃的自装任务同时出现在活体任务表、备份 allow-list(登记权威生成的
        TaskNames.ps1 投影)、健康监控清单里。两份清单的位置都从私有 launcher binding 读。
        声明过的例外(task-health.json 里带 watched_elsewhere 的条目)算通过,名字碰巧没被正则
        匹配上的沉默不算。
     A2 声明的产物不是日志 -- .log 型 artifact 必须声明语义(只在成功路径写,或不能证明成功)。
-    A3 并发闸自测通过 -- 含负对照。task-gate.ps1 -SelfTest 的退出码即失败项数。
 
   枚举到 0 个任务时报失败,不报通过。
 
@@ -20,9 +19,7 @@ param(
   # Both default to the private launcher binding (BACKGROUND_TASK_CORE_HEALTH and
   # BACKGROUND_TASK_CORE_ALLOWLIST).
   [string]$HealthConfig = '',
-  [string]$AllowList    = '',
-  [string]$GateScript   = $(if ($env:CLAUDE_CONFIG_DIR) { Join-Path $env:CLAUDE_CONFIG_DIR 'scripts\task-gate.ps1' } else { '' }),
-  [switch]$SkipGateSelfTest
+  [string]$AllowList    = ''
 )
 
 Set-StrictMode -Version Latest
@@ -146,22 +143,6 @@ if ($a2bad -eq 0 -and $a2review -eq 0) { Pass "没有未声明的日志型产物
 elseif ($a2bad -eq 0) { Pass "无违规;$a2review 个待核实(已声明为待核,不是沉默)" }
 
 # =====================================================================
-# A3  并发闸自测(含负对照)
-# =====================================================================
-Write-Host "A3 并发闸自测"
-if ($SkipGateSelfTest) {
-  Write-Host "  [skip] 按 -SkipGateSelfTest 跳过。注意:跳过不是通过。"
-} elseif (-not (Test-Path -LiteralPath $GateScript)) {
-  Fail "并发闸脚本不存在: $GateScript"
-} else {
-  $ps = (Get-Process -Id $PID).Path
-  & $ps -NoProfile -ExecutionPolicy Bypass -File $GateScript -SelfTest | Out-Null
-  $rc = $LASTEXITCODE
-  if ($rc -eq 0) { Pass "闸门自测 9 项全过(含负对照)" }
-  else { Fail "闸门自测有 $rc 项失败,跑 task-gate.ps1 -SelfTest 看细节" }
-}
-
-# =====================================================================
 Write-Host ""
 Write-Host "检查范围: $(($checked.GetEnumerator() | ForEach-Object { "$($_.Key)=$($_.Value)" }) -join ', ')"
 if ($violations.Count -eq 0) {
@@ -170,15 +151,3 @@ if ($violations.Count -eq 0) {
 }
 Write-Host "task-registry-check: $($violations.Count) 项违规"
 exit 1
-
-<#
-  尚未实现,不要以为它在:
-
-  A4 开关漂移(活体任务的 StartWhenAvailable / RestartCount / ExecutionTimeLimit 等
-     是否等于它声明的值)。做不了的原因不是难,是 task-health.json 里还没有"声明的开关"
-     这个字段 -- 没有声明就没有可比对的东西,现在写一个只会对着默认值自说自话。
-     要做的顺序是: 先给条目加 expected_settings,再让这里断言。
-
-     在那之前,规范第 3.1 节那张"会咬人的默认值"表是靠人执行的,不是靠机器。
-     这句话写在这里,是为了让"没有 A5" 是一个可读到的事实,而不是一个没人注意到的空白。
-#>

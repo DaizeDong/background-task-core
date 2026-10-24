@@ -277,22 +277,10 @@ try {
   Log "console ingest FAILED: $($_.Exception.Message)"
 }
 
-# ---- TASK REGISTRY CONFORMANCE (2026-09-01) --------------------------------
-# Runs task-registry-check.ps1, which asserts the task-creation spec:
-#   A1 every live self-installed task appears in all three registries (live scheduler,
-#      backup allow-list, this watch list). A task missing from the allow-list is lost
-#      silently on a machine rebuild; one missing from here dies with nobody noticing.
-#   A2 a .log declared as artifact must carry an explicit declaration, because a log that
-#      is also written on crash paths turns this monitor's "OK by artifact" branch into a
-#      permanent green light. RefreshMarketIntel is the measured case.
-#   A3 launchers are not UTF-8 BOM (wscript needs UTF-16LE or ASCII).
-#   A4 the concurrency gate's self-test passes, negative control included.
-#
-# SEPARATE BLOCK ON PURPOSE, not folded into $unhealthy. "This task is broken" and "this
-# task was never registered anywhere" have different urgencies, and this file already
-# carries the lesson of what happens when two signals share one wire: the loud one gets
-# borrowed by the quiet one until the alarm that must never be ignored becomes background.
-# Same reason the fleet-doc-debt verdict got its own heading above.
+# ---- TASK REGISTRY CONFORMANCE --------------------------------------------
+# Runs task-registry-check.ps1 (every live task is in the allow-list and this watch list;
+# a .log artifact carries a declaration). Kept apart from $unhealthy: "this task is broken"
+# and "this task was never registered" have different urgencies.
 $registryLines = @()
 try {
   $rcheck = Join-Path $PSScriptRoot "task-registry-check.ps1"

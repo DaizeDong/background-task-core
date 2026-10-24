@@ -111,17 +111,3 @@ XML. Every trigger has its own `ExecutionTimeLimit`, separate from the task's. A
 `RunLevel`: `Limited` (default) or `Highest`. `LogonType`: `None`, `Password`, `S4U`, `Interactive`,
 `Group`, `ServiceAccount`, `InteractiveOrPassword`. Tasks on one machine do not share one SID and
 integrity level; a lock shared across an elevated and a normal task has to allow for that.
-
-## Concurrency between tasks
-
-Heavy tasks that may overlap share a gate of N named `Global\` mutexes used as slots, not a
-`System.Threading.Semaphore` (a hard-killed holder leaks a semaphore slot for good; a killed mutex
-holder hands ownership to the next waiter as abandoned). Contract:
-
-1. Normalize the name's case and reject any name without the `Global\` prefix: a different case or
-   a `Local\` name silently creates a separate object, which looks like no gate at all.
-2. Never wait without a bound, and keep the bound below the task's `ExecutionTimeLimit`.
-3. Treat an abandoned mutex as acquired.
-4. Hold the slot for the payload's whole lifetime, not just the launcher's.
-5. The task decides what happens when no slot is free (skip this run or back off); a skip is
-   logged as a skip, never a silent exit 0.
