@@ -13,7 +13,18 @@
         "-NoProfile", "-WindowStyle", "Hidden", "-ExecutionPolicy", "Bypass",
         "-File", "${SKILL_ROOT}/windows/background-task-core.ps1", "-NoBrowser"
       ],
-      "timeout_seconds": 0
+      "timeout_seconds": 0,
+      "checks": [
+        {
+          "id": "start",
+          "required": true,
+          "health": {
+            "label": "console starter (logon)",
+            "max_age_hours": 100000,
+            "artifact_note": "Logon starter with no output file; judged by its Scheduler result only. It starts or reuses the console server and exits."
+          }
+        }
+      ]
     },
     {
       "id": "background-task-core/taskhealthmonitor",
