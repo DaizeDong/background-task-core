@@ -26,6 +26,7 @@ from fleet_guards import filesystem as fs
 from llmcall import process
 
 from . import registry as registration, registry as allowlist, registry as reg, runs as console_store, runs as health, integrations as source_reads, integrations as work_actions, integrations as work_status, runs as component_status
+from . import machine_role
 from .registry import ContractError, plan as compile_plan
 from .runs import powershell, norm_rc
 from .scheduler import task_name, observation, validate_value
@@ -99,6 +100,8 @@ def error_result(exc, *, name='', verb=''):
     result = {'schemaVersion': 1, 'ok': False, 'name': name, 'verb': verb,
             'message': code.replace('_', ' '), 'error': {'code': code, 'field': field},
             'before': None, 'after': None, 'payload_success': None}
+    if code == 'secondary_machine':
+        result['message'] = machine_role.MESSAGE
     shortfalls = {
         'reviewed_rebinding_required': 'Review each task ID with source_revision, target_revision, target_principal, generation, approved=true and a nonempty reason; regenerate the exact restore plan.',
         'legacy_principal_conversion_required': 'Legacy XML principal differs from the reviewed declaration. Review an explicit declaration migration/rebinding before restore; task names cannot establish ownership.',
@@ -138,6 +141,8 @@ class Controller:
 
     def action(self, name, verb, *, reason=''):
         validate(name, verb, reason)
+        if verb in ('enable', 'run') and machine_role.is_secondary():
+            raise ContractError('secondary_machine', 'machine_role')  # tasks run on the primary only
         from llmcall.process import execution_scope
         # Registration also verifies protected before-images, publishes projections,
         # and commits authority. Multiple native round trips can exceed one minute.
@@ -3578,6 +3583,8 @@ def _skill_apply(runtime, task_id, item, reason):
 
 def install_skill(runtime_args, skill_root, *, companion_root=None, policy='keep', dry_run=False):
     """Install, update or retire exactly the tasks one skill's manifest declares."""
+    if machine_role.is_secondary():
+        policy = 'hold'  # the secondary machine keeps every task it installs disabled
     skill_root = Path(skill_root)
     if not skill_root.is_absolute() or not skill_root.is_dir():
         raise ContractError('absolute_path_required', 'skill_root')
