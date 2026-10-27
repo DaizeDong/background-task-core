@@ -2,7 +2,7 @@
   background-task-core.ps1 - 启动本机的任务调度台。
 
   本机的路径(分类配置、健康监控清单、备份 allow-list、历史日志)都不在这里:它们写在
-  BACKGROUND_TASK_CORE_CONFIG 指向的私有伴生仓的 data/launcher-binding.json 里,这个启动器只读那一份。
+  BACKGROUND_TASK_CORE_CONFIG 指向的私有伴生仓的 data/machines/<CLAUDE_MACHINE_ID>/launcher-binding.json 里,这个启动器只读那一份。
 
   服务以已安装的解释器起成隐藏独立进程,不挂在启动它的那个窗口上。之所以特地这样:
   用前台 python 起的话,关掉终端(或会话被清理)服务就没了,而你正开着的页面下一次刷新就报错。

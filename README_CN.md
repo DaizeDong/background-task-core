@@ -71,7 +71,7 @@ python -m background_task_core <权威命令> ...                # plan、regist
 
 ### Windows 入口
 
-`windows/` 放 PowerShell 这一侧。每个脚本都从 `BACKGROUND_TASK_CORE_CONFIG` 指向的私有伴生仓（它的 `data/launcher-binding.json`）取本机的值，这个变量没设就拒绝运行。
+`windows/` 放 PowerShell 这一侧。每个脚本都从 `BACKGROUND_TASK_CORE_CONFIG` 指向的私有伴生仓（它的 `data/machines/<CLAUDE_MACHINE_ID>/launcher-binding.json`，每台机器一份）取本机的值，这个变量或 `CLAUDE_MACHINE_ID` 没设就拒绝运行。
 
 | 脚本 | 做什么 |
 | --- | --- |
@@ -90,7 +90,7 @@ skill 在自己仓里的 `automation/tasks.json` 声明它要的计划任务（�
 
 ## 配置
 
-全部是环境变量，由机主的启动器从私有伴生仓的 `data/launcher-binding.json`（[合成示例](launcher-binding.json.example)）设置。[CONFIG.md](CONFIG.md) 列出每个变量以及不设时的表现。
+全部是环境变量，由机主的启动器从私有伴生仓的 `data/machines/<CLAUDE_MACHINE_ID>/launcher-binding.json`（[合成示例](launcher-binding.json.example)）设置。[CONFIG.md](CONFIG.md) 列出每个变量以及不设时的表现。
 
 ## 只读的声明生成
 

@@ -17,6 +17,7 @@
     "background-task-core/vault/",
     "data/recovery/",
     "launcher-binding.json",
+    "machines/",
     "declarations-*/",
     "user-state/"
   ],

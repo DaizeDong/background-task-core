@@ -33,13 +33,20 @@ function Get-BackgroundTaskCoreStartupMutexName {
     return 'Global\BackgroundTaskCoreStartup_' + ([BitConverter]::ToString($digest).Replace('-', '').ToLowerInvariant())
 }
 
-# The private companion named by BACKGROUND_TASK_CORE_CONFIG holds the launcher binding.
-# An unset variable is a refusal, never a guessed location.
+# The private companion named by BACKGROUND_TASK_CORE_CONFIG holds one launcher binding per machine,
+# data/machines/<CLAUDE_MACHINE_ID>/launcher-binding.json, because every value in it is a path on that machine.
+# The id is read from this process and then from HKCU\Environment, so a process started before it was
+# set still finds it. An unset variable is a refusal, never a guessed location.
 function Get-BackgroundTaskCoreDefaultBindingFile {
     if (-not $env:BACKGROUND_TASK_CORE_CONFIG) {
-        throw 'BACKGROUND_TASK_CORE_CONFIG is not set; it names the private companion that holds data/launcher-binding.json'
+        throw 'BACKGROUND_TASK_CORE_CONFIG is not set; it names the private companion that holds data/machines/<CLAUDE_MACHINE_ID>/launcher-binding.json'
     }
-    return Join-Path $env:BACKGROUND_TASK_CORE_CONFIG 'data\launcher-binding.json'
+    $machine = $env:CLAUDE_MACHINE_ID
+    if (-not $machine) { $machine = [Environment]::GetEnvironmentVariable('CLAUDE_MACHINE_ID', 'User') }
+    if (-not $machine -or -not $machine.Trim()) {
+        throw 'CLAUDE_MACHINE_ID is not set; set it once per machine as a user environment variable (there is no default binding)'
+    }
+    return Join-Path $env:BACKGROUND_TASK_CORE_CONFIG ('data\machines\' + $machine.Trim() + '\launcher-binding.json')
 }
 
 function Read-BackgroundTaskCoreLauncherBinding {
@@ -73,7 +80,7 @@ function Read-BackgroundTaskCoreLauncherBinding {
             if (-not $BindingFile) { $BindingFile = Get-BackgroundTaskCoreDefaultBindingFile }
             Assert-BackgroundTaskCoreAbsolutePath $BindingFile
             if (-not (Test-Path -LiteralPath $BindingFile -PathType Leaf)) {
-                throw 'Launcher binding unavailable; create reviewed launcher-binding.json in the private background-task-core companion data directory, or supply -BindingFile'
+                throw 'Launcher binding unavailable; create reviewed data/machines/<CLAUDE_MACHINE_ID>/launcher-binding.json in the private background-task-core companion, or supply -BindingFile'
             }
             $raw = Get-Content -LiteralPath $BindingFile -Raw -Encoding UTF8
             # Consume whole string tokens so strings containing colons are not mistaken for keys.

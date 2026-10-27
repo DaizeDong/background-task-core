@@ -44,6 +44,19 @@ from . import integrations as source_reads, integrations as work_actions
 from . import lifecycle as task_control, lifecycle as task_delete, lifecycle as task_repair
 from . import runs as console_store, runs as evtlog, runs as freshness, runs as history, runs as timeline
 from .runs import RC_NOT_RUN, RC_RUNNING, declared_ok_codes, ok_codes, norm_rc, run_ps
+from . import machine_role
+
+# POST routes a secondary machine refuses before any handler runs (see _do_POST).
+SECONDARY_REFUSED_POSTS = frozenset((
+    "/api/work/action",
+    "/api/task/delete/plan",
+    "/api/task/delete/apply",
+    "/api/task/repair/preview",
+    "/api/task/repair",
+    "/api/maint/act",
+    "/api/maintenance/plan",
+    "/api/maintenance/delete",
+))
 
 
 HERE = Path(__file__).resolve().parent
@@ -1050,6 +1063,12 @@ class Handler(ComponentRoutes, BaseHTTPRequestHandler):
             self._drain()
             return self._json(403, {'error': '只读预览，无法执行操作'})
         route = self.path.split("?", 1)[0]
+        # Dispatching work, deleting or repairing tasks and maintenance actions act on the shared
+        # world (commits, pushes, agent tickets), so only the primary does them. Convo routes only
+        # touch this machine's transcripts and stay open.
+        if route in SECONDARY_REFUSED_POSTS and self._authed() and machine_role.is_secondary():
+            self._drain()
+            return self._json(403, {'error': machine_role.MESSAGE, 'code': 'secondary_machine'})
         if route in self.component_post_routes:
             return self.component_post(route)
         if self.path.split('?', 1)[0] in ('/api/work/action', '/api/work/stop'):

@@ -4,6 +4,11 @@ All notable changes to this project are documented here (Keep a Changelog style)
 
 ## [Unreleased]
 
+### Two machines
+- The launcher binding is per machine: `data/machines/<CLAUDE_MACHINE_ID>/launcher-binding.json` in the companion. Every Windows entrypoint refuses when `CLAUDE_MACHINE_ID` is unset in both the process and the user environment; there is no shared default.
+- On a secondary machine (`CLAUDE_MACHINE_ROLE=secondary`) the console refuses work dispatch, task delete and repair, and maintenance actions and deletions with 403 `secondary machine: do this on the primary`. Conversation routes stay open. `machine_role.machine_id()` reads the machine id.
+- The calls panel reads every llmcall ledger lane, `runtime/ledger.jsonl.d/*.jsonl`, merged by timestamp, instead of one `runtime/ledger.jsonl`.
+
 ### Windows entrypoints and own tasks live in this repository
 - The console launcher, its shortcut installer, the hourly health monitor, the daily run-log ingest, the task registry check and their shared helpers moved into `windows/`. They read machine values only from the companion named by `BACKGROUND_TASK_CORE_CONFIG` and refuse when it is unset; the registry check reads the backup allow-list from the authority's `TaskNames.ps1` projection.
 - `automation/tasks.json` declares the hourly health task and `RefreshConsoleRunlog`; `install-skill` installs them. The run-log task keeps its ID. The health task's old ID named a private repository, so `TaskHealthMonitor` was retired and the task re-created as `background-task-core/taskhealthmonitor` named `BackgroundTaskCoreHealth` (a retired declaration keeps its Scheduler name), now with a 1800 s limit because the observation pass alone takes about nine minutes. The root `.console.json` that declared the run-log task is deleted.

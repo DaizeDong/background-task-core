@@ -71,11 +71,15 @@ def llm_records():
         if p is None:
             _LEDGER_CACHE.clear()
             return llmstats.read()
-        try:
-            st = os.stat(p)
-            key = (str(p), st.st_size, st.st_mtime_ns)
-        except OSError:
-            key = (str(p), None, None)
+        # One entry per lane file: a new lane or an append to any lane invalidates the cache.
+        key = [str(p)]
+        for f in llmstats.ledger_files():
+            try:
+                st = os.stat(f)
+                key.append((str(f), st.st_size, st.st_mtime_ns))
+            except OSError:
+                key.append((str(f), None, None))
+        key = tuple(key)
         if _LEDGER_CACHE.get("key") == key:
             return _LEDGER_CACHE["recs"], _LEDGER_CACHE["meta"]
         recs, meta = llmstats.read()

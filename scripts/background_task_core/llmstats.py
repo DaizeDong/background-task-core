@@ -39,7 +39,7 @@ import json
 import os
 import re
 import time
-from collections import Counter, deque
+from collections import Counter
 from pathlib import Path
 
 # 读取器给每条记录挂上的派生字段,下划线开头表示「不是账本里的」。
@@ -61,16 +61,14 @@ CHEAP = ("codexg", "codex")
 CALLER_UNKNOWN = "(推断不出)"   # 有 caller 这个键,但值是 null / 空 / 不是字符串
 CALLER_LEGACY = "(早于此字段)"   # 根本没有 caller 这个键(账本里的存量记录)
 
-# 观测链时从账本尾部回看多少行。只保留原始文本,回看时才逐行解析,
-# 所以这一步几乎不花解析成本;取 200 是为了让尾部即使连着几十条坏行也仍能命中。
-OBSERVE_TAIL = 200
-
 # 链路名字的形状闸。小写起头、长度上限 32,和文件名与环境变量的可用字符对齐。
 NAME_RE = re.compile(r"^[a-z][a-z0-9_-]{0,31}$")
 
 # 环境变量名。账本与链配置各有一个显式覆盖,由启动绑定设置。
 ENV_LEDGER = "BACKGROUND_TASK_CORE_LLMCALL_LEDGER"
 ENV_CHAIN_FILE = "BACKGROUND_TASK_CORE_LLMCALL_CHAIN"
+# llmcall 的账本按机器分道:`runtime/ledger.jsonl.d/<机器编号>.jsonl`,每台只写自己那条,这里全读。
+LEDGER_LANES = "ledger.jsonl.d"
 # 这一个不是控制台的,是 llmcall 自己的:它压过配置文件,所以控制台必须认它。
 ENV_CHAIN = "LLMCALL_CHAIN"
 # 正文目录只由 llmcall 自己用的那个 fleet_guards 解析器给出。
@@ -117,7 +115,8 @@ def _runtime_dir() -> Path | None:
 
 
 def ledger_path() -> Path | None:
-    """账本路径。**不检查存在性,也不因为找不到而抛。**
+    """账本位置:显式覆盖时是那一个文件,否则是按机器分道的目录 `runtime/ledger.jsonl.d`。
+    **不检查存在性,也不因为找不到而抛。**
 
     存在与否是调用方要显示的事实,不是这里要替它决定的。在这里抛异常会让
     「还没装 llmcall」变成一次 500,而正确的画面是一块写着「未初始化」的板子。
@@ -131,7 +130,21 @@ def ledger_path() -> Path | None:
             return None
         return Path(os.path.expanduser(producer))
     root = _runtime_dir()
-    return root / "ledger.jsonl" if root is not None else None
+    return root / LEDGER_LANES if root is not None else None
+
+
+def ledger_files() -> list[Path]:
+    """要读的账本文件。显式覆盖就是那一个文件;否则是分道目录下每台机器一条的 `*.jsonl`,
+    按文件名排序。目录不在就是空列表(未初始化)。"""
+    p = ledger_path()
+    if p is None:
+        return []
+    if os.environ.get(ENV_LEDGER) or os.environ.get("LLMCALL_LEDGER") is not None:
+        return [p]
+    try:
+        return sorted(f for f in p.glob("*.jsonl") if f.is_file())
+    except OSError:
+        return []
 
 
 def chain_file_path() -> Path | None:
@@ -182,8 +195,11 @@ def read(limit=None):
     """流式读账本,返回 `(records, meta)`。
 
     `limit` 只截断**返回的记录**(保留最近的 N 条),不截断统计:meta 里的计数
-    永远是整个文件的。两者混在一起就会出现「限流之后总数也跟着变小」这种
-    看不出错的错。二十兆的文件因此是逐行读进一个定长 deque,不是整表进内存。
+    永远是所有分道合起来的。两者混在一起就会出现「限流之后总数也跟着变小」这种
+    看不出错的错。
+
+    分道不止一条时,记录按 ts 稳定排序(没有 ts 的排在最前),`_i` 是按文件名顺序
+    串起来的全局行号,在同一次读取里唯一。
 
     meta 的键:path / exists / bytes / lines / blank / parsed / malformed /
     stamped / unstamped / first_ts / last_ts / returned / truncated / read_error。
@@ -212,22 +228,26 @@ def read(limit=None):
         meta["read_error"] = "llmcall 账本未配置或已禁用；请设置账本路径或生产方配置目录"
         return [], meta
 
-    try:
-        st = p.stat()
-    except OSError as e:
-        # 不存在是「未初始化」,读不了是「有东西挡着」。两者的 read_error 不同,
-        # 因为要采取的行动不同:前者去装,后者去查权限。
-        meta["read_error"] = None if isinstance(e, FileNotFoundError) else f"{type(e).__name__}: {e}"
+    files = []
+    for f in ledger_files():
+        try:
+            meta["bytes"] += f.stat().st_size
+        except OSError as e:
+            # 不存在是「未初始化」,读不了是「有东西挡着」。两者的 read_error 不同,
+            # 因为要采取的行动不同:前者去装,后者去查权限。
+            if not isinstance(e, FileNotFoundError):
+                meta["read_error"] = f"{type(e).__name__}: {e}"
+                return [], meta
+            continue
+        files.append(f)
+    if not files:
         return [], meta
     meta["exists"] = True
-    meta["bytes"] = st.st_size
 
     if limit is not None:
         if not isinstance(limit, int) or limit < 0:
             raise ValueError("limit 必须是非负整数或 None")
-        keep = deque(maxlen=limit)
-    else:
-        keep = []
+    keep = []
 
     # JSON lines otherwise allocate the same keys and short labels for every row.
     # Pools belong to this read, are bounded, and preserve every field and value.
@@ -245,48 +265,55 @@ def read(limit=None):
 
     decoder = json.JSONDecoder(object_pairs_hook=shared_object)
     lineno = 0
+
+    def lines():
+        for path in files:
+            with path.open("r", encoding="utf-8", errors="replace") as f:
+                yield from f
+
     try:
-        with p.open("r", encoding="utf-8", errors="replace") as f:
-            for line in f:
-                lineno += 1
-                s = line.strip()
-                if not s:
-                    meta["blank"] += 1
-                    continue
-                try:
-                    rec = decoder.decode(s)
-                except ValueError:
-                    meta["malformed"] += 1
-                    continue
-                if not isinstance(rec, dict):
-                    # 合法 JSON 但不是一条记录(比如一个裸数组)。它同样是坏行,
-                    # 不能因为 json.loads 没报错就放它进结果。
-                    meta["malformed"] += 1
-                    continue
-                for field in ("provider", "mode", "caller"):
-                    if field in rec:
-                        rec[field] = reuse(rec[field])
-                if isinstance(rec.get("chain"), list):
-                    rec["chain"] = [reuse(value) for value in rec["chain"]]
-                meta["parsed"] += 1
-                rec[INDEX_KEY] = lineno
-                ts = _ts_of(rec)
-                if ts is None:
-                    meta["unstamped"] += 1
-                else:
-                    meta["stamped"] += 1
-                    if meta["first_ts"] is None or ts < meta["first_ts"]:
-                        meta["first_ts"] = ts
-                    if meta["last_ts"] is None or ts > meta["last_ts"]:
-                        meta["last_ts"] = ts
-                keep.append(rec)
+        for line in lines():
+            lineno += 1
+            s = line.strip()
+            if not s:
+                meta["blank"] += 1
+                continue
+            try:
+                rec = decoder.decode(s)
+            except ValueError:
+                meta["malformed"] += 1
+                continue
+            if not isinstance(rec, dict):
+                # 合法 JSON 但不是一条记录(比如一个裸数组)。它同样是坏行,
+                # 不能因为 json.loads 没报错就放它进结果。
+                meta["malformed"] += 1
+                continue
+            for field in ("provider", "mode", "caller"):
+                if field in rec:
+                    rec[field] = reuse(rec[field])
+            if isinstance(rec.get("chain"), list):
+                rec["chain"] = [reuse(value) for value in rec["chain"]]
+            meta["parsed"] += 1
+            rec[INDEX_KEY] = lineno
+            ts = _ts_of(rec)
+            if ts is None:
+                meta["unstamped"] += 1
+            else:
+                meta["stamped"] += 1
+                if meta["first_ts"] is None or ts < meta["first_ts"]:
+                    meta["first_ts"] = ts
+                if meta["last_ts"] is None or ts > meta["last_ts"]:
+                    meta["last_ts"] = ts
+            keep.append(rec)
     except OSError as e:
         # 读到一半挂了:已经读到的那部分照样返回,但必须带着 read_error,
         # 否则一次被截断的读取会被当成「账本就这么长」。
         meta["read_error"] = f"{type(e).__name__}: {e}"
 
     meta["lines"] = lineno
-    out = list(keep)
+    if len(files) > 1:
+        keep.sort(key=lambda r: (_ts_of(r) is not None, _ts_of(r) or 0.0))
+    out = keep[-limit:] if limit else ([] if limit == 0 else keep)
     meta["returned"] = len(out)
     meta["truncated"] = meta["returned"] < meta["parsed"]
     return out, meta
@@ -784,40 +811,14 @@ def _observed_chain(records=None):
     不是一个配置值,页面文案必须照这个意思写。
 
     传了 `records` 就从里面取(服务端通常已经读过一遍,不必再读文件);没传就自己
-    扫一遍账本,只留尾部 OBSERVE_TAIL 行的原始文本,回看时才解析 —— 这样既拿得到
-    绝对行号(要让人能点过去看那一条),又不必把两万条记录全部解析一遍。
+    读一遍所有分道。读不到账本不是错误,只是「没有观测」,返回 `(None, None)`。
     """
-    if records is not None:
-        for r in reversed(records):
-            c = _chain_of(r)
-            if c:
-                return tuple(c), r.get(INDEX_KEY)
-        return None, None
-
-    tail = deque(maxlen=OBSERVE_TAIL)
-    path = ledger_path()
-    if path is None:
-        return None, None
-    try:
-        with path.open("r", encoding="utf-8", errors="replace") as f:
-            for i, line in enumerate(f, start=1):
-                t = line.strip()
-                if t:
-                    tail.append((i, t))
-    except OSError:
-        # 读不到账本不是错误,只是「没有观测」。这里降级返回 None,
-        # 由调用方落到下一级去, 在这里抛会让一台没装 llmcall 的机器打不开页面。
-        return None, None
-
-    for lineno, t in reversed(tail):
-        try:
-            rec = json.loads(t)
-        except ValueError:
-            continue
-        if isinstance(rec, dict):
-            c = _chain_of(rec)
-            if c:
-                return tuple(c), lineno
+    if records is None:
+        records, _ = read()
+    for r in reversed(records):
+        c = _chain_of(r)
+        if c:
+            return tuple(c), r.get(INDEX_KEY)
     return None, None
 
 

@@ -73,7 +73,7 @@ python -m background_task_core install-skill --skill-root <abs path> [--companio
     --runtime-config CONFIG --private-root PRIVATE --state-root STATE --vault-root SECRETS
 ```
 
-The four runtime arguments are the installed runtime's, from the companion's `data/launcher-binding.json` `runtime` block, as for every other authority command. On the installed generation the call is `<runtime.Python> -I -B <runtime.InstalledRoot>\launch.py -m background_task_core install-skill ...`. Without `--companion-root` the companion is found by `fleet_guards.runtime.companion_resolver`.
+The four runtime arguments are the installed runtime's, from the companion's `data/machines/<CLAUDE_MACHINE_ID>/launcher-binding.json` `runtime` block, as for every other authority command. On the installed generation the call is `<runtime.Python> -I -B <runtime.InstalledRoot>\launch.py -m background_task_core install-skill ...`. Without `--companion-root` the companion is found by `fleet_guards.runtime.companion_resolver`.
 
 What it does, in order:
 

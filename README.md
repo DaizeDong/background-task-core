@@ -73,7 +73,7 @@ The server generates a token at each start and never writes it to disk. Ingestio
 
 ### Windows entrypoints
 
-`windows/` holds the PowerShell side. Every script finds its machine values through the private companion named by `BACKGROUND_TASK_CORE_CONFIG` (its `data/launcher-binding.json`) and refuses when that variable is unset.
+`windows/` holds the PowerShell side. Every script finds its machine values through the private companion named by `BACKGROUND_TASK_CORE_CONFIG` (its `data/machines/<CLAUDE_MACHINE_ID>/launcher-binding.json`, one per machine) and refuses when that variable or `CLAUDE_MACHINE_ID` is unset.
 
 | Script | Does |
 | --- | --- |
@@ -92,7 +92,7 @@ A skill declares its scheduled tasks in `automation/tasks.json` (public, variabl
 
 ## Configuration
 
-All settings are environment variables; the owner launcher sets them from the private companion's `data/launcher-binding.json` ([synthetic example](launcher-binding.json.example)). [CONFIG.md](CONFIG.md) lists every variable and what happens when it is unset.
+All settings are environment variables; the owner launcher sets them from the private companion's `data/machines/<CLAUDE_MACHINE_ID>/launcher-binding.json` ([synthetic example](launcher-binding.json.example)). [CONFIG.md](CONFIG.md) lists every variable and what happens when it is unset.
 
 ## Read-only declaration producer
 
