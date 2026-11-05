@@ -40,6 +40,22 @@ Registration rejects a new identity for an equivalent command, working directory
 Use the returned existing ID ([creation check](../../docs/task-registration.md#creation-check)). An unknown/unreadable inventory is not an empty inventory. Do not
 bypass the authority with direct Scheduler commands or by renaming the job.
 
+## Descriptions and owner decisions
+
+- Every task the owner's tooling creates carries a Chinese console description: the manifest's
+  `purpose`, or the companion's `description` when one exists. One plain sentence, about 15 to 45
+  characters: what it does, how often, whether it only reports. Vendor tasks are not touched. The
+  Scheduler's own Description field is never written by the authority; do not edit it by hand.
+- An owner decision (`enabled`, `category`, `description`, a different `trigger`) lives once, in the
+  companion's `automation/tasks.local.json`. The console's Enable and Disable buttons write the
+  `enabled` key themselves for a skill that has a companion, so the owner can press the button.
+  When you act for the owner (pause, resume, retitle),
+  take the same path: edit that file, run `install-skill --dry-run`, apply, then read the real
+  state back with `Get-ScheduledTask` (dry-run does not compare live enabled state). Never use
+  `Disable-ScheduledTask` or `schtasks`: they bypass the authority's records and the companion.
+- A running daemon is refused (`busy`) by any rewrite, including a description change. Do not stop a
+  shared daemon to land a text edit; leave the source updated and report the task as pending.
+
 ## Preserve this in the producing skill
 
 Record the purpose/target identity, owner, cadence, change predicate, evidence of success and

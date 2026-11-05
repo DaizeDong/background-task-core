@@ -189,6 +189,114 @@ def retire_plan(name, reason, *, runtime=None):
     return Controller(runtime if runtime is not None else load_runtime()).retire_plan(name, reason)
 
 
+# ---- console enable/disable of a skill's task --------------------------------------------------
+# A skill task's enabled choice lives once, in the skill's private companion
+# (automation/tasks.local.json), because that is what install-skill and a restore honour. A console
+# press used to change only the Scheduler and the authority's records, so a later install-skill with
+# `declared`, a restore, or an opposite override already in the companion silently undid it.
+# console_toggle records the choice in the companion first, then applies it through the same
+# registration transaction as before. The file is put back only when the transaction provably did not
+# take effect (it raised before writing anything, or it rolled back); every other outcome keeps the
+# owner's choice, because the next install-skill converges forward to it. Only the console calls it:
+# the command line `control` verb keeps its old behaviour, so a hand-off that disables tasks through
+# the CLI never writes the shared companion.
+
+_CONSOLE_TOGGLE = threading.Lock()
+
+
+def _owner_choice_file(runtime, name):
+    """(override file, task id) for a skill-owned task whose skill has a companion, else None.
+
+    None also covers a task its manifest no longer lists (an override key the manifest does not
+    declare would make every later install-skill of that skill refuse) and a skill directory that is
+    gone. A companion that cannot be located raises companion_unresolved."""
+    spec = next((s for s in registration._compile(runtime.load())['task_specs']
+                 if s['name'].casefold() == name.casefold()), None)
+    if spec is None or not spec['entrypoint'].startswith(SKILL_ENTRYPOINT):
+        return None
+    skill = spec['entrypoint'][len(SKILL_ENTRYPOINT):]
+    skill_root = Path(re.sub(r'%([A-Za-z_]+)%', lambda m: _environment_value(m.group(1)) or m.group(0),
+                             spec['source_root'])).resolve()
+    manifest_path = skill_root.joinpath(*SKILL_MANIFEST)
+    if not manifest_path.is_file():
+        return None
+    manifest = _skill_json(manifest_path, 'manifest')
+    if spec['task_id'] not in {t.get('id') for t in manifest.get('tasks', []) if isinstance(t, dict)}:
+        return None
+    try:
+        from fleet_guards.runtime import companion_resolver
+        companion = companion_resolver(source_root=skill_root).resolve_companion_root(skill)
+    except Exception as exc:
+        raise ContractError('companion_unresolved', 'companion_root') from exc
+    if companion is None:
+        return None
+    return Path(companion).joinpath(*SKILL_OVERRIDES), spec['task_id']
+
+
+def _record_owner_choice(path, task_id, enabled, original):
+    """Set `enabled` for one task in the companion override; True when the file was rewritten."""
+    document = _skill_json(path, 'overrides') if original is not None else {'schemaVersion': 1, 'tasks': {}}
+    reg.fields(document, {'schemaVersion', 'tasks'}, 'overrides')
+    entry = reg.require(document, 'tasks', dict).setdefault(task_id, {})
+    if not isinstance(entry, dict):
+        raise ContractError('invalid_type', 'overrides.tasks')
+    if entry.get('enabled') is enabled:
+        return False
+    entry['enabled'] = enabled
+    _write_json(path, document)
+    return True
+
+
+def _restore_owner_choice(path, original):
+    """Put the companion file back; False when that failed (the new choice then stays recorded)."""
+    try:
+        if original is None:
+            path.unlink(missing_ok=True)
+        else:
+            fs.atomic_replace(path, original)
+    except Exception:
+        return False
+    return True
+
+
+def console_toggle(name, verb, *, runtime=None):
+    validate(name, verb, '')
+    runtime = runtime if runtime is not None else load_runtime()
+    if not _CONSOLE_TOGGLE.acquire(blocking=False):
+        raise registration.Conflict('busy', 'locks')
+    try:
+        target, skipped = None, None
+        # A secondary machine must not write the companion: it is shared and the primary honours it.
+        if not machine_role.is_secondary():
+            try:
+                target = _owner_choice_file(runtime, name)
+            except ContractError as exc:
+                skipped = exc.code  # the lookup only decides whether a companion applies; say so below
+        if target is None:
+            result = Controller(runtime).action(name, verb)
+            if skipped is None:
+                return result
+            return {**result, 'companion_recorded': False, 'companion_skipped': skipped,
+                    'message': f"{result.get('message', '')}(未写入伴生仓声明:{skipped})"}
+        path, task_id = target
+        original = path.read_bytes() if path.is_file() else None
+        changed = False
+        try:
+            changed = _record_owner_choice(path, task_id, verb == 'enable', original)
+            result = Controller(runtime).action(name, verb)
+        except ContractError as exc:
+            # Refused before any Scheduler or authority write, except a malformed reply that came after.
+            if changed and exc.code != 'invalid_control_result':
+                _restore_owner_choice(path, original)
+            raise
+        recorded = True
+        if changed and not result.get('ok') and result.get('status') == 'rolled_back':
+            recorded = not _restore_owner_choice(path, original)
+        return {**result, 'companion_recorded': recorded}
+    finally:
+        _CONSOLE_TOGGLE.release()
+
+
 # ---- adoption ----------------------------------------------------------------------------------
 # Explicit initial authority preparation in the existing background-task-core runtime.
 #

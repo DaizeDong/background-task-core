@@ -69,6 +69,26 @@ Only an explicit `run` request can call COM `Run`.
 The controller uses `llmcall.process.execution_scope`; it implements no process
 supervisor, cipher, lock or argument parser.
 
+## Console enable and disable of a skill's task
+
+`POST /api/act` with `enable` or `disable` calls `lifecycle.console_toggle`, not the controller
+directly. When the task is owned by a skill (entrypoint `skill:<skill>`), the manifest still lists
+it and the skill has a companion, the choice is first written to the companion's
+`automation/tasks.local.json`, then applied by the same registration transaction. The file is put
+back only when the transaction provably did not take effect: it raised a `ContractError` before
+writing anything (`busy`, `recovery_required`, a malformed override file), or it ended
+`rolled_back`. Every other outcome, including `ok=false` with a committed or committing journal,
+keeps the choice, because the next `install-skill` converges forward to it. The reply carries
+`companion_recorded`. A second press while one is running is refused as `busy`.
+
+Any other task, a secondary machine, and the CLI `control` verb take the plain controller path, so
+a hand-off that disables tasks through the CLI never writes the shared companion. If the companion
+cannot be located (for example its environment variable names the skill's own repository), the
+press still applies to the Scheduler, and the reply says `companion_recorded=false` with
+`companion_skipped=<code>`; `install-skill` for that skill fails at the same lookup, so nothing
+can undo the press later. The console uses the discovered companion only, never an explicit
+`--companion-root` given to `install-skill`.
+
 ## Authority and compatibility
 
 Legacy and migrated enable/disable/retire use the existing registration transaction

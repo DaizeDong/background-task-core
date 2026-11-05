@@ -14,7 +14,7 @@ Public, so it holds no machine value: paths go through `${SKILL_ROOT}`, `${COMPA
 | `skill` | yes | The skill's repository name. It names the companion (`<SKILL>_CONFIG`, hyphens become underscores) and marks ownership. |
 | `tasks[].id` | yes | Stable full task ID `component/name`. A task that already exists keeps its current ID, even when the component part is not the skill's name. A retired ID is never reused. |
 | `tasks[].name` | yes | The Task Scheduler name, unique on the machine. |
-| `tasks[].purpose` | yes | One sentence; it becomes the console description unless the companion overrides it. |
+| `tasks[].purpose` | yes | One sentence; it becomes the console description unless the companion's `description` overrides it. The console shows it as written, so write it in Chinese (about 15 to 45 characters: what it does, how often, whether it only reports). Only the console reads it; the Windows Task Scheduler's own Description field is never written. |
 | `tasks[].enabled` | yes | `true` to create the task enabled, `false` for an opt-in task. |
 | `tasks[].trigger` | yes | `{"type": "daily", "at": "HH:MM"}`, `{"type": "weekly", "at": "HH:MM", "days": ["mon", ...]}`, `{"type": "monthly", "at": "HH:MM", "days": [1, ...]}` (days of the month, every month), `{"type": "interval", "minutes": N}` (or `seconds`), `{"type": "logon"}`, or a list of these. |
 | `tasks[].timezone` | no | `local` (default: wall-clock time on this machine, across DST) or `UTC`. |
@@ -83,6 +83,8 @@ What it does, in order:
 4. Retires, through the authority, every task this skill installed earlier that the manifest no longer lists. The declaration stays in the desired file with its tombstone, so the ID cannot come back.
 
 Enabled state: `keep` (default) never silently enables or pauses an existing task; a new task gets the companion's `enabled`, else the manifest's. A companion `enabled` is an owner decision and is applied to existing tasks too. `hold` registers everything disabled (a new machine during the parallel period). `declared` applies the companion or manifest value to every task (activation after review).
+
+The console's Enable and Disable buttons leave the same record. For a task whose skill has a companion, the button first sets `enabled` for that task in `automation/tasks.local.json` (other keys and tasks are kept), then applies it through the registration transaction, and puts the file back only if the transaction was refused or rolled back. A skill without a companion, a task its manifest no longer lists, a secondary machine and the command line `control` verb change only the Scheduler and the authority's records, as before. After a press the override pins the state: `keep` applies it to the existing task, so change it with the button or by editing the override, not with the CLI `control` verb.
 
 `--dry-run` writes nothing: it compiles the merged declarations the way registration does and prints each task's declaration (without the account SID), its launcher, and whether it would be created, updated, checked or retired.
 

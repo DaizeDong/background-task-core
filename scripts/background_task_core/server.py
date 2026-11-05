@@ -1128,7 +1128,8 @@ class Handler(ComponentRoutes, BaseHTTPRequestHandler):
             return self._json(400, {"error": f"不在本机可管理的任务列表里: {name}"})
 
         try:
-            res = task_control.action(name, verb)
+            # Enable and disable also record the owner's choice in the skill's companion.
+            res = (task_control.console_toggle if verb in ("enable", "disable") else task_control.action)(name, verb)
         except Exception as e:
             res = task_control.error_result(e, name=name, verb=verb)
         return self._json(200 if res.get("ok") else 500, res)
