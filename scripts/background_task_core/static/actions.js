@@ -154,7 +154,7 @@ function operationLabel(path,body){
     'skill.archive':'归档技能','skill.restore':'恢复技能','plugin.enable':'启用插件','plugin.disable':'禁用插件',
     'memory.archive':'归档记忆','memory.restore':'恢复记忆','clean.tempgit':'清理临时目录',
     'repo.fetch':'获取远程更新','repo.reveal':'打开目录','repo.status':'查看改动','repo.commitpush':'提交并推送'};
-  const endpoints={'/api/codex/delete':'删除所选转录','/api/maintenance/delete':'删除或卸载','/api/llmcall/chain':'保存调用顺序','/api/work/action':'提交工作','/api/work/stop':'停止工作','/api/convo/fork':'分叉会话','/api/convo/rename':'重命名会话','/api/convo/suggest-title':'生成名称建议','/api/convo/move':'迁移会话文件','/api/convo/delete':'永久删除会话',
+  const endpoints={'/api/codex/delete':'删除所选转录','/api/maintenance/delete':'删除或卸载','/api/llmcall/chain':'保存调用顺序','/api/llmcall/rung-defaults':'保存默认模型与推理强度','/api/work/action':'提交工作','/api/work/stop':'停止工作','/api/convo/fork':'分叉会话','/api/convo/rename':'重命名会话','/api/convo/suggest-title':'生成名称建议','/api/convo/move':'迁移会话文件','/api/convo/delete':'永久删除会话',
     '/api/task/delete/apply':'删除任务','/api/task/repair/preview':'读取任务事实','/api/task/repair':'提交修复工单'};
   return (labels[body.action || body.verb] || endpoints[path] || '执行操作')+(body.name?' · '+body.name:'');
 }

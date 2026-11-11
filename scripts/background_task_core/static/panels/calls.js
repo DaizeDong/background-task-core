@@ -1,5 +1,7 @@
 // Classic script module; loaded in app.js dependency order.
 // LC_BUSY: 调用顺序正在保存。和计划任务的 busy 分开:两边打的是不同的后端,互不阻塞。
+// LD_BUSY / LDDRAFT:默认模型与推理强度那张表的保存状态和未保存的草稿({级:{model,effort}})。
+let LD_BUSY=false, LDDRAFT=null;
 let LC_BUSY=false, LLM=null, LCDRAFT=null, LMROWS=null, LMTOTAL=0, LMOPEN=null, LMBODY={};
 let LM_REQUEST=0;
 // 明细读失败时整张表换成红色的失败块(带重试),不再是标题旁一行灰字,也不画成「没有符合条件的记录」:
@@ -55,7 +57,7 @@ function loadLLM(){
   LLM_LOADING=(async()=>{
   await loadLLMSummary();
   $("lcnote").textContent="";
-  LCDRAFT = null;
+  LCDRAFT = null; LDDRAFT = null;
   renderLLM();
   lmDropStalePrefs();
   await loadCalls();
@@ -72,9 +74,10 @@ function renderLLM(){
     $("lwins").innerHTML = errorBlock("调用统计", LLM.error, "data-llm-retry");
     $("lledger").innerHTML = "";
     $("lrtab").innerHTML = ""; $("lstab").innerHTML = "";
+    $("ldtab").innerHTML = ""; $("ldnote").textContent = "";
     return;
   }
-  renderChain(); renderWins(); renderRungs(); renderRuns(); llmBadge();
+  renderChain(); renderRungDefaults(); renderWins(); renderRungs(); renderRuns(); llmBadge();
 }
 
 // 侧栏徽章(工作记录)和「模型调用」标签上的那一枚。这一屏平时不需要人盯着,所以徽章只在**有事**的时候亮,
@@ -87,8 +90,11 @@ function llmBadge(){
   const w = (LLM.windows || [])[1] || {};
   const c = LLM.chain || {};
   const n = (w.failed || 0); // Undated/cumulative parse errors belong in ledger diagnostics.
-  setBadge("llm", c.shadowed_by_env ? Math.max(n, 1) : n, false,
-    `模型调用：近 7 日整链失败 ${n} 次${c.shadowed_by_env ? "；调用顺序被环境变量覆盖，页面上的设置不生效" : ""}`);
+  // 默认值写了却放不进那一级:llmcall 会跳过它,页面上的设置不作数,和被环境变量压住是同一类事。
+  const bad = ldProblemRungs().length;
+  setBadge("llm", (c.shadowed_by_env || bad) ? Math.max(n, 1) : n, false,
+    `模型调用：近 7 日整链失败 ${n} 次${c.shadowed_by_env ? "；调用顺序被环境变量覆盖，页面上的设置不生效" : ""}`
+    + (bad ? `；${bad} 级的默认模型或推理强度写了但不生效` : ""));
 }
 
 // ── 链顺序 ──
@@ -573,9 +579,112 @@ async function openCall(i){
 
 // ── 模型调用这一屏的挂点,由 events.js 调用 ──
 let LCFROM = null;
+// ── 默认模型与推理强度 ──
+// 「写了什么」「实际用什么」分两列:内置默认是 llmcall 现算的(rung_settings),不是这里存的一份拷贝。
+const LD_SRC = {console: "这里的设置", profile: "codexg 自己的配置", "codex-config": "~/.codex/config.toml",
+  alias: "opus 别名，即最新 Opus", fallback: "llmcall 内置", client: "客户端自己的默认"};
+function ldDefaults(){ return (LLM && LLM.rung_defaults) || null; }
+function ldProblemRungs(){
+  const d = ldDefaults();
+  return d ? (d.rungs || []).filter(r => Object.keys(r.problems || {}).length) : [];
+}
+// 只留非空的项,用来比「草稿」和「文件里写的」是否相同。
+function ldNormalize(map){
+  const out = {};
+  Object.keys(map || {}).sort().forEach(n => {
+    const e = map[n] || {}, k = {};
+    if(e.model) k.model = e.model;
+    if(e.effort) k.effort = e.effort;
+    if(Object.keys(k).length) out[n] = k;
+  });
+  return JSON.stringify(out);
+}
+function ldWritten(){
+  const out = {};
+  ((ldDefaults() || {}).rungs || []).forEach(r => { out[r.name] = {model: r.written.model || "", effort: r.written.effort || ""}; });
+  return out;
+}
+function ldDirty(){ return LDDRAFT != null && ldNormalize(LDDRAFT) !== ldNormalize(ldWritten()); }
+function ldUses(s){
+  const src = k => esc(LD_SRC[k] || k);
+  // 值为空的意思是 llmcall 不传这个参数,由那一边自己定:写成「由谁决定」,不要画成一个空格。
+  const m = s.model ? "模型 <b>" + esc(s.model) + "</b>（" + src(s.model_source) + "）" : "模型由" + src(s.model_source) + "决定";
+  const e = s.effort ? "推理强度 <b>" + esc(s.effort) + "</b>（" + src(s.effort_source) + "）" : "推理强度由" + src(s.effort_source) + "决定";
+  return m + "<br>" + e;
+}
+function renderRungDefaults(){
+  const d = ldDefaults();
+  if(!d){ $("ldnote").textContent = "llmcall 版本过旧，读不到这项设置"; $("ldtab").innerHTML = ""; ldButtons(); return; }
+  const bad = ldProblemRungs();
+  $("ldnote").innerHTML = (d.exists ? '<span class="lc-src file">来自配置文件</span>' : '<span class="lc-src default">全部内置默认</span>')
+    + (ldDirty() ? statusBadge('未保存','warn','!','lc-dirty') : '');
+  $("ldwarn").innerHTML = (d.file_error ? '<div class="lc-warn">读取失败：' + esc(d.file_error) + '，llmcall 当前按内置默认运行。</div>' : '')
+    + (bad.length ? '<div class="lc-warn">' + bad.map(r => '<b>' + esc(r.name) + '</b>：' + Object.values(r.problems).map(esc).join('；')).join('<br>')
+      + '<br>这些值 llmcall 会跳过，那一级仍用内置默认。</div>' : '');
+  const draft = LDDRAFT || ldWritten();
+  const ro = ConsoleActions.readOnly ? " disabled" : "";
+  $("ldtab").innerHTML = "<thead><tr><th>级</th><th>默认模型</th><th>默认推理强度</th><th>没指定时实际使用</th></tr></thead><tbody>"
+    + (d.rungs || []).map(r => {
+      const s = r.settings || {}, v = draft[r.name] || {}, levels = s.efforts || [];
+      const claude = levels.includes("max") && !levels.includes("ultra");
+      const builtinModel = s.model_source === "console" ? "" : (s.model || LD_SRC[s.model_source] || "");
+      const modelCell = '<input type="text" data-ld="model" data-rung="' + esc(r.name) + '" value="' + esc(v.model || "") + '"'
+        + (claude ? ' list="ld-models-claude"' : '') + ' placeholder="留空 = 内置：' + esc(builtinModel || "由客户端决定") + '"'
+        + ' aria-label="' + esc(r.name) + ' 的默认模型"' + ro + '>';
+      const effortCell = levels.length
+        ? '<select data-ld="effort" data-rung="' + esc(r.name) + '" aria-label="' + esc(r.name) + ' 的默认推理强度"' + ro + '>'
+          + '<option value="">内置默认</option>'
+          + levels.map(l => '<option value="' + esc(l) + '"' + (v.effort === l ? " selected" : "") + '>' + esc(l) + '</option>').join("")
+          + '</select>'
+        : '<span class="faint">这一级不接受推理强度</span>';
+      const probs = r.problems || {};
+      return '<tr><td class="nm" data-label="级">' + esc(r.name) + (r.gateway ? ' <span class="faint">网关</span>' : '') + '</td>'
+        + '<td data-label="默认模型">' + modelCell + (probs.model ? '<div class="ld-bad">不生效：' + esc(probs.model) + '</div>' : '') + '</td>'
+        + '<td data-label="默认推理强度">' + effortCell + (probs.effort ? '<div class="ld-bad">不生效：' + esc(probs.effort) + '</div>' : '') + '</td>'
+        + '<td class="eff" data-label="没指定时实际使用">' + ldUses(s) + '</td></tr>';
+    }).join("") + "</tbody>";
+  $("ldpath").textContent = d.file_path || "";
+  ldButtons();
+}
+function ldButtons(){
+  const dirty = ldDirty();
+  ConsoleActions.gate($("ldsave"), LD_BUSY ? '正在保存' : dirty ? '' : '没有改动');
+  if(dirty && !LD_BUSY && !ConsoleActions.readOnly) $("ldsave").title = '保存每一级的默认模型与推理强度';
+  ConsoleActions.gate($("ldreset"), LDDRAFT ? '' : '当前没有未保存的修改');
+  if(LDDRAFT && !ConsoleActions.readOnly) $("ldreset").title = '放弃未保存的修改';
+  const d = ldDefaults();
+  if(d) $("ldnote").innerHTML = (d.exists ? '<span class="lc-src file">来自配置文件</span>' : '<span class="lc-src default">全部内置默认</span>')
+    + (dirty ? statusBadge('未保存','warn','!','lc-dirty') : '');
+}
+// 输入时只更新草稿和按钮,不重画整张表:重画会把正在打字的输入框换掉,焦点跟着丢。
+function ldEdit(e){
+  const el = e.target.closest("[data-ld]");
+  if(!el) return;
+  if(LDDRAFT == null) LDDRAFT = ldWritten();
+  const n = el.dataset.rung;
+  LDDRAFT[n] = Object.assign({model: "", effort: ""}, LDDRAFT[n] || {});
+  LDDRAFT[n][el.dataset.ld] = el.value.trim();
+  ldButtons();
+}
+async function ldSave(){
+  if(!ldDirty() || LD_BUSY) return;
+  LD_BUSY = true; ldButtons();
+  try{
+    const r = await api("/api/llmcall/rung-defaults", {method:"POST", body: JSON.stringify({entries: LDDRAFT})});
+    LLM.rung_defaults = r;
+    LDDRAFT = null;
+    toast("默认模型与推理强度已保存，下一次调用起生效", "ok");
+  }catch(e){ toast("保存失败:" + e.message, "bad"); }
+  finally{ LD_BUSY = false; renderRungDefaults(); llmBadge(); }
+}
+
 function startCalls(){
   $("lcsave").addEventListener("click", lcSave);
   $("lcreset").addEventListener("click", ()=>{ LCDRAFT = null; renderChain(); });
+  $("ldsave").addEventListener("click", ldSave);
+  $("ldreset").addEventListener("click", ()=>{ LDDRAFT = null; renderRungDefaults(); });
+  $("ldtab").addEventListener("input", ldEdit);
+  $("ldtab").addEventListener("change", ldEdit);
   // 顺序不是筛选:清除筛选不动它,所以它不进 RESET_FILTER_COUNTS,挂在筛选前面。
   $("lmorder").value = LMQ.order;
   $("lmorder").addEventListener("change", e=>{ LMQ.order = e.target.value === "asc" ? "asc" : "desc"; LMQ.offset = 0; LMOPEN = null; LMJUMP = null; loadCalls(); });

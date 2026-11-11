@@ -935,6 +935,127 @@ def write_chain(names) -> dict:
 
 
 # --------------------------------------------------------------------------
+# 每一级的默认模型与推理强度
+# --------------------------------------------------------------------------
+
+# 模型名的形状闸:只挡明显不是模型名的东西(空格、引号、换行)。属不属于这一级的目录由 llmcall 判。
+MODEL_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:\[\]-]{0,79}$")
+RUNG_KEYS = ("model", "effort")
+
+
+def rung_defaults_path() -> Path | None:
+    """llmcall 读的那一份:`<伴生 data>/runtime/<llmcall.RUNG_DEFAULTS_FILE>`。解析不到是 None。"""
+    from llmcall import RUNG_DEFAULTS_FILE
+    root = _runtime_dir()
+    return root / RUNG_DEFAULTS_FILE if root is not None else None
+
+
+def _rung_problem(name, key, value):
+    import llmcall
+    if key == "model" and isinstance(value, str) and not MODEL_RE.match(value):
+        return "模型名只能含字母、数字和 . _ : - [ ]"
+    return llmcall.rung_default_problem(name, key, value)
+
+
+def rung_defaults_config(chain=None) -> dict:
+    """页面要的三件事分开报:文件里写了什么、哪些写了但不生效、每一级此刻实际会用什么。
+
+    「没写」「写了」「写坏了」是三种画面。文件不存在 = 全部用内置默认,不是错误;
+    读不动或不是 JSON 对象是错误;某一项放不进那一级时 llmcall 会跳过它,
+    所以那一项必须在页面上标成「不生效」,否则看起来像是改好了。
+    `settings` 来自 llmcall.rung_settings,不在这里另写一份内置默认。
+    """
+    import llmcall
+    fp = rung_defaults_path()
+    out = {"file_path": str(fp) if fp is not None else None, "file_error": None,
+           "exists": False, "rungs": []}
+    raw = {}
+    if fp is None:
+        out["file_error"] = "llmcall 伴生仓未初始化"
+    else:
+        try:
+            parsed = json.loads(fp.read_text(encoding="utf-8"))
+        except FileNotFoundError:
+            parsed = {}
+        except (OSError, ValueError) as e:
+            out["file_error"] = f"{type(e).__name__}: {e}"
+            parsed = {}
+        else:
+            out["exists"] = True
+        if isinstance(parsed, dict):
+            raw = parsed
+        else:
+            out["file_error"] = "文件内容不是 JSON 对象,llmcall 会忽略整个文件"
+    usable = {}
+    for name, entry in raw.items():
+        if isinstance(entry, dict):
+            kept = {k: entry[k] for k in RUNG_KEYS if k in entry and _rung_problem(name, k, entry[k]) is None}
+            if kept:
+                usable[name] = kept
+    names = list(dict.fromkeys([*llmcall.DEFAULT_CHAIN, *(chain or ()), *raw]))
+    for name in names:
+        entry = raw.get(name)
+        written = {k: entry[k] for k in RUNG_KEYS if isinstance(entry, dict) and k in entry}
+        problems = {k: _rung_problem(name, k, v) for k, v in written.items()}
+        if entry is not None and not isinstance(entry, dict):
+            problems["entry"] = "这一项不是 JSON 对象,llmcall 会忽略它"
+        out["rungs"].append({
+            "name": name,
+            "gateway": name in getattr(llmcall.core, "_GATEWAY_RUNGS", ()),
+            "written": written,
+            "problems": {k: v for k, v in problems.items() if v},
+            "settings": llmcall.rung_settings(name, usable),
+        })
+    return out
+
+
+def write_rung_defaults(entries, chain=None) -> dict:
+    """把每一级的默认值整份写进 rung-defaults.json,写完返回新的 `rung_defaults_config()`。
+
+    `entries` 是整份期望状态 `{级: {"model": 值或空, "effort": 值或空}}`,空值表示那一项用内置默认。
+    任何一项过不了闸就**整批拒绝、一个字节不写**,拒绝时抛 `Refused` 带 code:
+    `not_a_map` / `bad_name` / `bad_key` / `bad_value`。全部为空时删掉文件(= 全部内置默认)。
+    """
+    if not isinstance(entries, dict):
+        raise Refused("entries 必须是 {级: {model, effort}} 的对象", "not_a_map")
+    clean = {}
+    for name, entry in entries.items():
+        if not (isinstance(name, str) and NAME_RE.match(name)):
+            raise Refused(f"非法的级名(整批拒绝,未写入): {name!r}", "bad_name")
+        if not isinstance(entry, dict) or set(entry) - set(RUNG_KEYS):
+            raise Refused(f"{name}: 只认 model 和 effort 两个键(整批拒绝,未写入)", "bad_key")
+        kept = {}
+        for k in RUNG_KEYS:
+            v = entry.get(k)
+            if v is None or v == "":
+                continue
+            problem = _rung_problem(name, k, v)
+            if problem:
+                raise Refused(f"{name} 的 {k} 不能用(整批拒绝,未写入): {problem}", "bad_value")
+            kept[k] = v
+        if kept:
+            clean[name] = kept
+
+    fp = rung_defaults_path()
+    if fp is None:
+        raise Refused("先配置 PRIVATE 伴生仓中的 llmcall 数据目录", "storage_unconfigured")
+    try:
+        from . import runs as console_store
+        from fleet_guards import filesystem
+        fp = console_store.check_write_path(fp)
+    except (OSError, ValueError, RuntimeError, ImportError) as error:
+        raise Refused("默认值文件路径无效", "storage_refused") from error
+    if clean:
+        filesystem.atomic_replace(fp, json.dumps(clean, ensure_ascii=False, indent=2) + "\n")
+    else:
+        try:
+            fp.unlink()
+        except FileNotFoundError:
+            pass
+    return rung_defaults_config(chain)
+
+
+# --------------------------------------------------------------------------
 # 单条正文
 # --------------------------------------------------------------------------
 

@@ -4,6 +4,9 @@ All notable changes to this project are documented here (Keep a Changelog style)
 
 ## [Unreleased]
 
+### Default model and effort per rung
+- The call view has a table for the model and reasoning effort each llmcall rung uses when a caller names neither. It writes llmcall's `rung-defaults.json` (requires the llmcall release that reads it), shows what each rung runs with no override and where each value comes from, and marks a written value that its rung cannot use. A save with any unusable value is refused whole.
+
 ### Console enable and disable follow the companion
 - The console's Enable and Disable buttons now record the choice in the skill's companion (`automation/tasks.local.json`, key `enabled`) before applying it, and restore the file only when the transaction was refused or rolled back. Before this, a button press changed only the Scheduler and the authority's records, so `install-skill --enable declared`, a restore, or an opposite override already in the companion silently undid it. Tasks of a skill without a companion, a secondary machine and the CLI `control` verb are unchanged; a companion that cannot be located no longer blocks the press. Described in `docs/skill-tasks.md` and `docs/task-control.md`.
 

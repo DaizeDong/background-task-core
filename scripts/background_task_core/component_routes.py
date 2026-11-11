@@ -126,6 +126,7 @@ def llm_overview() -> dict:
     # 这条判据上,而判据垮掉的时候那张表照样画得很漂亮, 一张建在坏判据上的漂亮的表,
     # 和一张对的表,在页面上长得一模一样。所以反例数要跟着表一起送上去。
     return {"ledger": meta, "windows": wins, "chain": chain,
+            "rung_defaults": llmstats.rung_defaults_config(chain.get("effective")),
             "rungs": llmstats.rungs(recs, chain.get("effective") or []),
             "verify": llmstats.verify_rungs(recs),
             "callers": llmstats.callers(recs),
@@ -150,6 +151,7 @@ class ComponentRoutes:
         '/api/maintenance/plan': '_maintenance_delete',
         '/api/maintenance/delete': '_maintenance_delete',
         '/api/llmcall/chain': '_llm_chain',
+        '/api/llmcall/rung-defaults': '_llm_rung_defaults',
         '/api/convo/fork': '_convo_fork',
         '/api/convo/rename': '_convo_edit',
         '/api/convo/move': '_convo_edit',
@@ -547,6 +549,26 @@ class ComponentRoutes:
             return self._json(400, {"error": f"bad request: {e}"})
         try:
             return self._json(200, llmstats.write_chain(body.get("chain") or []))
+        except maint.Refused as e:
+            return self._json(400, {"error": str(e), "code": e.code})
+        except Exception as e:
+            return self._json(500, {"error": f"{type(e).__name__}: {e}"})
+
+    def _llm_rung_defaults(self):
+        """改每一级无头调用的默认模型与推理强度。和调用顺序一样,写的是 llmcall 自己的配置。"""
+        from . import llmstats
+        from . import maint
+        if not self._authed():
+            self._drain()
+            return self._json(403, {"error": "bad token"})
+        try:
+            n = int(self.headers.get("Content-Length") or 0)
+            body = json.loads(self.rfile.read(n) or b"{}")
+        except Exception as e:
+            return self._json(400, {"error": f"bad request: {e}"})
+        try:
+            chain = llmstats.chain_config([]).get("effective")
+            return self._json(200, llmstats.write_rung_defaults(body.get("entries"), chain))
         except maint.Refused as e:
             return self._json(400, {"error": str(e), "code": e.code})
         except Exception as e:

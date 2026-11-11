@@ -6,9 +6,22 @@
 #llm .llm-config{grid-template-columns:minmax(0,1.5fr) minmax(280px,1fr)}
 #llm .llm-config>#lrungs{grid-column:1;grid-row:1}
 #llm .llm-config>#lchain{grid-column:2;grid-row:1}
+/* 默认模型与推理强度:一张四五行的表,占满两栏。 */
+#llm .llm-config>#lrdef{grid-column:1 / -1;grid-row:2}
+#llm .ld-help{margin:0 0 8px}
+/* .l-rung 是数字表:右对齐、最小 360px。这张是表单,左对齐,窄屏不能被最小宽度撑出卡片。 */
+#llm .ld-tab{width:100%;min-width:0}
+#llm .ld-tab th,#llm .ld-tab td{text-align:left;white-space:normal;vertical-align:middle}
+#llm .ld-tab>thead th:nth-child(2){width:28%}
+#llm .ld-tab>thead th:nth-child(3){width:18%}
+#llm .ld-tab input,#llm .ld-tab select{width:100%;min-width:0;box-sizing:border-box}
+#llm .ld-tab td.nm{white-space:nowrap;font-family:var(--mono,inherit)}
+#llm .ld-tab td.eff{overflow-wrap:anywhere}
+#llm #ldpath{overflow-wrap:anywhere;min-width:0}
+#llm .ld-tab .ld-bad{color:var(--bad);font-size:var(--fs-meta);margin-top:3px}
 @media(max-width:1100px){
   #llm .llm-config{grid-template-columns:1fr}
-  #llm .llm-config>#lrungs,#llm .llm-config>#lchain{grid-column:auto;grid-row:auto}
+  #llm .llm-config>#lrungs,#llm .llm-config>#lchain,#llm .llm-config>#lrdef{grid-column:auto;grid-row:auto}
 }
 
 /* 调用记录:每行自己说成没成。失败的行左边一道红色内边,和出错卡片的左边线同一个意思;
@@ -46,6 +59,11 @@
   #llm .l-win.l-unk{grid-template-columns:minmax(0,1fr) auto}
   #llm .l-win.l-unk .sub{grid-column:1 / -1;overflow-wrap:anywhere}
   #llm .l-run .why{flex-basis:10em}
+  #llm .ld-tab,#llm .ld-tab>tbody{display:block;width:100%}
+  #llm .ld-tab>thead{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
+  #llm .ld-tab>tbody>tr{display:grid;grid-template-columns:minmax(0,1fr);padding:6px 0;border-bottom:1px solid var(--line)}
+  #llm .ld-tab>tbody>tr>td{display:block;padding:4px 10px;border:0}
+  #llm .ld-tab>tbody>tr>td[data-label]::before{content:attr(data-label);display:block;color:var(--faint);font-size:var(--fs-meta);margin-bottom:3px}
   #llm #lmtab,#llm #lmtab>tbody{display:block;width:100%}
   #llm #lmtab>thead{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
   #llm #lmtab>tbody>tr{display:block}
