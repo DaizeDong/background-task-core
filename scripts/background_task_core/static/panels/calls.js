@@ -601,7 +601,7 @@ function ldNormalize(map){
 }
 function ldWritten(){
   const out = {};
-  ((ldDefaults() || {}).rungs || []).forEach(r => { out[r.name] = {model: r.written.model || "", effort: r.written.effort || ""}; });
+  ((ldDefaults() || {}).rungs || []).forEach(r => { out[r.key] = {model: r.written.model || "", effort: r.written.effort || ""}; });
   return out;
 }
 function ldDirty(){ return LDDRAFT != null && ldNormalize(LDDRAFT) !== ldNormalize(ldWritten()); }
@@ -619,26 +619,27 @@ function renderRungDefaults(){
   $("ldnote").innerHTML = (d.exists ? '<span class="lc-src file">来自配置文件</span>' : '<span class="lc-src default">全部内置默认</span>')
     + (ldDirty() ? statusBadge('未保存','warn','!','lc-dirty') : '');
   $("ldwarn").innerHTML = (d.file_error ? '<div class="lc-warn">读取失败：' + esc(d.file_error) + '，llmcall 当前按内置默认运行。</div>' : '')
-    + (bad.length ? '<div class="lc-warn">' + bad.map(r => '<b>' + esc(r.name) + '</b>：' + Object.values(r.problems).map(esc).join('；')).join('<br>')
+    + (bad.length ? '<div class="lc-warn">' + bad.map(r => '<b>' + esc(r.key) + '</b>：' + Object.values(r.problems).map(esc).join('；')).join('<br>')
       + '<br>这些值 llmcall 会跳过，那一级仍用内置默认。</div>' : '');
   const draft = LDDRAFT || ldWritten();
   const ro = ConsoleActions.readOnly ? " disabled" : "";
-  $("ldtab").innerHTML = "<thead><tr><th>级</th><th>默认模型</th><th>默认推理强度</th><th>没指定时实际使用</th></tr></thead><tbody>"
+  const LD_MODE = {judge: "判断类 judge", agent: "agent", research: "联网调研 research"};
+  $("ldtab").innerHTML = "<thead><tr><th>级 / 调用类型</th><th>默认模型</th><th>默认推理强度</th><th>没指定时实际使用</th></tr></thead><tbody>"
     + (d.rungs || []).map(r => {
-      const s = r.settings || {}, v = draft[r.name] || {}, levels = s.efforts || [];
+      const s = r.settings || {}, v = draft[r.key] || {}, levels = s.efforts || [], isMode = !!r.mode;
       const claude = levels.includes("max") && !levels.includes("ultra");
-      const builtinModel = s.model_source === "console" ? "" : (s.model || LD_SRC[s.model_source] || "");
-      const modelCell = '<input type="text" data-ld="model" data-rung="' + esc(r.name) + '" value="' + esc(v.model || "") + '"'
-        + (claude ? ' list="ld-models-claude"' : '') + ' placeholder="留空 = 内置：' + esc(builtinModel || "由客户端决定") + '"'
-        + ' aria-label="' + esc(r.name) + ' 的默认模型"' + ro + '>';
+      const builtinModel = isMode ? "同本级" : (s.model_source === "console" ? "" : (s.model || LD_SRC[s.model_source] || ""));
+      const modelCell = '<input type="text" data-ld="model" data-rung="' + esc(r.key) + '" value="' + esc(v.model || "") + '"'
+        + (claude ? ' list="ld-models-claude"' : '') + ' placeholder="留空 = ' + (isMode ? '' : '内置：') + esc(builtinModel || "由客户端决定") + '"'
+        + ' aria-label="' + esc(r.key) + ' 的默认模型"' + ro + '>';
       const effortCell = levels.length
-        ? '<select data-ld="effort" data-rung="' + esc(r.name) + '" aria-label="' + esc(r.name) + ' 的默认推理强度"' + ro + '>'
-          + '<option value="">内置默认</option>'
+        ? '<select data-ld="effort" data-rung="' + esc(r.key) + '" aria-label="' + esc(r.key) + ' 的默认推理强度"' + ro + '>'
+          + '<option value="">' + (isMode ? '同本级' : '内置默认') + '</option>'
           + levels.map(l => '<option value="' + esc(l) + '"' + (v.effort === l ? " selected" : "") + '>' + esc(l) + '</option>').join("")
           + '</select>'
         : '<span class="faint">这一级不接受推理强度</span>';
       const probs = r.problems || {};
-      return '<tr><td class="nm" data-label="级">' + esc(r.name) + (r.gateway ? ' <span class="faint">网关</span>' : '') + '</td>'
+      return '<tr><td class="nm" data-label="级">' + (isMode ? '<span class="faint">└</span> ' + esc(LD_MODE[r.mode] || r.mode) : esc(r.name) + (r.gateway ? ' <span class="faint">网关</span>' : '')) + '</td>'
         + '<td data-label="默认模型">' + modelCell + (probs.model ? '<div class="ld-bad">不生效：' + esc(probs.model) + '</div>' : '') + '</td>'
         + '<td data-label="默认推理强度">' + effortCell + (probs.effort ? '<div class="ld-bad">不生效：' + esc(probs.effort) + '</div>' : '') + '</td>'
         + '<td class="eff" data-label="没指定时实际使用">' + ldUses(s) + '</td></tr>';

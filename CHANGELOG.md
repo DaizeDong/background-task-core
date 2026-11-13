@@ -5,6 +5,7 @@ All notable changes to this project are documented here (Keep a Changelog style)
 ## [Unreleased]
 
 ### Default model and effort per rung
+- Each rung gets two more rows, `judge` and `agent`: a value there applies only to that call mode and overlays the rung's own row (blank = same as the rung), saved as `<rung>:<mode>` keys. Requires the llmcall release that reads them.
 - The call view has a table for the model and reasoning effort each llmcall rung uses when a caller names neither. It writes llmcall's `rung-defaults.json` (requires the llmcall release that reads it), shows what each rung runs with no override and where each value comes from, and marks a written value that its rung cannot use. A save with any unusable value is refused whole.
 
 ### Console enable and disable follow the companion

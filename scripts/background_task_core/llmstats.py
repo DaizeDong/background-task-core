@@ -941,6 +941,14 @@ def write_chain(names) -> dict:
 # 模型名的形状闸:只挡明显不是模型名的东西(空格、引号、换行)。属不属于这一级的目录由 llmcall 判。
 MODEL_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:\[\]-]{0,79}$")
 RUNG_KEYS = ("model", "effort")
+# 页面上每一级下面固定多出来的两行;文件里写了的其他调用类型(research)也会各占一行。
+MODE_ROWS = ("judge", "agent")
+
+
+def _split_key(key):
+    """`cc` -> ("cc", None);`cc:judge` -> ("cc", "judge")。"""
+    name, _, mode = str(key).partition(":")
+    return name, (mode or None)
 
 
 def rung_defaults_path() -> Path | None:
@@ -986,44 +994,64 @@ def rung_defaults_config(chain=None) -> dict:
             raw = parsed
         else:
             out["file_error"] = "文件内容不是 JSON 对象,llmcall 会忽略整个文件"
+    known_modes = tuple(getattr(llmcall.core, "_MODES", ()))
     usable = {}
-    for name, entry in raw.items():
-        if isinstance(entry, dict):
+    for key, entry in raw.items():
+        name, mode = _split_key(key)
+        if isinstance(entry, dict) and (mode is None or mode in known_modes):
             kept = {k: entry[k] for k in RUNG_KEYS if k in entry and _rung_problem(name, k, entry[k]) is None}
             if kept:
-                usable[name] = kept
-    names = list(dict.fromkeys([*llmcall.DEFAULT_CHAIN, *(chain or ()), *raw]))
+                usable[key] = kept
+    names = list(dict.fromkeys([*llmcall.DEFAULT_CHAIN, *(chain or ()), *(_split_key(k)[0] for k in raw)]))
     for name in names:
-        entry = raw.get(name)
-        written = {k: entry[k] for k in RUNG_KEYS if isinstance(entry, dict) and k in entry}
-        problems = {k: _rung_problem(name, k, v) for k, v in written.items()}
-        if entry is not None and not isinstance(entry, dict):
-            problems["entry"] = "这一项不是 JSON 对象,llmcall 会忽略它"
-        out["rungs"].append({
-            "name": name,
-            "gateway": name in getattr(llmcall.core, "_GATEWAY_RUNGS", ()),
-            "written": written,
-            "problems": {k: v for k, v in problems.items() if v},
-            "settings": llmcall.rung_settings(name, usable),
-        })
+        written_modes = [m for m in known_modes if f"{name}:{m}" in raw and m not in MODE_ROWS]
+        keys = [(name, None), *((name, m) for m in (*MODE_ROWS, *written_modes))]
+        # 文件里写了、但调用类型不认识的键(cc:foo)也要露出来,否则看起来像是没这回事。
+        keys += [(name, m) for k in raw for n, m in [_split_key(k)] if n == name and m and m not in known_modes]
+        for _, mode in keys:
+            key = name if mode is None else f"{name}:{mode}"
+            entry = raw.get(key)
+            written = {k: entry[k] for k in RUNG_KEYS if isinstance(entry, dict) and k in entry}
+            problems = {k: _rung_problem(name, k, v) for k, v in written.items()}
+            if entry is not None and not isinstance(entry, dict):
+                problems["entry"] = "这一项不是 JSON 对象,llmcall 会忽略它"
+            if mode is not None and mode not in known_modes:
+                problems["entry"] = f"未知的调用类型 {mode!r},llmcall 会忽略它"
+            out["rungs"].append({
+                "key": key,
+                "name": name,
+                "mode": mode,
+                "gateway": name in getattr(llmcall.core, "_GATEWAY_RUNGS", ()),
+                "written": written,
+                "problems": {k: v for k, v in problems.items() if v},
+                "settings": llmcall.rung_settings(name, usable, mode if mode in known_modes else None),
+            })
     return out
 
 
 def write_rung_defaults(entries, chain=None) -> dict:
     """把每一级的默认值整份写进 rung-defaults.json,写完返回新的 `rung_defaults_config()`。
 
-    `entries` 是整份期望状态 `{级: {"model": 值或空, "effort": 值或空}}`,空值表示那一项用内置默认。
+    `entries` 是整份期望状态 `{键: {"model": 值或空, "effort": 值或空}}`,键是级名(`cc`)或「级名:调用类型」
+    (`cc:judge`,只管那一类调用,盖在本级的值上),空值表示那一项用内置默认(或同本级)。
     任何一项过不了闸就**整批拒绝、一个字节不写**,拒绝时抛 `Refused` 带 code:
     `not_a_map` / `bad_name` / `bad_key` / `bad_value`。全部为空时删掉文件(= 全部内置默认)。
     """
     if not isinstance(entries, dict):
         raise Refused("entries 必须是 {级: {model, effort}} 的对象", "not_a_map")
+    import llmcall
     clean = {}
-    for name, entry in entries.items():
+    for key, entry in entries.items():
+        # 全空的项等于没写,先放过:页面上留着一条写坏的旧键时,清空它就能保存。
+        if isinstance(entry, dict) and not any(entry.get(k) for k in RUNG_KEYS) and not set(entry) - set(RUNG_KEYS):
+            continue
+        name, mode = _split_key(key) if isinstance(key, str) else (None, None)
         if not (isinstance(name, str) and NAME_RE.match(name)):
-            raise Refused(f"非法的级名(整批拒绝,未写入): {name!r}", "bad_name")
+            raise Refused(f"非法的级名(整批拒绝,未写入): {key!r}", "bad_name")
+        if mode is not None and mode not in getattr(llmcall.core, "_MODES", ()):
+            raise Refused(f"非法的调用类型(整批拒绝,未写入): {key!r}", "bad_name")
         if not isinstance(entry, dict) or set(entry) - set(RUNG_KEYS):
-            raise Refused(f"{name}: 只认 model 和 effort 两个键(整批拒绝,未写入)", "bad_key")
+            raise Refused(f"{key}: 只认 model 和 effort 两个键(整批拒绝,未写入)", "bad_key")
         kept = {}
         for k in RUNG_KEYS:
             v = entry.get(k)
@@ -1031,10 +1059,10 @@ def write_rung_defaults(entries, chain=None) -> dict:
                 continue
             problem = _rung_problem(name, k, v)
             if problem:
-                raise Refused(f"{name} 的 {k} 不能用(整批拒绝,未写入): {problem}", "bad_value")
+                raise Refused(f"{key} 的 {k} 不能用(整批拒绝,未写入): {problem}", "bad_value")
             kept[k] = v
         if kept:
-            clean[name] = kept
+            clean[key] = kept
 
     fp = rung_defaults_path()
     if fp is None:

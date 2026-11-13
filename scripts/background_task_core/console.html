@@ -478,7 +478,7 @@
   <div class="card" id="lrdef">
     <div class="card-header"><h3 class="card-title">默认模型与推理强度<span class="n" id="ldnote">读取中</span></h3></div>
     <div class="pad">
-      <p class="faint ld-help">后台任务等无头调用没有指定模型或推理强度时，每一级用这里的设置；留空就用内置默认。调用方自己指定的推理强度仍然优先；模型方面，codex、claude 以调用方指定的为准，codexg、cc 只用这里或内置默认。改动从下一次调用起生效。</p>
+      <p class="faint ld-help">后台任务等无头调用没有指定模型或推理强度时，每一级用这里的设置；留空就用内置默认。调用方自己指定的推理强度仍然优先；模型方面，codex、claude 以调用方指定的为准，codexg、cc 只用这里或内置默认。每一级下面的「判断类 judge」「agent」两行只管那一类调用，盖在本级的值上，留空就同本级：邮件分类这类判断调用可以降到 sonnet 或 haiku，需要动手干活的 agent 调用留在 opus。改动从下一次调用起生效。</p>
       <div id="ldwarn"></div>
       <div class="l-scroll"><table class="l-rung ld-tab" id="ldtab"></table></div>
       <datalist id="ld-models-claude"><option value="opus"><option value="sonnet"><option value="haiku"><option value="fable"></datalist>
