@@ -1,5 +1,9 @@
 # background-task-core
 
+<!-- infra:badges:start -->
+![Infra](https://img.shields.io/badge/Infra-yes-teal) ![Layer](https://img.shields.io/badge/Layer-L4%20scheduling-yellow) ![Kind](https://img.shields.io/badge/Kind-scheduler-informational) ![Residence](https://img.shields.io/badge/Residence-resident-brightgreen) ![Autostart](https://img.shields.io/badge/Autostart-logon%20task-brightgreen) ![Visibility](https://img.shields.io/badge/Visibility-public-brightgreen)
+<!-- infra:badges:end -->
+
 A loopback-only console for one Windows machine: its scheduled tasks, their run history and health, shared work records, and optional conversation, repository and resource components.
 
 Windows Task Scheduler supplies triggers; background-task-core keeps the task declarations, the registration authority and the guarded controls. Every source reports its coverage: an unavailable source does not render as an empty successful one, and a completion summary does not stand in for execution evidence.

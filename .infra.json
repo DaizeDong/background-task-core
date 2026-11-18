@@ -1,0 +1,9 @@
+{
+  "schema": 1,
+  "layer": 4,
+  "kind": "scheduler",
+  "residence": "resident",
+  "autostart": "task:background-task-core/console-start",
+  "selfheal": "The launcher checks the listener against the installed generation before it starts or reuses one.",
+  "visibility": "PUBLIC"
+}

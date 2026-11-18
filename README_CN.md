@@ -1,5 +1,9 @@
 # background-task-core
 
+<!-- infra:badges:start -->
+![Infra](https://img.shields.io/badge/Infra-yes-teal) ![Layer](https://img.shields.io/badge/Layer-L4%20scheduling-yellow) ![Kind](https://img.shields.io/badge/Kind-scheduler-informational) ![Residence](https://img.shields.io/badge/Residence-resident-brightgreen) ![Autostart](https://img.shields.io/badge/Autostart-logon%20task-brightgreen) ![Visibility](https://img.shields.io/badge/Visibility-public-brightgreen)
+<!-- infra:badges:end -->
+
 单台 Windows 机器的本地控制台，只监听环回地址，管理计划任务、运行历史、工作记录，以及独立接入的会话、仓库和资源组件。
 
 Windows 计划任务负责触发；background-task-core 保管任务声明、登记权威和受控操作。每个来源都说明自己查了多少：来源读不到不会显示成一张空的成功列表，完成摘要也不能顶替执行证据。
